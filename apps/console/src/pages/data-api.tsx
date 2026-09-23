@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowRight, CircleCheck, Clock3, Gauge, KeyRound, PhoneCall, Settings, TriangleAlert } from 'lucide-react';
 import { Empty } from '../ui.js';
 import Donut from '../components/donut.js';
+import LineChart from '../components/line-chart.js';
 import type { DataApiView } from './data-api-sample.js';
 import './overview.css';
 import './discover.css';
@@ -17,44 +18,6 @@ function Card({ title, subtitle, extra, className = '', children }: { title: str
 const Unavailable = ({ children = '查看全部' }: { children?: string }) => <span className="dashboard-unavailable" title={NOT_CONNECTED}>{children}<ArrowRight size={12}/></span>;
 function Kpi({ label, tone, icon, value, foot }: { label: string; tone: string; icon: ReactNode; value?: ReactNode; foot: ReactNode }) {
   return <section className={`panel discover-kpi tone-${tone}`}><span className="kpi-icon">{icon}</span><div><small>{label}</small><strong>{value ?? '—'}</strong><span className="kpi-foot"><span>{foot}</span></span></div></section>;
-}
-
-/** Daily successful and failed calls on one y-axis (same unit), with a hover crosshair. */
-function TrendChart({ points }: { points?: DataApiView['trend'] }) {
-  const box = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  const [hover, setHover] = useState<number>();
-  useEffect(() => {
-    const el = box.current; if (!el) return;
-    const observer = new ResizeObserver(([entry]) => setSize({ w: entry!.contentRect.width, h: entry!.contentRect.height }));
-    observer.observe(el); return () => observer.disconnect();
-  }, []);
-  const pad = { l: 44, r: 12, t: 8, b: 22 }, w = Math.max(0, size.w - pad.l - pad.r), h = Math.max(0, size.h - pad.t - pad.b);
-  const max = points ? Math.ceil(Math.max(...points.map(p => p.ok + p.failed)) / 1000) * 1000 : 1000;
-  const x = (i: number) => pad.l + (points && points.length > 1 ? i / (points.length - 1) * w : 0), y = (v: number) => pad.t + h - v / max * h;
-  const line = (key: 'ok' | 'failed') => points?.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join('') ?? '';
-  const ticks = [0, max / 2, max];
-  const onMove = (event: React.PointerEvent<SVGSVGElement>) => {
-    if (!points || !w) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    setHover(Math.max(0, Math.min(points.length - 1, Math.round((event.clientX - rect.left - pad.l) / w * (points.length - 1)))));
-  };
-  const p = hover !== undefined ? points?.[hover] : undefined;
-  return <div className="trend-box" ref={box}>
-    {size.w > 0 && <svg width={size.w} height={size.h} onPointerMove={onMove} onPointerLeave={() => setHover(undefined)} role="img" aria-label={points ? '近 30 天每日调用量：成功与失败' : '调用趋势尚未接入'}>
-      {ticks.map(t => <g key={t}><line x1={pad.l} x2={pad.l + w} y1={y(t)} y2={y(t)} className="grid"/><text x={pad.l - 6} y={y(t) + 3} textAnchor="end" className="axis">{fmt(t)}</text></g>)}
-      {points && <>
-        {points.map((pt, i) => (i % 7 === 0 && i < points.length - 3) || i === points.length - 1 ? <text key={pt.day} x={x(i)} y={pad.t + h + 15} textAnchor="middle" className="axis">{pt.day}</text> : null)}
-        <path d={`${line('ok')}L${x(points.length - 1)},${y(0)}L${x(0)},${y(0)}Z`} fill={OK} fillOpacity=".1"/>
-        <path d={line('ok')} fill="none" stroke={OK} strokeWidth="2"/>
-        <path d={line('failed')} fill="none" stroke={FAIL} strokeWidth="2"/>
-        {p && <><line x1={x(hover!)} x2={x(hover!)} y1={pad.t} y2={pad.t + h} className="crosshair"/>
-          <circle cx={x(hover!)} cy={y(p.ok)} r="4" fill={OK} stroke="#fff" strokeWidth="2"/><circle cx={x(hover!)} cy={y(p.failed)} r="4" fill={FAIL} stroke="#fff" strokeWidth="2"/></>}
-      </>}
-    </svg>}
-    {!points && <div className="trend-empty">调用趋势尚未接入</div>}
-    {p && <div className="trend-tip" style={{ left: Math.min(x(hover!) + 10, size.w - 150) }}><b>{p.day}</b><span><i style={{ background: OK }}/>成功 {fmt(p.ok)}</span><span><i style={{ background: FAIL }}/>失败 {fmt(p.failed)}</span></div>}
-  </div>;
 }
 
 export default function DataApi() {
@@ -86,7 +49,7 @@ export default function DataApi() {
     </div>
 
     <div className="discover-row row-charts">
-      <Card title="调用趋势" subtitle="近 30 天每日调用量" className="span-2" extra={<div className="chart-legend"><span><i style={{ background: OK }}/>成功</span><span><i style={{ background: FAIL }}/>失败</span></div>}><TrendChart points={data?.trend}/></Card>
+      <Card title="调用趋势" subtitle="近 30 天每日调用量" className="span-2" extra={<div className="chart-legend"><span><i style={{ background: OK }}/>成功</span><span><i style={{ background: FAIL }}/>失败</span></div>}><LineChart points={data?.trend.map(t => ({ x: t.day, values: { ok: t.ok, failed: t.failed } }))} series={[{ key: 'ok', label: '成功', color: OK, area: true }, { key: 'failed', label: '失败', color: FAIL }]} empty="调用趋势尚未接入" label="近 30 天每日调用量：成功与失败"/></Card>
       <Card title="请求状态分布" subtitle="今日">
         {data ? <div className="source-body"><Donut parts={data.statuses} caption="今日调用" label="今日调用的状态分布"/><div className="legend">{data.statuses.map(s => <div key={s.label}><i style={{ background: s.color }}/><span title={s.label}>{s.label}</span><b>{(s.count / statusTotal * 100).toFixed(1)}%</b><small>{fmt(s.count)}</small></div>)}</div></div> : <Empty title="暂无调用">{NOT_CONNECTED}</Empty>}
       </Card>

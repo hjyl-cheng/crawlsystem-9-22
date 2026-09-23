@@ -45,7 +45,7 @@ function NodeTable({ workers }: { workers: Worker[] }) {
   </tr>)}</tbody></table></div>;
 }
 function IpUsage() {
-  return <Panel title="IP 使用情况" extra={<span className="dashboard-unavailable" title="IP 资源尚未接入">查看 IP 详情 <ArrowRight size={12}/></span>} className="ip-panel">
+  return <Panel title="IP 使用情况" extra={<More to="/proxies">查看 IP 详情</More>} className="ip-panel">
     <div className="ip-usage"><div className="empty-donut" role="img" aria-label="IP 总量与使用情况尚未接入"><strong>—</strong><span>总 IP 数量</span><small>尚未接入</small></div><div className="ip-legend">{[['正常', 'green'], ['降级', 'amber'], ['冷却中', 'blue'], ['异常', 'red'], ['已停用', 'slate']].map(([label, tone]) => <div key={label}><i className={tone}/><span>{label}</span><strong>—</strong></div>)}</div></div>
   </Panel>;
 }

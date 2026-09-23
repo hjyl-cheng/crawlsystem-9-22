@@ -39,7 +39,7 @@ export function Layout() {
           <NavLink to="/update">更新采集</NavLink><NavLink to="/agent">Agent 任务</NavLink><NavLink to="/data-api">数据 API</NavLink><NavLink to="/delivery">发布交付</NavLink>
         </NavGroup>
         <NavLink className="nav-primary" to="/channels"><Database size={16}/><span>频道管理</span></NavLink>
-        <NavGroup icon={<Network size={16}/>} label="代理资源"><Pending>IP 管理</Pending><Pending>IP 分组</Pending><Pending>服务器管理</Pending></NavGroup>
+        <NavLink className="nav-primary" to="/proxies"><Network size={16}/><span>IP 资源管理</span></NavLink>
         <NavGroup icon={<Server size={16}/>} label="采集节点" active={under('/workers')}><NavLink to="/workers" aria-label="Worker / 节点">服务器总览</NavLink><Link to="/workers">Worker 管理</Link></NavGroup>
         <NavGroup icon={<FileChartColumn size={16}/>} label="数据与分析"><Pending>采集统计</Pending><Pending>质量分析</Pending><Link to="/#trends">趋势分析</Link></NavGroup>
         <NavGroup icon={<Settings size={16}/>} label="系统管理" active={under('/errors')}><Pending>用户管理</Pending><Pending>配置管理</Pending><NavLink to="/errors" aria-label="错误与追踪">错误与日志</NavLink></NavGroup>
@@ -51,7 +51,7 @@ export function Layout() {
         <form className="quick-search" onSubmit={lookup}><Search size={15}/><input aria-label="按 Plan ID 定位" placeholder="搜索 Plan ID，定位计划与执行结果…" value={search} onChange={e => { setSearch(e.target.value); setSearchError(false); }}/>{searchError && <span role="alert">请输入完整 Plan UUID</span>}</form>
         <div className="topbar-right"><Link className="icon-button" to="/errors" aria-label="查看错误事件" title="查看错误事件"><Bell size={19}/></Link><div className="identity"><span className="avatar">{session.subject.slice(0, 1).toUpperCase()}</span><div><strong title={`${session.subject} · ${session.workspace_id}`}>{session.subject === 'console-preview-reader' ? 'preview' : session.subject}</strong><small>{roleLabels[session.role]}</small></div><button className="icon-button" aria-label="退出登录" title="退出登录" onClick={logout}><LogOut size={15}/></button></div></div>
       </header>
-      <main id="main-content" className={`main-content ${location.pathname === '/' || location.pathname === '/plans' || location.pathname === '/update' || location.pathname === '/agent' || location.pathname === '/data-api' || location.pathname === '/delivery' || location.pathname === '/channels' || location.pathname.startsWith('/discover/') ? 'overview-content' : 'page-content'}`} key={`${session.workspace_id}:${session.subject}`}><Outlet/></main>
+      <main id="main-content" className={`main-content ${location.pathname === '/' || location.pathname === '/plans' || location.pathname === '/update' || location.pathname === '/agent' || location.pathname === '/data-api' || location.pathname === '/delivery' || location.pathname === '/channels' || location.pathname === '/proxies' || location.pathname.startsWith('/discover/') ? 'overview-content' : 'page-content'}`} key={`${session.workspace_id}:${session.subject}`}><Outlet/></main>
     </div>
   </div>;
 }

@@ -322,3 +322,15 @@ test('channel management lists real channel facts and shows the selected channel
   await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
   await expect(page.locator('.channels-list tbody tr')).toHaveCount(10);
 });
+test('IP resource management replaces three proxy menus and reports the real proxy status of Workers', async ({ page }) => {
+  const state = await mock(page); state.workers = [{ worker_id: 'w1', server_id: 'n1', build_version: 'v1', accepting_work: true, capacity: 1, running_plan_ids: [], last_heartbeat_at: '2026-09-23T08:00:00.000Z', stale: false, proxy_status: 'NOT_CONFIGURED' }];
+  await login(page, '/proxies');
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await expect(nav.getByRole('link', { name: 'IP 资源管理' })).toBeVisible();
+  for (const old of ['IP 管理', 'IP 分组', '服务器管理']) await expect(nav.getByText(old, { exact: true })).toHaveCount(0);
+  await expect(page.getByText('1 个 Worker 未配置代理', { exact: false })).toBeVisible();
+  await expect(page.getByText('尚无代理 IP', { exact: true })).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.locator('.ip-list tbody tr')).toHaveCount(10);
+  await expect(page.locator('.ip-list tbody')).toContainText('192.0.2.34');
+});

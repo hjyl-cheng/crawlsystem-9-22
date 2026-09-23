@@ -52,6 +52,7 @@
 /* Source donut */
 .source-body { flex: 1; display: grid; grid-template-columns: minmax(96px, 42%) minmax(0, 1fr); align-items: center; gap: 10px; padding: 0 14px 10px; min-height: 0; }
 .discover-donut { width: 100%; max-height: 130px; }
+.donut-value.long { font-size: 15px; }
 .donut-value { font-size: var(--fs-metric); font-weight: 700; fill: #0c1e43; }
 .donut-caption { font-size: var(--fs-micro); fill: #7a8daa; }
 .legend { display: grid; gap: 5px; }
@@ -180,3 +181,19 @@
 .cell-title { display: block; font-size: var(--fs-text); font-weight: 500; color: #193257; }
 .cell-sub { display: block; font-size: var(--fs-meta); color: #7a8ca8; }
 .status-chip.slate { background: #eef2f7; color: #6b7d97; }
+
+/* Line chart (components/line-chart.tsx): recessive grid and axis text, thin lines, hover crosshair */
+.chart-legend { display: flex; gap: 12px; font-size: var(--fs-meta); color: #52688c; }
+.chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.chart-legend i { width: 10px; height: 2px; border-radius: 1px; }
+.trend-box { position: relative; flex: 1; min-height: 0; margin: 0 10px 8px; }
+.trend-box svg { display: block; }
+.trend-box .grid { stroke: #edf2f8; stroke-width: 1; }
+.trend-box .axis { fill: #8797b0; font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }
+.trend-box .crosshair { stroke: #b9c7da; stroke-width: 1; stroke-dasharray: 3 3; }
+.trend-empty { position: absolute; inset: 0; display: grid; place-items: center; color: #8797b0; font-size: var(--fs-text); }
+.trend-tip { position: absolute; top: 6px; display: grid; gap: 2px; min-width: 130px; padding: 6px 9px; border: 1px solid #dce9f9; border-radius: 6px; background: #fff; box-shadow: 0 4px 12px #1b2d5214; font-size: var(--fs-meta); color: #253f6a; pointer-events: none; font-variant-numeric: tabular-nums; }
+.trend-tip b { font-size: var(--fs-text); }
+.trend-tip span { display: flex; align-items: center; gap: 5px; }
+.trend-tip i { width: 8px; height: 8px; border-radius: 50%; }
+
