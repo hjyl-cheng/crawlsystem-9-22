@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: migration replay verifies checksum; actual transaction pool uses the isolated role
+ok 1 - migration replay verifies checksum; actual transaction pool uses the isolated role
+  ---
+  duration_ms: 83.348767
+  type: 'test'
+  ...
+# Subtest: concurrent creation stores one frozen input and one start intent; conflicting identity fails
+ok 2 - concurrent creation stores one frozen input and one start intent; conflicting identity fails
+  ---
+  duration_ms: 213.313966
+  type: 'test'
+  ...
+# Subtest: eight concurrent identical submissions return one immutable durable receipt
+ok 3 - eight concurrent identical submissions return one immutable durable receipt
+  ---
+  duration_ms: 878.635867
+  type: 'test'
+  ...
+# Subtest: concurrent final domains close once; missing Agent remains pending and cannot publish
+ok 4 - concurrent final domains close once; missing Agent remains pending and cannot publish
+  ---
+  duration_ms: 833.660439
+  type: 'test'
+  ...
+# Subtest: frozen target coverage and identity are enforced before sealing a domain
+ok 5 - frozen target coverage and identity are enforced before sealing a domain
+  ---
+  duration_ms: 241.730541
+  type: 'test'
+  ...
+# Subtest: an exception after receipt insertion rolls back facts, checkpoint and receipt together
+ok 6 - an exception after receipt insertion rolls back facts, checkpoint and receipt together
+  ---
+  duration_ms: 596.997434
+  type: 'test'
+  ...
+# Subtest: process death before COMMIT leaves no partial state and original submission recovers
+ok 7 - process death before COMMIT leaves no partial state and original submission recovers
+  ---
+  duration_ms: 1913.242695
+  type: 'test'
+  ...
+# Subtest: lost HTTP response after commit recovers the exact receipt using a new Store/pool
+ok 8 - lost HTTP response after commit recovers the exact receipt using a new Store/pool
+  ---
+  duration_ms: 466.836124
+  type: 'test'
+  ...
+# Subtest: cancellation is version checked and idempotent; previous receipts stay readable
+ok 9 - cancellation is version checked and idempotent; previous receipts stay readable
+  ---
+  duration_ms: 707.516862
+  type: 'test'
+  ...
+# Subtest: cancel versus final submission serializes into one legal outcome
+ok 10 - cancel versus final submission serializes into one legal outcome
+  ---
+  duration_ms: 337.234938
+  type: 'test'
+  ...
+# Subtest: older plans cannot overwrite newer Current while retaining their own proofs
+ok 11 - older plans cannot overwrite newer Current while retaining their own proofs
+  ---
+  duration_ms: 933.383047
+  type: 'test'
+  ...
+# Subtest: HTTP authentication, roles, cross-workspace reads and input limits are enforced
+ok 12 - HTTP authentication, roles, cross-workspace reads and input limits are enforced
+  ---
+  duration_ms: 99.164946
+  type: 'test'
+  ...
+# Subtest: all console query endpoints return actual persisted objects with the published schemas
+ok 13 - all console query endpoints return actual persisted objects with the published schemas
+  ---
+  duration_ms: 487.676766
+  type: 'test'
+  ...
+# Subtest: failed receipt queries report retryable unavailability, never a missing receipt
+ok 14 - failed receipt queries report retryable unavailability, never a missing receipt
+  ---
+  duration_ms: 78.287108
+  type: 'test'
+  ...
+# Subtest: diagnostic failure closes only active plans; deadlines are durable and swept once
+ok 15 - diagnostic failure closes only active plans; deadlines are durable and swept once
+  ---
+  duration_ms: 597.091975
+  type: 'test'
+  ...
+# Subtest: durable start survives dispatcher restart and lost acknowledgement using stable identity
+ok 16 - durable start survives dispatcher restart and lost acknowledgement using stable identity
+  ---
+  duration_ms: 461.741181
+  type: 'test'
+  ...
+# Subtest: expired leases can be claimed; stale claimants cannot overwrite newer acknowledgement
+ok 17 - expired leases can be claimed; stale claimants cannot overwrite newer acknowledgement
+  ---
+  duration_ms: 619.235805
+  type: 'test'
+  ...
+# Subtest: cancel during a claimed start waits for startup resolution and retries cancellation durably
+ok 18 - cancel during a claimed start waits for startup resolution and retries cancellation durably
+  ---
+  duration_ms: 993.612104
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11321.700956
