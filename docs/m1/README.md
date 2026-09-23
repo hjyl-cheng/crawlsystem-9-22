@@ -10,7 +10,7 @@ M1 交付一条使用固定样本、具备持久回执与中断恢复、控制�
 | --- | --- | --- | --- |
 | 主 Agent：公共基础与集成 | `/home/ubuntu/workspace/crawlsystem-business` | `business/crawler-platform` | [主 Agent 任务](agent-main.md) |
 | 执行 Agent：Temporal 与 Worker | `/home/ubuntu/workspace/crawlsystem-execution` | `business/m1-execution` | [执行 Agent 任务](agent-execution.md) |
-| 控制台 Agent：业务前端 | `/home/ubuntu/workspace/crawlsystem-console` | `business/m1-console` | [控制台 Agent 任务](agent-console.md) |
+| 控制台 Agent（Claude）：业务前端 | `/home/ubuntu/workspace/crawlsystem-console` | `business/m1-console` | [控制台 Agent 任务](agent-console.md)、[Claude 接手说明](claude-ui-handoff.md) |
 
 共同资料：[开发计划](../业务平台开发计划_讨论稿_2026-09-23.md)、[旧系统字段参考](../业务数据范围_旧系统字段参考_2026-09-23.md)。旧仓库 `/home/ubuntu/workspace/oldsystem` 仅作为参考；本轮固定提交为 `e92d9227a5a3847430e5d062bea13227564ee419`。
 
