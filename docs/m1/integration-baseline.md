@@ -61,4 +61,43 @@ Temporal SDK `1.24.0`、React/React DOM `19.3.0`、Vite `8.3.0`、React 插件 `
 
 主 Agent 联调保留端口：Control 18100、Ingest 18101、Console 18102；本地 PG 转发 15432、Temporal 转发 17233。测试库 `crawlsystem_m1_main_test`、Temporal namespace/queue `crawlsystem-m1-main`。执行与 UI 单元测试使用独立 mock/server 端口；需要独立实际库时先向主 Agent申请资源名，避免共用破坏性测试。
 
-`.env.example` 是配置模板，不含可用密钥。G0 发布时 API 尚在实现；主 Agent 完成后更新报告和真实运行命令。API 未实现不阻止按公共契约编写模块测试，但不能报告实际联调已通过。
+`.env.example` 是配置模板，不含可用密钥。G0 发布时 API 尚在实现；G1 现已提供下述运行入口，测试结果见 [主 Agent 报告](reports/main.md)。真实 Temporal 和浏览器集成通过后才标记 M1 完成。
+
+## G1 后端运行
+
+预先提供独立数据库、Owner/应用角色及 TLS CA：数据库名必须匹配 `crawlsystem_m1_*_test`；不接受指向正式数据库的配置。现场主 Agent 使用 `m1_main_app`，连接上限 8；角色 `statement_timeout=5s`、`idle_in_transaction_session_timeout=10s`。应用事务额外设置 `lock_timeout=2s`、`statement_timeout=5s`、`transaction_timeout=10s`，需要 PostgreSQL 17+（现场和 CI 固定 18.6）。不要把这些作为 PgBouncer 不支持的启动参数。
+
+凭据只保存在忽略的 `.runtime/` 中，目录 0700、文件 0600。用 `.env.example` 填写实际运行文件 `.runtime/main.env`，JWT 密钥至少 32 个随机字节。服务均默认监听 loopback；远程使用已有 TLS 入口或加密隧道。浏览器允许来源由 `CONSOLE_ORIGIN` 精确配置；M1 开发令牌不等于正式身份系统。
+
+```bash
+npm ci
+node --env-file=.runtime/main.env --import tsx scripts/dev/migrate.ts
+node --env-file=.runtime/main.env --import tsx scripts/dev/token.ts operator m1-operator m1-main .runtime/operator-token
+node --env-file=.runtime/main.env --import tsx scripts/dev/token.ts worker m1-worker-1 m1-main .runtime/worker-token
+
+# 各自前台运行；三个进程各 2 个连接，总预算 6，保留维护余量。
+PG_POOL_MAX=2 node --env-file=.runtime/main.env --import tsx apps/control-api/src/main.ts
+PG_POOL_MAX=2 node --env-file=.runtime/main.env --import tsx apps/ingest/src/main.ts
+
+# 执行 Agent 的 execution-client 提交集成后才可启动，缺模块会直接报错。
+PG_POOL_MAX=2 node --env-file=.runtime/main.env --import tsx apps/control-api/src/dispatch-main.ts
+```
+
+派发器只处理 `M1_WORKSPACE_ID` 对应的意图与到期 Plan，该 workspace 必须与 Worker 的令牌一致；M1 一个 queue 配一个 workspace。START/CANCEL 意图使用 30 秒租约和 10 秒网络确认期限，失败退避最大 60 秒，租约过期可重新领取；过期持有者不能覆盖新确认。START 过期后不能继续启动；取消意图保留至确认。截止时间由派发器兜底检查；未启动派发器时，截止写入仍被 Ingest 拒绝，但 Plan 的 FAILED 状态要等派发器恢复后形成。
+
+独立终端准备测试连接：
+
+```bash
+K3S_CONFIG_FILE=/dev/null kubectl -n db port-forward --address 127.0.0.1 service/crawler-pg-pool 15432:5432
+# 仅 SIGKILL 测试建议独立转发 15433；main.env 的 M1_CRASH_DATABASE_URL 指向它。
+K3S_CONFIG_FILE=/dev/null kubectl -n db port-forward --address 127.0.0.1 service/crawler-pg-pool 15433:5432
+
+npm run typecheck
+npm run test:contracts
+node --env-file=.runtime/main.env --import tsx --test --test-concurrency=1 tests/integration/*.test.ts
+node --env-file=.runtime/main.env --import tsx scripts/dev/backend-smoke.ts
+```
+
+测试每次创建独立 workspace，保留测试证据；故障触发器只匹配该次 workspace，并在 finally 中删除。SIGKILL 测试只结束自己创建的子进程。`backend-smoke.ts` 直接提交固定样本，仅用于 HTTP/数据库验收，不能算作 Temporal 完整闭环。
+
+服务提供 `/healthz`、`/readyz`、`/metrics`；日志记录请求 ID、路由模板、状态和时长，不记录 Bearer、正文和数据库连接串。每个进程最多 64 个在途请求，超出返回 retryable 503；指标使用固定路由标签，避免 Plan/频道 ID 形成高基数。分布式追踪和正式可观测性看板仍需 G2 联调补齐，未宣称达到生产 SLO。

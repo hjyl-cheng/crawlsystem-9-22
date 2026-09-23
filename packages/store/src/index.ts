@@ -28,19 +28,23 @@ export class Store {
   private async tx<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       const client = await this.pool.connect();
+      let discard = false;
       try {
         await client.query('BEGIN');
         await client.query("SET LOCAL lock_timeout = '2s'");
+        await client.query("SET LOCAL statement_timeout = '5s'");
+        await client.query("SET LOCAL transaction_timeout = '10s'");
         const result = await action(client);
         await client.query('COMMIT');
         return result;
       } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
+        discard = /connection|timeout/i.test((error as Error).message) || /^08/.test((error as {code?:string}).code ?? '');
+        if (!discard) await client.query('ROLLBACK').catch(() => { discard = true; });
         const code = (error as {code?:string}).code;
         if (attempt < 2 && ['40001','40P01'].includes(code ?? '')) continue;
         if (code === '23505') throw new StoreError('CONFLICT', 'Identity already belongs to different content');
         throw error;
-      } finally { client.release(); }
+      } finally { client.release(discard); }
     }
   }
   private async planRow(client: PoolClient | Pool, principal: Principal, id: string, lock = false): Promise<QueryResultRow> {
@@ -76,15 +80,21 @@ export class Store {
   async getInput(principal: Principal, id: string): Promise<PlanInput> {
     // One consistent database snapshot: plan, proofs and receipts never straddle a commit.
     const client = await this.pool.connect();
+    let discard = false;
     try {
       await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      await client.query("SET LOCAL transaction_timeout = '10s'");
       const row = await this.planRow(client,principal,id);
       const domains = await client.query('SELECT domain,state,completed_at FROM m1.domains WHERE plan_id=$1 ORDER BY domain', [id]);
       const receipts = await client.query('SELECT receipt FROM m1.receipts WHERE plan_id=$1 ORDER BY applied_at LIMIT 300', [id]);
       await client.query('COMMIT');
       return {plan:toPlan(row), input:row.frozen_input as FrozenInput, domains:domains.rows.map(r => ({domain:r.domain,state:r.state,completed_at:r.completed_at ? iso(r.completed_at) : null} as DomainResult)), receipts:receipts.rows.map(r => r.receipt as Receipt)};
-    } catch(error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
-    finally { client.release(); }
+    } catch(error) {
+      discard = /connection|timeout/i.test((error as Error).message) || /^08/.test((error as {code?:string}).code ?? '');
+      if (!discard) await client.query('ROLLBACK').catch(() => {discard=true;});
+      throw error;
+    }
+    finally { client.release(discard); }
   }
   async getPlan(principal: Principal, id: string): Promise<PlanDetail> {
     const context = await this.getInput(principal,id);
@@ -181,7 +191,9 @@ export class Store {
     requireRole(principal,'worker');
     const input = HeartbeatSchema.parse(raw);
     if (input.worker_id !== principal.subject) throw new StoreError('FORBIDDEN','Worker identity differs from credential',403);
-    for (const id of input.running_plan_ids) await this.planRow(this.pool,principal,id);
+    const ids=[...new Set(input.running_plan_ids)];
+    const owned=await this.pool.query('SELECT plan_id FROM m1.plans WHERE workspace_id=$1 AND plan_id=ANY($2::uuid[])',[principal.workspace_id,ids]);
+    if (owned.rowCount!==ids.length) throw new StoreError('NOT_FOUND','Running plan not found',404);
     const result = await this.pool.query(`INSERT INTO m1.workers(workspace_id,worker_id,heartbeat) VALUES($1,$2,$3)
       ON CONFLICT(workspace_id,worker_id) DO UPDATE SET heartbeat=EXCLUDED.heartbeat,last_heartbeat_at=clock_timestamp() RETURNING last_heartbeat_at`,[principal.workspace_id,input.worker_id,input]);
     return {...input,last_heartbeat_at:iso(result.rows[0]!.last_heartbeat_at),stale:false,proxy_status:'NOT_CONFIGURED'};
@@ -202,6 +214,10 @@ export class Store {
       const count = await client.query('SELECT count(*)::int AS n FROM m1.events WHERE plan_id=$1',[planId]);
       if (count.rows[0]!.n >= 1000) throw new StoreError('BUDGET_EXHAUSTED','Plan diagnostic event budget exhausted');
       await client.query('INSERT INTO m1.events(plan_id,event_id,event_hash,data) VALUES($1,$2,$3,$4)',[planId,input.event_id,hash,input]);
+      if (!terminal(row.status) && input.kind === 'FAILED') {
+        await client.query("UPDATE m1.plans SET status='FAILED',version=version+1,execution_epoch=execution_epoch+1,updated_at=clock_timestamp(),finished_at=clock_timestamp() WHERE plan_id=$1",[planId]);
+        await client.query("INSERT INTO m1.intents(intent_id,plan_id,kind) VALUES($1,$2,'CANCEL') ON CONFLICT DO NOTHING",[randomUUID(),planId]);
+      }
       if (!terminal(row.status) && ['STARTED','WAITING'].includes(input.kind)) {
         const status = input.kind === 'WAITING' ? 'WAITING' : 'RUNNING';
         await client.query('UPDATE m1.plans SET status=$2,version=version+1,updated_at=clock_timestamp() WHERE plan_id=$1 AND status<>$2',[planId,status]);
@@ -216,7 +232,7 @@ export class Store {
   }
   async listErrors(principal: Principal, limit=20, offset=0): Promise<Page<StoredEvent>> {
     requireRole(principal,'reader','operator');
-    const rows = await this.pool.query("SELECT e.* FROM m1.events e JOIN m1.plans p USING(plan_id) WHERE p.workspace_id=$1 AND e.data->>'kind'='ERROR' ORDER BY e.created_at DESC,e.event_id LIMIT $2 OFFSET $3",[principal.workspace_id,limit+1,offset]);
+    const rows = await this.pool.query("SELECT e.* FROM m1.events e JOIN m1.plans p USING(plan_id) WHERE p.workspace_id=$1 AND e.data->>'kind' IN ('ERROR','FAILED') ORDER BY e.created_at DESC,e.event_id LIMIT $2 OFFSET $3",[principal.workspace_id,limit+1,offset]);
     return page(rows.rows.map(r => ({...r.data,plan_id:r.plan_id,created_at:iso(r.created_at)} as StoredEvent)),limit,offset);
   }
   async listChannels(principal: Principal, limit=20, offset=0): Promise<Page<ChannelSummary>> {
@@ -232,15 +248,16 @@ export class Store {
     const latest = toPlan(await this.planRow(this.pool,principal,row.latest_plan_id));
     return {channel_id:channelId,title:row.about?.title ?? null,source_mode:'fixture',updated_at:iso(row.updated_at),latest_plan_id:row.latest_plan_id,about:row.about,videos:videos.rows.map(r=>r.data),agent:null,latest_plan:latest};
   }
-  async claimIntent(leaseSeconds=30): Promise<Intent | null> {
+  async claimIntent(leaseSeconds=30, workspaceId?:string): Promise<Intent | null> {
     return this.tx(async client => {
       const token = randomUUID();
       const rows = await client.query(`WITH candidate AS (
         SELECT i.intent_id FROM m1.intents i WHERE ((i.state='PENDING' AND i.available_at<=clock_timestamp()) OR (i.state='LEASED' AND i.lease_until<clock_timestamp()))
+        AND ($3::text IS NULL OR EXISTS (SELECT 1 FROM m1.plans p WHERE p.plan_id=i.plan_id AND p.workspace_id=$3))
         AND (i.kind='START' OR NOT EXISTS (SELECT 1 FROM m1.intents s WHERE s.plan_id=i.plan_id AND s.kind='START' AND s.state IN ('PENDING','LEASED')))
         ORDER BY i.created_at FOR UPDATE SKIP LOCKED LIMIT 1
       ) UPDATE m1.intents i SET state='LEASED',lease_token=$1,lease_until=clock_timestamp()+($2*interval '1 second'),attempts=attempts+1
-        FROM candidate c WHERE i.intent_id=c.intent_id RETURNING i.*`,[token,leaseSeconds]);
+        FROM candidate c WHERE i.intent_id=c.intent_id RETURNING i.*`,[token,leaseSeconds,workspaceId ?? null]);
       if (!rows.rowCount) return null;
       const intent = rows.rows[0]!;
       const row = (await client.query('SELECT * FROM m1.plans WHERE plan_id=$1',[intent.plan_id])).rows[0]!;
@@ -253,5 +270,18 @@ export class Store {
   }
   async retryIntent(intent: Intent, message: string): Promise<void> {
     await this.pool.query("UPDATE m1.intents SET state='PENDING',available_at=clock_timestamp()+($3*interval '1 second'),last_error=$4,lease_until=NULL WHERE intent_id=$1 AND lease_token=$2 AND state='LEASED'",[intent.intent_id,intent.lease_token,Math.min(60,2 ** Math.min(intent.attempts,6)),message.slice(0,500)]);
+  }
+  async expirePlans(limit=20, workspaceId?:string): Promise<number> {
+    return this.tx(async client => {
+      const rows = await client.query("SELECT * FROM m1.plans WHERE status IN ('QUEUED','RUNNING','WAITING') AND deadline_at<=clock_timestamp() AND ($2::text IS NULL OR workspace_id=$2) ORDER BY deadline_at FOR UPDATE SKIP LOCKED LIMIT $1",[limit,workspaceId ?? null]);
+      for (const row of rows.rows) {
+        const event: ExecutionEvent = {event_id:randomUUID(),execution_epoch:row.execution_epoch,worker_id:'control-dispatcher',phase:'PLAN_DEADLINE',kind:'FAILED',domain:null,message:'Frozen plan deadline exhausted',error_code:'BUDGET_EXHAUSTED'};
+        await client.query('INSERT INTO m1.events(plan_id,event_id,event_hash,data) VALUES($1,$2,$3,$4)',[row.plan_id,event.event_id,contentHash(event),event]);
+        await client.query("UPDATE m1.plans SET status='FAILED',version=version+1,execution_epoch=execution_epoch+1,finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE plan_id=$1",[row.plan_id]);
+        await client.query("UPDATE m1.intents SET state='SKIPPED' WHERE plan_id=$1 AND kind='START' AND state='PENDING'",[row.plan_id]);
+        await client.query("INSERT INTO m1.intents(intent_id,plan_id,kind) VALUES($1,$2,'CANCEL') ON CONFLICT DO NOTHING",[randomUUID(),row.plan_id]);
+      }
+      return rows.rowCount ?? 0;
+    });
   }
 }

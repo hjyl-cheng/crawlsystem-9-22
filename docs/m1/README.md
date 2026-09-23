@@ -1,6 +1,6 @@
 # M1 三 Agent 协作与验收
 
-日期：2026-09-23｜状态：任务分工已编写，业务实现尚未启动。
+日期：2026-09-23｜状态：G0 已发布，进入 G1 并行实现与验证；M1 全链路尚未验收。
 
 M1 交付一条使用固定样本、具备持久回执与中断恢复、控制台可追踪的内部链路。之后的 M2 再接真实采集、本地代理及所需 API/Agent，交付频道基础信息、视频、评论和 Agent 分析结果。
 
@@ -16,7 +16,7 @@ M1 交付一条使用固定样本、具备持久回执与中断恢复、控制�
 
 用户已明确：旧代码和算法允许重新设计；先用独立数据验证新系统；第一版是采集管理平台，预留下游交付接口；质量目标为性能、并发、伸缩性、可靠性、安全、可观测性、易用性和可维护性。
 
-当前共同文档基线来自 `4fb6c8f`，尚无应用骨架或公共契约代码。此处规划的目录、接口职责和验证步骤是待交付任务，不能报告为已实现能力。执行与控制台开发以主 Agent 后续发布的 G0 代码基线为准。
+共同文档基线来自 `4fb6c8f`。公共代码 G0 为 `ca3973f43d4ee3bc355cb0cc3ab1a373f5292a92`，已经同步至两个 worktree；工程、契约、迁移及当前接入说明见 [integration-baseline.md](integration-baseline.md)。各模块实际完成程度以报告和测试证据为准，G0 不代表 M1 已验收。
 
 ## 2. 目录所有权
 
@@ -27,7 +27,7 @@ M1 交付一条使用固定样本、具备持久回执与中断恢复、控制�
 | 根 `package.json`、workspace 配置、锁文件、基础 TypeScript/检查配置、CI | 主 Agent | 工程工具链和跨模块依赖 |
 | `packages/contracts/` | 主 Agent | 业务类型、运行时校验、API schema、错误与状态定义、共享测试样本 |
 | `packages/store/`、`database/migrations/` | 主 Agent | 数据访问、事务、幂等、领域收口和数据库迁移 |
-| `apps/control-api/`、`apps/ingest/` | 主 Agent | 控制/查询接口、鉴权、启动意图派发与结果接收 |
+| `apps/control-api/`、`apps/ingest/`、`packages/http/` | 主 Agent | 控制/查询接口、共享 HTTP/鉴权、启动意图派发与结果接收 |
 | `apps/execution-worker/`、`packages/execution-client/` | 执行 Agent | Temporal Workflow/Activity、Worker、启动适配器和执行侧 HTTP 客户端 |
 | `apps/console/` | 控制台 Agent | 页面、前端请求适配、展示与页面测试 |
 | `tests/integration/`、`scripts/dev/` | 主 Agent | 全链路测试、环境与启动编排；各 Agent 提供所需命令和参数 |

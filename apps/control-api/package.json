@@ -1,0 +1,1 @@
+{"name":"@crawlsystem/control-api","version":"0.1.0","private":true,"type":"module","dependencies":{"@crawlsystem/contracts":"0.1.0","@crawlsystem/store":"0.1.0","@crawlsystem/http":"0.1.0"}}
