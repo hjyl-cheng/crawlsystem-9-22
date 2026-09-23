@@ -28,7 +28,8 @@ export default function LineChart({ points, series, max, format = v => v.toLocal
   const p = hover !== undefined ? points?.[hover] : undefined;
   return <div className="trend-box" ref={box}>
     {size.w > 0 && <svg width={size.w} height={size.h} onPointerMove={onMove} onPointerLeave={() => setHover(undefined)} role="img" aria-label={points ? label : empty}>
-      {[0, top / 2, top].map(t => <g key={t}><line x1={pad.l} x2={pad.l + w} y1={y(t)} y2={y(t)} className="grid"/><text x={pad.l - 6} y={y(t) + 3} textAnchor="end" className="axis">{format(t)}</text></g>)}
+      {/* Without data the grid stays but the y labels would be meaningless, so they are omitted. */}
+      {[0, top / 2, top].map(t => <g key={t}><line x1={pad.l} x2={pad.l + w} y1={y(t)} y2={y(t)} className="grid"/>{points && <text x={pad.l - 6} y={y(t) + 3} textAnchor="end" className="axis">{format(t)}</text>}</g>)}
       {points && <>
         {points.map((pt, i) => (i % every === 0 && i < points.length - (every > 1 ? 3 : 0)) || i === points.length - 1 ? <text key={pt.x} x={x(i)} y={pad.t + h + 15} textAnchor="middle" className="axis">{pt.x}</text> : null)}
         {series.map(s => <g key={s.key}>{s.area && <path d={`${path(s.key)}L${x(points.length - 1)},${y(0)}L${x(0)},${y(0)}Z`} fill={s.color} fillOpacity=".1"/>}<path d={path(s.key)} fill="none" stroke={s.color} strokeWidth="2"/></g>)}

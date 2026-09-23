@@ -334,3 +334,15 @@ test('IP resource management replaces three proxy menus and reports the real pro
   await expect(page.locator('.ip-list tbody tr')).toHaveCount(10);
   await expect(page.locator('.ip-list tbody')).toContainText('192.0.2.34');
 });
+test('worker management merges the node menus and shows real heartbeats with servers derived from them', async ({ page }) => {
+  const state = await mock(page); state.workers = [workerFixture()]; await login(page, '/workers');
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await expect(nav.getByRole('link', { name: 'Worker 管理' })).toBeVisible();
+  for (const old of ['采集节点', '服务器总览']) await expect(nav.getByText(old, { exact: true })).toHaveCount(0);
+  await expect(page.locator('.row-servers tbody tr')).toHaveCount(1);
+  await expect(page.locator('.row-servers tbody')).toContainText('fixture-node');
+  await expect(page.locator('.worker-detail')).toContainText('fixture-worker');
+  await expect(page.getByText('资源指标尚未接入（Prometheus）', { exact: false }).first()).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.locator('.worker-list tbody tr')).toHaveCount(8);
+});
