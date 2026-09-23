@@ -1,0 +1,156 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: dbz-infra-configs
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  topicName: dbz-infra-configs
+  partitions: 1
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: compact
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: dbz-infra-offsets
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  topicName: dbz-infra-offsets
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: compact
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: dbz-infra-status
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  topicName: dbz-infra-status
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: compact
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: infra-outbox-events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  topicName: infra.outbox.events
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: delete
+    retention.ms: 86400000
+    retention.bytes: 268435456
+    segment.bytes: 67108864
+    segment.ms: 3600000
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: dbz-connect
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+    - resource:
+        type: topic
+        name: dbz-infra-configs
+        patternType: literal
+      operations:
+      - Read
+      - Write
+      - Describe
+      host: '*'
+    - resource:
+        type: topic
+        name: dbz-infra-offsets
+        patternType: literal
+      operations:
+      - Read
+      - Write
+      - Describe
+      host: '*'
+    - resource:
+        type: topic
+        name: dbz-infra-status
+        patternType: literal
+      operations:
+      - Read
+      - Write
+      - Describe
+      host: '*'
+    - resource:
+        type: topic
+        name: infra.outbox.events
+        patternType: literal
+      operations:
+      - Write
+      - Describe
+      host: '*'
+    - resource:
+        type: group
+        name: dbz-infra
+        patternType: literal
+      operations:
+      - Read
+      - Describe
+      host: '*'
+    - resource:
+        type: cluster
+      operations:
+      - IdempotentWrite
+      - Describe
+      host: '*'
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: infra-reader
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+    - resource:
+        type: topic
+        name: infra.outbox.events
+        patternType: literal
+      operations:
+      - Read
+      - Describe
+      host: '*'
+    - resource:
+        type: group
+        name: infra-smoke
+        patternType: literal
+      operations:
+      - Read
+      - Describe
+      host: '*'

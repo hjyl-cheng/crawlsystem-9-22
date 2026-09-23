@@ -1,0 +1,384 @@
+{
+  "postgres_authentication": [
+    {
+      "role": "crawler_owner",
+      "database": "crawler",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "role": "crawler_owner",
+      "database": "infra_smoke",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "role": "crawler_owner",
+      "database": "temporal",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "role": "crawler_owner",
+      "database": "temporal_visibility",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "role": "temporal_svc",
+      "database": "crawler",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "role": "temporal_svc",
+      "database": "infra_smoke",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "role": "temporal_svc",
+      "database": "temporal",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "role": "temporal_svc",
+      "database": "temporal_visibility",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "role": "dbz_svc",
+      "database": "crawler",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "role": "dbz_svc",
+      "database": "infra_smoke",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "role": "dbz_svc",
+      "database": "temporal",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "role": "dbz_svc",
+      "database": "temporal_visibility",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    }
+  ],
+  "network_policy": [
+    {
+      "source": "control",
+      "target": "pg",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "control",
+      "target": "temporal",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "control",
+      "target": "clickhouse",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "control",
+      "target": "kafka",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "control",
+      "target": "connect",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "control",
+      "target": "grafana",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "crawler",
+      "target": "pg",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "crawler",
+      "target": "temporal",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "crawler",
+      "target": "clickhouse",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "crawler",
+      "target": "kafka",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "crawler",
+      "target": "connect",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "crawler",
+      "target": "grafana",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "ingest",
+      "target": "pg",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "ingest",
+      "target": "temporal",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "ingest",
+      "target": "clickhouse",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "ingest",
+      "target": "kafka",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "ingest",
+      "target": "connect",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "ingest",
+      "target": "grafana",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "proxy",
+      "target": "pg",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "proxy",
+      "target": "temporal",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "proxy",
+      "target": "clickhouse",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "proxy",
+      "target": "kafka",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "proxy",
+      "target": "connect",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "proxy",
+      "target": "grafana",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "business",
+      "target": "pg",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "business",
+      "target": "temporal",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "business",
+      "target": "clickhouse",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "business",
+      "target": "kafka",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "business",
+      "target": "connect",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "business",
+      "target": "grafana",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "infra-test",
+      "target": "pg",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "infra-test",
+      "target": "temporal",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "infra-test",
+      "target": "clickhouse",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "infra-test",
+      "target": "kafka",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "infra-test",
+      "target": "connect",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "infra-test",
+      "target": "grafana",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "monitoring",
+      "target": "pg",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "monitoring",
+      "target": "temporal",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "monitoring",
+      "target": "clickhouse",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "monitoring",
+      "target": "kafka",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    },
+    {
+      "source": "monitoring",
+      "target": "connect",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "pass": true
+    },
+    {
+      "source": "monitoring",
+      "target": "grafana",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "pass": true
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: network-policy-probe
+  namespace: crawler
+  labels:
+    crawlsystem.io/purpose: infra-validation
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector:
+    kubernetes.io/hostname: s3
+  containers:
+  - name: check
+    image: ghcr.io/cloudnative-pg/postgresql:18.6
+    command:
+    - /bin/sh
+    - -c
+    args:
+    - sleep 900
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: network-policy-probe
+  namespace: control
+  labels:
+    crawlsystem.io/purpose: infra-validation
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector:
+    kubernetes.io/hostname: s3
+  containers:
+  - name: check
+    image: ghcr.io/cloudnative-pg/postgresql:18.6
+    command:
+    - /bin/sh
+    - -c
+    args:
+    - sleep 900
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi

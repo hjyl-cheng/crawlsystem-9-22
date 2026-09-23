@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: network-check-s3
+  namespace: infra-test
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector:
+    kubernetes.io/hostname: s3
+  containers:
+  - name: check
+    image: ghcr.io/cloudnative-pg/postgresql:18.6
+    command:
+    - /bin/sh
+    - -c
+    args:
+    - getent hosts kubernetes.default.svc.cluster.local; getent hosts crawler-pg-rw.db.svc.cluster.local;
+      sleep 3600
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi

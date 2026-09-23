@@ -1,0 +1,29 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "logs_next": {
+      "type": "choice",
+      "choice": "enable_limited_logs",
+      "confidence": 1.0,
+      "probabilities": {
+        "enable_limited_logs": 1.0,
+        "insufficient": 0.0,
+        "defer_resource_pressure": 0.0
+      }
+    },
+    "environment_status": {
+      "type": "choice",
+      "choice": "development_only",
+      "confidence": 1.0,
+      "probabilities": {
+        "no_working_services": 0.0,
+        "production_complete": 0.0,
+        "development_only": 1.0
+      }
+    }
+  },
+  "usage": {
+    "input_tokens": 690,
+    "output_tokens": 94
+  }
+}

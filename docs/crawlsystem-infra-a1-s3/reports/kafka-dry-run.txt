@@ -1,0 +1,2 @@
+kafkanodepool.kafka.strimzi.io/dual-role created (server dry run)
+kafka.kafka.strimzi.io/crawler-kafka created (server dry run)

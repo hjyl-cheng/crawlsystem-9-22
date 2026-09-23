@@ -1,0 +1,40 @@
+{
+  "node": "a1",
+  "started": "2026-09-22T11:29:17.950894+00:00",
+  "status": "PASS",
+  "independent_observer": {
+    "observer": "s1",
+    "started": "2026-09-22T11:24:05.220802+00:00",
+    "status": "PASS",
+    "old_boot_id": "72cee64f-7ddc-4ec0-a451-939b906f57b7",
+    "before_event": "694bce7c-9dfd-4473-a406-07608130cbf9",
+    "new_boot_id": "a5646adb-d097-4bed-a82a-d57261c21134",
+    "boot_id_changed": true,
+    "observed_not_ready": true,
+    "observer_elapsed_until_ready_seconds": 396.89,
+    "new_boot_seen_until_ready_seconds": 84.66,
+    "events": {
+      "status": "PASS",
+      "ids": [
+        "5081c827-0577-418a-8275-2eb43b01fe72",
+        "694bce7c-9dfd-4473-a406-07608130cbf9"
+      ]
+    },
+    "completed": "2026-09-22T11:32:17.795159+00:00"
+  },
+  "a1_etcd_health": true,
+  "post_reboot_smoke": {
+    "outbox": {
+      "status": "PASS",
+      "ids": [
+        "94f2ae8e-a230-4293-a940-fbfcbda2f812"
+      ]
+    },
+    "clickhouse": "PASS",
+    "temporal": "PASS"
+  },
+  "previous_observation_archive": "/var/lib/crawlsystem-observation/archives/20260922T113303Z",
+  "boot_id_changed": true,
+  "host_firewall_and_k3s_active": true,
+  "completed": "2026-09-22T11:33:04.774023+00:00"
+}

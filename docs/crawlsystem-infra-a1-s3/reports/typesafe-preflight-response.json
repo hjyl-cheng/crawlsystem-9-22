@@ -1,0 +1,30 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "network_interpretation": {
+      "type": "choice",
+      "choice": "partial_connectivity",
+      "confidence": 1.0,
+      "probabilities": {
+        "network_down": 0.0,
+        "fully_verified": 0.0,
+        "partial_connectivity": 1.0
+      }
+    },
+    "next_step": {
+      "type": "choice",
+      "choice": "prepare_and_resolve_access",
+      "confidence": 1.0,
+      "probabilities": {
+        "install_all_now": 0.0,
+        "insufficient": 0.0,
+        "abandon": 0.0,
+        "prepare_and_resolve_access": 1.0
+      }
+    }
+  },
+  "usage": {
+    "input_tokens": 672,
+    "output_tokens": 107
+  }
+}

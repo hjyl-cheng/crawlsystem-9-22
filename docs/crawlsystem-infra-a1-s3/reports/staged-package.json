@@ -1,0 +1,27 @@
+[
+  {
+    "node": "a2",
+    "exit_code": 0,
+    "error": ""
+  },
+  {
+    "node": "a3",
+    "exit_code": 0,
+    "error": ""
+  },
+  {
+    "node": "s1",
+    "exit_code": 0,
+    "error": ""
+  },
+  {
+    "node": "s2",
+    "exit_code": 0,
+    "error": ""
+  },
+  {
+    "node": "s3",
+    "exit_code": 0,
+    "error": ""
+  }
+]

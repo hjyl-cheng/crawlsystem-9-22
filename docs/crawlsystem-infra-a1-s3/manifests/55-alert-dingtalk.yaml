@@ -1,0 +1,144 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alert-dingtalk-code
+  namespace: monitoring
+data:
+  server.py: "#!/usr/bin/env python3\n\"\"\"Alertmanager webhook -> DingTalk. Secrets\
+    \ are mounted files, never logged.\"\"\"\nimport base64, hashlib, hmac, http.server,\
+    \ json, os, time, urllib.parse, urllib.request\nfrom pathlib import Path\n\nCONFIG\
+    \ = Path(os.environ.get('DINGTALK_CONFIG', '/etc/dingtalk/config.json'))\n\ndef\
+    \ signed_url(webhook, secret, timestamp):\n    if not secret:\n        return\
+    \ webhook\n    signature = base64.b64encode(hmac.new(secret.encode(), f'{timestamp}\\\
+    n{secret}'.encode(), hashlib.sha256).digest()).decode()\n    return webhook +\
+    \ '&' + urllib.parse.urlencode({'timestamp':timestamp, 'sign':signature})\n\n\
+    def config():\n    data=json.loads(CONFIG.read_text())\n    url=urllib.parse.urlsplit(data['webhook'])\n\
+    \    if url.scheme!='https' or url.netloc!='oapi.dingtalk.com' or url.path!='/robot/send'\
+    \ or not urllib.parse.parse_qs(url.query).get('access_token'):\n        raise\
+    \ ValueError('Unsupported DingTalk webhook')\n    return data\n\ndef message(payload,\
+    \ keyword):\n    status=payload.get('status')\n    if status not in ('firing','resolved')\
+    \ or not isinstance(payload.get('alerts'),list) or not payload['alerts']:\n  \
+    \      raise ValueError('Invalid Alertmanager payload')\n    title=f'{keyword}\
+    \ 基础设施告警' + ('恢复' if status=='resolved' else '触发')\n    lines=[f'### {title}']\n\
+    \    # Restrict fields to avoid forwarding arbitrary annotations or credentials.\n\
+    \    for alert in payload['alerts'][:10]:\n        labels=alert.get('labels',{})\n\
+    \        lines.append('- '+ ' / '.join(str(labels.get(k,'-'))[:120].replace('\\\
+    n',' ') for k in ('alertname','severity','node')))\n    if len(payload['alerts'])>10:lines.append(f'另有\
+    \ {len(payload[\"alerts\"])-10} 条告警。')\n    return {'msgtype':'markdown','markdown':{'title':title,'text':'\\\
+    n\\n'.join(lines)}}\n\ndef deliver(payload):\n    settings=config()\n    data=message(payload,settings.get('keyword','爬虫基础设施'))\n\
+    \    url=signed_url(settings['webhook'],settings.get('secret',''),str(int(time.time()*1000)))\n\
+    \    request=urllib.request.Request(url,data=json.dumps(data,ensure_ascii=False).encode(),headers={'Content-Type':'application/json'})\n\
+    \    with urllib.request.urlopen(request,timeout=12) as response:\n        result=json.load(response)\n\
+    \    if result.get('errcode')!=0:\n        raise RuntimeError('DingTalk rejected\
+    \ notification')\n    print(json.dumps({'delivered':True,'status':payload['status'],\n\
+    \        'alerts':[a.get('labels',{}).get('alertname') for a in payload['alerts']],\n\
+    \        'test_ids':[a.get('labels',{}).get('acceptance_id') for a in payload['alerts']]}),flush=True)\n\
+    \nclass Handler(http.server.BaseHTTPRequestHandler):\n    def do_GET(self):\n\
+    \        try:\n            config();status=200 if self.path=='/health' else 404\n\
+    \        except Exception:status=503\n        self.send_response(status);self.end_headers()\n\
+    \    def do_POST(self):\n        try:\n            size=int(self.headers.get('Content-Length','0'))\n\
+    \            if self.path!='/alerts' or not 0<size<=1048576:\n               \
+    \ self.send_response(400);self.end_headers();return\n            payload=json.loads(self.rfile.read(size))\n\
+    \            deliver(payload)\n            status=200\n        except Exception:\n\
+    \            # Alertmanager retries; HTTP 200 with a DingTalk errcode is not success.\n\
+    \            status=502\n        self.send_response(status);self.end_headers()\n\
+    \    def log_message(self,*args):pass\n\nif __name__=='__main__':\n    http.server.ThreadingHTTPServer(('0.0.0.0',8080),Handler).serve_forever()\n"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-dingtalk
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-dingtalk
+  template:
+    metadata:
+      labels:
+        app: alert-dingtalk
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: a3
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+      containers:
+      - name: webhook
+        image: python:3.14.3-alpine3.23
+        command:
+        - python
+        - -B
+        - /app/server.py
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 10m
+            memory: 24Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: code
+          mountPath: /app
+          readOnly: true
+        - name: config
+          mountPath: /etc/dingtalk
+          readOnly: true
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+      volumes:
+      - name: code
+        configMap:
+          name: alert-dingtalk-code
+      - name: config
+        secret:
+          secretName: alert-dingtalk
+          defaultMode: 288
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-dingtalk
+  namespace: monitoring
+spec:
+  selector:
+    app: alert-dingtalk
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alert-dingtalk
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: alert-dingtalk
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: alertmanager
+    ports:
+    - protocol: TCP
+      port: 8080

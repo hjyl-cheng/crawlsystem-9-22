@@ -1,0 +1,18 @@
+[
+  {
+    "source_namespace": "control",
+    "target": "PostgreSQL:5432",
+    "expected_exit_code": 0,
+    "actual_exit_code": 0,
+    "output": "crawler-pg-rw.db.svc.cluster.local:5432 - accepting connections",
+    "error": ""
+  },
+  {
+    "source_namespace": "crawler",
+    "target": "PostgreSQL:5432",
+    "expected_exit_code": 2,
+    "actual_exit_code": 2,
+    "output": "crawler-pg-rw.db.svc.cluster.local:5432 - no response",
+    "error": "command terminated with exit code 2"
+  }
+]

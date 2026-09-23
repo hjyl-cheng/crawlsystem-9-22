@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: infra-kafka-validation
+  namespace: kafka
+  labels:
+    app: infra-kafka-validation
+spec:
+  restartPolicy: Always
+  automountServiceAccountToken: false
+  nodeSelector:
+    kubernetes.io/hostname: a1
+  containers:
+  - name: reader
+    image: quay.io/strimzi/kafka:1.2.0-kafka-4.3.1
+    command:
+    - /bin/bash
+    - -c
+    - exec sleep infinity
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+    volumeMounts:
+    - name: client
+      mountPath: /etc/client
+      readOnly: true
+    - name: ca
+      mountPath: /etc/kafka-ca
+      readOnly: true
+    env:
+    - name: KAFKA_HEAP_OPTS
+      value: -Xms32m -Xmx128m
+  volumes:
+  - name: client
+    secret:
+      secretName: infra-reader-config
+  - name: ca
+    secret:
+      secretName: crawler-kafka-cluster-ca-cert

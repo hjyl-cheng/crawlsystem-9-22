@@ -1,0 +1,29 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "reboot_plan": {
+      "type": "choice",
+      "choice": "durable_controller",
+      "confidence": 1.0,
+      "probabilities": {
+        "skip_permanently": 0.0,
+        "durable_controller": 1.0,
+        "reboot_immediately": 0.0
+      }
+    },
+    "external_evidence": {
+      "type": "choice",
+      "choice": "controls_and_limits",
+      "confidence": 1.0,
+      "probabilities": {
+        "internal_only": 0.0,
+        "controls_and_limits": 1.0,
+        "any_failure_pass": 0.0
+      }
+    }
+  },
+  "usage": {
+    "input_tokens": 747,
+    "output_tokens": 97
+  }
+}

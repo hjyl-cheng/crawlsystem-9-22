@@ -1,0 +1,462 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crawl-prometheus-discovery
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - nodes
+  - pods
+  - services
+  - endpoints
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: crawl-prometheus-discovery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: crawl-prometheus-discovery
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yaml: "global:\n  scrape_interval: 30s\n  evaluation_interval: 30s\n\
+    rule_files:\n- /etc/prometheus/rules/*.yaml\nalerting:\n  alertmanagers:\n  -\
+    \ static_configs:\n    - targets:\n      - alertmanager.monitoring.svc.cluster.local:9093\n\
+    scrape_configs:\n- job_name: prometheus\n  static_configs:\n  - targets:\n   \
+    \ - 127.0.0.1:9090\n- job_name: nodes\n  static_configs:\n  - targets:\n    -\
+    \ 10.4.4.12:9100\n    labels:\n      node: a1\n  - targets:\n    - 10.4.4.3:9100\n\
+    \    labels:\n      node: a2\n  - targets:\n    - 10.4.4.17:9100\n    labels:\n\
+    \      node: a3\n  - targets:\n    - 10.4.4.2:9100\n    labels:\n      node: s1\n\
+    \  - targets:\n    - 10.4.4.8:9100\n    labels:\n      node: s2\n  - targets:\n\
+    \    - 10.4.4.5:9100\n    labels:\n      node: s3\n- job_name: clickhouse\n  static_configs:\n\
+    \  - targets:\n    - clickhouse.analytics.svc.cluster.local:9363\n- job_name:\
+    \ cnpg\n  kubernetes_sd_configs:\n  - role: pod\n    namespaces:\n      names:\n\
+    \      - db\n  relabel_configs:\n  - source_labels:\n    - __meta_kubernetes_pod_label_cnpg_io_cluster\n\
+    \    regex: crawler-pg\n    action: keep\n  - source_labels:\n    - __meta_kubernetes_pod_container_port_number\n\
+    \    regex: '9187'\n    action: keep\n  - source_labels:\n    - __meta_kubernetes_pod_name\n\
+    \    target_label: pod\n- job_name: annotated-pods\n  kubernetes_sd_configs:\n\
+    \  - role: pod\n    namespaces:\n      names:\n      - temporal\n      - kafka\n\
+    \  relabel_configs:\n  - source_labels:\n    - __meta_kubernetes_pod_annotation_prometheus_io_scrape\n\
+    \    regex: 'true'\n    action: keep\n  - source_labels:\n    - __meta_kubernetes_pod_annotation_prometheus_io_path\n\
+    \    action: replace\n    target_label: __metrics_path__\n    regex: (.+)\n  -\
+    \ source_labels:\n    - __address__\n    - __meta_kubernetes_pod_annotation_prometheus_io_port\n\
+    \    action: replace\n    regex: ([^:]+)(?::\\d+)?;(\\d+)\n    replacement: $1:$2\n\
+    \    target_label: __address__\n  - source_labels:\n    - __meta_kubernetes_namespace\n\
+    \    target_label: namespace\n  - source_labels:\n    - __meta_kubernetes_pod_name\n\
+    \    target_label: pod\n- job_name: kafka-brokers\n  kubernetes_sd_configs:\n\
+    \  - role: pod\n    namespaces:\n      names:\n      - kafka\n  relabel_configs:\n\
+    \  - source_labels:\n    - __meta_kubernetes_pod_label_strimzi_io_name\n    regex:\
+    \ crawler-kafka-kafka\n    action: keep\n  - source_labels:\n    - __meta_kubernetes_pod_container_port_number\n\
+    \    regex: '9404'\n    action: keep\n  - source_labels:\n    - __meta_kubernetes_pod_name\n\
+    \    target_label: pod\n- job_name: kafka-exporter\n  kubernetes_sd_configs:\n\
+    \  - role: pod\n    namespaces:\n      names:\n      - kafka\n  relabel_configs:\n\
+    \  - source_labels:\n    - __meta_kubernetes_pod_label_strimzi_io_name\n    regex:\
+    \ crawler-kafka-kafka-exporter\n    action: keep\n  - source_labels:\n    - __meta_kubernetes_pod_container_port_number\n\
+    \    regex: '9404'\n    action: keep\n  - source_labels:\n    - __meta_kubernetes_pod_name\n\
+    \    target_label: pod\n"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: monitoring
+data:
+  infra.yaml: "groups:\n- name: crawl-infra-basic\n  rules:\n  - alert: InfraTargetDown\n\
+    \    expr: up == 0\n    for: 5m\n    labels:\n      severity: warning\n    annotations:\n\
+    \      summary: 监控目标无法抓取：{{ $labels.instance }}\n  - alert: NodeDiskSpaceLow\n\
+    \    expr: (node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs\"} /\
+    \ node_filesystem_size_bytes{fstype!~\"tmpfs|overlay|squashfs\"})\n      < 0.15\n\
+    \    for: 5m\n    labels:\n      severity: critical\n    annotations:\n      summary:\
+    \ 节点磁盘可用低于15%：{{ $labels.instance }}\n  - alert: NodeMemoryPressure\n    expr:\
+    \ node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.1\n    for:\
+    \ 5m\n    labels:\n      severity: warning\n    annotations:\n      summary: 节点可用内存低于10%：{{\
+    \ $labels.instance }}\n  - alert: NodeDiskSpaceWarning\n    expr: node_filesystem_avail_bytes{fstype!~\"\
+    tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay|squashfs\"\
+    }\n      < 0.30\n    for: 10m\n    labels:\n      severity: warning\n    annotations:\n\
+    \      summary: 磁盘剩余低于30%，检查增长并计划扩容：{{ $labels.instance }}\n  - alert: NodeDiskPredictedFull\n\
+    \    expr: predict_linear(node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs\"\
+    }[6h],\n      86400) < 0 and node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs\"\
+    }\n      / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay|squashfs\"} < 0.50\n\
+    \    for: 15m\n    labels:\n      severity: warning\n    annotations:\n      summary:\
+    \ 按近6小时趋势预计一天内空间不足（估算）：{{ $labels.instance }}\n  - alert: BackupOverdue\n    expr:\
+    \ time() - crawl_backup_last_success_timestamp_seconds > 93600 or absent(crawl_backup_last_success_timestamp_seconds)\n\
+    \    for: 5m\n    labels:\n      severity: critical\n    annotations:\n      summary:\
+    \ 本地及跨节点备份超过26小时未成功\n  - alert: BackupJobFailed\n    expr: crawl_backup_service_failed\
+    \ == 1\n    for: 1m\n    labels:\n      severity: critical\n    annotations:\n\
+    \      summary: 备份任务失败\n  - alert: InfraCollectorStale\n    expr: time() - crawl_observation_timestamp_seconds\
+    \ > 900 or absent(crawl_observation_timestamp_seconds)\n    for: 5m\n    labels:\n\
+    \      severity: warning\n    annotations:\n      summary: 基础设施巡检超过15分钟未更新\n \
+    \ - alert: CDCConnectorNotRunning\n    expr: crawl_cdc_running == 0\n    for:\
+    \ 5m\n    labels:\n      severity: critical\n    annotations:\n      summary:\
+    \ CDC Connector或Task不在RUNNING状态\n  - alert: PGReplicationSlotLag\n    expr: crawl_pg_slot_retained_bytes\
+    \ > 536870912\n    for: 10m\n    labels:\n      severity: warning\n    annotations:\n\
+    \      summary: CDC复制槽滞留超过512MiB\n  - alert: KafkaUnderReplicated\n    expr: kafka_server_replicamanager_underreplicatedpartitions\
+    \ > 0\n    for: 5m\n    labels:\n      severity: critical\n    annotations:\n\
+    \      summary: Kafka分区副本未同步\n  - alert: KafkaOfflinePartitions\n    expr: kafka_controller_kafkacontroller_offlinepartitionscount\
+    \ > 0\n    for: 1m\n    labels:\n      severity: critical\n    annotations:\n\
+    \      summary: Kafka存在离线分区\n  - alert: KafkaConsumerLag\n    expr: kafka_consumergroup_lag\
+    \ > 10000\n    for: 10m\n    labels:\n      severity: warning\n    annotations:\n\
+    \      summary: Kafka消费积压超过10000\n  - alert: PGStandbyMissing\n    expr: crawl_pg_streaming_standbys\
+    \ < 1\n    for: 5m\n    labels:\n      severity: critical\n    annotations:\n\
+    \      summary: PG缺少同步备库\n  - alert: InfraProbeErrors\n    expr: crawl_observation_errors\
+    \ > 0\n    for: 5m\n    labels:\n      severity: warning\n    annotations:\n \
+    \     summary: 基础设施巡检出现错误\n  - alert: ClusterNodeNotReady\n    expr: crawl_nodes_ready\
+    \ < 6\n    for: 5m\n    labels:\n      severity: warning\n    annotations:\n \
+    \     summary: 集群存在未就绪节点\n  - alert: WorkloadNotReady\n    expr: crawl_pods_not_ready\
+    \ > 0\n    for: 10m\n    labels:\n      severity: warning\n    annotations:\n\
+    \      summary: 工作负载持续未就绪\n"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  alertmanager.yaml: "route:\n  receiver: local-journal\n  group_by:\n  - alertname\n\
+    \  - node\n  group_wait: 15s\n  group_interval: 5m\n  repeat_interval: 4h\n  routes:\n\
+    \  - matchers:\n    - alertname=\"InfraAcceptanceTest\"\n    receiver: local-journal\n\
+    \    group_wait: 1s\n    group_interval: 10s\n    repeat_interval: 1h\nreceivers:\n\
+    - name: local-journal\n  webhook_configs:\n  - url: http://alert-journal.monitoring.svc.cluster.local:8080/alerts\n\
+    \    send_resolved: true\n  - url: http://alert-dingtalk.monitoring.svc.cluster.local:8080/alerts\n\
+    \    send_resolved: true\n"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  datasources.yaml: "apiVersion: 1\ndatasources:\n- name: Prometheus\n  uid: prometheus\n\
+    \  type: prometheus\n  url: http://prometheus.monitoring.svc.cluster.local:9090\n\
+    \  access: proxy\n  isDefault: true\n- name: Loki\n  uid: loki\n  type: loki\n\
+    \  url: http://loki.monitoring.svc.cluster.local:3100\n  access: proxy\n  isDefault:\
+    \ false\n"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: monitoring
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: crawl-prom-local
+  resources:
+    requests:
+      storage: 6Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: monitoring
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: crawl-grafana-local
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alertmanager-data
+  namespace: monitoring
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: crawl-alert-local
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/hostname: a3
+      containers:
+      - name: prometheus
+        image: quay.io/prometheus/prometheus:v3.14.0
+        args:
+        - --config.file=/etc/prometheus/prometheus.yaml
+        - --storage.tsdb.path=/prometheus
+        - --storage.tsdb.retention.time=7d
+        - --storage.tsdb.retention.size=3GB
+        ports:
+        - name: http
+          containerPort: 9090
+        resources:
+          requests:
+            cpu: 150m
+            memory: 512Mi
+          limits:
+            cpu: 600m
+            memory: 1Gi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+          readOnly: true
+        - name: rules
+          mountPath: /etc/prometheus/rules
+          readOnly: true
+        - name: data
+          mountPath: /prometheus
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 9090
+      volumes:
+      - name: config
+        configMap:
+          name: prometheus-config
+      - name: rules
+        configMap:
+          name: prometheus-rules
+      - name: data
+        persistentVolumeClaim:
+          claimName: prometheus-data
+      serviceAccountName: prometheus
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+  - name: http
+    port: 9090
+    targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: a3
+      containers:
+      - name: alertmanager
+        image: quay.io/prometheus/alertmanager:v0.34.1
+        args:
+        - --config.file=/etc/alertmanager/alertmanager.yaml
+        - --storage.path=/alertmanager
+        - --cluster.listen-address=
+        ports:
+        - name: http
+          containerPort: 9093
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 150m
+            memory: 128Mi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/alertmanager
+          readOnly: true
+        - name: data
+          mountPath: /alertmanager
+      volumes:
+      - name: config
+        configMap:
+          name: alertmanager-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: alertmanager-data
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: alertmanager
+  ports:
+  - name: http
+    port: 9093
+    targetPort: 9093
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: a3
+      containers:
+      - name: grafana
+        image: grafana/grafana:13.2.2
+        ports:
+        - name: http
+          containerPort: 3000
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: admin
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-admin
+              key: admin-password
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: 'false'
+        - name: GF_USERS_ALLOW_SIGN_UP
+          value: 'false'
+        - name: GF_ANALYTICS_REPORTING_ENABLED
+          value: 'false'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/grafana
+        - name: config
+          mountPath: /etc/grafana/provisioning/datasources
+          readOnly: true
+        - name: dashboards
+          mountPath: /var/lib/grafana-dashboards
+          readOnly: true
+        - name: dashboard-provider
+          mountPath: /etc/grafana/provisioning/dashboards
+          readOnly: true
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 15
+          timeoutSeconds: 5
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: config
+        configMap:
+          name: grafana-datasources
+      - name: data
+        persistentVolumeClaim:
+          claimName: grafana-data
+      - name: dashboards
+        configMap:
+          name: grafana-dashboards
+      - name: dashboard-provider
+        configMap:
+          name: grafana-dashboard-provider
+      securityContext:
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000

@@ -1,0 +1,46 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: crawler-pg-pool
+  namespace: db
+spec:
+  cluster:
+    name: crawler-pg
+  instances: 2
+  deploymentStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  type: rw
+  pgbouncer:
+    poolMode: transaction
+    image: ghcr.io/cloudnative-pg/pgbouncer:1.25.2
+    parameters:
+      max_client_conn: '100'
+      default_pool_size: '10'
+      max_db_connections: '15'
+      reserve_pool_size: '0'
+  template:
+    spec:
+      nodeSelector:
+        pool.crawlsystem/pg: 'true'
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: crawler-pg-pool
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: pgbouncer
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+    metadata:
+      labels:
+        app: crawler-pg-pool

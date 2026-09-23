@@ -1,0 +1,9 @@
+{
+  "name": "s2",
+  "display_name": "S2",
+  "public_ip": "43.159.169.76",
+  "private_ip": "10.4.4.8",
+  "vcpu": 2,
+  "memory_gb": 8,
+  "k3s_role": "server"
+}

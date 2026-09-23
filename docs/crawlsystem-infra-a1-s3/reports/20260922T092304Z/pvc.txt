@@ -1,0 +1,11 @@
+NAMESPACE    NAME                               STATUS   VOLUME            CAPACITY   ACCESS MODES   STORAGECLASS          VOLUMEATTRIBUTESCLASS   AGE
+analytics    clickhouse-data                    Bound    clickhouse-s3     20Gi       RWO            crawl-ch-local        <unset>                 23m
+db           crawler-pg-1                       Bound    pg-a2             30Gi       RWO            crawl-pg-local        <unset>                 26m
+db           crawler-pg-2                       Bound    pg-a3             30Gi       RWO            crawl-pg-local        <unset>                 25m
+kafka        data-0-crawler-kafka-dual-role-0   Bound    kafka-s1          12Gi       RWO            crawl-kafka-local     <unset>                 22m
+kafka        data-0-crawler-kafka-dual-role-1   Bound    kafka-s2          12Gi       RWO            crawl-kafka-local     <unset>                 22m
+kafka        data-0-crawler-kafka-dual-role-2   Bound    kafka-s3          12Gi       RWO            crawl-kafka-local     <unset>                 22m
+monitoring   alertmanager-data                  Bound    alertmanager-a3   1Gi        RWO            crawl-alert-local     <unset>                 22m
+monitoring   grafana-data                       Bound    grafana-a3        2Gi        RWO            crawl-grafana-local   <unset>                 22m
+monitoring   loki-data                          Bound    loki-a2           5Gi        RWO            crawl-loki-local      <unset>                 5m13s
+monitoring   prometheus-data                    Bound    prometheus-a3     6Gi        RWO            crawl-prom-local      <unset>                 22m

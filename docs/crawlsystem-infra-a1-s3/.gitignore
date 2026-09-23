@@ -1,0 +1,13 @@
+secrets/
+vendor/
+.kube/
+*.key
+*.p12
+*.pfx
+__pycache__/
+reports/runtime*/
+
+.venv*/
+*.dump
+*.snapshot
+*.partial

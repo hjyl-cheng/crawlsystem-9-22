@@ -1,0 +1,6 @@
+The consumer rebalance protocol (KIP-848) is production-ready! Set group.protocol=consumer to try it out. See https://kafka.apache.org/documentation/#consumer_rebalance_protocol
+[2026-09-22 09:17:05,190] WARN [Consumer clientId=console-consumer, groupId=infra-smoke] The metadata response from the cluster reported a recoverable issue with correlation id 2 : {dbz-infra-configs=TOPIC_AUTHORIZATION_FAILED} (org.apache.kafka.clients.NetworkClient)
+[2026-09-22 09:17:05,248] ERROR [Consumer clientId=console-consumer, groupId=infra-smoke] Topic authorization failed for topics [dbz-infra-configs] (org.apache.kafka.clients.Metadata)
+[2026-09-22 09:17:05,249] ERROR Error processing message, terminating consumer process:  (org.apache.kafka.tools.consumer.ConsoleConsumer)
+org.apache.kafka.common.errors.TopicAuthorizationException: Not authorized to access topics: [dbz-infra-configs]
+Processed a total of 0 messages

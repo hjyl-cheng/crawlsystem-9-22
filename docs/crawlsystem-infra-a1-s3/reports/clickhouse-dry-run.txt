@@ -1,0 +1,4 @@
+configmap/clickhouse-config configured (server dry run)
+persistentvolumeclaim/clickhouse-data unchanged (server dry run)
+deployment.apps/clickhouse configured (server dry run)
+service/clickhouse unchanged (server dry run)

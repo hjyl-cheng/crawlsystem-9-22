@@ -1,0 +1,50 @@
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0
+  0      0   0      0   0      0      0      0                              0 27 75.33M  27 20.89M   0      0 16.50M      0   00:04   00:01   00:03 19.32M 43 75.33M  43 32.56M   0      0 14.17M      0   00:05   00:02   00:03 15.41M 59 75.33M  59 44.96M   0      0 13.28M      0   00:05   00:03   00:02 14.04M 76 75.33M  76 57.26M   0      0 12.79M      0   00:05   00:04   00:01 13.35M 91 75.33M  91 68.74M   0      0 12.53M      0   00:06   00:05   00:01 12.97M100 75.33M 100 75.33M   0      0 12.50M      0   00:06   00:06         12.97M100 75.33M 100 75.33M   0      0 12.50M      0   00:06   00:06         12.97M100 75.33M 100 75.33M   0      0 12.50M      0   00:06   00:06         12.97M
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0
+  0      0   0      0   0      0      0      0                              0100    359 100    359   0      0   1911      0                              0100    359 100    359   0      0   1907      0                              0100    359 100    359   0      0   1906      0                              0
+k3s: OK
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0100  37118 100  37118   0      0  1.91M      0                              0100  37118 100  37118   0      0  1.91M      0                              0100  37118 100  37118   0      0  1.90M      0                              0
+[INFO]  Skipping k3s download and verify
+[INFO]  Skipping installation of SELinux RPM
+[INFO]  Creating /usr/local/bin/kubectl symlink to k3s
+[INFO]  Creating /usr/local/bin/crictl symlink to k3s
+[INFO]  Creating /usr/local/bin/ctr symlink to k3s
+[INFO]  Creating killall script /usr/local/bin/k3s-killall.sh
+[INFO]  Creating uninstall script /usr/local/bin/k3s-agent-uninstall.sh
+[INFO]  env: Creating environment file /etc/systemd/system/k3s-agent.service.env
+[INFO]  systemd: Creating service file /etc/systemd/system/k3s-agent.service
+[INFO]  systemd: Enabling k3s-agent unit
+Created symlink '/etc/systemd/system/multi-user.target.wants/k3s-agent.service' → '/etc/systemd/system/k3s-agent.service'.
+[INFO]  systemd: Starting k3s-agent
+● k3s-agent.service - Lightweight Kubernetes
+     Loaded: loaded (/etc/systemd/system/k3s-agent.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2026-09-22 16:57:19 CST; 17ms ago
+ Invocation: 3d6edfde643b47f6970bafdfea819546
+       Docs: https://k3s.io
+    Process: 26461 ExecStartPre=/sbin/modprobe br_netfilter (code=exited, status=0/SUCCESS)
+    Process: 26463 ExecStartPre=/sbin/modprobe overlay (code=exited, status=0/SUCCESS)
+   Main PID: 26465 (k3s-agent)
+      Tasks: 22
+     Memory: 320M (peak: 371.9M)
+        CPU: 5.723s
+     CGroup: /system.slice/k3s-agent.service
+             ├─26465 "/usr/local/bin/k3s agent"
+             ├─26678 "containerd "
+             └─26926 /usr/sbin/iptables -t filter -S KUBE-ROUTER-INPUT 1 --wait
+
+Sep 22 16:57:18 VM-4-5-ubuntu k3s[26465]: I0922 16:57:18.406991   26465 subnet.go:150] Batch elem [0] is { lease.Event{Type:0, Lease:lease.Lease{EnableIPv4:true, EnableIPv6:false, Subnet:ip.IP4Net{IP:0xa2a0100, PrefixLen:0x18}, IPv6Subnet:ip.IP6Net{IP:(*ip.IP6)(nil), PrefixLen:0x0}, Attrs:lease.LeaseAttrs{PublicIP:0xa040402, PublicIPv6:(*ip.IP6)(nil), BackendType:"wireguard", BackendData:json.RawMessage{0x7b, 0x22, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x4b, 0x65, 0x79, 0x22, 0x3a, 0x22, 0x79, 0x57, 0x70, 0x77, 0x75, 0x41, 0x46, 0x67, 0x53, 0x4d, 0x2f, 0x6c, 0x71, 0x66, 0x30, 0x52, 0x49, 0x44, 0x48, 0x39, 0x46, 0x53, 0x62, 0x57, 0x51, 0x6a, 0x52, 0x54, 0x61, 0x48, 0x79, 0x31, 0x53, 0x6a, 0x69, 0x30, 0x6e, 0x30, 0x44, 0x66, 0x76, 0x30, 0x59, 0x3d, 0x22, 0x2c, 0x22, 0x50, 0x6f, 0x72, 0x74, 0x22, 0x3a, 0x35, 0x31, 0x38, 0x32, 0x30, 0x7d}, BackendV6Data:json.RawMessage(nil)}, Expiration:time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC), Asof:0}} }
+Sep 22 16:57:18 VM-4-5-ubuntu k3s[26465]: I0922 16:57:18.407369   26465 wireguard_network.go:183] Subnet added: 10.42.1.0/24 via 10.4.4.2:51820
+Sep 22 16:57:18 VM-4-5-ubuntu k3s[26465]: I0922 16:57:18.407822   26465 subnet.go:150] Batch elem [0] is { lease.Event{Type:0, Lease:lease.Lease{EnableIPv4:true, EnableIPv6:false, Subnet:ip.IP4Net{IP:0xa2a0200, PrefixLen:0x18}, IPv6Subnet:ip.IP6Net{IP:(*ip.IP6)(nil), PrefixLen:0x0}, Attrs:lease.LeaseAttrs{PublicIP:0xa040408, PublicIPv6:(*ip.IP6)(nil), BackendType:"wireguard", BackendData:json.RawMessage{0x7b, 0x22, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x4b, 0x65, 0x79, 0x22, 0x3a, 0x22, 0x76, 0x2f, 0x4e, 0x4b, 0x70, 0x4b, 0x38, 0x38, 0x2f, 0x67, 0x34, 0x4b, 0x33, 0x51, 0x6b, 0x50, 0x63, 0x38, 0x56, 0x32, 0x49, 0x68, 0x30, 0x4f, 0x2f, 0x66, 0x35, 0x65, 0x79, 0x67, 0x6f, 0x4a, 0x69, 0x42, 0x64, 0x6f, 0x6e, 0x51, 0x36, 0x6f, 0x62, 0x67, 0x6b, 0x3d, 0x22, 0x2c, 0x22, 0x50, 0x6f, 0x72, 0x74, 0x22, 0x3a, 0x35, 0x31, 0x38, 0x32, 0x30, 0x7d}, BackendV6Data:json.RawMessage(nil)}, Expiration:time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC), Asof:0}} }
+Sep 22 16:57:18 VM-4-5-ubuntu k3s[26465]: I0922 16:57:18.408465   26465 wireguard_network.go:183] Subnet added: 10.42.2.0/24 via 10.4.4.8:51820
+Sep 22 16:57:18 VM-4-5-ubuntu k3s[26465]: I0922 16:57:18.425787   26465 iptables.go:358] bootstrap done
+Sep 22 16:57:18 VM-4-5-ubuntu k3s[26465]: I0922 16:57:18.433500   26465 iptables.go:358] bootstrap done
+Sep 22 16:57:19 VM-4-5-ubuntu k3s[26465]: time="2026-09-22T16:57:19+08:00" level=info msg="Starting network policy controller version v2.6.3-k3s1, built on 2026-08-27T15:48:38Z, go1.26.7"
+Sep 22 16:57:19 VM-4-5-ubuntu k3s[26465]: time="2026-09-22T16:57:19+08:00" level=info msg="k3s agent is up and running"
+Sep 22 16:57:19 VM-4-5-ubuntu k3s[26465]: I0922 16:57:19.385118   26465 network_policy_controller.go:164] Starting network policy controller
+Sep 22 16:57:19 VM-4-5-ubuntu systemd[1]: Started k3s-agent.service - Lightweight Kubernetes.

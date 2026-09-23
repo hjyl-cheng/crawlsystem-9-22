@@ -1,0 +1,3 @@
+configmap/debezium-logging created (server dry run)
+deployment.apps/debezium-connect configured (server dry run)
+service/debezium-connect unchanged (server dry run)

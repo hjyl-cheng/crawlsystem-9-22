@@ -1,0 +1,32 @@
+[
+  {
+    "node": "a2",
+    "success": true,
+    "verification": "ubuntu",
+    "error": ""
+  },
+  {
+    "node": "a3",
+    "success": true,
+    "verification": "ubuntu",
+    "error": ""
+  },
+  {
+    "node": "s1",
+    "success": true,
+    "verification": "ubuntu",
+    "error": ""
+  },
+  {
+    "node": "s2",
+    "success": true,
+    "verification": "ubuntu",
+    "error": ""
+  },
+  {
+    "node": "s3",
+    "success": true,
+    "verification": "ubuntu",
+    "error": ""
+  }
+]

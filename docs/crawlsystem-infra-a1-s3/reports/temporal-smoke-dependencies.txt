@@ -1,0 +1,15 @@
+Looking in indexes: http://mirrors.tencentyun.com/pypi/simple
+Collecting temporalio==1.30.0 (from -r examples/requirements-smoke.txt (line 1))
+  Downloading http://mirrors.tencentyun.com/pypi/packages/1c/e1/dbd57de0f5090891850c2ee5490319834a12b704076b11f32a4a149998d4/temporalio-1.30.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (14.8 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 14.8/14.8 MB 6.7 MB/s eta 0:00:00
+Collecting nexus-rpc==1.4.0 (from temporalio==1.30.0->-r examples/requirements-smoke.txt (line 1))
+  Downloading http://mirrors.tencentyun.com/pypi/packages/11/52/6327a5f4fda01207205038a106a99848a41c83e933cd23ea2cab3d2ebc6c/nexus_rpc-1.4.0-py3-none-any.whl (29 kB)
+Collecting protobuf<8.0.0,>=3.20 (from temporalio==1.30.0->-r examples/requirements-smoke.txt (line 1))
+  Downloading http://mirrors.tencentyun.com/pypi/packages/db/f3/3996583dd2906297a637af12114deddf7658af6e683fedb83be061983fb5/protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl (343 kB)
+Collecting types-protobuf<8.0.0,>=3.20 (from temporalio==1.30.0->-r examples/requirements-smoke.txt (line 1))
+  Downloading http://mirrors.tencentyun.com/pypi/packages/44/4e/f63e826c68f77ef875506d72f225918800346545ee99847bc28f3394f18d/types_protobuf-7.35.1.20260906-py3-none-any.whl (86 kB)
+Collecting typing-extensions<5,>=4.2.0 (from temporalio==1.30.0->-r examples/requirements-smoke.txt (line 1))
+  Downloading http://mirrors.tencentyun.com/pypi/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+Installing collected packages: typing-extensions, types-protobuf, protobuf, nexus-rpc, temporalio
+
+Successfully installed nexus-rpc-1.4.0 protobuf-7.36.2 temporalio-1.30.0 types-protobuf-7.35.1.20260906 typing-extensions-4.16.0

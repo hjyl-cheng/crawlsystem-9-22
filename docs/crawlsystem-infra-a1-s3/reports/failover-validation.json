@@ -1,0 +1,27 @@
+{
+  "started": "2026-09-22T09:55:42.853193+00:00",
+  "tests": {
+    "cdc_pause_resume": {
+      "status": "PASS",
+      "ids": [
+        "6b4953c2-3c09-4058-a74c-dcf98979f043",
+        "c553f992-59f4-4bc4-b1ec-893c4a9782fd"
+      ]
+    },
+    "postgres_switchover": {
+      "status": "PASS",
+      "old_primary": "crawler-pg-1",
+      "new_primary": "crawler-pg-2",
+      "healthy_after_seconds": 19.31,
+      "synchronous_standby": true,
+      "events": {
+        "status": "PASS",
+        "ids": [
+          "353bec0b-6cf5-405c-9499-ed9e6fc64098",
+          "6cc4a74d-6400-4ba4-829a-613d2044374e"
+        ]
+      }
+    }
+  },
+  "completed": "2026-09-22T09:57:47.712917+00:00"
+}

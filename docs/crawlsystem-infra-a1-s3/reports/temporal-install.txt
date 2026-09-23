@@ -1,0 +1,11 @@
+Release "temporal" does not exist. Installing it now.
+NAME: temporal
+LAST DEPLOYED: Tue Sep 22 16:59:06 2026
+NAMESPACE: temporal
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+NOTES:
+To verify that Temporal has started, run:
+
+  kubectl --namespace=temporal get pods -l "app.kubernetes.io/instance=temporal"

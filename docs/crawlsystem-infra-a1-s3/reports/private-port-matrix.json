@@ -1,0 +1,851 @@
+[
+  {
+    "source": "a1",
+    "checks": [
+      {
+        "target": "a2",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.77
+      },
+      {
+        "target": "a2",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.81
+      },
+      {
+        "target": "a2",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "a3",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.83
+      },
+      {
+        "target": "a3",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.78
+      },
+      {
+        "target": "a3",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s1",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.8
+      },
+      {
+        "target": "s1",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.39
+      },
+      {
+        "target": "s1",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s1",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.19
+      },
+      {
+        "target": "s1",
+        "port": 2379,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.12
+      },
+      {
+        "target": "s1",
+        "port": 2380,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.01
+      },
+      {
+        "target": "s2",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.9
+      },
+      {
+        "target": "s2",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.91
+      },
+      {
+        "target": "s2",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s2",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.88
+      },
+      {
+        "target": "s2",
+        "port": 2379,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.71
+      },
+      {
+        "target": "s2",
+        "port": 2380,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.59
+      },
+      {
+        "target": "s3",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.53
+      },
+      {
+        "target": "s3",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.69
+      },
+      {
+        "target": "s3",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      }
+    ]
+  },
+  {
+    "source": "a2",
+    "checks": [
+      {
+        "target": "a1",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.04
+      },
+      {
+        "target": "a1",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.65
+      },
+      {
+        "target": "a1",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "a1",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.65
+      },
+      {
+        "target": "a3",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.64
+      },
+      {
+        "target": "a3",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.23
+      },
+      {
+        "target": "a3",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s1",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.79
+      },
+      {
+        "target": "s1",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.97
+      },
+      {
+        "target": "s1",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s1",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.9
+      },
+      {
+        "target": "s2",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.73
+      },
+      {
+        "target": "s2",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.6
+      },
+      {
+        "target": "s2",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s2",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.57
+      },
+      {
+        "target": "s3",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.81
+      },
+      {
+        "target": "s3",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.54
+      },
+      {
+        "target": "s3",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      }
+    ]
+  },
+  {
+    "source": "a3",
+    "checks": [
+      {
+        "target": "a1",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.76
+      },
+      {
+        "target": "a1",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.73
+      },
+      {
+        "target": "a1",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "a1",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.57
+      },
+      {
+        "target": "a2",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.66
+      },
+      {
+        "target": "a2",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.71
+      },
+      {
+        "target": "a2",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s1",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.85
+      },
+      {
+        "target": "s1",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.79
+      },
+      {
+        "target": "s1",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s1",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.78
+      },
+      {
+        "target": "s2",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.0
+      },
+      {
+        "target": "s2",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.88
+      },
+      {
+        "target": "s2",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s2",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.53
+      },
+      {
+        "target": "s3",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.67
+      },
+      {
+        "target": "s3",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.52
+      },
+      {
+        "target": "s3",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      }
+    ]
+  },
+  {
+    "source": "s1",
+    "checks": [
+      {
+        "target": "a1",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.68
+      },
+      {
+        "target": "a1",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.85
+      },
+      {
+        "target": "a1",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "a1",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.6
+      },
+      {
+        "target": "a1",
+        "port": 2379,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.44
+      },
+      {
+        "target": "a1",
+        "port": 2380,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.03
+      },
+      {
+        "target": "a2",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.77
+      },
+      {
+        "target": "a2",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.79
+      },
+      {
+        "target": "a2",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "a3",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.73
+      },
+      {
+        "target": "a3",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.98
+      },
+      {
+        "target": "a3",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s2",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.6
+      },
+      {
+        "target": "s2",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.11
+      },
+      {
+        "target": "s2",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s2",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.92
+      },
+      {
+        "target": "s2",
+        "port": 2379,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.07
+      },
+      {
+        "target": "s2",
+        "port": 2380,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.54
+      },
+      {
+        "target": "s3",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.99
+      },
+      {
+        "target": "s3",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.62
+      },
+      {
+        "target": "s3",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      }
+    ]
+  },
+  {
+    "source": "s2",
+    "checks": [
+      {
+        "target": "a1",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.95
+      },
+      {
+        "target": "a1",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.67
+      },
+      {
+        "target": "a1",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "a1",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.69
+      },
+      {
+        "target": "a1",
+        "port": 2379,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.79
+      },
+      {
+        "target": "a1",
+        "port": 2380,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.45
+      },
+      {
+        "target": "a2",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.54
+      },
+      {
+        "target": "a2",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.55
+      },
+      {
+        "target": "a2",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "a3",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.42
+      },
+      {
+        "target": "a3",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.47
+      },
+      {
+        "target": "a3",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s1",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.0
+      },
+      {
+        "target": "s1",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.7
+      },
+      {
+        "target": "s1",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s1",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.78
+      },
+      {
+        "target": "s1",
+        "port": 2379,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.42
+      },
+      {
+        "target": "s1",
+        "port": 2380,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.47
+      },
+      {
+        "target": "s3",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.71
+      },
+      {
+        "target": "s3",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.55
+      },
+      {
+        "target": "s3",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      }
+    ]
+  },
+  {
+    "source": "s3",
+    "checks": [
+      {
+        "target": "a1",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.79
+      },
+      {
+        "target": "a1",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.45
+      },
+      {
+        "target": "a1",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "a1",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.77
+      },
+      {
+        "target": "a2",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.6
+      },
+      {
+        "target": "a2",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.07
+      },
+      {
+        "target": "a2",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "a3",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.84
+      },
+      {
+        "target": "a3",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.47
+      },
+      {
+        "target": "a3",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s1",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.73
+      },
+      {
+        "target": "s1",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 1.71
+      },
+      {
+        "target": "s1",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s1",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.69
+      },
+      {
+        "target": "s2",
+        "port": 10250,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.85
+      },
+      {
+        "target": "s2",
+        "port": 9100,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.95
+      },
+      {
+        "target": "s2",
+        "port": 51820,
+        "protocol": "udp",
+        "ok": false,
+        "error": "timed out"
+      },
+      {
+        "target": "s2",
+        "port": 6443,
+        "protocol": "tcp",
+        "ok": true,
+        "ms": 0.38
+      }
+    ]
+  }
+]

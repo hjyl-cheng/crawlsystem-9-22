@@ -1,0 +1,67 @@
+{
+  "checked_at": "2026-09-22T10:46:21.448526+00:00",
+  "status": "DEVELOPMENT_INFRA_VALIDATED_OBSERVATION_RUNNING",
+  "nodes": [
+    {
+      "name": "a1",
+      "ready": true,
+      "version": "v1.36.4+k3s1"
+    },
+    {
+      "name": "a2",
+      "ready": true,
+      "version": "v1.36.4+k3s1"
+    },
+    {
+      "name": "a3",
+      "ready": true,
+      "version": "v1.36.4+k3s1"
+    },
+    {
+      "name": "s1",
+      "ready": true,
+      "version": "v1.36.4+k3s1"
+    },
+    {
+      "name": "s2",
+      "ready": true,
+      "version": "v1.36.4+k3s1"
+    },
+    {
+      "name": "s3",
+      "ready": true,
+      "version": "v1.36.4+k3s1"
+    }
+  ],
+  "verified": [
+    "SSH public key + sudo on all five remote nodes",
+    "three etcd health endpoints",
+    "cross-node DNS and WireGuard handshakes",
+    "PostgreSQL quorum replication",
+    "PostgreSQL and PgBouncer verify-full TLS",
+    "Temporal workflow and activity before and after NetworkPolicy",
+    "two matching Outbox IDs delivered to Kafka",
+    "Kafka reader denied internal topic",
+    "ClickHouse HTTPS version/write/read and unauthenticated rejection",
+    "Grafana database health",
+    "Loki ready and all six node labels",
+    "local and S2 checksummed backups; isolated PG/CH restore and offline etcd restore",
+    "CDC pause/resume and PG planned switchover",
+    "five remote OS reboots with event verification",
+    "12 database role checks, 42 network policy checks, 4 Kafka negative auth checks",
+    "30 pod transfer and DF MTU paths",
+    "18 Prometheus targets UP; Kafka ISR minimum 3",
+    "persistent local alert firing and recovery",
+    "backup and 48h staged observation timers enabled"
+  ],
+  "incomplete": [
+    "actual 24h idle plus 24h low-load duration",
+    "real alert recipient/channel",
+    "A1 full OS reboot from independent management host",
+    "independent external public-port probe and cloud firewall audit"
+  ],
+  "current_evidence": "final-operations-check.json",
+  "deferred_by_user": [
+    "external/offsite S3 backups"
+  ]
+}

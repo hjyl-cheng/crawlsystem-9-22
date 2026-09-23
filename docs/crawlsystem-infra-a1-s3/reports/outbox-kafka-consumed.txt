@@ -1,0 +1,5 @@
+Option --consumer.config is deprecated and will be removed in a future version. Use --command-config instead.
+Option --property is deprecated and will be removed in a future version. Use --formatter-property instead.
+The consumer rebalance protocol (KIP-848) is production-ready! Set group.protocol=consumer to try it out. See https://kafka.apache.org/documentation/#consumer_rebalance_protocol
+__debezium.context.connectorLogicalName:infra_cdc,__debezium.context.taskId:0,__debezium.context.connectorName:postgresql,__debezium.context.runId:01a0c862-6a60-7103-9d05-a759e15a9d62,id:9918e925-43e1-4cd4-9a4d-674dcfd9e0a8	A1-S3	{"kind":"INFRA_TEST","source":"infra_smoke","sent_at":"2026-09-22T09:13:22.770067+00:00"}
+Processed a total of 1 messages

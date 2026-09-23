@@ -1,0 +1,6 @@
+kafkatopic.kafka.strimzi.io/dbz-infra-configs created (server dry run)
+kafkatopic.kafka.strimzi.io/dbz-infra-offsets created (server dry run)
+kafkatopic.kafka.strimzi.io/dbz-infra-status created (server dry run)
+kafkatopic.kafka.strimzi.io/infra-outbox-events created (server dry run)
+kafkauser.kafka.strimzi.io/dbz-connect created (server dry run)
+kafkauser.kafka.strimzi.io/infra-reader created (server dry run)

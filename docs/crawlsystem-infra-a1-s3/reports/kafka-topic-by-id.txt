@@ -1,0 +1,4 @@
+Error while executing topic command : Topic authorization failed.
+[2026-09-22 09:20:46,895] ERROR org.apache.kafka.common.errors.TopicAuthorizationException: Topic authorization failed.
+ (org.apache.kafka.tools.TopicCommand)
+command terminated with exit code 1

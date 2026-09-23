@@ -1,0 +1,17 @@
+serviceaccount/prometheus created
+clusterrole.rbac.authorization.k8s.io/crawl-prometheus-discovery created
+clusterrolebinding.rbac.authorization.k8s.io/crawl-prometheus-discovery created
+configmap/prometheus-config created
+configmap/prometheus-rules created
+configmap/alertmanager-config created
+configmap/grafana-datasources created
+persistentvolumeclaim/prometheus-data created
+persistentvolumeclaim/grafana-data created
+persistentvolumeclaim/alertmanager-data created
+deployment.apps/prometheus created
+service/prometheus created
+deployment.apps/alertmanager created
+service/alertmanager created
+deployment.apps/grafana created
+service/grafana created
+daemonset.apps/node-exporter created

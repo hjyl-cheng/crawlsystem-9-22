@@ -1,0 +1,6 @@
+configmap/loki-config created
+persistentvolumeclaim/loki-data created
+deployment.apps/loki created
+service/loki created
+configmap/alloy-config created
+daemonset.apps/alloy created

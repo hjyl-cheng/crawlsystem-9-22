@@ -1,0 +1,47 @@
+{
+  "backup": "20260922T104031Z",
+  "started_at": "2026-09-22T10:41:13.467994+00:00",
+  "tests": {
+    "local_checksums": "PASS",
+    "cross_node_download_checksums": "PASS",
+    "postgres": {
+      "status": "PASS",
+      "databases": [
+        "crawler",
+        "infra_smoke",
+        "postgres",
+        "temporal",
+        "temporal_visibility"
+      ],
+      "prebackup_outbox_ids_present": true,
+      "table_counts": {
+        "crawler": 0,
+        "infra_smoke": 1,
+        "postgres": 0,
+        "temporal": 40,
+        "temporal_visibility": 3
+      },
+      "roles_restored": true
+    },
+    "clickhouse": {
+      "status": "PASS",
+      "native_restore": true,
+      "tables_match": true,
+      "smoke_rows": 3
+    },
+    "grafana_sqlite": "PASS",
+    "etcd": {
+      "status": "PASS",
+      "snapshot_status": {
+        "hash": 2468780909,
+        "revision": 47523,
+        "totalKey": 1539,
+        "totalSize": 17608704,
+        "version": "3.6.0"
+      },
+      "offline_restore": true,
+      "live_cluster_reset": false
+    }
+  },
+  "completed_at": "2026-09-22T10:42:17.976299+00:00"
+}

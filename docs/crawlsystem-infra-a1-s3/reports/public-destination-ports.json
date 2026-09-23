@@ -1,0 +1,425 @@
+{
+  "source": "a1 within the six-node environment; public destination IPs; not an independent external vantage point",
+  "results": [
+    {
+      "node": "a1",
+      "port": 2379,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 2380,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 6443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 10250,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 9100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 5432,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 9092,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 9093,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 8083,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 8443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 9440,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 3000,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 3100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a1",
+      "port": 9090,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 2379,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 2380,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 6443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 10250,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 9100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 5432,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 9092,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 9093,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 8083,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 8443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 9440,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 3000,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 3100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a2",
+      "port": 9090,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 2379,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 2380,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 6443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 10250,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 9100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 5432,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 9092,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 9093,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 8083,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 8443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 9440,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 3000,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 3100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "a3",
+      "port": 9090,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 2379,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 2380,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 6443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 10250,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 9100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 5432,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 9092,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 9093,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 8083,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 8443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 9440,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 3000,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 3100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s1",
+      "port": 9090,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 2379,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 2380,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 6443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 10250,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 9100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 5432,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 9092,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 9093,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 8083,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 8443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 9440,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 3000,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 3100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s2",
+      "port": 9090,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 2379,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 2380,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 6443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 10250,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 9100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 5432,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 9092,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 9093,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 8083,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 8443,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 9440,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 3000,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 3100,
+      "state": "CLOSED_OR_FILTERED"
+    },
+    {
+      "node": "s3",
+      "port": 9090,
+      "state": "CLOSED_OR_FILTERED"
+    }
+  ]
+}

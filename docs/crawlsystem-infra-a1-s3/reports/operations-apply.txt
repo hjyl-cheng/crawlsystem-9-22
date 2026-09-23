@@ -1,0 +1,16 @@
+serviceaccount/prometheus unchanged
+clusterrole.rbac.authorization.k8s.io/crawl-prometheus-discovery unchanged
+clusterrolebinding.rbac.authorization.k8s.io/crawl-prometheus-discovery unchanged
+configmap/prometheus-config unchanged
+configmap/prometheus-rules unchanged
+configmap/alertmanager-config unchanged
+configmap/grafana-datasources unchanged
+persistentvolumeclaim/prometheus-data unchanged
+persistentvolumeclaim/grafana-data unchanged
+persistentvolumeclaim/alertmanager-data unchanged
+deployment.apps/prometheus unchanged
+service/prometheus unchanged
+deployment.apps/alertmanager unchanged
+service/alertmanager unchanged
+deployment.apps/grafana configured
+service/grafana unchanged

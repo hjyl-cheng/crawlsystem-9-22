@@ -1,0 +1,3 @@
+The consumer rebalance protocol (KIP-848) is production-ready! Set group.protocol=consumer to try it out. See https://kafka.apache.org/documentation/#consumer_rebalance_protocol
+__debezium.context.connectorLogicalName:infra_cdc,__debezium.context.taskId:0,__debezium.context.connectorName:postgresql,__debezium.context.runId:01a0c862-6a60-7103-9d05-a759e15a9d62,id:2ea43b64-f51e-4e04-92c4-285c1be2e057	A1-S3	{"kind":"INFRA_TEST","source":"infra_smoke","sent_at":"2026-09-22T09:17:09.999832+00:00"}
+Processed a total of 1 messages

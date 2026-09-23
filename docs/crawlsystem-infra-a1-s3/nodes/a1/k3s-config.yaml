@@ -1,0 +1,26 @@
+node-name: a1
+node-ip: 10.4.4.12
+token-file: /etc/rancher/k3s/cluster-token
+kubelet-arg:
+- container-log-max-size=10Mi
+- container-log-max-files=3
+- image-gc-high-threshold=80
+- image-gc-low-threshold=70
+- system-reserved=cpu=200m,memory=384Mi
+- kube-reserved=cpu=200m,memory=512Mi
+write-kubeconfig-mode: '0600'
+advertise-address: 10.4.4.12
+tls-san:
+- 10.4.4.12
+- 10.4.4.2
+- 10.4.4.8
+flannel-backend: wireguard-native
+cluster-cidr: 10.42.0.0/16
+service-cidr: 10.43.0.0/16
+disable:
+- traefik
+- servicelb
+secrets-encryption: true
+etcd-snapshot-schedule-cron: 0 */6 * * *
+etcd-snapshot-retention: 7
+cluster-init: true

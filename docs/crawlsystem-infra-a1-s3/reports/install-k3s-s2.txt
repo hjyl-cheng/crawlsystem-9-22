@@ -1,0 +1,49 @@
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0
+  0      0   0      0   0      0      0      0                              0 27 75.33M  27 20.72M   0      0 16.76M      0   00:04   00:01   00:03 19.49M 43 75.33M  43 32.89M   0      0 14.25M      0   00:05   00:02   00:03 15.40M 61 75.33M  61 46.57M   0      0 14.06M      0   00:05   00:03   00:02 14.84M 76 75.33M  76 57.82M   0      0 13.41M      0   00:05   00:04   00:01 13.97M 92 75.33M  92 69.31M   0      0 13.05M      0   00:05   00:05         13.49M100 75.33M 100 75.33M   0      0 12.90M      0   00:05   00:05         13.49M100 75.33M 100 75.33M   0      0 12.90M      0   00:05   00:05         13.49M100 75.33M 100 75.33M   0      0 12.90M      0   00:05   00:05         13.49M
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0
+  0      0   0      0   0      0      0      0                              0100    359 100    359   0      0   1831      0                              0100    359 100    359   0      0   1831      0                              0100    359 100    359   0      0   1831      0                              0
+k3s: OK
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0100  37118 100  37118   0      0  2.62M      0                              0100  37118 100  37118   0      0  2.62M      0                              0100  37118 100  37118   0      0  2.61M      0                              0
+[INFO]  Skipping k3s download and verify
+[INFO]  Skipping installation of SELinux RPM
+[INFO]  Creating /usr/local/bin/kubectl symlink to k3s
+[INFO]  Creating /usr/local/bin/crictl symlink to k3s
+[INFO]  Creating /usr/local/bin/ctr symlink to k3s
+[INFO]  Creating killall script /usr/local/bin/k3s-killall.sh
+[INFO]  Creating uninstall script /usr/local/bin/k3s-uninstall.sh
+[INFO]  env: Creating environment file /etc/systemd/system/k3s.service.env
+[INFO]  systemd: Creating service file /etc/systemd/system/k3s.service
+[INFO]  systemd: Enabling k3s unit
+Created symlink '/etc/systemd/system/multi-user.target.wants/k3s.service' → '/etc/systemd/system/k3s.service'.
+[INFO]  systemd: Starting k3s
+● k3s.service - Lightweight Kubernetes
+     Loaded: loaded (/etc/systemd/system/k3s.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2026-09-22 16:54:17 CST; 24ms ago
+ Invocation: 041752243f44446da55e8102b9c88075
+       Docs: https://k3s.io
+    Process: 25839 ExecStartPre=/sbin/modprobe br_netfilter (code=exited, status=0/SUCCESS)
+    Process: 25840 ExecStartPre=/sbin/modprobe overlay (code=exited, status=0/SUCCESS)
+   Main PID: 25842 (k3s-server)
+      Tasks: 18
+     Memory: 568.9M (peak: 572.6M)
+        CPU: 12.676s
+     CGroup: /system.slice/k3s.service
+             ├─25842 "/usr/local/bin/k3s server"
+             └─25882 "containerd "
+
+Sep 22 16:54:13 VM-4-8-ubuntu k3s[25842]: time="2026-09-22T16:54:13+08:00" level=info msg="Polling for API server readiness: GET /readyz failed: an error on the server (\"[+]ping ok\\n[+]log ok\\n[+]etcd ok\\n[+]etcd-readiness ok\\n[+]kms-providers ok\\n[+]informer-sync ok\\n[+]poststarthook/start-apiserver-admission-initializer ok\\n[+]poststarthook/start-encryption-provider-config-automatic-reload ok\\n[+]poststarthook/generic-apiserver-start-informers ok\\n[+]poststarthook/priority-and-fairness-config-consumer ok\\n[+]poststarthook/priority-and-fairness-filter ok\\n[+]poststarthook/storage-object-count-tracker-hook ok\\n[+]poststarthook/start-apiextensions-informers ok\\n[+]poststarthook/start-apiextensions-controllers ok\\n[+]poststarthook/crd-informer-synced ok\\n[+]poststarthook/start-system-namespaces-controller ok\\n[+]poststarthook/peer-endpoint-reconciler-controller ok\\n[+]poststarthook/start-cluster-authentication-info-controller ok\\n[+]poststarthook/start-kube-apiserver-identity-lease-controller ok\\n[+]poststarthook/start-kube-apiserver-identity-lease-garbage-collector ok\\n[+]poststarthook/storage-readiness ok\\n[+]poststarthook/start-legacy-token-tracking-controller ok\\n[+]poststarthook/start-service-ip-repair-controllers ok\\n[+]poststarthook/rbac/bootstrap-roles ok\\n[+]poststarthook/scheduling/bootstrap-system-priority-classes ok\\n[+]poststarthook/priority-and-fairness-config-producer ok\\n[+]poststarthook/bootstrap-controller ok\\n[+]poststarthook/start-kubernetes-service-cidr-controller ok\\n[+]poststarthook/aggregator-reload-proxy-client-cert ok\\n[+]poststarthook/start-kube-aggregator-informers ok\\n[+]poststarthook/apiservice-status-local-available-controller ok\\n[+]poststarthook/apiservice-status-remote-available-controller ok\\n[+]poststarthook/apiservice-registration-controller ok\\n[-]poststarthook/apiservice-discovery-controller failed: reason withheld\\n[+]poststarthook/kube-apiserver-autoregistration ok\\n[+]autoregister-completion ok\\n[+]poststarthook/apiservice-openapi-controller ok\\n[+]poststarthook/apiservice-openapiv3-controller ok\\n[+]shutdown ok\\nreadyz check failed\") has prevented the request from succeeding"
+Sep 22 16:54:17 VM-4-8-ubuntu k3s[25842]: I0922 16:54:17.332017   25842 handler.go:304] Adding GroupVersion metrics.k8s.io v1beta1 to ResourceManager
+Sep 22 16:54:17 VM-4-8-ubuntu k3s[25842]: W0922 16:54:17.354508   25842 lease.go:265] Resetting endpoints for master service "kubernetes" to [10.4.4.12 10.4.4.2 10.4.4.8]
+Sep 22 16:54:17 VM-4-8-ubuntu k3s[25842]: E0922 16:54:17.372566   25842 remote_available_controller.go:471] "Unhandled Error" err="v1beta1.metrics.k8s.io failed with: failing or missing response from https://10.42.0.3:10250/apis/metrics.k8s.io/v1beta1: Get \"https://10.42.0.3:10250/apis/metrics.k8s.io/v1beta1\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)" logger="UnhandledError"
+Sep 22 16:54:17 VM-4-8-ubuntu k3s[25842]: time="2026-09-22T16:54:17+08:00" level=info msg="Kube API server is now running"
+Sep 22 16:54:17 VM-4-8-ubuntu k3s[25842]: time="2026-09-22T16:54:17+08:00" level=info msg="k3s is up and running"
+Sep 22 16:54:17 VM-4-8-ubuntu systemd[1]: Started k3s.service - Lightweight Kubernetes.
+Sep 22 16:54:17 VM-4-8-ubuntu k3s[25842]: Flag --containerd has been deprecated, This is a cadvisor flag that was mistakenly registered with the Kubelet. Due to legacy concerns, it will follow the standard CLI deprecation timeline before being removed.
+Sep 22 16:54:17 VM-4-8-ubuntu k3s[25842]: time="2026-09-22T16:54:17+08:00" level=info msg="Waiting for untainted node"
+Sep 22 16:54:17 VM-4-8-ubuntu k3s[25842]: time="2026-09-22T16:54:17+08:00" level=info msg="Creating k3s-supervisor event broadcaster"

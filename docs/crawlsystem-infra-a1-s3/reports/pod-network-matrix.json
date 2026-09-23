@@ -1,0 +1,302 @@
+[
+  {
+    "source": "a1",
+    "results": [
+      {
+        "target": "a2",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.184
+      },
+      {
+        "target": "a3",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.009
+      },
+      {
+        "target": "s1",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.011
+      },
+      {
+        "target": "s2",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.009
+      },
+      {
+        "target": "s3",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.143
+      }
+    ]
+  },
+  {
+    "source": "a2",
+    "results": [
+      {
+        "target": "a1",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.19
+      },
+      {
+        "target": "a3",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.018
+      },
+      {
+        "target": "s1",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.081
+      },
+      {
+        "target": "s2",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.019
+      },
+      {
+        "target": "s3",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.083
+      }
+    ]
+  },
+  {
+    "source": "a3",
+    "results": [
+      {
+        "target": "a1",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.106
+      },
+      {
+        "target": "a2",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.024
+      },
+      {
+        "target": "s1",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.033
+      },
+      {
+        "target": "s2",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.035
+      },
+      {
+        "target": "s3",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.053
+      }
+    ]
+  },
+  {
+    "source": "s1",
+    "results": [
+      {
+        "target": "a1",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.121
+      },
+      {
+        "target": "a2",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.054
+      },
+      {
+        "target": "a3",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.026
+      },
+      {
+        "target": "s2",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.011
+      },
+      {
+        "target": "s3",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.09
+      }
+    ]
+  },
+  {
+    "source": "s2",
+    "results": [
+      {
+        "target": "a1",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.105
+      },
+      {
+        "target": "a2",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.023
+      },
+      {
+        "target": "a3",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.019
+      },
+      {
+        "target": "s1",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.047
+      },
+      {
+        "target": "s3",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.139
+      }
+    ]
+  },
+  {
+    "source": "s3",
+    "results": [
+      {
+        "target": "a1",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.23
+      },
+      {
+        "target": "a2",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.076
+      },
+      {
+        "target": "a3",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.09
+      },
+      {
+        "target": "s1",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.096
+      },
+      {
+        "target": "s2",
+        "bytes": 1100000,
+        "sha256_match": true,
+        "pod_mtu": 1420,
+        "icmp_df_payload": 1392,
+        "icmp_df_success": true,
+        "seconds": 0.102
+      }
+    ]
+  }
+]

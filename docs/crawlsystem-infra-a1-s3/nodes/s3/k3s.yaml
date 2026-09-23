@@ -1,0 +1,10 @@
+node-name: s3
+node-ip: 10.4.4.5
+token-file: /etc/rancher/k3s/cluster-token
+flannel-iface: REPLACE_WITH_PRIVATE_INTERFACE
+kubelet-arg:
+- kube-reserved=cpu=200m,memory=512Mi
+- system-reserved=cpu=200m,memory=512Mi
+- container-log-max-size=20Mi
+- container-log-max-files=3
+server: https://10.4.4.12:6443

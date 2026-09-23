@@ -1,0 +1,47 @@
+{
+  "model": "jev-latest",
+  "state": {
+    "deployment": "Six-node K3s low-load infrastructure. PostgreSQL, Kafka, Temporal, ClickHouse and metrics are running.",
+    "observations": {
+      "cpu_usage_percent": [
+        7,
+        3,
+        4,
+        8,
+        8,
+        9
+      ],
+      "memory_usage_percent": [
+        46,
+        10,
+        14,
+        26,
+        33,
+        17
+      ],
+      "log_backend": "Not installed; optional Loki on PostgreSQL node has 6+ GiB available, persistent 5Gi volume prepared, 72h retention and 0.02MB/s ingress limit. Alloy uses 64Mi request/160Mi limit per node.",
+      "missing_external_services": "No external S3 bucket/credentials and no alert receiver configured.",
+      "validated": "Temporal workflow, PostgreSQL synchronous replica, ClickHouse authenticated HTTPS reads and writes, Outbox delivery, 14 metrics targets."
+    }
+  },
+  "questions": {
+    "logs_next": {
+      "type": "choice",
+      "instructions": "Which next bounded step best fits the measured capacity and a small development environment?",
+      "criteria": {
+        "enable_limited_logs": "Install the prepared bounded Loki/Alloy stack, verify ingestion and monitor actual resource usage.",
+        "defer_resource_pressure": "Defer log installation because the measured nodes lack safe resource headroom.",
+        "insufficient": "The provided measurements do not support either choice."
+      }
+    },
+    "environment_status": {
+      "type": "choice",
+      "instructions": "How should the deployment be described given the tests and missing external services?",
+      "criteria": {
+        "development_only": "Basic development and integration environment; production backup, restore, notifications and durability/failure acceptance remain incomplete.",
+        "production_complete": "Production readiness is complete.",
+        "no_working_services": "No working infrastructure has been demonstrated."
+      }
+    }
+  }
+}

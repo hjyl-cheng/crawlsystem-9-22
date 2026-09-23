@@ -1,0 +1,181 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: bootstrap-selfsigned
+  namespace: temporal
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: internal-ca
+  namespace: temporal
+spec:
+  isCA: true
+  commonName: crawl-temporal-ca
+  secretName: internal-ca
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: bootstrap-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: internal-ca
+  namespace: temporal
+spec:
+  ca:
+    secretName: internal-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: bootstrap-selfsigned
+  namespace: analytics
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: internal-ca
+  namespace: analytics
+spec:
+  isCA: true
+  commonName: crawl-analytics-ca
+  secretName: internal-ca
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: bootstrap-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: internal-ca
+  namespace: analytics
+spec:
+  ca:
+    secretName: internal-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: temporal-internode
+  namespace: temporal
+spec:
+  secretName: temporal-internode-tls
+  dnsNames:
+  - temporal-internode.temporal.svc
+  - temporal-internode.temporal.svc.cluster.local
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+  - server auth
+  - client auth
+  issuerRef:
+    name: internal-ca
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: temporal-frontend
+  namespace: temporal
+spec:
+  secretName: temporal-frontend-tls
+  dnsNames:
+  - temporal-frontend.temporal.svc.cluster.local
+  - temporal-frontend.temporal.svc
+  - temporal-frontend
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+  - server auth
+  - client auth
+  issuerRef:
+    name: internal-ca
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: temporal-ui-client
+  namespace: temporal
+spec:
+  secretName: temporal-ui-client-tls
+  dnsNames:
+  - temporal-web.temporal.svc.cluster.local
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+  - server auth
+  - client auth
+  issuerRef:
+    name: internal-ca
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: clickhouse-server
+  namespace: analytics
+spec:
+  secretName: clickhouse-tls
+  dnsNames:
+  - clickhouse.analytics.svc.cluster.local
+  - clickhouse.analytics.svc
+  - clickhouse
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+  - server auth
+  issuerRef:
+    name: internal-ca
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: temporal-smoke-client
+  namespace: temporal
+spec:
+  secretName: temporal-smoke-client
+  commonName: infra-smoke
+  duration: 168h
+  renewBefore: 24h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+  - client auth
+  issuerRef:
+    name: internal-ca
+    kind: Issuer

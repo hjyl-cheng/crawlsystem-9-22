@@ -1,0 +1,11 @@
+node-name: a2
+node-ip: 10.4.4.3
+token-file: /etc/rancher/k3s/cluster-token
+kubelet-arg:
+- container-log-max-size=10Mi
+- container-log-max-files=3
+- image-gc-high-threshold=80
+- image-gc-low-threshold=70
+- system-reserved=cpu=200m,memory=384Mi
+- kube-reserved=cpu=200m,memory=512Mi
+server: https://10.4.4.12:6443

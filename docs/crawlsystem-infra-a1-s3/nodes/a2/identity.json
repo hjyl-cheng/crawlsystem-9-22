@@ -1,0 +1,9 @@
+{
+  "name": "a2",
+  "display_name": "A2",
+  "public_ip": "43.173.68.187",
+  "private_ip": "10.4.4.3",
+  "vcpu": 2,
+  "memory_gb": 8,
+  "k3s_role": "agent"
+}

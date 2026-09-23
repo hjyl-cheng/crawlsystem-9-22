@@ -1,0 +1,10 @@
+# Put actual webhook and/or supported credentials in a Secret, NOT a public ConfigMap/repository.
+# Alertmanager product configuration example, not a Kubernetes manifest.
+route:
+  receiver: operations
+  group_by: [alertname, node]
+receivers:
+  - name: operations
+    webhook_configs:
+      - url: "https://REPLACE_EXISTING_ALERT_ADAPTER"
+        send_resolved: true

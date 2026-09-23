@@ -1,0 +1,28 @@
+{
+  "name": "infra-outbox",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "database.hostname": "crawler-pg-rw.db.svc.cluster.local",
+    "database.port": "5432",
+    "database.user": "dbz_svc",
+    "database.password": "${file:/etc/dbz-pg/credentials.properties:password}",
+    "database.dbname": "infra_smoke",
+    "database.sslmode": "verify-full",
+    "database.sslrootcert": "/etc/pg-ca/ca.crt",
+    "plugin.name": "pgoutput",
+    "slot.name": "infra_outbox_slot",
+    "slot.failover": "true",
+    "publication.name": "infra_outbox_pub",
+    "publication.autocreate.mode": "disabled",
+    "topic.prefix": "infra_cdc",
+    "table.include.list": "publication.outbox",
+    "snapshot.mode": "initial",
+    "tombstones.on.delete": "false",
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+    "transforms.outbox.route.by.field": "aggregatetype",
+    "transforms.outbox.route.topic.replacement": "infra.outbox.events",
+    "transforms.outbox.table.expand.json.payload": "true"
+  }
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "test": "reader_cannot_read_connect_internal",
+    "expected_error": "TopicAuthorizationException",
+    "pass": true,
+    "process_exit": 0
+  },
+  {
+    "test": "writer_cannot_read_outbox",
+    "expected_error": "TopicAuthorizationException",
+    "pass": true,
+    "process_exit": 0
+  },
+  {
+    "test": "wrong_password_rejected",
+    "expected_error": "SaslAuthenticationException",
+    "pass": true,
+    "process_exit": 0
+  },
+  {
+    "test": "reader_cannot_write_outbox",
+    "expected_error": "TopicAuthorizationException",
+    "pass": true,
+    "process_exit": 1
+  }
+]

@@ -1,0 +1,4 @@
+configmap/loki-config unchanged (server dry run)
+persistentvolumeclaim/loki-data unchanged (server dry run)
+deployment.apps/loki configured (server dry run)
+service/loki unchanged (server dry run)

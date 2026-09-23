@@ -1,0 +1,93 @@
+{
+  "a1": [],
+  "a2": [
+    {
+      "pv": "pg-a2",
+      "directory": "/srv/crawl-data/pg",
+      "gib": 30,
+      "uid": 26,
+      "gid": 26,
+      "class": "crawl-pg-local"
+    },
+    {
+      "pv": "loki-a2",
+      "directory": "/srv/crawl-data/loki",
+      "gib": 5,
+      "uid": 10001,
+      "gid": 10001,
+      "class": "crawl-loki-local"
+    }
+  ],
+  "a3": [
+    {
+      "pv": "pg-a3",
+      "directory": "/srv/crawl-data/pg",
+      "gib": 30,
+      "uid": 26,
+      "gid": 26,
+      "class": "crawl-pg-local"
+    },
+    {
+      "pv": "prometheus-a3",
+      "directory": "/srv/crawl-data/prometheus",
+      "gib": 6,
+      "uid": 65534,
+      "gid": 65534,
+      "class": "crawl-prom-local"
+    },
+    {
+      "pv": "grafana-a3",
+      "directory": "/srv/crawl-data/grafana",
+      "gib": 2,
+      "uid": 472,
+      "gid": 472,
+      "class": "crawl-grafana-local"
+    },
+    {
+      "pv": "alertmanager-a3",
+      "directory": "/srv/crawl-data/alertmanager",
+      "gib": 1,
+      "uid": 65534,
+      "gid": 65534,
+      "class": "crawl-alert-local"
+    }
+  ],
+  "s1": [
+    {
+      "pv": "kafka-s1",
+      "directory": "/srv/crawl-data/kafka",
+      "gib": 12,
+      "uid": 1001,
+      "gid": 0,
+      "class": "crawl-kafka-local"
+    }
+  ],
+  "s2": [
+    {
+      "pv": "kafka-s2",
+      "directory": "/srv/crawl-data/kafka",
+      "gib": 12,
+      "uid": 1001,
+      "gid": 0,
+      "class": "crawl-kafka-local"
+    }
+  ],
+  "s3": [
+    {
+      "pv": "kafka-s3",
+      "directory": "/srv/crawl-data/kafka",
+      "gib": 12,
+      "uid": 1001,
+      "gid": 0,
+      "class": "crawl-kafka-local"
+    },
+    {
+      "pv": "clickhouse-s3",
+      "directory": "/srv/crawl-data/clickhouse",
+      "gib": 20,
+      "uid": 101,
+      "gid": 101,
+      "class": "crawl-ch-local"
+    }
+  ]
+}

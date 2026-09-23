@@ -1,0 +1,68 @@
+{
+  "cert-manager": {
+    "objects": 47,
+    "crds_unchanged": true,
+    "deployments": [
+      {
+        "name": "cert-manager-cainjector",
+        "namespace": "cert-manager"
+      },
+      {
+        "name": "cert-manager",
+        "namespace": "cert-manager"
+      },
+      {
+        "name": "cert-manager-webhook",
+        "namespace": "cert-manager"
+      }
+    ]
+  },
+  "cnpg": {
+    "objects": 26,
+    "crds_unchanged": true,
+    "deployments": [
+      {
+        "name": "cnpg-controller-manager",
+        "namespace": "cnpg-system"
+      }
+    ]
+  },
+  "barman": {
+    "objects": 17,
+    "crds_unchanged": true,
+    "deployments": [
+      {
+        "name": "barman-cloud",
+        "namespace": "cnpg-system"
+      }
+    ]
+  },
+  "strimzi": {
+    "objects": 28,
+    "crds_unchanged": true,
+    "deployments": [
+      {
+        "name": "strimzi-cluster-operator",
+        "namespace": "kafka"
+      }
+    ]
+  },
+  "keda": {
+    "objects": 24,
+    "crds_unchanged": true,
+    "deployments": [
+      {
+        "name": "keda-admission",
+        "namespace": "keda"
+      },
+      {
+        "name": "keda-metrics-apiserver",
+        "namespace": "keda"
+      },
+      {
+        "name": "keda-operator",
+        "namespace": "keda"
+      }
+    ]
+  }
+}

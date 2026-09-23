@@ -1,0 +1,68 @@
+{
+  "k3s": {
+    "tag": "v1.36.4+k3s1",
+    "release_ok": true,
+    "url": "https://github.com/k3s-io/k3s/releases/tag/v1.36.4%2Bk3s1",
+    "published_at": "2026-08-27T15:53:55Z"
+  },
+  "helm": {
+    "tag": "v4.3.0",
+    "release_ok": true,
+    "url": "https://github.com/helm/helm/releases/tag/v4.3.0",
+    "published_at": "2026-09-09T23:51:48Z"
+  },
+  "cloudnativepg": {
+    "tag": "v1.30.0",
+    "release_ok": true,
+    "url": "https://github.com/cloudnative-pg/cloudnative-pg/releases/tag/v1.30.0",
+    "published_at": "2026-06-29T16:36:13Z"
+  },
+  "cert_manager": {
+    "tag": "v1.21.2",
+    "release_ok": true,
+    "url": "https://github.com/cert-manager/cert-manager/releases/tag/v1.21.2",
+    "published_at": "2026-09-11T07:51:11Z"
+  },
+  "strimzi": {
+    "tag": "1.2.0",
+    "release_ok": true,
+    "url": "https://github.com/strimzi/strimzi-kafka-operator/releases/tag/1.2.0",
+    "published_at": "2026-08-20T08:05:38Z"
+  },
+  "temporal": {
+    "tag": "v1.32.0",
+    "release_ok": true,
+    "url": "https://github.com/temporalio/temporal/releases/tag/v1.32.0",
+    "published_at": "2026-09-11T16:10:29Z"
+  },
+  "temporal_ui": {
+    "tag": "v2.54.1",
+    "release_ok": true,
+    "url": "https://github.com/temporalio/ui/releases/tag/v2.54.1",
+    "published_at": "2026-09-11T16:16:11Z"
+  },
+  "keda": {
+    "tag": "v2.20.2",
+    "release_ok": true,
+    "url": "https://github.com/kedacore/keda/releases/tag/v2.20.2",
+    "published_at": "2026-07-31T08:14:38Z"
+  },
+  "barman_plugin": {
+    "tag": "v0.15.0",
+    "release_ok": true,
+    "url": "https://github.com/cloudnative-pg/plugin-barman-cloud/releases/tag/v0.15.0",
+    "published_at": "2026-09-03T18:26:11Z"
+  },
+  "loki": {
+    "tag": "v3.7.8",
+    "release_ok": true,
+    "url": "https://github.com/grafana/loki/releases/tag/v3.7.8",
+    "published_at": "2026-09-17T15:51:10Z"
+  },
+  "alloy": {
+    "tag": "v1.19.2",
+    "release_ok": true,
+    "url": "https://github.com/grafana/alloy/releases/tag/v1.19.2",
+    "published_at": "2026-08-26T22:35:05Z"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "test": "postgres_plaintext_denied",
+  "pass": true,
+  "exit_code": 2
+}

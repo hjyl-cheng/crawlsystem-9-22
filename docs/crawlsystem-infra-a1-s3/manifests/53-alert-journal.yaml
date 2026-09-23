@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alert-journal-code
+  namespace: monitoring
+data:
+  server.py: "import http.server,json,logging,logging.handlers,os\nos.makedirs('/data/journal',exist_ok=True)\n\
+    logger=logging.getLogger('alerts');logger.setLevel(logging.INFO)\nhandler=logging.handlers.RotatingFileHandler('/data/journal/alerts.jsonl',maxBytes=16*1024*1024,backupCount=3)\n\
+    logger.addHandler(handler)\nclass Handler(http.server.BaseHTTPRequestHandler):\n\
+    \ def do_GET(self):\n  self.send_response(200 if self.path=='/health' else 404);self.end_headers()\n\
+    \ def do_POST(self):\n  size=int(self.headers.get('Content-Length','0'))\n  if\
+    \ self.path!='/alerts' or size>1048576:self.send_response(400);self.end_headers();return\n\
+    \  try:\n   data=json.loads(self.rfile.read(size));logger.info(json.dumps(data));handler.flush()\n\
+    \   self.send_response(200);self.end_headers()\n  except Exception:self.send_response(400);self.end_headers()\n\
+    \ def log_message(self,*args):pass\nhttp.server.ThreadingHTTPServer(('0.0.0.0',8080),Handler).serve_forever()\n"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-journal
+  namespace: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alert-journal
+  template:
+    metadata:
+      labels:
+        app: alert-journal
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: a3
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+      containers:
+      - name: journal
+        image: python:3.14.3-alpine3.23
+        command:
+        - python
+        - /app/server.py
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 10m
+            memory: 24Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: code
+          mountPath: /app
+          readOnly: true
+        - name: data
+          mountPath: /data
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+      volumes:
+      - name: code
+        configMap:
+          name: alert-journal-code
+      - name: data
+        persistentVolumeClaim:
+          claimName: alertmanager-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-journal
+  namespace: monitoring
+spec:
+  selector:
+    app: alert-journal
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alert-journal
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: alert-journal
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: alertmanager
+    ports:
+    - protocol: TCP
+      port: 8080

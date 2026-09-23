@@ -1,0 +1,21 @@
+{
+  "reason": "DingTalk alert acceptance completed; retain the monitoring-target interruption observed during Prometheus reload and begin a fresh window on the final configuration.",
+  "archived": "/var/lib/crawlsystem-observation/archives/20260922T120458Z-maintenance",
+  "previous_phases": {
+    "idle": {
+      "samples": 8,
+      "coverage_hours": 0.531,
+      "max_gap_seconds": 301,
+      "unhealthy_samples": 1,
+      "status": "RUNNING"
+    },
+    "low-load": {
+      "samples": 0,
+      "coverage_hours": 0.0,
+      "max_gap_seconds": 0,
+      "unhealthy_samples": 0,
+      "status": "WAITING"
+    }
+  },
+  "timestamp": "2026-09-22T12:04:58.661992+00:00"
+}

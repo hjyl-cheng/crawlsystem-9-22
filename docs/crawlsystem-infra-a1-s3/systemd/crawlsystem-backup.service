@@ -1,0 +1,12 @@
+[Unit]
+Description=Crawl development backup with verified copy to S2
+After=network-online.target k3s.service
+Wants=network-online.target
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 /home/ubuntu/workspace/newcrawsystem/docs/crawlsystem-infra-a1-s3/scripts/local-backup.py
+TimeoutStartSec=1800
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

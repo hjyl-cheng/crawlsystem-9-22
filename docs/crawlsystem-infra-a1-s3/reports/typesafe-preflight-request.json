@@ -1,0 +1,33 @@
+{
+  "model": "jev-latest",
+  "state": {
+    "observations": {
+      "control_node": "Fresh Ubuntu amd64; 4 CPU, 7.4 GiB RAM, 163 GB disk free; sudo available; unused 2 GiB swap active; no K3s installed.",
+      "remote_nodes": "All five private TCP 22 connections return SSH banners. ICMP probes all time out. No SSH client private keys or agent on control node.",
+      "versions": "11 pinned GitHub release tags checked successfully.",
+      "firewall": "Local UFW inactive; cloud firewall rules not yet accessible or verified."
+    },
+    "task": "Prepare a six-node K3s deployment with encrypted cross-node networking, PostgreSQL, Temporal, Kafka and monitoring. User authorized proceeding."
+  },
+  "questions": {
+    "network_interpretation": {
+      "type": "choice",
+      "instructions": "What conclusion about private connectivity is supported by the observed TCP and ICMP results?",
+      "criteria": {
+        "partial_connectivity": "Private SSH TCP works; ICMP is unanswered; other ports and reverse paths still need tests.",
+        "network_down": "The private network is completely unreachable.",
+        "fully_verified": "All Kubernetes ports and both directions are verified."
+      }
+    },
+    "next_step": {
+      "type": "choice",
+      "instructions": "Which next deployment step best matches the available evidence and unresolved prerequisites?",
+      "criteria": {
+        "prepare_and_resolve_access": "Prepare dependencies and verified artifacts locally, establish SSH access and verify required firewall paths before initializing the cluster.",
+        "install_all_now": "Initialize and deploy all components immediately despite missing remote access and firewall verification.",
+        "abandon": "Abandon deployment because ICMP timed out.",
+        "insufficient": "Evidence is insufficient to select any listed step."
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=Complete independent A1 reboot acceptance and resume observation
+After=network-online.target k3s.service
+Wants=network-online.target
+ConditionPathExists=/var/lib/crawlsystem-a1-reboot/pending.json
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 /home/ubuntu/workspace/newcrawsystem/docs/crawlsystem-infra-a1-s3/scripts/complete-a1-reboot.py
+TimeoutStartSec=2100
+
+[Install]
+WantedBy=multi-user.target

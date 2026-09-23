@@ -1,0 +1,31 @@
+[
+  {
+    "test": "version",
+    "http_status": 200,
+    "result": "26.8.10.6"
+  },
+  {
+    "test": "create_test_db",
+    "http_status": 200,
+    "result": ""
+  },
+  {
+    "test": "create_test_table",
+    "http_status": 200,
+    "result": ""
+  },
+  {
+    "test": "insert",
+    "http_status": 200,
+    "result": ""
+  },
+  {
+    "test": "read",
+    "http_status": 200,
+    "result": "1"
+  },
+  {
+    "test": "unauthenticated_denied",
+    "http_status": 401
+  }
+]

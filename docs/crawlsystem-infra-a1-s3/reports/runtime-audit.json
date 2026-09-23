@@ -1,0 +1,633 @@
+{
+  "timestamp": "2026-09-22T10:14:47.174804+00:00",
+  "images": [
+    {
+      "container": "analytics/clickhouse-848f9d86b5-btmjr/clickhouse",
+      "image": "clickhouse/clickhouse-server:26.8.10.6",
+      "imageID": "docker.io/clickhouse/clickhouse-server@sha256:8a1589a2dd9aca97f5ef61740ac9e29c98193e2ae6a868e9c4808d3d4f11fa5e",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "cert-manager/cert-manager-6c4fc6b459-6fpf2/cert-manager-controller",
+      "image": "quay.io/jetstack/cert-manager-controller:v1.21.2",
+      "imageID": "quay.io/jetstack/cert-manager-controller@sha256:70f532fd9cfde0b09d55687200942399d89838bc2d5d5b45152eb799a15912b8",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "cert-manager/cert-manager-cainjector-69b765b887-pxcwj/cert-manager-cainjector",
+      "image": "quay.io/jetstack/cert-manager-cainjector:v1.21.2",
+      "imageID": "quay.io/jetstack/cert-manager-cainjector@sha256:c85268c64f2e0e76684bf5fe8906caff34b82523561c6affe0fae3546bd87562",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "cert-manager/cert-manager-webhook-595fd9fdcd-v7mgb/cert-manager-webhook",
+      "image": "quay.io/jetstack/cert-manager-webhook:v1.21.2",
+      "imageID": "quay.io/jetstack/cert-manager-webhook@sha256:a60e2dac46dbb8a7f3df95c54ce941012f54c2fe022f0ee55aaa1ab40ed957ae",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "cnpg-system/barman-cloud-7469fdf6d5-thx65/barman-cloud",
+      "image": "ghcr.io/cloudnative-pg/plugin-barman-cloud:v0.15.0",
+      "imageID": "ghcr.io/cloudnative-pg/plugin-barman-cloud@sha256:563c680fe7fda3466ca2b1f55a1397ed2ddc9e760360107dd7724f1959c1a536",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "cnpg-system/cnpg-controller-manager-6cdfd5d879-j2pzf/manager",
+      "image": "ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0",
+      "imageID": "ghcr.io/cloudnative-pg/cloudnative-pg@sha256:a2701eb97cdd2a34b1fdb2cb51987f544b706e40bec72ae7146cd8580efefebb",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "db/crawler-pg-1/postgres",
+      "image": "ghcr.io/cloudnative-pg/postgresql:18.6",
+      "imageID": "ghcr.io/cloudnative-pg/postgresql@sha256:899d3ed526b659d77935dde0e6bf2d69dbbf17d3d8c6486ca8cfd04bd3c18533",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "db/crawler-pg-2/postgres",
+      "image": "ghcr.io/cloudnative-pg/postgresql:18.6",
+      "imageID": "ghcr.io/cloudnative-pg/postgresql@sha256:899d3ed526b659d77935dde0e6bf2d69dbbf17d3d8c6486ca8cfd04bd3c18533",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "db/crawler-pg-pool-55df9fd4f7-89pkg/pgbouncer",
+      "image": "ghcr.io/cloudnative-pg/pgbouncer:1.25.2",
+      "imageID": "ghcr.io/cloudnative-pg/pgbouncer@sha256:29c63434470390355e9e87abe1c3bb38c60b6fa9b06b6cca06dad856f80403ef",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "db/crawler-pg-pool-55df9fd4f7-hrmbk/pgbouncer",
+      "image": "ghcr.io/cloudnative-pg/pgbouncer:1.25.2",
+      "imageID": "ghcr.io/cloudnative-pg/pgbouncer@sha256:29c63434470390355e9e87abe1c3bb38c60b6fa9b06b6cca06dad856f80403ef",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kafka/crawler-kafka-dual-role-0/kafka",
+      "image": "quay.io/strimzi/kafka:1.2.0-kafka-4.3.1",
+      "imageID": "quay.io/strimzi/kafka@sha256:fef34b5438e8556cc08c01f3e254e47346f061b53a4e38d4289853777e0ea7f1",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kafka/crawler-kafka-dual-role-1/kafka",
+      "image": "quay.io/strimzi/kafka:1.2.0-kafka-4.3.1",
+      "imageID": "quay.io/strimzi/kafka@sha256:fef34b5438e8556cc08c01f3e254e47346f061b53a4e38d4289853777e0ea7f1",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kafka/crawler-kafka-dual-role-2/kafka",
+      "image": "quay.io/strimzi/kafka:1.2.0-kafka-4.3.1",
+      "imageID": "quay.io/strimzi/kafka@sha256:fef34b5438e8556cc08c01f3e254e47346f061b53a4e38d4289853777e0ea7f1",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kafka/crawler-kafka-entity-operator-75457f48ff-psc6n/topic-operator",
+      "image": "quay.io/strimzi/operator:1.2.0",
+      "imageID": "quay.io/strimzi/operator@sha256:77f8fa8121a67561c3418de985783d197f51b8931e9a47f793dc0437dc6bb21f",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kafka/crawler-kafka-entity-operator-75457f48ff-psc6n/user-operator",
+      "image": "quay.io/strimzi/operator:1.2.0",
+      "imageID": "quay.io/strimzi/operator@sha256:77f8fa8121a67561c3418de985783d197f51b8931e9a47f793dc0437dc6bb21f",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kafka/crawler-kafka-kafka-exporter-69f968c85c-g65b9/crawler-kafka-kafka-exporter",
+      "image": "quay.io/strimzi/kafka:1.2.0-kafka-4.3.1",
+      "imageID": "quay.io/strimzi/kafka@sha256:fef34b5438e8556cc08c01f3e254e47346f061b53a4e38d4289853777e0ea7f1",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kafka/debezium-connect-75c5479688-mw9bt/connect",
+      "image": "quay.io/debezium/connect:3.6.3.Final",
+      "imageID": "quay.io/debezium/connect@sha256:94641986b4f334304a6ba7f38cb7d86b9cf60ee8abdaaf3acf322a6cdd1f383c",
+      "tag_is_latest": false,
+      "ready": false
+    },
+    {
+      "container": "kafka/infra-kafka-validation/reader",
+      "image": "quay.io/strimzi/kafka:1.2.0-kafka-4.3.1",
+      "imageID": "quay.io/strimzi/kafka@sha256:fef34b5438e8556cc08c01f3e254e47346f061b53a4e38d4289853777e0ea7f1",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kafka/strimzi-cluster-operator-b485c7cc7-24kqk/strimzi-cluster-operator",
+      "image": "quay.io/strimzi/operator:1.2.0",
+      "imageID": "quay.io/strimzi/operator@sha256:77f8fa8121a67561c3418de985783d197f51b8931e9a47f793dc0437dc6bb21f",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "keda/keda-admission-545ccc69cb-56brj/keda-admission-webhooks",
+      "image": "ghcr.io/kedacore/keda-admission-webhooks:2.20.2",
+      "imageID": "ghcr.io/kedacore/keda-admission-webhooks@sha256:41f74102aba7959c6e8d08b433ab8a5fd6cae7c5646c78f7fe3de40a52df3439",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "keda/keda-metrics-apiserver-689b5c7fbb-mx9k2/keda-metrics-apiserver",
+      "image": "ghcr.io/kedacore/keda-metrics-apiserver:2.20.2",
+      "imageID": "ghcr.io/kedacore/keda-metrics-apiserver@sha256:27286536a8a775aeeee37a7e343f8ecebb27ebf680ee1181a4f99e82eefb253b",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "keda/keda-operator-d6456cdfc-8lwrh/keda-operator",
+      "image": "ghcr.io/kedacore/keda:2.20.2",
+      "imageID": "ghcr.io/kedacore/keda@sha256:fe74c7b8849586a67ad2201bcb89e7f5ac221ff90399ecaa8fd28427f1ef11e6",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kube-system/coredns-54996dc9b4-cmll8/coredns",
+      "image": "rancher/mirrored-coredns-coredns:1.14.6",
+      "imageID": "docker.io/rancher/mirrored-coredns-coredns@sha256:900f9c109f7a33545d3c811516e8376df9019147b750f5ce3e254468769176ea",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kube-system/local-path-provisioner-77b9867795-585d7/local-path-provisioner",
+      "image": "rancher/local-path-provisioner:v0.0.37",
+      "imageID": "docker.io/rancher/local-path-provisioner@sha256:e757967a5ec338f6a9b371c5a9688bedaa8c3578ea3dd4db329ea0084be0a86f",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "kube-system/metrics-server-6dc596dfb8-h9tz2/metrics-server",
+      "image": "rancher/mirrored-metrics-server:v0.9.0",
+      "imageID": "docker.io/rancher/mirrored-metrics-server@sha256:d9862115e7c7881280d3d75ca26bda8ffc0fc213315979575bf23ce9826205c0",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/alert-journal-cdb87fc6f-5hznr/journal",
+      "image": "python:3.14.3-alpine3.23",
+      "imageID": "docker.io/library/python@sha256:faee120f7885a06fcc9677922331391fa690d911c020abb9e8025ff3d908e510",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/alertmanager-5f75f49fd9-8c76r/alertmanager",
+      "image": "quay.io/prometheus/alertmanager:v0.34.1",
+      "imageID": "quay.io/prometheus/alertmanager@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/alloy-46xkn/alloy",
+      "image": "grafana/alloy:v1.19.2",
+      "imageID": "docker.io/grafana/alloy@sha256:b8ec653c44235fbe910879145dac3597d66b0aaecf60bcbbe82580767771a839",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/alloy-b66wz/alloy",
+      "image": "grafana/alloy:v1.19.2",
+      "imageID": "docker.io/grafana/alloy@sha256:b8ec653c44235fbe910879145dac3597d66b0aaecf60bcbbe82580767771a839",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/alloy-j85kp/alloy",
+      "image": "grafana/alloy:v1.19.2",
+      "imageID": "docker.io/grafana/alloy@sha256:b8ec653c44235fbe910879145dac3597d66b0aaecf60bcbbe82580767771a839",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/alloy-lbjtm/alloy",
+      "image": "grafana/alloy:v1.19.2",
+      "imageID": "docker.io/grafana/alloy@sha256:b8ec653c44235fbe910879145dac3597d66b0aaecf60bcbbe82580767771a839",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/alloy-lzq5m/alloy",
+      "image": "grafana/alloy:v1.19.2",
+      "imageID": "docker.io/grafana/alloy@sha256:b8ec653c44235fbe910879145dac3597d66b0aaecf60bcbbe82580767771a839",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/alloy-qnrsl/alloy",
+      "image": "grafana/alloy:v1.19.2",
+      "imageID": "docker.io/grafana/alloy@sha256:b8ec653c44235fbe910879145dac3597d66b0aaecf60bcbbe82580767771a839",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/grafana-79cc49db-77vq9/grafana",
+      "image": "grafana/grafana:13.2.2",
+      "imageID": "docker.io/grafana/grafana@sha256:ac461fb352abc50da10a51c7d02462e9c05488f11f53f14b3ad79a8145f638a0",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/loki-9fc6888dc-2rlnn/loki",
+      "image": "grafana/loki:3.7.8",
+      "imageID": "docker.io/grafana/loki@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/node-exporter-7vddp/node-exporter",
+      "image": "quay.io/prometheus/node-exporter:v1.12.1",
+      "imageID": "quay.io/prometheus/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/node-exporter-fxr4s/node-exporter",
+      "image": "quay.io/prometheus/node-exporter:v1.12.1",
+      "imageID": "quay.io/prometheus/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/node-exporter-k8sdz/node-exporter",
+      "image": "quay.io/prometheus/node-exporter:v1.12.1",
+      "imageID": "quay.io/prometheus/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/node-exporter-ks8p2/node-exporter",
+      "image": "quay.io/prometheus/node-exporter:v1.12.1",
+      "imageID": "quay.io/prometheus/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/node-exporter-m4v67/node-exporter",
+      "image": "quay.io/prometheus/node-exporter:v1.12.1",
+      "imageID": "quay.io/prometheus/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/node-exporter-pzpcz/node-exporter",
+      "image": "quay.io/prometheus/node-exporter:v1.12.1",
+      "imageID": "quay.io/prometheus/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "monitoring/prometheus-fb7f9fb4f-pc4g5/prometheus",
+      "image": "quay.io/prometheus/prometheus:v3.14.0",
+      "imageID": "quay.io/prometheus/prometheus@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "temporal/temporal-admintools-74dc444fb-6zjqd/admin-tools",
+      "image": "temporalio/admin-tools:1.32.0",
+      "imageID": "docker.io/temporalio/admin-tools@sha256:a9f84fb9a374b2374fe2e67c8efc0468ff3f1c66c8a0b14597ec86e349e62bca",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "temporal/temporal-frontend-64dc78f66d-jzx9f/temporal-frontend",
+      "image": "temporalio/server:1.32.0",
+      "imageID": "docker.io/temporalio/server@sha256:c3e752127759616bb1615e0f9ba0e21635aeb5fdeb922de4f371c350955f46ae",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "temporal/temporal-history-77fd4b7ff8-pngxn/temporal-history",
+      "image": "temporalio/server:1.32.0",
+      "imageID": "docker.io/temporalio/server@sha256:c3e752127759616bb1615e0f9ba0e21635aeb5fdeb922de4f371c350955f46ae",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "temporal/temporal-matching-fc4f78f49-s78x9/temporal-matching",
+      "image": "temporalio/server:1.32.0",
+      "imageID": "docker.io/temporalio/server@sha256:c3e752127759616bb1615e0f9ba0e21635aeb5fdeb922de4f371c350955f46ae",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "temporal/temporal-web-59557d494b-stctb/temporal-web",
+      "image": "temporalio/ui:2.54.1",
+      "imageID": "docker.io/temporalio/ui@sha256:ff0943fe532b8e33c46cd28b29e81e0ce0b6f55b9ee50a38ef1b437cc4de3fa5",
+      "tag_is_latest": false,
+      "ready": true
+    },
+    {
+      "container": "temporal/temporal-worker-7d86789d64-qj82x/temporal-worker",
+      "image": "temporalio/server:1.32.0",
+      "imageID": "docker.io/temporalio/server@sha256:c3e752127759616bb1615e0f9ba0e21635aeb5fdeb922de4f371c350955f46ae",
+      "tag_is_latest": false,
+      "ready": true
+    }
+  ],
+  "logs": [
+    {
+      "container": "analytics/clickhouse-848f9d86b5-btmjr/clickhouse",
+      "bytes_scanned": 2686,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "cert-manager/cert-manager-6c4fc6b459-6fpf2/cert-manager-controller",
+      "bytes_scanned": 44812,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "cert-manager/cert-manager-cainjector-69b765b887-pxcwj/cert-manager-cainjector",
+      "bytes_scanned": 10922,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "cert-manager/cert-manager-webhook-595fd9fdcd-v7mgb/cert-manager-webhook",
+      "bytes_scanned": 4538,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "cnpg-system/barman-cloud-7469fdf6d5-thx65/barman-cloud",
+      "bytes_scanned": 2166,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "cnpg-system/cnpg-controller-manager-6cdfd5d879-j2pzf/manager",
+      "bytes_scanned": 76844,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "db/crawler-pg-1/postgres",
+      "bytes_scanned": 524288,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "db/crawler-pg-2/postgres",
+      "bytes_scanned": 524288,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "db/crawler-pg-pool-55df9fd4f7-89pkg/pgbouncer",
+      "bytes_scanned": 32963,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "db/crawler-pg-pool-55df9fd4f7-hrmbk/pgbouncer",
+      "bytes_scanned": 41402,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kafka/crawler-kafka-dual-role-0/kafka",
+      "bytes_scanned": 524288,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kafka/crawler-kafka-dual-role-1/kafka",
+      "bytes_scanned": 524288,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kafka/crawler-kafka-dual-role-2/kafka",
+      "bytes_scanned": 513707,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kafka/crawler-kafka-entity-operator-75457f48ff-psc6n/topic-operator",
+      "bytes_scanned": 22142,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kafka/crawler-kafka-entity-operator-75457f48ff-psc6n/user-operator",
+      "bytes_scanned": 36644,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kafka/crawler-kafka-kafka-exporter-69f968c85c-g65b9/crawler-kafka-kafka-exporter",
+      "bytes_scanned": 6334,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kafka/debezium-connect-75c5479688-mw9bt/connect",
+      "bytes_scanned": 13393,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kafka/infra-kafka-validation/reader",
+      "bytes_scanned": 0,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kafka/strimzi-cluster-operator-b485c7cc7-24kqk/strimzi-cluster-operator",
+      "bytes_scanned": 143510,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "keda/keda-admission-545ccc69cb-56brj/keda-admission-webhooks",
+      "bytes_scanned": 3364,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "keda/keda-metrics-apiserver-689b5c7fbb-mx9k2/keda-metrics-apiserver",
+      "bytes_scanned": 2563,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "keda/keda-operator-d6456cdfc-8lwrh/keda-operator",
+      "bytes_scanned": 9548,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kube-system/coredns-54996dc9b4-cmll8/coredns",
+      "bytes_scanned": 27319,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kube-system/local-path-provisioner-77b9867795-585d7/local-path-provisioner",
+      "bytes_scanned": 463,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "kube-system/metrics-server-6dc596dfb8-h9tz2/metrics-server",
+      "bytes_scanned": 4209,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/alert-journal-cdb87fc6f-5hznr/journal",
+      "bytes_scanned": 0,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/alertmanager-5f75f49fd9-8c76r/alertmanager",
+      "bytes_scanned": 591,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/alloy-46xkn/alloy",
+      "bytes_scanned": 0,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/alloy-b66wz/alloy",
+      "bytes_scanned": 871,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/alloy-j85kp/alloy",
+      "bytes_scanned": 871,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/alloy-lbjtm/alloy",
+      "bytes_scanned": 870,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/alloy-lzq5m/alloy",
+      "bytes_scanned": 0,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/alloy-qnrsl/alloy",
+      "bytes_scanned": 0,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/grafana-79cc49db-77vq9/grafana",
+      "bytes_scanned": 37319,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/loki-9fc6888dc-2rlnn/loki",
+      "bytes_scanned": 124747,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/node-exporter-7vddp/node-exporter",
+      "bytes_scanned": 21825,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/node-exporter-fxr4s/node-exporter",
+      "bytes_scanned": 10308,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/node-exporter-k8sdz/node-exporter",
+      "bytes_scanned": 8103,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/node-exporter-ks8p2/node-exporter",
+      "bytes_scanned": 22313,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/node-exporter-m4v67/node-exporter",
+      "bytes_scanned": 12268,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/node-exporter-pzpcz/node-exporter",
+      "bytes_scanned": 5655,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "monitoring/prometheus-fb7f9fb4f-pc4g5/prometheus",
+      "bytes_scanned": 4470,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "temporal/temporal-admintools-74dc444fb-6zjqd/admin-tools",
+      "bytes_scanned": 0,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "temporal/temporal-frontend-64dc78f66d-jzx9f/temporal-frontend",
+      "bytes_scanned": 188875,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "temporal/temporal-history-77fd4b7ff8-pngxn/temporal-history",
+      "bytes_scanned": 524288,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "temporal/temporal-matching-fc4f78f49-s78x9/temporal-matching",
+      "bytes_scanned": 524288,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "temporal/temporal-web-59557d494b-stctb/temporal-web",
+      "bytes_scanned": 117935,
+      "available": true,
+      "known_password_found": false
+    },
+    {
+      "container": "temporal/temporal-worker-7d86789d64-qj82x/temporal-worker",
+      "bytes_scanned": 128539,
+      "available": true,
+      "known_password_found": false
+    }
+  ],
+  "reports_containing_known_passwords": [],
+  "scope": "Exact-match scan for known generated service passwords, bounded current-container logs; not a full sensitive-data or vulnerability audit."
+}

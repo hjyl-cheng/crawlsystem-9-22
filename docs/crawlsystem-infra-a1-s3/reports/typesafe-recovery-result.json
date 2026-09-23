@@ -1,0 +1,19 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "decision": {
+      "type": "choice",
+      "choice": "bounded_retest",
+      "confidence": 1.0,
+      "probabilities": {
+        "delete_state": 0.0,
+        "accept_now": 0.0,
+        "bounded_retest": 1.0
+      }
+    }
+  },
+  "usage": {
+    "input_tokens": 567,
+    "output_tokens": 44
+  }
+}

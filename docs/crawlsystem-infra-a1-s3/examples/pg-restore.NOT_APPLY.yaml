@@ -1,0 +1,20 @@
+# Review capacity, new PVs and source backup before use. NEVER reuse existing data directories.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata: {name: crawler-pg-restore-test, namespace: db}
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6
+  storage: {storageClass: REPLACE_INDEPENDENT_RESTORE_STORAGE_CLASS, size: 30Gi}
+  resources:
+    requests: {cpu: 250m, memory: 1Gi}
+    limits: {cpu: '1', memory: 2Gi}
+  bootstrap:
+    recovery: {source: crawler-pg-source}
+  externalClusters:
+    - name: crawler-pg-source
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: crawl-backup-store
+          serverName: crawler-pg

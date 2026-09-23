@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+data:
+  infrastructure.json: '{"uid": "crawl-infrastructure", "title": "Crawl 基础设施", "schemaVersion":
+    39, "version": 1, "refresh": "30s", "time": {"from": "now-6h", "to": "now"}, "panels":
+    [{"id": 1, "title": "节点 Ready 数", "type": "stat", "gridPos": {"h": 6, "w": 6,
+    "x": 0, "y": 0}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets":
+    [{"refId": "A", "expr": "crawl_nodes_ready", "legendFormat": "{{instance}} {{topic}}"}],
+    "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}}, {"id": 2, "title":
+    "监控目标在线比例", "type": "stat", "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0}, "datasource":
+    {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr":
+    "sum(up) / count(up)", "legendFormat": "{{instance}} {{topic}}"}], "fieldConfig":
+    {"defaults": {"unit": "percentunit"}, "overrides": []}}, {"id": 3, "title": "最近成功备份距今",
+    "type": "stat", "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0}, "datasource": {"type":
+    "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "time()
+    - crawl_backup_last_success_timestamp_seconds", "legendFormat": "{{instance}}
+    {{topic}}"}], "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}}, {"id":
+    4, "title": "CDC 运行状态", "type": "stat", "gridPos": {"h": 6, "w": 6, "x": 18, "y":
+    0}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId":
+    "A", "expr": "crawl_cdc_running", "legendFormat": "{{instance}} {{topic}}"}],
+    "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}}, {"id": 5, "title":
+    "节点可用内存", "type": "timeseries", "gridPos": {"h": 6, "w": 12, "x": 0, "y": 6},
+    "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId":
+    "A", "expr": "node_memory_MemAvailable_bytes", "legendFormat": "{{instance}} {{topic}}"}],
+    "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []}}, {"id": 6, "title":
+    "节点磁盘可用空间", "type": "timeseries", "gridPos": {"h": 6, "w": 12, "x": 12, "y": 6},
+    "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId":
+    "A", "expr": "node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs\"}",
+    "legendFormat": "{{instance}} {{topic}}"}], "fieldConfig": {"defaults": {"unit":
+    "bytes"}, "overrides": []}}, {"id": 7, "title": "PG 复制槽滞留", "type": "timeseries",
+    "gridPos": {"h": 6, "w": 12, "x": 0, "y": 12}, "datasource": {"type": "prometheus",
+    "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "crawl_pg_slot_retained_bytes",
+    "legendFormat": "{{instance}} {{topic}}"}], "fieldConfig": {"defaults": {"unit":
+    "bytes"}, "overrides": []}}, {"id": 8, "title": "Kafka 不同步分区", "type": "timeseries",
+    "gridPos": {"h": 6, "w": 12, "x": 12, "y": 12}, "datasource": {"type": "prometheus",
+    "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "kafka_server_replicamanager_underreplicatedpartitions",
+    "legendFormat": "{{instance}} {{topic}}"}], "fieldConfig": {"defaults": {"unit":
+    "short"}, "overrides": []}}, {"id": 9, "title": "Kafka 消费积压", "type": "timeseries",
+    "gridPos": {"h": 6, "w": 12, "x": 0, "y": 18}, "datasource": {"type": "prometheus",
+    "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "kafka_consumergroup_lag",
+    "legendFormat": "{{instance}} {{topic}}"}], "fieldConfig": {"defaults": {"unit":
+    "short"}, "overrides": []}}, {"id": 10, "title": "节点 CPU 使用率", "type": "timeseries",
+    "gridPos": {"h": 6, "w": 12, "x": 12, "y": 18}, "datasource": {"type": "prometheus",
+    "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "1 - avg by(instance)
+    (rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))", "legendFormat": "{{instance}}
+    {{topic}}"}], "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides":
+    []}}, {"id": 11, "title": "巡检错误数", "type": "timeseries", "gridPos": {"h": 6, "w":
+    12, "x": 0, "y": 24}, "datasource": {"type": "prometheus", "uid": "prometheus"},
+    "targets": [{"refId": "A", "expr": "crawl_observation_errors", "legendFormat":
+    "{{instance}} {{topic}}"}], "fieldConfig": {"defaults": {"unit": "short"}, "overrides":
+    []}}, {"id": 12, "title": "PG 同步备库数", "type": "timeseries", "gridPos": {"h": 6,
+    "w": 12, "x": 12, "y": 24}, "datasource": {"type": "prometheus", "uid": "prometheus"},
+    "targets": [{"refId": "A", "expr": "crawl_pg_streaming_standbys", "legendFormat":
+    "{{instance}} {{topic}}"}], "fieldConfig": {"defaults": {"unit": "short"}, "overrides":
+    []}}], "tags": ["infrastructure", "development"]}'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: monitoring
+data:
+  provider.yaml: "apiVersion: 1\nproviders:\n- disableDeletion: true\n  editable:\
+    \ false\n  folder: Infrastructure\n  name: infrastructure\n  options:\n    path:\
+    \ /var/lib/grafana-dashboards\n  orgId: 1\n  type: file\n"

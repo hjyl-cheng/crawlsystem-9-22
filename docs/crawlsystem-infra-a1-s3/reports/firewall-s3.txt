@@ -1,0 +1,34 @@
+table ip filter {
+	chain YJ-FIREWALL-INPUT {
+		ip saddr 62.60.130.201 tcp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 62.60.130.201 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 192.253.248.230 tcp dport 22 counter packets 17 bytes 1020 reject
+		ip saddr 192.253.248.230 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 213.209.159.212 tcp dport 22 counter packets 18 bytes 1080 reject
+		ip saddr 213.209.159.212 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 91.40.147.72 tcp dport 22 counter packets 3 bytes 180 reject
+		ip saddr 91.40.147.72 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 45.148.10.161 tcp dport 22 counter packets 3 bytes 180 reject
+		ip saddr 45.148.10.161 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 45.148.10.151 tcp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 45.148.10.151 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 45.148.10.162 tcp dport 22 counter packets 1 bytes 60 reject
+		ip saddr 45.148.10.162 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 45.148.10.156 tcp dport 22 counter packets 2 bytes 120 reject
+		ip saddr 45.148.10.156 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 62.60.130.242 tcp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 62.60.130.242 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 62.60.130.253 tcp dport 22 counter packets 1 bytes 60 reject
+		ip saddr 62.60.130.253 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 45.148.10.152 tcp dport 22 counter packets 17 bytes 1360 reject
+		ip saddr 45.148.10.152 udp dport 22 counter packets 0 bytes 0 reject
+		ip saddr 109.160.32.105 tcp dport 22 counter packets 89 bytes 5288 reject
+		ip saddr 109.160.32.105 udp dport 22 counter packets 0 bytes 0 reject
+	}
+
+	chain INPUT {
+		type filter hook input priority filter; policy accept;
+		counter packets 4234 bytes 8254328 jump YJ-FIREWALL-INPUT
+	}
+}
+# Warning: table ip filter is managed by iptables-nft, do not touch!

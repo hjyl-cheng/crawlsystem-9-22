@@ -1,0 +1,18 @@
+{
+  "model": "jev-latest",
+  "state": {
+    "stage": "Development infrastructure, no crawler business data. Six small nodes, HA PostgreSQL strict synchronous two replicas, three Kafka replicas. Local full logical PG backups, native ClickHouse backup, etcd/token/config and Grafana backups now copied to second existing node and checksummed. Isolated restore test next. User explicitly defers external/offsite backup.",
+    "proposed": "Daily logical backups retain seven days; document no PITR and no whole-site protection. Test isolated restore before controlled failovers. Keep real notifications pending recipient."
+  },
+  "questions": {
+    "sequence": {
+      "type": "choice",
+      "instructions": "Choose the most appropriate next step for this development-stage infrastructure acceptance.",
+      "criteria": {
+        "restore_then_drill": "Complete isolated restore validation before reversible failure drills; document daily RPO and whole-site limits.",
+        "require_external_first": "Stop all work until external offsite storage is provided.",
+        "skip_restore": "Backup checksums are sufficient, skip restore and proceed to production acceptance."
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "test": "direct_pg_tls",
+    "host": "crawler-pg-rw.db.svc.cluster.local",
+    "hostaddr": null,
+    "exit_code": 0,
+    "output": "BEGIN\n current_database | current_user  \n------------------+---------------\n crawler          | crawler_owner\n(1 row)\n\nCOMMIT",
+    "error": ""
+  },
+  {
+    "test": "pooler_tls",
+    "host": "crawler-pg-pool.db.svc.cluster.local",
+    "hostaddr": null,
+    "exit_code": 0,
+    "output": "BEGIN\n current_database | current_user  \n------------------+---------------\n crawler          | crawler_owner\n(1 row)\n\nCOMMIT",
+    "error": ""
+  },
+  {
+    "test": "temporal_role_cannot_connect_crawler",
+    "host": "crawler-pg-rw.db.svc.cluster.local",
+    "hostaddr": null,
+    "exit_code": 2,
+    "output": "",
+    "error": "psql: error: connection to server at \"crawler-pg-rw.db.svc.cluster.local\" (10.43.150.137), port 5432 failed: FATAL:  permission denied for database \"crawler\"\nDETAIL:  User does not have CONNECT privilege.\ncommand terminated with exit code 2"
+  }
+]

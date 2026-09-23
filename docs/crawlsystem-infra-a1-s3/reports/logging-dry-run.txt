@@ -1,0 +1,6 @@
+configmap/loki-config created (server dry run)
+persistentvolumeclaim/loki-data created (server dry run)
+deployment.apps/loki created (server dry run)
+service/loki created (server dry run)
+configmap/alloy-config created (server dry run)
+daemonset.apps/alloy created (server dry run)

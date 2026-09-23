@@ -1,0 +1,2216 @@
+{
+  "started": {
+    "epoch": 1790078698.7364035,
+    "utc": "2026-09-22T12:04:58.736407+00:00"
+  },
+  "latest": {
+    "timestamp": "2026-09-23T01:35:01.541223+00:00",
+    "epoch": 1790127301.5412478,
+    "elapsed_hours": 13.501,
+    "phase": "idle",
+    "errors": [],
+    "cluster": {
+      "ready_nodes": 6,
+      "total_nodes": 6,
+      "not_ready_pods": [],
+      "restarts": 60
+    },
+    "postgres": {
+      "streaming_standbys": 1,
+      "logical_slots": [
+        {
+          "name": "infra_outbox_slot",
+          "active": true,
+          "retained_bytes": 3002853376,
+          "failover": true,
+          "wal_status": "extended"
+        }
+      ]
+    },
+    "cdc": {
+      "connector": "RUNNING",
+      "tasks": [
+        "RUNNING"
+      ]
+    },
+    "monitoring": {
+      "targets_total": 18,
+      "targets_up": 18,
+      "down_jobs": [],
+      "filesystem_available": [
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda1",
+            "fstype": "vfat",
+            "instance": "10.4.4.8:9100",
+            "job": "nodes",
+            "mountpoint": "/boot/efi",
+            "node": "s2"
+          },
+          "value": [
+            1790127303.858,
+            "556392448"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda3",
+            "fstype": "ext4",
+            "instance": "10.4.4.8:9100",
+            "job": "nodes",
+            "mountpoint": "/",
+            "node": "s2"
+          },
+          "value": [
+            1790127303.858,
+            "68176650240"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda1",
+            "fstype": "vfat",
+            "instance": "10.4.4.5:9100",
+            "job": "nodes",
+            "mountpoint": "/boot/efi",
+            "node": "s3"
+          },
+          "value": [
+            1790127303.858,
+            "556392448"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda3",
+            "fstype": "ext4",
+            "instance": "10.4.4.5:9100",
+            "job": "nodes",
+            "mountpoint": "/",
+            "node": "s3"
+          },
+          "value": [
+            1790127303.858,
+            "69105168384"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda1",
+            "fstype": "vfat",
+            "instance": "10.4.4.17:9100",
+            "job": "nodes",
+            "mountpoint": "/boot/efi",
+            "node": "a3"
+          },
+          "value": [
+            1790127303.858,
+            "556392448"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda3",
+            "fstype": "ext4",
+            "instance": "10.4.4.17:9100",
+            "job": "nodes",
+            "mountpoint": "/",
+            "node": "a3"
+          },
+          "value": [
+            1790127303.858,
+            "65085399040"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda1",
+            "fstype": "vfat",
+            "instance": "10.4.4.3:9100",
+            "job": "nodes",
+            "mountpoint": "/boot/efi",
+            "node": "a2"
+          },
+          "value": [
+            1790127303.858,
+            "556392448"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda3",
+            "fstype": "ext4",
+            "instance": "10.4.4.3:9100",
+            "job": "nodes",
+            "mountpoint": "/",
+            "node": "a2"
+          },
+          "value": [
+            1790127303.858,
+            "66693840896"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda1",
+            "fstype": "vfat",
+            "instance": "10.4.4.12:9100",
+            "job": "nodes",
+            "mountpoint": "/boot/efi",
+            "node": "a1"
+          },
+          "value": [
+            1790127303.858,
+            "556392448"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda3",
+            "fstype": "ext4",
+            "instance": "10.4.4.12:9100",
+            "job": "nodes",
+            "mountpoint": "/",
+            "node": "a1"
+          },
+          "value": [
+            1790127303.858,
+            "166764482560"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda1",
+            "fstype": "vfat",
+            "instance": "10.4.4.2:9100",
+            "job": "nodes",
+            "mountpoint": "/boot/efi",
+            "node": "s1"
+          },
+          "value": [
+            1790127303.858,
+            "556392448"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_filesystem_avail_bytes",
+            "device": "/dev/vda3",
+            "fstype": "ext4",
+            "instance": "10.4.4.2:9100",
+            "job": "nodes",
+            "mountpoint": "/",
+            "node": "s1"
+          },
+          "value": [
+            1790127303.858,
+            "70477209600"
+          ]
+        }
+      ],
+      "memory_available": [
+        {
+          "metric": {
+            "__name__": "node_memory_MemAvailable_bytes",
+            "instance": "10.4.4.8:9100",
+            "job": "nodes",
+            "node": "s2"
+          },
+          "value": [
+            1790127303.861,
+            "4776931328"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_memory_MemAvailable_bytes",
+            "instance": "10.4.4.5:9100",
+            "job": "nodes",
+            "node": "s3"
+          },
+          "value": [
+            1790127303.861,
+            "5892620288"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_memory_MemAvailable_bytes",
+            "instance": "10.4.4.17:9100",
+            "job": "nodes",
+            "node": "a3"
+          },
+          "value": [
+            1790127303.861,
+            "6559297536"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_memory_MemAvailable_bytes",
+            "instance": "10.4.4.3:9100",
+            "job": "nodes",
+            "node": "a2"
+          },
+          "value": [
+            1790127303.861,
+            "6972416000"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_memory_MemAvailable_bytes",
+            "instance": "10.4.4.12:9100",
+            "job": "nodes",
+            "node": "a1"
+          },
+          "value": [
+            1790127303.861,
+            "5448581120"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_memory_MemAvailable_bytes",
+            "instance": "10.4.4.2:9100",
+            "job": "nodes",
+            "node": "s1"
+          },
+          "value": [
+            1790127303.861,
+            "5055627264"
+          ]
+        }
+      ],
+      "kafka_isr": [
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "0",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "0",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-configs"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "0",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "0",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-status"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "0",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "infra.outbox.events"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "1",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "1",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "1",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-status"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "1",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "infra.outbox.events"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "10",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "11",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "12",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "13",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "14",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "15",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "16",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "17",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "18",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "19",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "2",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "2",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "2",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-status"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "2",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "infra.outbox.events"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "20",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "21",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "22",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "23",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "24",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "25",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "26",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "27",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "28",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "29",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "3",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "30",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "31",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "32",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "33",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "34",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "35",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "36",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "37",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "38",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "39",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "4",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "40",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "41",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "42",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "43",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "44",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "45",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "46",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "47",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "48",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "49",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "5",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "6",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "7",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "8",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_in_sync_replica",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "9",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.865,
+            "3"
+          ]
+        }
+      ],
+      "kafka_replicas": [
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "0",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "0",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-configs"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "0",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "0",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-status"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "0",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "infra.outbox.events"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "1",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "1",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "1",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-status"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "1",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "infra.outbox.events"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "10",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "11",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "12",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "13",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "14",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "15",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "16",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "17",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "18",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "19",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "2",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "2",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "2",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "dbz-infra-status"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "2",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "infra.outbox.events"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "20",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "21",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "22",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "23",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "24",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "25",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "26",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "27",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "28",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "29",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "3",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "30",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "31",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "32",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "33",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "34",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "35",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "36",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "37",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "38",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "39",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "4",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "40",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "41",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "42",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "43",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "44",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "45",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "46",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "47",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "48",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "49",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "5",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "6",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "7",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "8",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_topic_partition_replicas",
+            "instance": "10.42.1.11:9404",
+            "job": "kafka-exporter",
+            "partition": "9",
+            "pod": "crawler-kafka-kafka-exporter-69f968c85c-g65b9",
+            "topic": "__consumer_offsets"
+          },
+          "value": [
+            1790127303.869,
+            "3"
+          ]
+        }
+      ],
+      "kafka_underreplicated": [
+        {
+          "metric": {
+            "__name__": "kafka_server_replicamanager_underreplicatedpartitions",
+            "instance": "10.42.1.9:9404",
+            "job": "kafka-brokers",
+            "pod": "crawler-kafka-dual-role-0"
+          },
+          "value": [
+            1790127303.873,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_server_replicamanager_underreplicatedpartitions",
+            "instance": "10.42.2.10:9404",
+            "job": "kafka-brokers",
+            "pod": "crawler-kafka-dual-role-1"
+          },
+          "value": [
+            1790127303.873,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "kafka_server_replicamanager_underreplicatedpartitions",
+            "instance": "10.42.5.16:9404",
+            "job": "kafka-brokers",
+            "pod": "crawler-kafka-dual-role-2"
+          },
+          "value": [
+            1790127303.873,
+            "0"
+          ]
+        }
+      ],
+      "cpu_load": [
+        {
+          "metric": {
+            "__name__": "node_load1",
+            "instance": "10.4.4.8:9100",
+            "job": "nodes",
+            "node": "s2"
+          },
+          "value": [
+            1790127303.876,
+            "5.83"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_load1",
+            "instance": "10.4.4.5:9100",
+            "job": "nodes",
+            "node": "s3"
+          },
+          "value": [
+            1790127303.876,
+            "0.58"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_load1",
+            "instance": "10.4.4.17:9100",
+            "job": "nodes",
+            "node": "a3"
+          },
+          "value": [
+            1790127303.876,
+            "2.5"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_load1",
+            "instance": "10.4.4.3:9100",
+            "job": "nodes",
+            "node": "a2"
+          },
+          "value": [
+            1790127303.876,
+            "2.2"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_load1",
+            "instance": "10.4.4.12:9100",
+            "job": "nodes",
+            "node": "a1"
+          },
+          "value": [
+            1790127303.876,
+            "4.65"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "node_load1",
+            "instance": "10.4.4.2:9100",
+            "job": "nodes",
+            "node": "s1"
+          },
+          "value": [
+            1790127303.876,
+            "7.39"
+          ]
+        }
+      ]
+    },
+    "backup": {
+      "backup": "20260922T192101Z",
+      "success": true,
+      "cross_node": "s2",
+      "completed_epoch": 1790104878.9137087,
+      "bytes": 11638384
+    },
+    "health_failures": []
+  },
+  "phases": {
+    "idle": {
+      "samples": 163,
+      "coverage_hours": 13.501,
+      "max_gap_seconds": 303,
+      "unhealthy_samples": 0,
+      "status": "RUNNING"
+    },
+    "low-load": {
+      "samples": 0,
+      "coverage_hours": 0.0,
+      "max_gap_seconds": 0,
+      "unhealthy_samples": 0,
+      "status": "WAITING"
+    }
+  },
+  "disk_growth": [
+    {
+      "phase": "idle",
+      "instance": "10.4.4.3:9100",
+      "mountpoint": "/",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 2532904960,
+      "estimated_bytes_per_hour": 187611763
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.8:9100",
+      "mountpoint": "/",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 823934976,
+      "estimated_bytes_per_hour": 61028699
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.5:9100",
+      "mountpoint": "/",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 133484544,
+      "estimated_bytes_per_hour": 9887173
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.17:9100",
+      "mountpoint": "/",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 2678603776,
+      "estimated_bytes_per_hour": 198403645
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.2:9100",
+      "mountpoint": "/boot/efi",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 0,
+      "estimated_bytes_per_hour": 0
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.12:9100",
+      "mountpoint": "/boot/efi",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 0,
+      "estimated_bytes_per_hour": 0
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.3:9100",
+      "mountpoint": "/boot/efi",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 0,
+      "estimated_bytes_per_hour": 0
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.5:9100",
+      "mountpoint": "/boot/efi",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 0,
+      "estimated_bytes_per_hour": 0
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.8:9100",
+      "mountpoint": "/boot/efi",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 0,
+      "estimated_bytes_per_hour": 0
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.17:9100",
+      "mountpoint": "/boot/efi",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 0,
+      "estimated_bytes_per_hour": 0
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.2:9100",
+      "mountpoint": "/",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 769662976,
+      "estimated_bytes_per_hour": 57008782
+    },
+    {
+      "phase": "idle",
+      "instance": "10.4.4.12:9100",
+      "mountpoint": "/",
+      "observed_hours": 13.501,
+      "used_bytes_increase": 756121600,
+      "estimated_bytes_per_hour": 56005775
+    }
+  ]
+}

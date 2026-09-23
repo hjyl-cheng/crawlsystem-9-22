@@ -1,0 +1,15 @@
+{
+  "latest_backup": {
+    "backup": "20260922T120523Z",
+    "success": true,
+    "cross_node": "s2",
+    "completed_epoch": 1790078746.9217997,
+    "bytes": 11638694
+  },
+  "recovery_archive_required_files": "PASS",
+  "restore_verified_backup": "20260922T104031Z",
+  "scope": "Newest archive composition and cross-node checksums verified; database restore tested on prior same-format backup.",
+  "pre_a1_reboot_recovery_files": "PASS",
+  "dingtalk_credentials_and_manifest": "PASS",
+  "cross_node_checksum": "PASS"
+}

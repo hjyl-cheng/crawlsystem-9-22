@@ -1,0 +1,17 @@
+{
+  "name": "infra-outbox",
+  "connector": {
+    "state": "RUNNING",
+    "worker_id": "debezium-connect.kafka.svc.cluster.local:8083",
+    "version": "3.6.3.Final"
+  },
+  "tasks": [
+    {
+      "id": 0,
+      "state": "RUNNING",
+      "worker_id": "debezium-connect.kafka.svc.cluster.local:8083",
+      "version": "3.6.3.Final"
+    }
+  ],
+  "type": "source"
+}

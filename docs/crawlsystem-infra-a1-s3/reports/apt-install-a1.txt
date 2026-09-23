@@ -1,0 +1,46 @@
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Solving dependencies...
+The following NEW packages will be installed:
+  wireguard-tools
+0 upgraded, 1 newly installed, 0 to remove and 203 not upgraded.
+Need to get 89.6 kB of archives.
+After this operation, 327 kB of additional disk space will be used.
+Get:1 http://mirrors.tencentyun.com/ubuntu resolute/main amd64 wireguard-tools amd64 1.0.20250521-1ubuntu1 [89.6 kB]
+debconf: unable to initialize frontend: Dialog
+debconf: (Dialog frontend will not work on a dumb terminal, an emacs shell buffer, or without a controlling terminal.)
+debconf: falling back to frontend: Readline
+debconf: unable to initialize frontend: Readline
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Teletype
+debconf: unable to initialize frontend: Teletype
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Noninteractive
+Fetched 89.6 kB in 1s (105 kB/s)
+Selecting previously unselected package wireguard-tools.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 144976 files and directories currently installed.)
+Preparing to unpack .../wireguard-tools_1.0.20250521-1ubuntu1_amd64.deb ...
+Unpacking wireguard-tools (1.0.20250521-1ubuntu1) ...
+Setting up wireguard-tools (1.0.20250521-1ubuntu1) ...
+wg-quick.target is a disabled or a static unit, not starting it.
+Processing triggers for man-db (2.13.1-1build1) ...
+debconf: unable to initialize frontend: Dialog
+debconf: (Dialog frontend will not work on a dumb terminal, an emacs shell buffer, or without a controlling terminal.)
+debconf: falling back to frontend: Readline
+debconf: unable to initialize frontend: Readline
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Teletype
+debconf: unable to initialize frontend: Teletype
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Noninteractive
+
+Running kernel seems to be up-to-date.
+
+No services need to be restarted.
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.

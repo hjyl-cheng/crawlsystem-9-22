@@ -1,0 +1,19 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "sequence": {
+      "type": "choice",
+      "choice": "restore_then_drill",
+      "confidence": 1.0,
+      "probabilities": {
+        "require_external_first": 0.0,
+        "restore_then_drill": 1.0,
+        "skip_restore": 0.0
+      }
+    }
+  },
+  "usage": {
+    "input_tokens": 491,
+    "output_tokens": 47
+  }
+}

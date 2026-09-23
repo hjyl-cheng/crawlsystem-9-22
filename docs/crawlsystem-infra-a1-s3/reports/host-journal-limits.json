@@ -1,0 +1,26 @@
+[
+  {
+    "node": "a1",
+    "success": true
+  },
+  {
+    "node": "a2",
+    "success": true
+  },
+  {
+    "node": "a3",
+    "success": true
+  },
+  {
+    "node": "s1",
+    "success": true
+  },
+  {
+    "node": "s2",
+    "success": true
+  },
+  {
+    "node": "s3",
+    "success": true
+  }
+]

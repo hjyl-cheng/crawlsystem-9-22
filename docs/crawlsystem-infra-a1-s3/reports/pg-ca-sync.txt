@@ -1,0 +1,7 @@
+subject=OU=db, CN=crawler-pg
+notBefore=Sep 22 08:52:02 2026 GMT
+notAfter=Dec 21 08:52:02 2026 GMT
+configmap/pg-ca created
+configmap/pg-ca created
+configmap/pg-ca created
+Public CA copied; no CA private key copied. Repeat after planned CA rotation and restart dependent workloads as required.

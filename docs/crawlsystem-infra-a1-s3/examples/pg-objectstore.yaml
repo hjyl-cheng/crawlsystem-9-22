@@ -1,0 +1,15 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: crawl-backup-store
+  namespace: db
+spec:
+  retentionPolicy: "14d"
+  configuration:
+    destinationPath: "s3://REPLACE_BACKUP_BUCKET/postgres/"
+    endpointURL: "https://REPLACE_S3_ENDPOINT"
+    s3Credentials:
+      accessKeyId: {name: backup-s3, key: ACCESS_KEY_ID}
+      secretAccessKey: {name: backup-s3, key: ACCESS_SECRET_KEY}
+    wal: {compression: gzip}
+    data: {compression: gzip, jobs: 1}

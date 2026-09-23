@@ -1,0 +1,11 @@
+NAME              CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                    STORAGECLASS          VOLUMEATTRIBUTESCLASS   REASON   AGE
+alertmanager-a3   1Gi        RWO            Retain           Bound    monitoring/alertmanager-data             crawl-alert-local     <unset>                          113m
+clickhouse-s3     20Gi       RWO            Retain           Bound    analytics/clickhouse-data                crawl-ch-local        <unset>                          113m
+grafana-a3        2Gi        RWO            Retain           Bound    monitoring/grafana-data                  crawl-grafana-local   <unset>                          113m
+kafka-s1          12Gi       RWO            Retain           Bound    kafka/data-0-crawler-kafka-dual-role-0   crawl-kafka-local     <unset>                          113m
+kafka-s2          12Gi       RWO            Retain           Bound    kafka/data-0-crawler-kafka-dual-role-1   crawl-kafka-local     <unset>                          113m
+kafka-s3          12Gi       RWO            Retain           Bound    kafka/data-0-crawler-kafka-dual-role-2   crawl-kafka-local     <unset>                          113m
+loki-a2           5Gi        RWO            Retain           Bound    monitoring/loki-data                     crawl-loki-local      <unset>                          113m
+pg-a2             30Gi       RWO            Retain           Bound    db/crawler-pg-1                          crawl-pg-local        <unset>                          113m
+pg-a3             30Gi       RWO            Retain           Bound    db/crawler-pg-2                          crawl-pg-local        <unset>                          113m
+prometheus-a3     6Gi        RWO            Retain           Bound    monitoring/prometheus-data               crawl-prom-local      <unset>                          113m

@@ -1,0 +1,23 @@
+[
+  {
+    "node": "a1",
+    "endpoint": "loopback-only etcd health endpoint :2381",
+    "exit_code": 0,
+    "health": "{\"health\":\"true\",\"reason\":\"\"}",
+    "error": ""
+  },
+  {
+    "node": "s1",
+    "endpoint": "loopback-only etcd health endpoint :2381",
+    "exit_code": 0,
+    "health": "{\"health\":\"true\",\"reason\":\"\"}",
+    "error": ""
+  },
+  {
+    "node": "s2",
+    "endpoint": "loopback-only etcd health endpoint :2381",
+    "exit_code": 0,
+    "health": "{\"health\":\"true\",\"reason\":\"\"}",
+    "error": ""
+  }
+]

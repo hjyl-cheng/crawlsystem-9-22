@@ -1,0 +1,184 @@
+{
+  "checked_at": "2026-09-22",
+  "status": "OFFICIAL_VERSION_PAGES_CHECKED_LOCAL_STATIC_CHECKS_ONLY",
+  "versions": {
+    "k3s": {
+      "version": "v1.36.4+k3s1",
+      "source": "https://github.com/k3s-io/k3s/releases/tag/v1.36.4%2Bk3s1",
+      "selection_reason": "兼容分支的最新补丁；CNPG/Strimzi/cert-manager支持交集"
+    },
+    "helm": {
+      "version": "4.3.0",
+      "source": "https://github.com/helm/helm/releases/tag/v4.3.0",
+      "selection_reason": "CLI"
+    },
+    "cloudnativepg": {
+      "version": "1.30.0",
+      "source": "https://cloudnative-pg.io/docs/1.30/supported_releases/",
+      "selection_reason": "Operator"
+    },
+    "postgresql": {
+      "version": "18.6",
+      "source": "https://www.postgresql.org/docs/release/18.6/",
+      "selection_reason": "GA补丁"
+    },
+    "pgbouncer": {
+      "version": "1.25.2",
+      "source": "https://www.pgbouncer.org/",
+      "selection_reason": "连接池"
+    },
+    "cert_manager": {
+      "version": "1.21.2",
+      "source": "https://github.com/cert-manager/cert-manager/releases/tag/v1.21.2",
+      "selection_reason": "Operator"
+    },
+    "barman_plugin": {
+      "version": "0.15.0",
+      "source": "https://cloudnative-pg.io/plugin-barman-cloud/docs/installation/",
+      "selection_reason": "CNPG备份插件"
+    },
+    "strimzi": {
+      "version": "1.2.0",
+      "source": "https://strimzi.io/downloads/",
+      "selection_reason": "Operator；与Kafka版本独立"
+    },
+    "kafka": {
+      "version": "4.3.1",
+      "source": "https://kafka.apache.org/community/downloads/",
+      "selection_reason": "与Strimzi1.2.0兼容"
+    },
+    "debezium": {
+      "version": "3.6.3.Final",
+      "source": "https://debezium.io/releases/3.6/",
+      "selection_reason": "3.6稳定线，不使用3.7开发版"
+    },
+    "temporal": {
+      "version": "1.32.0",
+      "source": "https://github.com/temporalio/temporal/releases",
+      "selection_reason": "Server与Admin Tools"
+    },
+    "temporal_chart": {
+      "version": "1.7.0",
+      "source": "https://raw.githubusercontent.com/temporalio/helm-charts/temporal-1.7.0/charts/temporal/values.yaml",
+      "selection_reason": "Chart与应用独立"
+    },
+    "temporal_ui": {
+      "version": "2.54.1",
+      "source": "https://github.com/temporalio/ui/releases",
+      "selection_reason": "Web UI"
+    },
+    "clickhouse": {
+      "version": "26.8.10.6",
+      "source": "https://github.com/ClickHouse/ClickHouse/releases/tag/v26.8.10.6-lts",
+      "selection_reason": "当前26.8 LTS线补丁；不是宣称全局最高stable次版本"
+    },
+    "keda": {
+      "version": "2.20.2",
+      "source": "https://github.com/kedacore/keda/releases/tag/v2.20.2",
+      "selection_reason": "先安装，不提前放量"
+    },
+    "prometheus": {
+      "version": "3.14.0",
+      "source": "https://prometheus.io/download/",
+      "selection_reason": "GA，不选3.15 RC"
+    },
+    "alertmanager": {
+      "version": "0.34.1",
+      "source": "https://prometheus.io/download/",
+      "selection_reason": "通知接收器必须另配置"
+    },
+    "node_exporter": {
+      "version": "1.12.1",
+      "source": "https://prometheus.io/download/",
+      "selection_reason": "每节点一个"
+    },
+    "grafana": {
+      "version": "13.2.2",
+      "source": "https://grafana.com/grafana/download",
+      "selection_reason": "OSS"
+    },
+    "loki": {
+      "version": "3.7.8",
+      "source": "https://github.com/grafana/loki/releases/tag/v3.7.8",
+      "selection_reason": "资源通过后启用"
+    },
+    "alloy": {
+      "version": "1.19.2",
+      "source": "https://github.com/grafana/alloy/releases/tag/v1.19.2",
+      "selection_reason": "资源通过后启用"
+    }
+  },
+  "images": {
+    "postgresql": {
+      "reference": "ghcr.io/cloudnative-pg/postgresql:18.6",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "pgbouncer": {
+      "reference": "ghcr.io/cloudnative-pg/pgbouncer:1.25.2",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "debezium": {
+      "reference": "quay.io/debezium/connect:3.6.3.Final",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "kafka_tools": {
+      "reference": "quay.io/strimzi/kafka:1.2.0-kafka-4.3.1",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "temporal": {
+      "reference": "temporalio/server:1.32.0",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "temporal_admin": {
+      "reference": "temporalio/admin-tools:1.32.0",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "temporal_ui": {
+      "reference": "temporalio/ui:2.54.1",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "clickhouse": {
+      "reference": "clickhouse/clickhouse-server:26.8.10.6",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "prometheus": {
+      "reference": "quay.io/prometheus/prometheus:v3.14.0",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "alertmanager": {
+      "reference": "quay.io/prometheus/alertmanager:v0.34.1",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "node_exporter": {
+      "reference": "quay.io/prometheus/node-exporter:v1.12.1",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "grafana": {
+      "reference": "grafana/grafana:13.2.2",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "loki": {
+      "reference": "grafana/loki:3.7.8",
+      "digest": null,
+      "registry_verified_on_target": false
+    },
+    "alloy": {
+      "reference": "grafana/alloy:v1.19.2",
+      "digest": null,
+      "registry_verified_on_target": false
+    }
+  },
+  "network": "existing private 10.4.4.x; Flannel wireguard-native, no host wg0"
+}

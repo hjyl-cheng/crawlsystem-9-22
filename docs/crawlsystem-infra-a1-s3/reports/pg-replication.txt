@@ -1,0 +1,10 @@
+ application_name |   state   | sync_state 
+------------------+-----------+------------
+ crawler-pg-2     | streaming | quorum
+(1 row)
+
+       synchronous_standby_names       
+---------------------------------------
+ ANY 1 ("crawler-pg-2","crawler-pg-1")
+(1 row)
+

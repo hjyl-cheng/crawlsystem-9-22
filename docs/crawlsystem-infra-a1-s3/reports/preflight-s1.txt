@@ -1,0 +1,179 @@
+
+== Host / OS / architecture ==
+VM-4-2-ubuntu
+PRETTY_NAME="Ubuntu 26.04 LTS"
+NAME="Ubuntu"
+VERSION_ID="26.04"
+VERSION="26.04 (Resolute Raccoon)"
+VERSION_CODENAME=resolute
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=resolute
+LOGO=ubuntu-logo
+x86_64
+
+== CPU / memory / swap ==
+2
+               total        used        free      shared  buff/cache   available
+Mem:           7.4Gi       538Mi       6.5Gi       2.0Mi       688Mi       6.9Gi
+Swap:          2.0Gi          0B       2.0Gi
+NAME      TYPE SIZE USED PRIO
+/swap.img file   2G   0B   -1
+
+== Disks ==
+NAME    SIZE TYPE FSTYPE  MOUNTPOINTS
+sr0     117M rom  iso9660 
+vda      80G disk         
+├─vda1  538M part vfat    /boot/efi
+├─vda2    1M part         
+└─vda3 79.5G part ext4    /
+Filesystem     Type   Size  Used Avail Use% Mounted on
+tmpfs          tmpfs  1.5G 1000K  1.5G   1% /run
+/dev/vda3      ext4    79G  5.6G   70G   8% /
+tmpfs          tmpfs  3.8G   24K  3.8G   1% /dev/shm
+none           tmpfs  1.0M     0  1.0M   0% /run/credentials/systemd-journald.service
+none           tmpfs  1.0M     0  1.0M   0% /run/credentials/systemd-resolved.service
+tmpfs          tmpfs  3.8G   72K  3.8G   1% /tmp
+/dev/vda1      vfat   537M  6.4M  531M   2% /boot/efi
+none           tmpfs  1.0M     0  1.0M   0% /run/credentials/systemd-networkd.service
+none           tmpfs  1.0M     0  1.0M   0% /run/credentials/serial-getty@ttyS0.service
+none           tmpfs  1.0M     0  1.0M   0% /run/credentials/getty@tty1.service
+tmpfs          tmpfs  762M  8.0K  762M   1% /run/user/1000
+Filesystem      Inodes  IUsed   IFree IUse% Mounted on
+tmpfs           819200    755  818445    1% /run
+/dev/vda3      5199936 122373 5077563    3% /
+tmpfs           975202      7  975195    1% /dev/shm
+none              1024      1    1023    1% /run/credentials/systemd-journald.service
+none              1024      1    1023    1% /run/credentials/systemd-resolved.service
+tmpfs          1048576     34 1048542    1% /tmp
+/dev/vda1            0      0       0     - /boot/efi
+none              1024      1    1023    1% /run/credentials/systemd-networkd.service
+none              1024      1    1023    1% /run/credentials/serial-getty@ttyS0.service
+none              1024      1    1023    1% /run/credentials/getty@tty1.service
+tmpfs           195040     35  195005    1% /run/user/1000
+
+== Network ==
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+eth0             UP             10.4.4.2/22 metric 100 fe80::5054:ff:fe04:cea5/64 
+default via 10.4.4.1 dev eth0 proto dhcp src 10.4.4.2 metric 100 
+10.4.4.0/22 dev eth0 proto kernel scope link src 10.4.4.2 metric 100 
+10.4.4.1 dev eth0 proto dhcp scope link src 10.4.4.2 metric 100 
+183.60.82.98 via 10.4.4.1 dev eth0 proto dhcp src 10.4.4.2 metric 100 
+183.60.83.19 via 10.4.4.1 dev eth0 proto dhcp src 10.4.4.2 metric 100 
+Netid State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
+udp   UNCONN 0      0         127.0.0.54:53        0.0.0.0:*          
+udp   UNCONN 0      0      127.0.0.53%lo:53        0.0.0.0:*          
+udp   UNCONN 0      0      10.4.4.2%eth0:68        0.0.0.0:*          
+udp   UNCONN 0      0          127.0.0.1:323       0.0.0.0:*          
+udp   UNCONN 0      0              [::1]:323          [::]:*          
+tcp   LISTEN 0      4096   127.0.0.53%lo:53        0.0.0.0:*          
+tcp   LISTEN 0      4096         0.0.0.0:22        0.0.0.0:*          
+tcp   LISTEN 0      4096      127.0.0.54:53        0.0.0.0:*          
+tcp   LISTEN 0      4096            [::]:22           [::]:*          
+
+== Time ==
+               Local time: Tue 2026-09-22 16:44:49 CST
+           Universal time: Tue 2026-09-22 08:44:49 UTC
+                 RTC time: Tue 2026-09-22 08:44:49
+                Time zone: Asia/Shanghai (CST, +0800)
+System clock synchronized: yes
+              NTP service: active
+          RTC in local TZ: no
+
+== Existing runtimes ==
+
+== Private connectivity (ICMP failure alone is not proof of no network) ==
+-- 10.4.4.12 --
+10.4.4.12 dev eth0 src 10.4.4.2 uid 1000 
+    cache 
+PING 10.4.4.12 (10.4.4.12) 56(84) bytes of data.
+
+--- 10.4.4.12 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2034ms
+
+-- 10.4.4.3 --
+10.4.4.3 dev eth0 src 10.4.4.2 uid 1000 
+    cache 
+PING 10.4.4.3 (10.4.4.3) 56(84) bytes of data.
+
+--- 10.4.4.3 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2027ms
+
+-- 10.4.4.17 --
+10.4.4.17 dev eth0 src 10.4.4.2 uid 1000 
+    cache 
+PING 10.4.4.17 (10.4.4.17) 56(84) bytes of data.
+
+--- 10.4.4.17 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2029ms
+
+-- 10.4.4.2 --
+local 10.4.4.2 dev lo src 10.4.4.2 uid 1000 
+    cache <local> 
+PING 10.4.4.2 (10.4.4.2) 56(84) bytes of data.
+64 bytes from 10.4.4.2: icmp_seq=1 ttl=64 time=0.054 ms
+64 bytes from 10.4.4.2: icmp_seq=2 ttl=64 time=0.037 ms
+64 bytes from 10.4.4.2: icmp_seq=3 ttl=64 time=0.036 ms
+
+--- 10.4.4.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2027ms
+rtt min/avg/max/mdev = 0.036/0.042/0.054/0.008 ms
+-- 10.4.4.8 --
+10.4.4.8 dev eth0 src 10.4.4.2 uid 1000 
+    cache 
+PING 10.4.4.8 (10.4.4.8) 56(84) bytes of data.
+
+--- 10.4.4.8 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2044ms
+
+-- 10.4.4.5 --
+10.4.4.5 dev eth0 src 10.4.4.2 uid 1000 
+    cache 
+PING 10.4.4.5 (10.4.4.5) 56(84) bytes of data.
+
+--- 10.4.4.5 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2029ms
+
+
+No secrets collected; review output before sharing.
+Netid State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess                                                
+udp   UNCONN 0      0         127.0.0.54:53        0.0.0.0:*    users:(("systemd-resolve",pid=762,fd=18))             
+udp   UNCONN 0      0      127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=762,fd=16))             
+udp   UNCONN 0      0      10.4.4.2%eth0:68        0.0.0.0:*    users:(("systemd-network",pid=4927,fd=33))            
+udp   UNCONN 0      0          127.0.0.1:323       0.0.0.0:*    users:(("chronyd",pid=6673,fd=4))                     
+udp   UNCONN 0      0              [::1]:323          [::]:*    users:(("chronyd",pid=6673,fd=5))                     
+tcp   LISTEN 0      4096   127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=762,fd=17))             
+tcp   LISTEN 0      4096         0.0.0.0:22        0.0.0.0:*    users:(("sshd",pid=5425,fd=3),("systemd",pid=1,fd=94))
+tcp   LISTEN 0      4096      127.0.0.54:53        0.0.0.0:*    users:(("systemd-resolve",pid=762,fd=19))             
+tcp   LISTEN 0      4096            [::]:22           [::]:*    users:(("sshd",pid=5425,fd=4),("systemd",pid=1,fd=95))
+# Generated by iptables-save v1.8.11 (nf_tables) on Tue Sep 22 16:45:11 2026
+*filter
+:INPUT ACCEPT [8147:1214317]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:YJ-FIREWALL-INPUT - [0:0]
+-A INPUT -j YJ-FIREWALL-INPUT
+-A YJ-FIREWALL-INPUT -s 213.209.159.212/32 -p tcp -m tcp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 213.209.159.212/32 -p udp -m udp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 192.253.248.230/32 -p tcp -m tcp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 192.253.248.230/32 -p udp -m udp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.161/32 -p tcp -m tcp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.161/32 -p udp -m udp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.157/32 -p tcp -m tcp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.157/32 -p udp -m udp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.162/32 -p tcp -m tcp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.162/32 -p udp -m udp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.156/32 -p tcp -m tcp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.156/32 -p udp -m udp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.141/32 -p tcp -m tcp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.141/32 -p udp -m udp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.151/32 -p tcp -m tcp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.151/32 -p udp -m udp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.152/32 -p tcp -m tcp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+-A YJ-FIREWALL-INPUT -s 45.148.10.152/32 -p udp -m udp --dport 22 -j REJECT --reject-with icmp-port-unreachable
+COMMIT
+# Completed on Tue Sep 22 16:45:11 2026

@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-09-22T12:07:38.284085+00:00",
+  "nodes_ready": 6,
+  "pods_not_ready": [],
+  "etcd": {
+    "a1": {
+      "health": "true",
+      "reason": ""
+    },
+    "s1": {
+      "health": "true",
+      "reason": ""
+    },
+    "s2": {
+      "health": "true",
+      "reason": ""
+    }
+  },
+  "pg_primary": "crawler-pg-1",
+  "pg_standby": "[{\"state\" : \"streaming\", \"sync_state\" : \"async\"}, {\"state\" : \"streaming\", \"sync_state\" : \"quorum\"}]",
+  "prometheus": {
+    "total": 18,
+    "up": 18
+  },
+  "kafka_isr_min": [
+    "3"
+  ],
+  "kafka_underreplicated": [
+    "0"
+  ],
+  "backup_timestamp": [
+    "1790076015.5248442"
+  ],
+  "collector_errors": [
+    "0"
+  ],
+  "grafana_dashboard": {
+    "uid": "crawl-infrastructure",
+    "panels": 12
+  },
+  "loki_ready": true,
+  "loki_nodes": [
+    "a1",
+    "a2",
+    "a3",
+    "s1",
+    "s2",
+    "s3"
+  ],
+  "cdc": {
+    "connector": "RUNNING",
+    "tasks": [
+      "RUNNING"
+    ]
+  },
+  "clickhouse_version": "26.8.10.6",
+  "backup_timer": "enabled",
+  "observation_timer": "enabled",
+  "pass": true
+}

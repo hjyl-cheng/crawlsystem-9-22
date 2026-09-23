@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: debezium-logging
+  namespace: kafka
+data:
+  log4j2.properties: |
+    status = warn
+    name = DebeziumConsole
+    appender.console.type = Console
+    appender.console.name = STDOUT
+    appender.console.layout.type = PatternLayout
+    appender.console.layout.pattern = %d{ISO8601} %-5p [%c] %m%n
+    rootLogger.level = INFO
+    rootLogger.appenderRef.stdout.ref = STDOUT
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: debezium-connect
+  namespace: kafka
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: debezium-connect
+  template:
+    metadata:
+      labels:
+        app: debezium-connect
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: s2
+      containers:
+      - name: connect
+        image: quay.io/debezium/connect:3.6.3.Final
+        command:
+        - /kafka/bin/connect-distributed.sh
+        args:
+        - /etc/dbz-worker/worker.properties
+        env:
+        - name: KAFKA_HEAP_OPTS
+          value: -Xms512m -Xmx768m
+        - name: KAFKA_LOG4J_OPTS
+          value: -Dlog4j2.configurationFile=/etc/dbz-logging/log4j2.properties
+        resources:
+          requests:
+            cpu: 200m
+            memory: 1Gi
+          limits:
+            cpu: 750m
+            memory: 1536Mi
+        ports:
+        - name: rest
+          containerPort: 8083
+        volumeMounts:
+        - name: logging
+          mountPath: /etc/dbz-logging
+          readOnly: true
+        - name: worker-config
+          mountPath: /etc/dbz-worker
+          readOnly: true
+        - name: pg-login
+          mountPath: /etc/dbz-pg
+          readOnly: true
+        - name: kafka-ca
+          mountPath: /etc/kafka-ca
+          readOnly: true
+        - name: pg-ca
+          mountPath: /etc/pg-ca
+          readOnly: true
+        startupProbe:
+          httpGet:
+            path: /connector-plugins
+            port: 8083
+          periodSeconds: 10
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8083
+          periodSeconds: 10
+          failureThreshold: 6
+      volumes:
+      - name: logging
+        configMap:
+          name: debezium-logging
+      - name: worker-config
+        secret:
+          secretName: dbz-worker-config
+      - name: pg-login
+        secret:
+          secretName: dbz-pg-credentials
+      - name: kafka-ca
+        secret:
+          secretName: crawler-kafka-cluster-ca-cert
+      - name: pg-ca
+        configMap:
+          name: pg-ca
+      terminationGracePeriodSeconds: 120
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: debezium-connect
+  namespace: kafka
+spec:
+  type: ClusterIP
+  selector:
+    app: debezium-connect
+  ports:
+  - name: rest
+    port: 8083
+    targetPort: 8083

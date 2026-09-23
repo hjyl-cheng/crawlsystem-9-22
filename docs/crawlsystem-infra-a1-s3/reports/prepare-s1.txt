@@ -1,0 +1,168 @@
+Hit:1 http://mirrors.tencentyun.com/ubuntu resolute InRelease
+Get:2 http://mirrors.tencentyun.com/ubuntu resolute-updates InRelease [137 kB]
+Get:3 http://mirrors.tencentyun.com/ubuntu resolute-backports InRelease [137 kB]
+Get:4 http://mirrors.tencentyun.com/ubuntu resolute-security InRelease [137 kB]
+Get:5 http://mirrors.tencentyun.com/ubuntu resolute-updates/main amd64 Packages [639 kB]
+Get:6 http://mirrors.tencentyun.com/ubuntu resolute-updates/main Translation-en [152 kB]
+Get:7 http://mirrors.tencentyun.com/ubuntu resolute-updates/main amd64 Components [97.8 kB]
+Get:8 http://mirrors.tencentyun.com/ubuntu resolute-updates/main amd64 c-n-f Metadata [5756 B]
+Get:9 http://mirrors.tencentyun.com/ubuntu resolute-updates/universe amd64 Packages [295 kB]
+Get:10 http://mirrors.tencentyun.com/ubuntu resolute-updates/universe Translation-en [94.0 kB]
+Get:11 http://mirrors.tencentyun.com/ubuntu resolute-updates/universe amd64 Components [188 kB]
+Get:12 http://mirrors.tencentyun.com/ubuntu resolute-updates/universe amd64 c-n-f Metadata [4704 B]
+Get:13 http://mirrors.tencentyun.com/ubuntu resolute-updates/restricted amd64 Packages [431 kB]
+Get:14 http://mirrors.tencentyun.com/ubuntu resolute-updates/restricted Translation-en [84.5 kB]
+Get:15 http://mirrors.tencentyun.com/ubuntu resolute-updates/restricted amd64 c-n-f Metadata [392 B]
+Get:16 http://mirrors.tencentyun.com/ubuntu resolute-updates/multiverse amd64 Packages [11.6 kB]
+Get:17 http://mirrors.tencentyun.com/ubuntu resolute-updates/multiverse Translation-en [3172 B]
+Get:18 http://mirrors.tencentyun.com/ubuntu resolute-updates/multiverse amd64 c-n-f Metadata [256 B]
+Get:19 http://mirrors.tencentyun.com/ubuntu resolute-backports/universe amd64 Packages [3132 B]
+Get:20 http://mirrors.tencentyun.com/ubuntu resolute-backports/universe Translation-en [7988 B]
+Get:21 http://mirrors.tencentyun.com/ubuntu resolute-backports/universe amd64 Components [1056 B]
+Get:22 http://mirrors.tencentyun.com/ubuntu resolute-security/main amd64 Packages [501 kB]
+Get:23 http://mirrors.tencentyun.com/ubuntu resolute-security/main Translation-en [117 kB]
+Get:24 http://mirrors.tencentyun.com/ubuntu resolute-security/main amd64 Components [46.6 kB]
+Get:25 http://mirrors.tencentyun.com/ubuntu resolute-security/main amd64 c-n-f Metadata [4616 B]
+Get:26 http://mirrors.tencentyun.com/ubuntu resolute-security/universe amd64 Packages [173 kB]
+Get:27 http://mirrors.tencentyun.com/ubuntu resolute-security/universe Translation-en [54.8 kB]
+Get:28 http://mirrors.tencentyun.com/ubuntu resolute-security/universe amd64 Components [43.4 kB]
+Get:29 http://mirrors.tencentyun.com/ubuntu resolute-security/universe amd64 c-n-f Metadata [3552 B]
+Get:30 http://mirrors.tencentyun.com/ubuntu resolute-security/restricted amd64 Packages [418 kB]
+Get:31 http://mirrors.tencentyun.com/ubuntu resolute-security/restricted Translation-en [81.5 kB]
+Get:32 http://mirrors.tencentyun.com/ubuntu resolute-security/restricted amd64 c-n-f Metadata [396 B]
+Get:33 http://mirrors.tencentyun.com/ubuntu resolute-security/multiverse amd64 Packages [10.8 kB]
+Get:34 http://mirrors.tencentyun.com/ubuntu resolute-security/multiverse Translation-en [2844 B]
+Fetched 3890 kB in 3s (1408 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+jq is already the newest version (1.8.1-4ubuntu2).
+jq set to manually installed.
+python3 is already the newest version (3.14.3-0ubuntu2).
+python3 set to manually installed.
+python3-yaml is already the newest version (6.0.3-1build1).
+python3-yaml set to manually installed.
+unzip is already the newest version (6.0-29ubuntu1).
+iputils-ping is already the newest version (3:20250605-1ubuntu1).
+iputils-ping set to manually installed.
+netcat-openbsd is already the newest version (1.234-1).
+netcat-openbsd set to manually installed.
+Solving dependencies...
+The following additional packages will be installed:
+  libcurl3t64-gnutls libcurl4t64 openssl-provider-legacy
+The following NEW packages will be installed:
+  wireguard-tools
+The following packages will be upgraded:
+  ca-certificates curl iproute2 libcurl3t64-gnutls libcurl4t64 openssl
+  openssl-provider-legacy
+7 upgraded, 1 newly installed, 0 to remove and 200 not upgraded.
+Need to get 3826 kB of archives.
+After this operation, 295 kB of additional disk space will be used.
+Get:1 http://mirrors.tencentyun.com/ubuntu resolute-updates/main amd64 openssl-provider-legacy amd64 3.5.5-1ubuntu3.5 [39.7 kB]
+Get:2 http://mirrors.tencentyun.com/ubuntu resolute-updates/main amd64 openssl amd64 3.5.5-1ubuntu3.5 [1243 kB]
+Get:3 http://mirrors.tencentyun.com/ubuntu resolute-updates/main amd64 ca-certificates all 20260601~26.04.1 [139 kB]
+Get:4 http://mirrors.tencentyun.com/ubuntu resolute-updates/main amd64 iproute2 amd64 6.19.0-1ubuntu1.1 [1198 kB]
+Get:5 http://mirrors.tencentyun.com/ubuntu resolute-updates/main amd64 curl amd64 8.18.0-1ubuntu2.5 [272 kB]
+Get:6 http://mirrors.tencentyun.com/ubuntu resolute-updates/main amd64 libcurl4t64 amd64 8.18.0-1ubuntu2.5 [427 kB]
+Get:7 http://mirrors.tencentyun.com/ubuntu resolute-updates/main amd64 libcurl3t64-gnutls amd64 8.18.0-1ubuntu2.5 [419 kB]
+Get:8 http://mirrors.tencentyun.com/ubuntu resolute/main amd64 wireguard-tools amd64 1.0.20250521-1ubuntu1 [89.6 kB]
+Preconfiguring packages ...
+Fetched 3826 kB in 2s (1865 kB/s)
+(Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 109862 files and directories currently installed.)
+Preparing to unpack .../openssl-provider-legacy_3.5.5-1ubuntu3.5_amd64.deb ...
+Unpacking openssl-provider-legacy (3.5.5-1ubuntu3.5) over (3.5.5-1ubuntu3) ...
+Setting up openssl-provider-legacy (3.5.5-1ubuntu3.5) ...
+(Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 109862 files and directories currently installed.)
+Preparing to unpack .../0-openssl_3.5.5-1ubuntu3.5_amd64.deb ...
+Unpacking openssl (3.5.5-1ubuntu3.5) over (3.5.5-1ubuntu3) ...
+Preparing to unpack .../1-ca-certificates_20260601~26.04.1_all.deb ...
+Unpacking ca-certificates (20260601~26.04.1) over (20260223) ...
+Preparing to unpack .../2-iproute2_6.19.0-1ubuntu1.1_amd64.deb ...
+Unpacking iproute2 (6.19.0-1ubuntu1.1) over (6.19.0-1ubuntu1) ...
+Preparing to unpack .../3-curl_8.18.0-1ubuntu2.5_amd64.deb ...
+Unpacking curl (8.18.0-1ubuntu2.5) over (8.18.0-1ubuntu2.1) ...
+Preparing to unpack .../4-libcurl4t64_8.18.0-1ubuntu2.5_amd64.deb ...
+Unpacking libcurl4t64:amd64 (8.18.0-1ubuntu2.5) over (8.18.0-1ubuntu2.1) ...
+Preparing to unpack .../5-libcurl3t64-gnutls_8.18.0-1ubuntu2.5_amd64.deb ...
+Unpacking libcurl3t64-gnutls:amd64 (8.18.0-1ubuntu2.5) over (8.18.0-1ubuntu2.1) ...
+Selecting previously unselected package wireguard-tools.
+Preparing to unpack .../6-wireguard-tools_1.0.20250521-1ubuntu1_amd64.deb ...
+Unpacking wireguard-tools (1.0.20250521-1ubuntu1) ...
+Setting up libcurl4t64:amd64 (8.18.0-1ubuntu2.5) ...
+Setting up iproute2 (6.19.0-1ubuntu1.1) ...
+Setting up libcurl3t64-gnutls:amd64 (8.18.0-1ubuntu2.5) ...
+Setting up wireguard-tools (1.0.20250521-1ubuntu1) ...
+wg-quick.target is a disabled or a static unit, not starting it.
+Setting up curl (8.18.0-1ubuntu2.5) ...
+Setting up openssl (3.5.5-1ubuntu3.5) ...
+Setting up ca-certificates (20260601~26.04.1) ...
+Updating certificates in /etc/ssl/certs...
+rehash: warning: skipping ca-certificates.crt, it does not contain exactly one certificate or CRL
+2 added, 25 removed; done.
+Processing triggers for man-db (2.13.1-1build1) ...
+Processing triggers for libc-bin (2.43-2ubuntu2) ...
+Processing triggers for ca-certificates (20260601~26.04.1) ...
+Updating certificates in /etc/ssl/certs...
+0 added, 0 removed; done.
+Running hooks in /etc/ca-certificates/update.d...
+done.
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+fstab backup: /etc/fstab.crawlsystem-backup-20260922T084813Z
+Node preparation complete; swap: Filename				Type		Size		Used		Priority
+
+
+Running kernel seems to be up-to-date.
+
+Restarting services...
+ systemctl restart packagekit.service
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.

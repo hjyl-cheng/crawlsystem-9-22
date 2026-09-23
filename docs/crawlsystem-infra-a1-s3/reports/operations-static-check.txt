@@ -1,0 +1,24 @@
+{
+  "status": "PASS_STATIC_ONLY",
+  "counts": {
+    "yaml_files": 41,
+    "objects": 115,
+    "python": 23,
+    "shell": 15,
+    "json": 53,
+    "xml": 1
+  },
+  "errors": [],
+  "not_tested": [
+    "remote SSH",
+    "image pulls",
+    "Helm render",
+    "CRD server-side dry-run",
+    "live TLS",
+    "PG/Kafka/Temporal startup",
+    "failover",
+    "backup restore",
+    "actual disk growth",
+    "resource and load tests"
+  ]
+}

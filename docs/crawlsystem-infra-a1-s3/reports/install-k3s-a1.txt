@@ -1,0 +1,49 @@
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0
+  0      0   0      0   0      0      0      0                              0 26 75.33M  26 20.21M   0      0 16.02M      0   00:04   00:01   00:03 20.21M 44 75.33M  44 33.65M   0      0 14.88M      0   00:05   00:02   00:03 16.83M 59 75.33M  59 44.98M   0      0 13.79M      0   00:05   00:03   00:02 15.00M 74 75.33M  74 56.30M   0      0 13.21M      0   00:05   00:04   00:01 14.08M 89 75.33M  89 67.74M   0      0 12.88M      0   00:05   00:05         13.55M100 75.33M 100 75.33M   0      0 12.69M      0   00:05   00:05         13.55M100 75.33M 100 75.33M   0      0 12.69M      0   00:05   00:05         13.55M100 75.33M 100 75.33M   0      0 12.69M      0   00:05   00:05         13.55M
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0
+  0      0   0      0   0      0      0      0                              0100    359 100    359   0      0   1712      0                              0100    359 100    359   0      0   1712      0                              0100    359 100    359   0      0   1711      0                              0
+k3s: OK
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0100  37118 100  37118   0      0 225.1k      0                              0100  37118 100  37118   0      0 225.0k      0                              0100  37118 100  37118   0      0 225.0k      0                              0
+[INFO]  Skipping k3s download and verify
+[INFO]  Skipping installation of SELinux RPM
+[INFO]  Creating /usr/local/bin/kubectl symlink to k3s
+[INFO]  Creating /usr/local/bin/crictl symlink to k3s
+[INFO]  Creating /usr/local/bin/ctr symlink to k3s
+[INFO]  Creating killall script /usr/local/bin/k3s-killall.sh
+[INFO]  Creating uninstall script /usr/local/bin/k3s-uninstall.sh
+[INFO]  env: Creating environment file /etc/systemd/system/k3s.service.env
+[INFO]  systemd: Creating service file /etc/systemd/system/k3s.service
+[INFO]  systemd: Enabling k3s unit
+Created symlink '/etc/systemd/system/multi-user.target.wants/k3s.service' → '/etc/systemd/system/k3s.service'.
+[INFO]  systemd: Starting k3s
+● k3s.service - Lightweight Kubernetes
+     Loaded: loaded (/etc/systemd/system/k3s.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2026-09-22 16:51:04 CST; 10ms ago
+ Invocation: 4f2cbc7efb0248d58bdcb77b8cacdd8a
+       Docs: https://k3s.io
+    Process: 32913 ExecStartPre=/sbin/modprobe br_netfilter (code=exited, status=0/SUCCESS)
+    Process: 32915 ExecStartPre=/sbin/modprobe overlay (code=exited, status=0/SUCCESS)
+   Main PID: 32917 (k3s-server)
+      Tasks: 21
+     Memory: 513.8M (peak: 513.8M)
+        CPU: 10.834s
+     CGroup: /system.slice/k3s.service
+             ├─32917 "/usr/local/bin/k3s server"
+             └─32951 "containerd "
+
+Sep 22 16:51:04 VM-4-12-ubuntu k3s[32917]: time="2026-09-22T16:51:04+08:00" level=info msg="Creating k3s-supervisor event broadcaster"
+Sep 22 16:51:04 VM-4-12-ubuntu k3s[32917]: time="2026-09-22T16:51:04+08:00" level=info msg="Kube API server is now running"
+Sep 22 16:51:04 VM-4-12-ubuntu k3s[32917]: time="2026-09-22T16:51:04+08:00" level=info msg="k3s is up and running"
+Sep 22 16:51:04 VM-4-12-ubuntu k3s[32917]: Flag --containerd has been deprecated, This is a cadvisor flag that was mistakenly registered with the Kubelet. Due to legacy concerns, it will follow the standard CLI deprecation timeline before being removed.
+Sep 22 16:51:04 VM-4-12-ubuntu systemd[1]: Started k3s.service - Lightweight Kubernetes.
+Sep 22 16:51:04 VM-4-12-ubuntu k3s[32917]: I0922 16:51:04.437744   32917 server.go:541] "Kubelet version" kubeletVersion="v1.36.4+k3s1"
+Sep 22 16:51:04 VM-4-12-ubuntu k3s[32917]: I0922 16:51:04.437764   32917 server.go:543] "Golang settings" GOGC="" GOMAXPROCS="" GOTRACEBACK=""
+Sep 22 16:51:04 VM-4-12-ubuntu k3s[32917]: I0922 16:51:04.437788   32917 watchdog_linux.go:94] "Systemd watchdog is not enabled"
+Sep 22 16:51:04 VM-4-12-ubuntu k3s[32917]: I0922 16:51:04.437793   32917 watchdog_linux.go:137] "Systemd watchdog is not enabled or the interval is invalid, so health checking will not be started."
+Sep 22 16:51:04 VM-4-12-ubuntu k3s[32917]: time="2026-09-22T16:51:04+08:00" level=info msg="Waiting for untainted node"

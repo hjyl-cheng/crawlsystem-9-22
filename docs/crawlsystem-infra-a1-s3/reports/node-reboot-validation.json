@@ -1,0 +1,140 @@
+{
+  "started": "2026-09-22T09:59:11.278092+00:00",
+  "nodes": [
+    {
+      "node": "s1",
+      "status": "PASS",
+      "boot_id_changed": true,
+      "all_workloads_ready_seconds": 166.3,
+      "events": {
+        "status": "PASS",
+        "ids": [
+          "4a135601-77d5-4d98-9306-b3c660aeafae",
+          "9d54b6dd-579a-46bc-aaa1-046600c909f8"
+        ]
+      },
+      "host_firewall_and_k3s_active": true
+    },
+    {
+      "node": "s2",
+      "status": "PASS",
+      "boot_id_changed": true,
+      "all_workloads_ready_seconds": 226.34,
+      "events": {
+        "status": "PASS",
+        "ids": [
+          "4689e7c8-0520-4f0a-ab9f-488f9a36569a",
+          "b04f0964-0292-4b60-960b-8ec66cd26d08"
+        ]
+      },
+      "host_firewall_and_k3s_active": true
+    },
+    {
+      "node": "s3",
+      "status": "PASS",
+      "boot_id_changed": true,
+      "all_workloads_ready_seconds": 186.31,
+      "events": {
+        "status": "PASS",
+        "ids": [
+          "2dc92933-bcd0-4e87-828d-512b74102b61",
+          "364c6e01-5a1a-4b04-8263-57dde488bb42"
+        ]
+      },
+      "host_firewall_and_k3s_active": true
+    },
+    {
+      "node": "a2",
+      "status": "PASS",
+      "boot_id_changed": true,
+      "all_workloads_ready_seconds": 43.02,
+      "events": {
+        "status": "PASS",
+        "ids": [
+          "72119f0e-ea55-49f9-8611-336843412bb2",
+          "b693c95b-f552-480f-9a0f-688743a932de"
+        ]
+      },
+      "host_firewall_and_k3s_active": true
+    },
+    {
+      "node": "a3",
+      "status": "PASS",
+      "boot_id_changed": true,
+      "all_workloads_ready_seconds": 192.43,
+      "events": {
+        "status": "PASS",
+        "ids": [
+          "528f8174-c4ca-4120-a3e0-61bf5a579a19",
+          "52a7287f-ea32-4afe-a8de-8061f717d628"
+        ]
+      },
+      "host_firewall_and_k3s_active": true
+    },
+    {
+      "node": "a1",
+      "started": "2026-09-22T11:29:17.950894+00:00",
+      "status": "PASS",
+      "independent_observer": {
+        "observer": "s1",
+        "started": "2026-09-22T11:24:05.220802+00:00",
+        "status": "PASS",
+        "old_boot_id": "72cee64f-7ddc-4ec0-a451-939b906f57b7",
+        "before_event": "694bce7c-9dfd-4473-a406-07608130cbf9",
+        "new_boot_id": "a5646adb-d097-4bed-a82a-d57261c21134",
+        "boot_id_changed": true,
+        "observed_not_ready": true,
+        "observer_elapsed_until_ready_seconds": 396.89,
+        "new_boot_seen_until_ready_seconds": 84.66,
+        "events": {
+          "status": "PASS",
+          "ids": [
+            "5081c827-0577-418a-8275-2eb43b01fe72",
+            "694bce7c-9dfd-4473-a406-07608130cbf9"
+          ]
+        },
+        "completed": "2026-09-22T11:32:17.795159+00:00"
+      },
+      "a1_etcd_health": true,
+      "post_reboot_smoke": {
+        "outbox": {
+          "status": "PASS",
+          "ids": [
+            "94f2ae8e-a230-4293-a940-fbfcbda2f812"
+          ]
+        },
+        "clickhouse": "PASS",
+        "temporal": "PASS"
+      },
+      "previous_observation_archive": "/var/lib/crawlsystem-observation/archives/20260922T113303Z",
+      "boot_id_changed": true,
+      "host_firewall_and_k3s_active": true,
+      "completed": "2026-09-22T11:33:04.774023+00:00"
+    }
+  ],
+  "a1": "PASS: independent S1 observer plus A1 boot continuation",
+  "limits": "Two-PG strict synchronous writes can block while either database node is unavailable; ClickHouse and monitoring are single-node services.",
+  "initial_s3_attempt": {
+    "status": "RETRY_AFTER_FIX",
+    "observation": "Kafka Connect UNASSIGNED after coordinator reboot; logs show 300000ms scheduled rebalance delay and 5s task shutdown timeout. Node and brokers had recovered; next-node reboots stopped.",
+    "fix": "Single-worker scheduled.rebalance.max.delay.ms=0; task.shutdown.graceful.timeout.ms=30000; worker.sync.timeout.ms=30000. Reboot S3 again after connector restart and baseline smoke.",
+    "retest_status": "PASS"
+  },
+  "a3_grafana_first_start": {
+    "status": "RETRY_AFTER_FIX",
+    "observation": "After OS reboot, Grafana stopped progressing after API registration and never listened on port 3000 for more than five minutes; PG/CDC recovered. Captured Go stacks via SIGQUIT, which restarted the container.",
+    "planned_fix": "Add bounded startup and liveness probes; inspect startup deadlock before declaring node test passed.",
+    "stack_observation": "Background service manager awaited API post-start hooks; several app initializers remained runnable and one waited on an initializer mutex. No evidence of PostgreSQL/CDC failure. Root cause not conclusively isolated.",
+    "fix": "Add startup/liveness probes and raise Grafana to CPU 500m, memory 1Gi (request 256Mi). Cold startup showed heavy disk reads and cgroup memory reclaim, not CPU saturation. Repeat OS reboot.",
+    "resource_observation": {
+      "a3_iowait_percent": 77,
+      "disk_reads_kib_per_second": 144828,
+      "grafana_memory_cgroup_max_events": 34,
+      "oom_kills": 0,
+      "cpu_throttle_periods": 2,
+      "cpu_periods": 576
+    },
+    "retest_status": "PASS"
+  },
+  "completed": "2026-09-22T10:39:54.835817+00:00"
+}

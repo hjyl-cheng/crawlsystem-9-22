@@ -1,0 +1,6 @@
+     slot_name      | active | wal_status | failover 
+--------------------+--------+------------+----------
+ _cnpg_crawler_pg_2 | t      | reserved   | f
+ infra_outbox_slot  | t      | reserved   | t
+(2 rows)
+

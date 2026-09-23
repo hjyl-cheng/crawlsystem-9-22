@@ -1,0 +1,19 @@
+# Local/runtime state and credentials
+**/secrets/
+**/.venv*/
+**/__pycache__/
+**/*.pyc
+**/vendor/
+**/*.partial
+**/*.dump
+**/*.snapshot
+**/*.key
+**/*.p12
+**/*.pfx
+**/reports/runtime*/
+
+# Local editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp

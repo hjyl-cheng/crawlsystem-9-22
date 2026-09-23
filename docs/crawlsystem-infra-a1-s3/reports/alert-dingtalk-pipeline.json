@@ -1,0 +1,11 @@
+{
+  "started": "2026-09-22T11:58:43.919007+00:00",
+  "external_delivery": true,
+  "acceptance_id": "8b10709f-6101-48db-955a-f173984452db",
+  "firing": "PASS",
+  "dingtalk_firing": "PASS",
+  "resolved": "PASS",
+  "completed": "2026-09-22T12:03:13.945273+00:00",
+  "dingtalk_resolved": "PASS",
+  "delivery_evidence": "DingTalk API errcode=0 for firing and resolved; does not establish human reading"
+}

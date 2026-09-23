@@ -1,0 +1,48 @@
+NAMESPACE      NAME                                             READY   STATUS    RESTARTS        AGE     IP           NODE   NOMINATED NODE   READINESS GATES
+analytics      clickhouse-848f9d86b5-btmjr                      1/1     Running   2 (27m ago)     71m     10.42.5.17   s3     <none>           <none>
+cert-manager   cert-manager-6c4fc6b459-6fpf2                    1/1     Running   0               112m    10.42.0.6    a1     <none>           <none>
+cert-manager   cert-manager-cainjector-69b765b887-pxcwj         1/1     Running   0               112m    10.42.0.5    a1     <none>           <none>
+cert-manager   cert-manager-webhook-595fd9fdcd-v7mgb            1/1     Running   0               112m    10.42.0.7    a1     <none>           <none>
+cnpg-system    barman-cloud-7469fdf6d5-thx65                    1/1     Running   0               111m    10.42.0.9    a1     <none>           <none>
+cnpg-system    cnpg-controller-manager-6cdfd5d879-j2pzf         1/1     Running   0               111m    10.42.0.8    a1     <none>           <none>
+db             crawler-pg-1                                     1/1     Running   2 (25m ago)     108m    10.42.3.14   a2     <none>           <none>
+db             crawler-pg-2                                     1/1     Running   2 (8m49s ago)   107m    10.42.4.31   a3     <none>           <none>
+db             crawler-pg-pool-55df9fd4f7-89pkg                 1/1     Running   2 (8m49s ago)   98m     10.42.4.26   a3     <none>           <none>
+db             crawler-pg-pool-55df9fd4f7-hrmbk                 1/1     Running   1 (25m ago)     98m     10.42.3.13   a2     <none>           <none>
+kafka          crawler-kafka-dual-role-0                        1/1     Running   1 (45m ago)     65m     10.42.1.9    s1     <none>           <none>
+kafka          crawler-kafka-dual-role-1                        1/1     Running   1 (41m ago)     63m     10.42.2.10   s2     <none>           <none>
+kafka          crawler-kafka-dual-role-2                        1/1     Running   2 (27m ago)     64m     10.42.5.16   s3     <none>           <none>
+kafka          crawler-kafka-entity-operator-75457f48ff-psc6n   2/2     Running   2 (45m ago)     104m    10.42.1.8    s1     <none>           <none>
+kafka          crawler-kafka-kafka-exporter-69f968c85c-g65b9    1/1     Running   1 (45m ago)     63m     10.42.1.11   s1     <none>           <none>
+kafka          debezium-connect-75c5479688-mw9bt                1/1     Running   0               32m     10.42.2.12   s2     <none>           <none>
+kafka          infra-kafka-validation                           1/1     Running   0               53m     10.42.0.34   a1     <none>           <none>
+kafka          strimzi-cluster-operator-b485c7cc7-24kqk         1/1     Running   0               109m    10.42.0.10   a1     <none>           <none>
+keda           keda-admission-545ccc69cb-56brj                  1/1     Running   0               108m    10.42.0.12   a1     <none>           <none>
+keda           keda-metrics-apiserver-689b5c7fbb-mx9k2          1/1     Running   0               108m    10.42.0.13   a1     <none>           <none>
+keda           keda-operator-d6456cdfc-8lwrh                    1/1     Running   1 (108m ago)    108m    10.42.0.11   a1     <none>           <none>
+kube-system    coredns-54996dc9b4-cmll8                         1/1     Running   0               115m    10.42.0.2    a1     <none>           <none>
+kube-system    local-path-provisioner-77b9867795-585d7          1/1     Running   0               115m    10.42.0.4    a1     <none>           <none>
+kube-system    metrics-server-6dc596dfb8-h9tz2                  1/1     Running   0               115m    10.42.0.3    a1     <none>           <none>
+monitoring     alert-journal-cdb87fc6f-5hznr                    1/1     Running   2 (8m49s ago)   58m     10.42.4.28   a3     <none>           <none>
+monitoring     alertmanager-5f75f49fd9-8c76r                    1/1     Running   2 (8m49s ago)   58m     10.42.4.29   a3     <none>           <none>
+monitoring     alloy-46xkn                                      1/1     Running   2 (8m49s ago)   88m     10.42.4.27   a3     <none>           <none>
+monitoring     alloy-b66wz                                      1/1     Running   1 (45m ago)     88m     10.42.1.10   s1     <none>           <none>
+monitoring     alloy-j85kp                                      1/1     Running   1 (41m ago)     88m     10.42.2.11   s2     <none>           <none>
+monitoring     alloy-lbjtm                                      1/1     Running   2 (27m ago)     88m     10.42.5.15   s3     <none>           <none>
+monitoring     alloy-lzq5m                                      1/1     Running   0               88m     10.42.0.25   a1     <none>           <none>
+monitoring     alloy-qnrsl                                      1/1     Running   1 (25m ago)     88m     10.42.3.12   a2     <none>           <none>
+monitoring     grafana-55898cf5dd-7zbtn                         1/1     Running   1 (8m49s ago)   12m     10.42.4.32   a3     <none>           <none>
+monitoring     loki-9fc6888dc-2rlnn                             1/1     Running   1 (25m ago)     85m     10.42.3.15   a2     <none>           <none>
+monitoring     node-exporter-7vddp                              1/1     Running   2 (8m49s ago)   65m     10.4.4.17    a3     <none>           <none>
+monitoring     node-exporter-fxr4s                              1/1     Running   1 (41m ago)     65m     10.4.4.8     s2     <none>           <none>
+monitoring     node-exporter-k8sdz                              1/1     Running   2 (27m ago)     65m     10.4.4.5     s3     <none>           <none>
+monitoring     node-exporter-ks8p2                              1/1     Running   1 (25m ago)     65m     10.4.4.3     a2     <none>           <none>
+monitoring     node-exporter-m4v67                              1/1     Running   1 (45m ago)     65m     10.4.4.2     s1     <none>           <none>
+monitoring     node-exporter-pzpcz                              1/1     Running   0               65m     10.4.4.12    a1     <none>           <none>
+monitoring     prometheus-7f455cd6c8-grzbp                      1/1     Running   0               5m45s   10.42.4.33   a3     <none>           <none>
+temporal       temporal-admintools-74dc444fb-6zjqd              1/1     Running   0               106m    10.42.0.18   a1     <none>           <none>
+temporal       temporal-frontend-64dc78f66d-jzx9f               1/1     Running   0               106m    10.42.0.20   a1     <none>           <none>
+temporal       temporal-history-77fd4b7ff8-pngxn                1/1     Running   0               106m    10.42.0.21   a1     <none>           <none>
+temporal       temporal-matching-fc4f78f49-s78x9                1/1     Running   0               106m    10.42.0.19   a1     <none>           <none>
+temporal       temporal-web-59557d494b-stctb                    1/1     Running   0               106m    10.42.0.16   a1     <none>           <none>
+temporal       temporal-worker-7d86789d64-qj82x                 1/1     Running   0               106m    10.42.0.17   a1     <none>           <none>

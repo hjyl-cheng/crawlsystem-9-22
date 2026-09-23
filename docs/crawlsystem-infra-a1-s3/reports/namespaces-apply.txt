@@ -1,0 +1,14 @@
+namespace/cert-manager created
+namespace/cnpg-system created
+namespace/keda created
+namespace/db unchanged
+namespace/temporal unchanged
+namespace/kafka unchanged
+namespace/analytics unchanged
+namespace/monitoring unchanged
+namespace/crawler unchanged
+namespace/control unchanged
+namespace/ingest unchanged
+namespace/proxy unchanged
+namespace/business unchanged
+namespace/infra-test unchanged

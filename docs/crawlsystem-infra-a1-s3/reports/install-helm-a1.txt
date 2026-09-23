@@ -1,0 +1,8 @@
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0100 19.37M 100 19.37M   0      0 23.92M      0                              0100 19.37M 100 19.37M   0      0 23.92M      0                              0100 19.37M 100 19.37M   0      0 23.92M      0                              0
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0100     97 100     97   0      0   5875      0                              0100     97 100     97   0      0   5861      0                              0100     97 100     97   0      0   5851      0                              0
+helm-v4.3.0-linux-amd64.tar.gz: OK
+version.BuildInfo{Version:"v4.3.0", GitCommit:"bec5b06ed841fe5269972d864d5177944fd5970f", GitTreeState:"clean", GoVersion:"go1.27.1", KubeClientVersion:"v1.37"}

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "ssh_user_assumption": "ubuntu",
+  "os_assumption": "Ubuntu 24.04 LTS or 26.04 LTS, amd64; verify before install",
+  "nodes": [
+    {
+      "name": "a1",
+      "display_name": "A1",
+      "public_ip": "43.173.68.88",
+      "private_ip": "10.4.4.12",
+      "vcpu": 4,
+      "memory_gb": 8,
+      "k3s_role": "server"
+    },
+    {
+      "name": "a2",
+      "display_name": "A2",
+      "public_ip": "43.173.68.187",
+      "private_ip": "10.4.4.3",
+      "vcpu": 2,
+      "memory_gb": 8,
+      "k3s_role": "agent"
+    },
+    {
+      "name": "a3",
+      "display_name": "A3",
+      "public_ip": "43.172.94.2",
+      "private_ip": "10.4.4.17",
+      "vcpu": 2,
+      "memory_gb": 8,
+      "k3s_role": "agent"
+    },
+    {
+      "name": "s1",
+      "display_name": "S1",
+      "public_ip": "43.172.65.165",
+      "private_ip": "10.4.4.2",
+      "vcpu": 2,
+      "memory_gb": 8,
+      "k3s_role": "server"
+    },
+    {
+      "name": "s2",
+      "display_name": "S2",
+      "public_ip": "43.159.169.76",
+      "private_ip": "10.4.4.8",
+      "vcpu": 2,
+      "memory_gb": 8,
+      "k3s_role": "server"
+    },
+    {
+      "name": "s3",
+      "display_name": "S3",
+      "public_ip": "43.172.80.48",
+      "private_ip": "10.4.4.5",
+      "vcpu": 2,
+      "memory_gb": 8,
+      "k3s_role": "agent"
+    }
+  ],
+  "pod_cidr": "10.42.0.0/16",
+  "service_cidr": "10.43.0.0/16",
+  "ssh_admin_cidr": null,
+  "s3_endpoint": null,
+  "disk_sizes_gb": null
+}

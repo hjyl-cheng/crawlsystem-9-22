@@ -1,0 +1,27 @@
+table inet crawlsystem_host {
+	set cluster_nodes {
+		type ipv4_addr
+		elements = { 10.4.4.2, 10.4.4.3,
+			     10.4.4.5, 10.4.4.8,
+			     10.4.4.12, 10.4.4.17 }
+	}
+
+	set control_nodes {
+		type ipv4_addr
+		elements = { 10.4.4.2, 10.4.4.8,
+			     10.4.4.12 }
+	}
+
+	chain input {
+		type filter hook input priority filter - 10; policy accept;
+		iifname "lo" accept
+		ip saddr @control_nodes tcp dport { 2379, 2380 } accept
+		tcp dport { 2379, 2380 } counter packets 0 bytes 0 drop
+		ip saddr @cluster_nodes tcp dport { 6443, 9100, 10250 } accept
+		ip saddr 10.42.0.0/16 tcp dport { 6443, 9100, 10250 } accept
+		tcp dport { 6443, 9100, 10250 } counter packets 0 bytes 0 drop
+		ip saddr @cluster_nodes udp dport 51820 accept
+		udp dport 51820 counter packets 0 bytes 0 drop
+	}
+}
+Created symlink '/etc/systemd/system/multi-user.target.wants/crawlsystem-host-firewall.service' → '/etc/systemd/system/crawlsystem-host-firewall.service'.

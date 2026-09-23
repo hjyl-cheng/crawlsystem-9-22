@@ -1,0 +1,5 @@
+Hit:1 http://mirrors.tencentyun.com/ubuntu resolute InRelease
+Hit:2 http://mirrors.tencentyun.com/ubuntu resolute-updates InRelease
+Hit:3 http://mirrors.tencentyun.com/ubuntu resolute-backports InRelease
+Hit:4 http://mirrors.tencentyun.com/ubuntu resolute-security InRelease
+Reading package lists...

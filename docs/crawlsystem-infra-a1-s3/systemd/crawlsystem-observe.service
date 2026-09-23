@@ -1,0 +1,9 @@
+[Unit]
+Description=Crawl infrastructure health and staged observation
+After=network-online.target k3s.service
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 /home/ubuntu/workspace/newcrawsystem/docs/crawlsystem-infra-a1-s3/scripts/observe-infra.py
+TimeoutStartSec=290
+Nice=10

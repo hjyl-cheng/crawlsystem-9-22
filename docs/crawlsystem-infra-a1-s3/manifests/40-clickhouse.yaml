@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-config
+  namespace: analytics
+data:
+  config.xml: "<clickhouse>\n  <listen_host replace=\"replace\">0.0.0.0</listen_host>\n\
+    \  <http_port remove=\"remove\"/><tcp_port remove=\"remove\"/>\n  <mysql_port\
+    \ remove=\"remove\"/><postgresql_port remove=\"remove\"/><interserver_http_port\
+    \ remove=\"remove\"/>\n  <https_port>8443</https_port><tcp_port_secure>9440</tcp_port_secure>\n\
+    \  <openSSL><server><certificateFile>/etc/clickhouse-tls/tls.crt</certificateFile><privateKeyFile>/etc/clickhouse-tls/tls.key</privateKeyFile><caConfig>/etc/clickhouse-tls/ca.crt</caConfig><verificationMode>none</verificationMode><disableProtocols>sslv2,sslv3,tlsv1,tlsv1_1</disableProtocols></server></openSSL>\n\
+    \  <max_server_memory_usage>2147483648</max_server_memory_usage>\n  <max_concurrent_queries>4</max_concurrent_queries>\n\
+    \  <logger><level>warning</level><console>true</console><log remove=\"remove\"\
+    /><errorlog remove=\"remove\"/></logger>\n  <query_log><ttl>event_date + INTERVAL\
+    \ 7 DAY DELETE</ttl></query_log>\n  <part_log><ttl>event_date + INTERVAL 7 DAY\
+    \ DELETE</ttl></part_log>\n  <metric_log><ttl>event_date + INTERVAL 7 DAY DELETE</ttl></metric_log>\n\
+    \  <asynchronous_metric_log><ttl>event_date + INTERVAL 7 DAY DELETE</ttl></asynchronous_metric_log>\n\
+    \  <trace_log remove=\"remove\"/><text_log remove=\"remove\"/>\n  <prometheus><endpoint>/metrics</endpoint><port>9363</port><metrics>true</metrics><events>true</events><asynchronous_metrics>true</asynchronous_metrics></prometheus>\n\
+    \  <backups><allowed_path>/var/lib/clickhouse/backups/</allowed_path></backups>\n\
+    </clickhouse>\n"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clickhouse-data
+  namespace: analytics
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: crawl-ch-local
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickhouse
+  namespace: analytics
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: clickhouse
+  template:
+    metadata:
+      labels:
+        app: clickhouse
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: s3
+      containers:
+      - name: clickhouse
+        image: clickhouse/clickhouse-server:26.8.10.6
+        ports:
+        - name: https
+          containerPort: 8443
+        - name: native-tls
+          containerPort: 9440
+        - name: metrics
+          containerPort: 9363
+        resources:
+          requests:
+            cpu: 250m
+            memory: 2Gi
+          limits:
+            cpu: 1000m
+            memory: 3Gi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/clickhouse
+        - name: config
+          mountPath: /etc/clickhouse-server/config.d/90-crawl.xml
+          subPath: config.xml
+          readOnly: true
+        - name: users
+          mountPath: /etc/clickhouse-server/users.d/90-crawl.xml
+          subPath: users.xml
+          readOnly: true
+        - name: tls
+          mountPath: /etc/clickhouse-tls
+          readOnly: true
+        startupProbe:
+          tcpSocket:
+            port: 9440
+          periodSeconds: 10
+          failureThreshold: 60
+        readinessProbe:
+          tcpSocket:
+            port: 9440
+          periodSeconds: 10
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: clickhouse-data
+      - name: config
+        configMap:
+          name: clickhouse-config
+      - name: users
+        secret:
+          secretName: clickhouse-users
+      - name: tls
+        secret:
+          secretName: clickhouse-tls
+          defaultMode: 420
+      securityContext:
+        fsGroup: 101
+      terminationGracePeriodSeconds: 120
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: analytics
+spec:
+  type: ClusterIP
+  selector:
+    app: clickhouse
+  ports:
+  - name: https
+    port: 8443
+    targetPort: 8443
+  - name: native-tls
+    port: 9440
+    targetPort: 9440
+  - name: metrics
+    port: 9363
+    targetPort: 9363

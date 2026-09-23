@@ -1,0 +1,9 @@
+{
+  "name": "s3",
+  "display_name": "S3",
+  "public_ip": "43.172.80.48",
+  "private_ip": "10.4.4.5",
+  "vcpu": 2,
+  "memory_gb": 8,
+  "k3s_role": "agent"
+}

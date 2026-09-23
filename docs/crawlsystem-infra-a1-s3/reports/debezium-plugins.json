@@ -1,0 +1,87 @@
+[
+  {
+    "class": "io.debezium.connector.jdbc.JdbcSinkConnector",
+    "type": "sink",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.mongodb.MongoDbSinkConnector",
+    "type": "sink",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.cockroachdb.CockroachDBConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.db2.Db2Connector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.db2as400.As400RpcConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.informix.InformixConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.mariadb.MariaDbConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.mongodb.MongoDbConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.mysql.MySqlConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.oracle.OracleConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.postgresql.PostgresConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.spanner.SpannerConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.sqlserver.SqlServerConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "io.debezium.connector.vitess.VitessConnector",
+    "type": "source",
+    "version": "3.6.3.Final"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorCheckpointConnector",
+    "type": "source",
+    "version": "4.3.0"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorHeartbeatConnector",
+    "type": "source",
+    "version": "4.3.0"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorSourceConnector",
+    "type": "source",
+    "version": "4.3.0"
+  }
+]

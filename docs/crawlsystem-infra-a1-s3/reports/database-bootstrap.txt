@@ -1,0 +1,19 @@
+CREATE DATABASE
+CREATE DATABASE
+CREATE DATABASE
+REVOKE
+GRANT
+GRANT
+GRANT
+CREATE SCHEMA
+CREATE TABLE
+ALTER TABLE
+GRANT
+GRANT
+DO
+ schemaname  | tablename 
+-------------+-----------
+ publication | outbox
+(1 row)
+
+Dedicated infra_smoke database prepared. No business schema has been created.
