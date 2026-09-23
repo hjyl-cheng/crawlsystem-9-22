@@ -1,17 +1,12 @@
 /* Agent tasks. Discover chrome on the 4-column grid: task list (3) with a
    detail panel (1); both fill the remaining height and scroll inside. */
 .agent-page .row-agent { flex: 1 1 0; min-height: 320px; }
-.dashboard .agent-list { grid-column: span 3; min-height: 0; }
-.dashboard .agent-detail { min-height: 0; }
+.dashboard.agent-page .agent-list { grid-column: span 3; min-height: 0; }
+.dashboard.agent-page .agent-detail { min-height: 0; }
 .agent-list .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
 .agent-list td { vertical-align: middle; }
 .agent-list tbody tr { cursor: pointer; }
 .agent-list tbody tr.selected { background: #eef5ff; }
-.status-tabs { display: flex; gap: 4px; padding: 8px 14px 0; border-bottom: 1px solid #eef3f9; overflow-x: auto; }
-.status-tabs button { padding: 6px 10px 7px; border: 0; border-bottom: 2px solid transparent; background: none; font-size: var(--fs-text); color: #52688c; white-space: nowrap; }
-.status-tabs button span { margin-left: 4px; color: #8797b0; font-variant-numeric: tabular-nums; }
-.status-tabs button.on { color: #277cf7; border-bottom-color: #277cf7; font-weight: 600; }
-.status-tabs button:disabled { cursor: default; }
 .agent-filters { justify-content: flex-start; padding: 8px 14px; }
 .cell-title { display: block; font-size: var(--fs-text); font-weight: 500; color: #193257; }
 .cell-sub { display: block; font-size: var(--fs-meta); color: #7a8ca8; }
@@ -40,5 +35,5 @@
 .detail-actions .button { flex: 1; justify-content: center; }
 @media (max-width: 1040px), (max-height: 600px) {
   .agent-page .row-agent { flex: none; }
-  .dashboard .agent-list, .dashboard .agent-detail { grid-column: 1 / -1; min-height: 360px; }
+  .dashboard.agent-page .agent-list, .dashboard.agent-page .agent-detail { grid-column: 1 / -1; min-height: 360px; }
 }

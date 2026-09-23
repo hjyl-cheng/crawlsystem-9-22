@@ -14,7 +14,7 @@
 .domain-bars b { font-weight: 500; text-align: right; color: #253f6a; font-variant-numeric: tabular-nums; }
 .domain-bars small { font-size: var(--fs-meta); text-align: right; white-space: nowrap; color: #7a8ca8; font-variant-numeric: tabular-nums; }
 /* .dashboard .panel sets min-height: 0; this list must keep its readable minimum. */
-.dashboard .plans-list { flex: 1 1 0; min-height: 226px; }
+.dashboard.plans-page .plans-list { flex: 1 1 0; min-height: 226px; }
 .plans-list .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
 .plans-list td { vertical-align: middle; }
 .plans-list .resource-meta { padding: 0 14px; min-height: 26px; font-size: var(--fs-meta); }
@@ -27,6 +27,6 @@
 .plans-page .pagination { padding: 6px 14px; border-top: 1px solid #eef3f9; font-size: var(--fs-meta); }
 @media (max-width: 1040px), (max-height: 600px) {
   .row-flow>.plans-funnel, .plans-page .row-state>.span-2 { grid-column: 1 / -1; }
-  .plans-list { flex: none; min-height: 360px; }
+  .dashboard.plans-page .plans-list { flex: none; min-height: 360px; }
   .status-grid.six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

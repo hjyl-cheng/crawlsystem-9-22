@@ -6,7 +6,7 @@ export default function Donut({ parts, caption, emptyCaption = '尚未接入', l
   return <svg className="discover-donut" viewBox="0 0 110 110" role="img" aria-label={label}>
     <circle cx="55" cy="55" r={r} fill="none" stroke="#e9eff7" strokeWidth="16"/>
     {total > 0 && parts!.map(part => { const length = part.count / total * c; const el = <circle key={part.label} cx="55" cy="55" r={r} fill="none" stroke={part.color} strokeWidth="16" strokeDasharray={`${length} ${c - length}`} strokeDashoffset={-offset} transform="rotate(-90 55 55)"/>; offset += length; return el; })}
-    <text x="55" y="53" textAnchor="middle" className="donut-value">{parts ? total : '—'}</text>
+    <text x="55" y="53" textAnchor="middle" className="donut-value">{parts ? total.toLocaleString('zh-CN') : '—'}</text>
     <text x="55" y="68" textAnchor="middle" className="donut-caption">{parts ? caption : emptyCaption}</text>
   </svg>;
 }

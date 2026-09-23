@@ -287,3 +287,15 @@ test('agent tasks show only the real waiting-plan count until the sample preview
   await page.getByRole('tab', { name: /失败/ }).click();
   await expect(page.locator('.agent-list tbody tr')).toHaveCount(1);
 });
+test('data API page covers collector-side external calls and shows no figures until the sample preview', async ({ page }) => {
+  await mock(page); await login(page, '/data-api');
+  await expect(page.getByRole('heading', { name: '数据 API', exact: true })).toBeVisible();
+  await expect(page.getByText('尚无接口调用', { exact: true })).toBeVisible();
+  await expect(page.getByText('调用趋势尚未接入', { exact: true })).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.endpoint-list').getByRole('cell', { name: 'channels.list', exact: true })).toBeVisible();
+  const chart = page.locator('.trend-box svg'); const box = (await chart.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
+  await expect(page.locator('.trend-tip')).toContainText('成功');
+});

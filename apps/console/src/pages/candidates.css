@@ -4,7 +4,7 @@
 .candidates .row-import { flex: none; height: 200px; min-height: 0; }
 .row-import>.import-card { grid-column: span 3; }
 /* .dashboard .panel sets min-height: 0; this list must keep its readable minimum. */
-.dashboard .candidates-list { flex: 1 1 0; min-height: 300px; }
+.dashboard.candidates .candidates-list { flex: 1 1 0; min-height: 300px; }
 
 /* KPI tones and the small bar series */
 .candidates .discover-kpi { min-height: 96px; }
@@ -59,7 +59,7 @@
 @media (max-width: 1040px), (max-height: 600px) {
   .candidates .row-import { height: auto; }
   .row-import>.import-card, .row-import>.imports-card { grid-column: 1 / -1; }
-  .candidates-list { flex: none; min-height: 360px; }
+  .dashboard.candidates .candidates-list { flex: none; min-height: 360px; }
 }
 @media (max-width: 680px) {
   .import-body { grid-template-columns: minmax(0, 1fr); }
