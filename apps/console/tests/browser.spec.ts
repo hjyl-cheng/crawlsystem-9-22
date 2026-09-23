@@ -299,3 +299,14 @@ test('data API page covers collector-side external calls and shows no figures un
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
   await expect(page.locator('.trend-tip')).toContainText('成功');
 });
+test('delivery treats sent as unconfirmed and shows the real completed-plan count until the sample preview', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await login(page, '/delivery');
+  await expect(page.getByRole('heading', { name: '发布交付', exact: true })).toBeVisible();
+  await expect(page.getByText('1 个计划已完成采集', { exact: false })).toBeVisible();
+  await expect(page.getByText('尚无交付记录', { exact: true })).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await page.getByRole('row', { name: /Deep Talk Pod/ }).click();
+  await expect(page.locator('.delivery-detail').getByText('回执到达前不计为已交付', { exact: false })).toBeVisible();
+  await page.getByRole('tab', { name: /已交付/ }).click();
+  await expect(page.locator('.delivery-list tbody tr')).toHaveCount(3);
+});

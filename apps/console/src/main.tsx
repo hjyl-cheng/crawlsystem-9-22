@@ -22,6 +22,7 @@ const Candidates = lazy(() => import('./pages/candidates.js'));
 const Update = lazy(() => import('./pages/update.js'));
 const Agent = lazy(() => import('./pages/agent.js'));
 const DataApi = lazy(() => import('./pages/data-api.js'));
+const Delivery = lazy(() => import('./pages/delivery.js'));
 
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -35,7 +36,7 @@ createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorB
     <Route path="plans" element={<Plans/>}/><Route path="plans/new" element={<CreatePlan/>}/><Route path="plans/:id" element={<PlanDetail/>}/>
     <Route path="channels" element={<Channels/>}/><Route path="channels/:id" element={<ChannelDetail/>}/>
     <Route path="workers" element={<Workers/>}/><Route path="errors" element={<Errors/>}/><Route path="receipts/:id" element={<ReceiptDetail/>}/>
-    <Route path="discover/queries" element={<Discover/>}/><Route path="discover/candidates" element={<Candidates/>}/><Route path="update" element={<Update/>}/><Route path="agent" element={<Agent/>}/><Route path="data-api" element={<DataApi/>}/>
+    <Route path="discover/queries" element={<Discover/>}/><Route path="discover/candidates" element={<Candidates/>}/><Route path="update" element={<Update/>}/><Route path="agent" element={<Agent/>}/><Route path="data-api" element={<DataApi/>}/><Route path="delivery" element={<Delivery/>}/>
     <Route path="*" element={<div className="empty-state"><h1>页面不存在</h1><Link to="/">返回采集总览</Link></div>}/>
   </Route>
 </Routes></Suspense></AuthProvider></BrowserRouter></AppErrorBoundary></React.StrictMode>);
