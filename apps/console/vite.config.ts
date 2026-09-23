@@ -43,7 +43,9 @@ export default defineConfig(({ mode }) => {
           rewrite: path => path.replace(/^\/api/, ''),
           // The preview gateway validates the browser origin above. Backend calls
           // retain the user's Bearer token and use a server-to-server hop.
-          configure(proxy) { proxy.on('proxyReq', request => request.removeHeader('origin')); },
+          configure(proxy) { proxy.on('proxyReq', (outgoing, incoming) => {
+            if (incoming.headers.origin) outgoing.setHeader('origin', env.CONTROL_API_BROWSER_ORIGIN || 'http://127.0.0.1:18102');
+          }); },
         },
       },
     },

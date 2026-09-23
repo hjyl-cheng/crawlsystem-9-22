@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test tests/api.test.ts",
     "test:browser": "playwright test --config playwright.config.ts",
-    "test:live": "playwright test --config playwright.live.config.ts"
+    "test:live": "playwright test --config playwright.live.config.ts",
+    "test:login-live": "playwright test --config playwright.login.config.ts"
   },
   "dependencies": {
     "@crawlsystem/contracts": "0.1.0",

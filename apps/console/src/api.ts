@@ -2,8 +2,8 @@ import { z } from 'zod';
 import {
   ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,
   ChannelSummarySchema, ChannelDetailSchema, WorkerSchema, StoredEventSchema,
-  ReceiptSchema, CreatePlanSchema, CancelPlanSchema, pageSchema,
-  type CreatePlan, type ErrorCode, type PlanStatus,
+  ReceiptSchema, CreatePlanSchema, CancelPlanSchema, LoginSchema, LogoutSchema, pageSchema,
+  type CreatePlan, type ErrorCode, type PlanStatus, type Login,
 } from '@crawlsystem/contracts';
 
 const messages: Record<ErrorCode, string> = {
@@ -40,7 +40,7 @@ export function normalizeBaseUrl(raw: string): string {
 
 export class ControlApi {
   readonly baseUrl: string;
-  constructor(baseUrl: string, private token: string, private unauthorized: () => void = () => {}, private timeoutMs = 10_000) {
+  constructor(baseUrl: string, private token = '', private unauthorized: () => void = () => {}, private timeoutMs = 10_000) {
     this.baseUrl = normalizeBaseUrl(baseUrl);
   }
   dispose() { this.token = ''; }
@@ -51,13 +51,13 @@ export class ControlApi {
     try {
       const response = await fetch(this.baseUrl + path, {
         method: body === undefined ? 'GET' : 'POST',
-        headers: { Accept: 'application/json', Authorization: `Bearer ${this.token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+        headers: { Accept: 'application/json', ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json', 'X-Console-Request': '1' }) },
         body: body === undefined ? undefined : JSON.stringify(body),
-        cache: 'no-store', credentials: 'omit', redirect: 'error',
+        cache: 'no-store', credentials: this.token ? 'omit' : 'include', redirect: 'error',
         signal: signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal,
       });
       // Check authentication even when a gateway returns a non-JSON error page.
-      if (response.status === 401) this.unauthorized();
+      if (response.status === 401 && path !== ApiRoutes.login) this.unauthorized();
       const raw: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         const parsed = ApiErrorSchema.safeParse(raw);
@@ -65,7 +65,7 @@ export class ControlApi {
         const retryAfter = response.headers.get('retry-after');
         const retryMs = retryAfter ? (/^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now()) : 0;
         throw new ApiFailure(
-          error ? messages[error.code] : response.status === 401 ? messages.UNAUTHENTICATED : response.status === 403 ? messages.FORBIDDEN : '接口请求失败',
+          path === ApiRoutes.login && response.status === 401 ? '账号或密码不正确' : path === ApiRoutes.login && response.status === 429 ? '登录尝试过于频繁，请稍后再试' : error ? messages[error.code] : response.status === 401 ? messages.UNAUTHENTICATED : response.status === 403 ? messages.FORBIDDEN : '接口请求失败',
           response.status, error?.code ?? 'UNAVAILABLE', error?.retryable === true,
           error?.correlation_id, error?.message, Number.isFinite(retryMs) ? Math.max(0, retryMs) : 0,
         );
@@ -82,6 +82,8 @@ export class ControlApi {
   }
 
   session = (signal?: AbortSignal) => this.request(ApiRoutes.session, SessionSchema, signal);
+  login = (body: Login, signal?: AbortSignal) => this.request(ApiRoutes.login, SessionSchema, signal, LoginSchema.parse(body));
+  logout = (signal?: AbortSignal) => this.request(ApiRoutes.logout, LogoutSchema, signal, {});
   plans = (cursor = '0', status?: PlanStatus, limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.plans}?${new URLSearchParams({ limit: String(limit), cursor, ...(status ? { status } : {}) })}`, pageSchema(PlanSchema), signal);
   plan = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.plan(id), PlanDetailSchema, signal);
   create = (body: CreatePlan, signal?: AbortSignal) => this.request(ApiRoutes.plans, PlanSchema, signal, CreatePlanSchema.parse(body));

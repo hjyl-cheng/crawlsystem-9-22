@@ -39,9 +39,11 @@ npm run preview --workspace @crawlsystem/console
 
 开发代理将 `/api/v1/*` 转发到独立 Fastify `/v1/*`。生产由网关执行同样转发，参考 [Nginx 示例](deploy/nginx.conf.example)。也可配置独立 HTTPS API 地址；后端必须明确允许控制台 Origin。`VITE_*` 不得包含密钥或账号凭据。
 
-当前 G0/G1 使用后端签发的短期 Bearer 令牌，登录页会请求 `/v1/session` 校验身份。令牌仅存内存，退出或页面刷新后清除；不写入浏览器存储、URL、日志或源码。`reader` 只读，`operator` 可创建和取消；`worker` 不可进入管理界面。正式账号、Keycloak、用户与角色管理尚未接入。
+默认使用账号和密码登录，Fastify 通过 `/v1/auth/login` 校验加盐 scrypt 密码摘要，并设置 HttpOnly / Secure / SameSite=Strict 会话 Cookie。页面刷新通过 `/v1/session` 恢复登录，最长 8 小时；退出调用 `/v1/auth/logout` 撤销服务端会话。账号密码与会话身份不写入浏览器存储、URL 或前端构建。`reader` 只读，`operator` 可创建和取消；`worker` 不可进入管理界面。
 
-后端启动与令牌签发见 [集成基线](../../docs/m1/integration-baseline.md)。控制台不签发令牌，不需要 JWT 签名密钥。使用主 Agent 已授权的本机联调环境时，令牌从其私有配置生成，不复制密钥到前端目录。
+当前为内部账号文件与单进程会话实现；重启 API 后需重新登录。Keycloak、账号自助管理、密码找回与多实例共享会话尚未接入。[后端账号配置](../control-api/README.md)说明凭据配置和测试方式。仅兼容旧 API 联调时显式设置 `VITE_AUTH_MODE=token`，公网预览不使用该模式。
+
+后端基础服务启动与 Worker 令牌签发见 [集成基线](../../docs/m1/integration-baseline.md)。静态前端不签发令牌，不需要 JWT 签名密钥。账号验证位于独立 Fastify API。
 
 ## 页面与状态
 
@@ -85,3 +87,5 @@ npm run test:live --workspace @crawlsystem/console
 可用 `CONSOLE_CONTROL_URL` / `CONSOLE_INGEST_URL` 指定实际服务，前端开发代理也需指向相同 Control。真实测试通过受控固定样本提交验证 API + PostgreSQL，包含实际等待、回执、错误事件、版本冲突、取消、只读拒绝和 90 秒心跳过期。不拦截网络、不伪造服务端失联、不修改数据库，也不模拟已经启动 Temporal。真实 Worker / Temporal 全链路由主 Agent 和执行 Agent 集成后另行验收。
 
 真实测试关闭网络 trace、录像和失败自动截图，以免记录认证头或表单。只在登录后的指定页面截图。证据写到 `docs/evidence/`，结果详见 [控制台报告](../../docs/m1/reports/console.md)。
+
+账号登录的公网测试：提供 `CONSOLE_LOGIN_FILE`（私有 JSON，含 username/password）和 `CONSOLE_PREVIEW_URL` 后执行 `npm run test:login-live --workspace @crawlsystem/console`。它验证密码错误、登录、刷新恢复、只读写入拒绝、CSRF、退出及旧 Cookie 重放拒绝，不采集网络 trace 或表单凭据。

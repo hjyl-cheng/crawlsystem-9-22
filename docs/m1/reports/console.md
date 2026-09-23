@@ -1,6 +1,6 @@
 # M1 控制台交付记录
 
-日期：2026-09-23。独立前端已实现，固定样本的真实 Fastify API + PostgreSQL 浏览器验证通过。具备模块集成条件；共享锁文件、正式身份服务和 Temporal/实际 Worker 全链路仍需对应负责人集成，本文不代表 M1 整体验收通过。
+日期：2026-09-23。独立前端已实现，固定样本的真实 Fastify API + PostgreSQL 浏览器验证通过。具备模块集成条件；共享锁文件、正式身份管理和 Temporal/实际 Worker 全链路仍需对应负责人集成，本文不代表 M1 整体验收通过。
 
 ## 分支与版本
 
@@ -10,7 +10,7 @@
 - G1 后端：`bc720cb2d3dfc47f3505ed0ed7fabac9508a4bb8`。
 - 本模块实现基线：`0438484c1a22c9cb777290b4941f5c752b4fd2c6`（包含开发 PG 隧道重连）。
 - 应用、测试与证据提交：`fdd8501b5eb8c3bd7e1a72c9eda813861059d272`。本报告在其后独立提交；报告提交可通过 `git log -1 --format=%H -- docs/m1/reports/console.md` 查询。
-- 接口与 schema：`@crawlsystem/contracts` 的 `m1.v1`。本次仅修改 `apps/console/` 与本报告，未修改后端、数据库、公共契约或根锁文件。
+- 接口与 schema：`@crawlsystem/contracts` 的 `m1.v1`。首轮仅修改 `apps/console/` 与本报告。后续用户要求账号密码登录，本分支新增了所需 Control API、公共登录契约和共享 HTTP 认证支持，详见本文末尾补充；未修改数据库迁移或根锁文件。
 
 ## 已实现范围
 
@@ -22,7 +22,7 @@
 | UI-04 操作交互 | 创建采用稳定 `request_id` 和同步连点保护；未确认的创建输入按工作空间/用户存入 sessionStorage，导航后可重放原操作。取消需确认，携带 `command_id` 和捕获的期望版本，冲突要求显式刷新、不自动换版本重提；后端拒绝不会显示成功。 |
 | UI-05 验证与文档 | 6 项客户端测试、16 项浏览器行为测试、3 条真实 API E2E，类型检查和生产构建通过；运行说明、环境变量、Nginx 示例及实际页面截图已提交。 |
 
-应用不包含演示数据回退，不直接连接数据库、Temporal 或代理服务。测试替身仅在 `tests/` 中。正式账号/Keycloak 尚未接入，登录页明确标识 M1 联调令牌；令牌仅在页面内存保存，退出或刷新后清除。
+应用不包含演示数据回退，不直接连接数据库、Temporal 或代理服务。测试替身仅在 `tests/` 中。默认登录已改为账号密码与 HttpOnly 会话 Cookie，刷新页面可恢复。Keycloak 和正式账号管理尚未接入；显式开发令牌模式只用于旧接口 E2E。
 
 页面区分当前已入库数据、本轮领域结果、Agent 执行和对外交付。未知值不会填零；评论未入库、已采集为空和已关闭分别呈现。M1 样本不使用代理、Agent 尚未执行、交付未启用均按现有能力如实显示。
 
@@ -101,7 +101,7 @@ npm run build --workspace @crawlsystem/console
 
 ## 已知限制与后续联调
 
-1. 正式登录、Keycloak、账户/角色管理尚未实现。当前接入既有 G0/G1 的 reader/operator 开发身份；后端鉴权是写入权限的最终依据。
+1. 已提供内部账号密码登录；Keycloak、账号/角色管理页面及多副本会话存储尚未实现。会话存在单个 API 进程中，重启需重新登录；业务权限继续使用 reader/operator 并由后端验证。
 2. 实际 Worker/Temporal 的启动、恢复、取消传播与端到端执行证据由主 Agent 和执行 Agent 集成后补齐。当前 UI 已显示契约中的 Workflow 身份、执行代次和上报事件，不以身份已分配推断执行已经启动。
 3. 当前错误 API 没有首次/最近时间聚合或直接回执/节点身份。页面展示单次事件时间、关联 Worker 和该 Plan 的最近回执，不虚构直接关联。Worker/错误定位依赖有界列表翻页，当前页缺少目标会明确提示。
 4. 频道详情只有契约规定的有界数据，没有视频/评论的游标分页接口。系统总量、趋势统计、节点 CPU/内存和代理资源查询尚未提供。
@@ -111,8 +111,21 @@ npm run build --workspace @crawlsystem/console
 
 ## 开发预览入口（2026-09-23 补充）
 
-按用户要求已开放免费 HTTPS 预览：<https://occupations-ferry-advanced-recommends.trycloudflare.com>。使用 Cloudflare Quick Tunnel、独立静态预览端口 `18103` 和自动构建监听，保留后端 Bearer 登录与权限。三个用户级 systemd 服务负责构建、静态预览和隧道，退出终端后继续运行。
+按用户要求已开放免费 HTTPS 预览：<https://occupations-ferry-advanced-recommends.trycloudflare.com>。使用 Cloudflare Quick Tunnel、独立静态预览端口 `18103` 和自动构建监听，当前采用 Fastify 账号密码登录与权限。四个用户级 systemd 服务负责 API、构建、静态预览和隧道，退出终端后继续运行。
 
-实际公网验证首页/SPA 深层地址 200、未登录 API 401、只读身份登录及查询成功、非允许来源 403，浏览器无运行错误。登录后的数据来自既有固定样本工作空间；只读令牌存于忽略的私有运行目录，有效期 24 小时，未写入链接或构建。
+实际公网验证首页/SPA 深层地址 200、未登录 API 401、只读身份登录及查询成功、非允许来源 403，浏览器无运行错误。登录后的数据来自既有固定样本工作空间；只读账号密码存于忽略的私有运行目录，服务端仅保存密码摘要，未写入链接或构建。
 
 免费地址随隧道重建可能变化；当前地址、更新/停止命令、域名变更处理及测试证据见[公网预览说明](../../../apps/console/docs/preview.md)。本入口用于开发预览，不代表正式生产部署或正式账户系统已完成。
+
+
+## 账号密码登录补充（2026-09-23）
+
+用户反馈手动令牌登录不便后，已部署标准账号密码表单。核对时原预览令牌在后端与公网接口均返回 200，尚未过期，因此不能把用户看到的泛化 401 提示解释为已确认的令牌过期。新表单将密码错误与会话过期分别提示，并以 Cookie 恢复刷新后的登录。
+
+为完成这项明确追加的登录需求，改动包含 `apps/control-api/`、`packages/contracts/` 的可追加登录 schema/路由、`packages/http/` 的认证扩展，以及前端和测试。`m1.v1` 既有业务字段未改变；Worker Bearer 兼容。主 Agent 需一起集成后端、公共契约与前端，不能只合入 UI。
+
+独立预览 Control API 在 `18104` 运行，使用本分支代码和既有隔离测试库，单连接池。原 `18100/18101` 服务未重启。服务端密码为随机盐 scrypt 摘要；8 小时不透明会话 Cookie、退出撤销、登录预算与 Cookie 写入 CSRF 校验均已实现。账号文件和会话说明见 [Control API README](../../../apps/control-api/README.md)。
+
+新增验证：`node --import tsx --test apps/control-api/test/console-auth.test.ts` 6/6 通过；原 16 项浏览器测试、6 项客户端测试和 3 项契约测试通过。公网 `test:login-live` 1/1 通过，包含密码错误、正确登录、页面刷新恢复、只读写入 403、缺失 CSRF/外部来源 403、退出后旧 Cookie 重放 401，浏览器无运行错误。[完整公网结果](../../../apps/console/docs/evidence/public-password-results.json)。
+
+根类型检查与前端生产构建通过。使用现有隔离 PG 环境运行 `node --env-file=.runtime/main.env --import tsx --test --test-name-pattern='HTTP authentication|all console query' /home/ubuntu/workspace/crawlsystem-console/tests/integration/main.test.ts`（工作目录为主 Agent worktree，`PG_POOL_MAX=1`），2/2 通过，验证原有 Bearer 身份/权限/来源/输入限制和全部控制台查询的持久结果契约。

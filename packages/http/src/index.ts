@@ -7,7 +7,7 @@ import { Store, StoreError } from '@crawlsystem/store';
 import { authenticate } from './auth.ts';
 
 declare module 'fastify' { interface FastifyRequest { principal:Principal; } }
-export interface ServerOptions { store:Store; signingKey:Uint8Array; logger?:boolean; allowedOrigin?:string; maxInFlight?:number; }
+export interface ServerOptions { store:Store; signingKey:Uint8Array; logger?:boolean; allowedOrigin?:string; maxInFlight?:number; authenticateRequest?:(request:FastifyRequest)=>Promise<Principal|undefined>; }
 export function pagination(query:unknown): {limit:number;offset:number;status?:string} {
   const q=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(20),cursor:z.string().regex(/^\d{1,6}$/).default('0'),status:PlanStatusSchema.optional()}).parse(query);
   const offset=Number(q.cursor);if(offset>100000) throw new StoreError('INVALID_REQUEST','Cursor exceeds maximum',400);
@@ -26,7 +26,7 @@ export function createServer(service:'control'|'ingest',options:ServerOptions):F
     reply.header('x-request-id',request.id).header('cache-control','no-store').header('x-content-type-options','nosniff');
     const origin=request.headers.origin;
     if(origin && options.allowedOrigin && origin===options.allowedOrigin) {
-      reply.header('access-control-allow-origin',origin).header('vary','Origin').header('access-control-allow-headers','Authorization,Content-Type').header('access-control-allow-methods','GET,POST,OPTIONS');
+      reply.header('access-control-allow-origin',origin).header('access-control-allow-credentials','true').header('vary','Origin').header('access-control-allow-headers','Authorization,Content-Type,X-Console-Request').header('access-control-allow-methods','GET,POST,OPTIONS');
       if(request.method==='OPTIONS') return reply.code(204).send();
     }
     if(origin && origin!==options.allowedOrigin) throw new StoreError('FORBIDDEN','Origin is not allowed',403);
@@ -35,7 +35,10 @@ export function createServer(service:'control'|'ingest',options:ServerOptions):F
     let released=false;
     const release=()=>{if(!released){released=true;inflight--;}};
     reply.raw.once('finish',release);reply.raw.once('close',release);
-    if(request.url.startsWith('/v1/')) request.principal=await authenticate(request.headers.authorization,options.signingKey);
+    if(request.url.startsWith('/v1/')) {
+      const principal=options.authenticateRequest ? await options.authenticateRequest(request) : await authenticate(request.headers.authorization,options.signingKey);
+      if(principal) request.principal=principal;
+    }
   });
   app.addHook('onResponse',async(request,reply)=>{
     const route=request.routeOptions.url ?? 'unmatched';

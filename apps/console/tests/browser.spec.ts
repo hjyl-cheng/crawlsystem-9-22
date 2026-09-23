@@ -3,12 +3,15 @@ import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Wor
 import { detailFixture, channelFixture, workerFixture, errorFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
-  const state = { detail, role, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false };
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
     const failure = (status: number, code: string) => json({ error: { code, message: `测试替身：${code}`, retryable: status === 503, correlation_id: 'fixture-correlation' } }, status);
-    if (path === '/v1/session') return json({ subject: 'browser-fixture', workspace_id: 'console-browser-fixture', role: state.role, contract_version: CONTRACT_VERSION });
+    const session = { subject: 'browser-fixture', workspace_id: 'console-browser-fixture', role: state.role, contract_version: CONTRACT_VERSION };
+    if (path === '/v1/auth/login') { state.authenticated = true; return json(session); }
+    if (path === '/v1/auth/logout') { state.authenticated = false; return json({ ok: true }); }
+    if (path === '/v1/session') return state.authenticated ? json(session) : failure(401, 'UNAUTHENTICATED');
     if (method === 'GET') state.reads.push(url.pathname + url.search);
     if (state.fail) return failure(503, 'UNAVAILABLE');
     if (state.malformed) return json({ unexpected: true });
@@ -41,7 +44,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
   return state;
 }
 async function login(page: Page, path = '/') {
-  await page.goto(path); await page.getByLabel('访问令牌', { exact: true }).fill('browser-fixture-token'); await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.goto(path); await page.getByLabel('账号', { exact: true }).fill('fixture'); await page.getByLabel('密码', { exact: true }).fill('browser-fixture-password'); await page.getByRole('button', { name: '进入控制台' }).click();
   await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible();
 }
 
@@ -50,8 +53,7 @@ test('empty overview is explicit; read-only users cannot create even through a d
   await expect(page.getByText('尚无登记的 Worker')).toBeVisible();
   await expect(page.getByText('尚无频道记录')).toBeVisible();
   await expect(page.getByRole('link', { name: '创建样本计划' })).toHaveCount(0);
-  await page.goto('/plans/new'); await expect(page.getByRole('heading', { name: '连接工作空间' })).toBeVisible();
-  await page.getByLabel('访问令牌', { exact: true }).fill('fixture-reader'); await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.goto('/plans/new'); // The authenticated session survives a full page reload.
   await expect(page.getByRole('alert')).toContainText('没有创建计划的权限');
   await expect(page.getByRole('button', { name: '创建并查看计划' })).toHaveCount(0);
 });
@@ -135,7 +137,7 @@ test('unauthenticated responses clear the visible workspace', async ({ page }) =
   await page.route('**/api/v1/plans?**', route => route.fulfill({ status: 401, json: { error: { code: 'UNAUTHENTICATED', message: 'expired', retryable: false, correlation_id: 'fixture-401' } } }));
   await page.getByRole('button', { name: '刷新数据' }).click(); await expect(page.getByRole('heading', { name: '连接工作空间' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: '主导航' })).toHaveCount(0);
-  expect(await page.evaluate(() => Object.values(localStorage).some(value => String(value).includes('browser-fixture-token')))).toBe(false);
+  expect(await page.evaluate(() => Object.values(localStorage).some(value => String(value).includes('browser-fixture-password')))).toBe(false);
 });
 test('leaving a list stops its polling; phone layout has a working navigation drawer', async ({ page }) => {
   const state = await mock(page, detailFixture()); await page.setViewportSize({ width: 390, height: 844 }); await login(page, '/plans');

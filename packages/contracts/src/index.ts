@@ -12,6 +12,9 @@ export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 export const RoleSchema = z.enum(['reader', 'operator', 'worker']);
 export type Role = z.infer<typeof RoleSchema>;
 export interface Principal { subject: string; workspace_id: string; role: Role; }
+export const LoginSchema = z.strictObject({ username: z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_.-]+$/), password: z.string().min(1).max(256) });
+export type Login = z.infer<typeof LoginSchema>;
+export const LogoutSchema = z.strictObject({ ok: z.literal(true) });
 export const IdSchema = z.string().min(1).max(160).regex(/^[a-zA-Z0-9:_./-]+$/);
 const Timestamp = z.iso.datetime({ offset: true });
 const Hash = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -140,7 +143,7 @@ export const ApiErrorSchema: z.ZodType<ApiError> = z.strictObject({ error: z.str
 export const WorkflowInputSchema: z.ZodType<WorkflowInput> = z.strictObject({ schema_version: z.literal(CONTRACT_VERSION), plan_id: z.uuid(), workspace_id: IdSchema, execution_epoch: z.number().int().positive(), input_hash: Hash, workflow_id: z.string() });
 export const pageSchema = <T extends z.ZodType>(item: T) => z.strictObject({ items: z.array(item).max(100), next_cursor: z.string().nullable() });
 export const ApiRoutes = {
-  session: '/v1/session', plans: '/v1/plans', channels: '/v1/channels', workers: '/v1/workers', errors: '/v1/errors',
+  session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions',
   plan: (id: string) => `/v1/plans/${encodeURIComponent(id)}`,
   input: (id: string) => `/v1/plans/${encodeURIComponent(id)}/input`,
