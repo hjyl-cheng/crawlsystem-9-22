@@ -10,8 +10,9 @@ const MAX_BACKOFF_MS = 60_000;
 interface Snapshot<T> { key: string; data?: T; error?: ApiFailure; loading: boolean; refreshing: boolean; updatedAt?: number; paused: boolean; }
 export type Resource<T> = Omit<Snapshot<T>, 'key'> & { refresh: () => void };
 
-/** One in-flight request per mounted resource, with finite polling and cancellation. */
-export function useResource<T>(key: string, loader: (signal: AbortSignal) => Promise<T>, poll: boolean | ((data: T) => boolean) = true): Resource<T> {
+/** One in-flight request per mounted resource, with finite polling and cancellation.
+ * `intervalMs` is the delay after a success; failures back off from it. */
+export function useResource<T>(key: string, loader: (signal: AbortSignal) => Promise<T>, poll: boolean | ((data: T) => boolean) = true, intervalMs = POLL_INTERVAL_MS): Resource<T> {
   const loadRef = useRef(loader); loadRef.current = loader;
   const pollRef = useRef(poll); pollRef.current = poll;
   const [revision, setRevision] = useState(0);
@@ -32,7 +33,7 @@ export function useResource<T>(key: string, loader: (signal: AbortSignal) => Pro
       if (Date.now() < nextAllowedAt) { schedule(nextAllowedAt - Date.now()); return; }
       inFlight = true; requests++;
       setState(s => ({ ...s, refreshing: true, paused: false }));
-      let delay = POLL_INTERVAL_MS;
+      let delay = intervalMs;
       try {
         const data = await loadRef.current(controller.signal);
         if (disposed) return;
@@ -46,7 +47,7 @@ export function useResource<T>(key: string, loader: (signal: AbortSignal) => Pro
         stopped = !failure.retryable || pollRef.current === false;
         // Respect longer server delays by pausing rather than retrying early.
         if (failure.retryAfterMs > MAX_BACKOFF_MS) stopped = true;
-        delay = Math.max(Math.min(MAX_BACKOFF_MS, POLL_INTERVAL_MS * 2 ** failures), Math.min(MAX_BACKOFF_MS, failure.retryAfterMs));
+        delay = Math.max(Math.min(MAX_BACKOFF_MS, intervalMs * 2 ** failures), Math.min(MAX_BACKOFF_MS, failure.retryAfterMs));
         nextAllowedAt = Date.now() + delay;
         setState(s => ({ ...s, data: [401, 403, 404].includes(failure.status) ? undefined : s.data, error: failure, loading: false, refreshing: false, paused: stopped }));
       } finally { inFlight = false; }
@@ -60,7 +61,7 @@ export function useResource<T>(key: string, loader: (signal: AbortSignal) => Pro
     document.addEventListener('visibilitychange', visibility);
     void run();
     return () => { disposed = true; controller.abort(); clearTimeout(timer); document.removeEventListener('visibilitychange', visibility); };
-  }, [key, revision]);
+  }, [key, revision, intervalMs]);
   const current = state.key === key ? state : { loading: true, refreshing: false, paused: false };
   return { ...current, refresh: () => setRevision(r => r + 1) };
 }

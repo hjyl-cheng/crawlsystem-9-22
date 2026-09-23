@@ -1,0 +1,22 @@
+# Merge this job into the existing Prometheus scrape_configs. No new service.
+job_name: crawlsystem-control-preview
+scrape_interval: 30s
+scrape_timeout: 10s
+kubernetes_sd_configs:
+  - role: pod
+    namespaces:
+      names: [control]
+relabel_configs:
+  - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+    regex: control-api-preview
+    action: keep
+  - source_labels: [__meta_kubernetes_pod_container_port_name]
+    regex: http
+    action: keep
+  - source_labels: [__meta_kubernetes_pod_ready]
+    regex: 'true'
+    action: keep
+  - source_labels: [__meta_kubernetes_pod_name]
+    target_label: pod
+  - source_labels: [__meta_kubernetes_namespace]
+    target_label: namespace

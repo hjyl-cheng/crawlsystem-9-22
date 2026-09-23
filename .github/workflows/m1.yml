@@ -13,6 +13,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:contracts
       - run: npm run test:auth
+      - run: npm run test:http
       - run: npm run test:console
       - run: npm run build:console
       - run: npx playwright install --with-deps chromium

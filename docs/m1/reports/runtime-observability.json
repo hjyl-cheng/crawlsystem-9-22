@@ -1,0 +1,27 @@
+{
+  "verified_at": "2026-09-23T13:06:12.639304+00:00",
+  "build": "653a09601e8188c6643cfae840ad0f60cdf8e3ea",
+  "prometheus_targets": [
+    {
+      "pod": "control-api-preview-65f9dcb94b-sdwvs",
+      "health": "up",
+      "last_error": ""
+    },
+    {
+      "pod": "control-api-preview-65f9dcb94b-4lhmr",
+      "health": "up",
+      "last_error": ""
+    }
+  ],
+  "business_receipts_series": 2,
+  "loki": {
+    "trace_id": "3e2c02494bdd1bd391468813b8fe7d7f",
+    "span_count": 12,
+    "nodes": [
+      "a1",
+      "s2"
+    ],
+    "query": "{job=\"kubernetes-pods\"} | json | event=\"trace_span\" | trace_id=\"3e2c02494bdd1bd391468813b8fe7d7f\""
+  },
+  "scope": "HTTP spans and metrics in existing Prometheus/Alloy/Loki; Temporal/Worker trace continuation not yet implemented"
+}

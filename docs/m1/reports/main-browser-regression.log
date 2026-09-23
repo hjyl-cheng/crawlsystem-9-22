@@ -1,31 +1,51 @@
 
+> crawlsystem-business@0.1.0 test:browser
+> npm run test:browser --workspace @crawlsystem/console -- --workers=1
+
+
 > @crawlsystem/console@0.1.0 test:browser
 > playwright test --config playwright.config.ts --workers=1
 
-[WebServer] (node:815069) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:1089531) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:815107) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:1089545) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
 
-Running 16 tests using 1 worker
+Running 29 tests using 1 worker
 
-(node:815144) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:1089731) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-  ✓   1 tests/browser.spec.ts:51:1 › empty overview is explicit; read-only users cannot create even through a direct URL (5.9s)
-  ✓   2 tests/browser.spec.ts:60:1 › waiting plans distinguish partially available data, unexecuted Agent and delivery (1.9s)
-  ✓   3 tests/browser.spec.ts:72:1 › completed sample keeps Agent and delivery boundaries visible (1.9s)
-  ✓   4 tests/browser.spec.ts:78:1 › rapid create clicks produce one request and one logical plan (1.9s)
-  ✓   5 tests/browser.spec.ts:84:1 › lost creation response retries the original identity across navigation (2.1s)
-  ✓   6 tests/browser.spec.ts:91:1 › cancel conflict requires explicit refresh and preserves the submitted expected version (2.2s)
-  ✓   7 tests/browser.spec.ts:102:1 › backend permission denial is visible and never shown as successful cancellation (1.9s)
-  ✓   8 tests/browser.spec.ts:108:1 › worker loss of heartbeat follows the server state (1.5s)
-  ✓   9 tests/browser.spec.ts:113:1 › error entry links to the correct plan and its persisted receipt (1.8s)
-  ✓  10 tests/browser.spec.ts:119:1 › network failure marks old results stale and manual refresh recovers (2.4s)
-  ✓  11 tests/browser.spec.ts:124:1 › malformed response does not become an empty successful page (2.5s)
-  ✓  12 tests/browser.spec.ts:128:1 › pagination and filtering issue bounded requests with no invented totals (4.0s)
-  ✓  13 tests/browser.spec.ts:135:1 › unauthenticated responses clear the visible workspace (3.6s)
-  ✓  14 tests/browser.spec.ts:142:1 › leaving a list stops its polling; phone layout has a working navigation drawer (6.0s)
-  ✓  15 tests/browser.spec.ts:152:1 › loading remains distinct from an empty successful result (1.8s)
-  ✓  16 tests/browser.spec.ts:163:1 › continuous dependency failure reaches a finite polling budget (2.1s)
+  ✓   1 tests/browser.spec.ts:65:1 › empty overview is explicit; read-only users cannot create even through a direct URL (3.1s)
+  ✓   2 tests/browser.spec.ts:74:1 › waiting plans distinguish partially available data, unexecuted Agent and delivery (1.9s)
+  ✓   3 tests/browser.spec.ts:86:1 › completed sample keeps Agent and delivery boundaries visible (1.6s)
+  ✓   4 tests/browser.spec.ts:92:1 › rapid create clicks produce one request and one logical plan (1.7s)
+  ✓   5 tests/browser.spec.ts:98:1 › lost creation response retries the original identity across navigation (2.2s)
+  ✓   6 tests/browser.spec.ts:105:1 › cancel conflict requires explicit refresh and preserves the submitted expected version (2.5s)
+  ✓   7 tests/browser.spec.ts:116:1 › backend permission denial is visible and never shown as successful cancellation (1.8s)
+  ✓   8 tests/browser.spec.ts:122:1 › worker loss of heartbeat follows the server state (1.7s)
+  ✓   9 tests/browser.spec.ts:127:1 › error entry links to the correct plan and its persisted receipt (1.7s)
+  ✓  10 tests/browser.spec.ts:133:1 › network failure marks old results stale and manual refresh recovers (1.9s)
+  ✓  11 tests/browser.spec.ts:138:1 › malformed response does not become an empty successful page (1.5s)
+  ✓  12 tests/browser.spec.ts:142:1 › pagination and filtering issue bounded requests with no invented totals (1.9s)
+  ✓  13 tests/browser.spec.ts:149:1 › unauthenticated responses clear the visible workspace (1.7s)
+  ✓  14 tests/browser.spec.ts:156:1 › leaving a list stops its polling; phone layout has a working navigation drawer (1.9s)
+  ✓  15 tests/browser.spec.ts:166:1 › loading remains distinct from an empty successful result (1.5s)
+  ✓  16 tests/browser.spec.ts:177:1 › continuous dependency failure reaches a finite polling budget (2.2s)
+  ✓  17 tests/browser.spec.ts:196:1 › overview completeness shows the backend aggregate, not counts derived from list pages (2.0s)
+[WebServer] 8:52:57 PM [vite] (client) [Unhandled error] Error: ResizeObserver loop completed with undelivered notifications.
+[WebServer]  > ../../../../../../@vite/client:305:50
+[WebServer]
+  ✓  18 tests/browser.spec.ts:205:1 › desktop overview fits one screen and card columns line up (2.2s)
+  ✓  19 tests/browser.spec.ts:217:1 › overview polling updates the pipeline in place without hiding nodes or edges (2.7s)
+  ✓  20 tests/browser.spec.ts:230:1 › query discovery shows no figures until the sample preview is switched on, and then warns (1.9s)
+  ✓  21 tests/browser.spec.ts:243:1 › candidate channels show no figures until the sample preview is switched on, and then warn (1.6s)
+  ✓  22 tests/browser.spec.ts:256:1 › full collection shows backend plan statistics next to the real plan list (1.8s)
+  ✓  23 tests/browser.spec.ts:267:1 › update collection shows no figures until the sample preview is switched on, and has no Clock menu (1.7s)
+  ✓  24 tests/browser.spec.ts:278:1 › agent tasks show only the real waiting-plan count until the sample preview is switched on (1.8s)
+  ✓  25 tests/browser.spec.ts:290:1 › data API page covers collector-side external calls and shows no figures until the sample preview (1.7s)
+  ✓  26 tests/browser.spec.ts:302:1 › delivery treats sent as unconfirmed and shows the real completed-plan count until the sample preview (1.8s)
+  ✓  27 tests/browser.spec.ts:313:1 › channel management lists real channel facts and shows the selected channel beside the list (1.7s)
+  ✓  28 tests/browser.spec.ts:325:1 › IP resource management replaces three proxy menus and reports the real proxy status of Workers (1.7s)
+  ✓  29 tests/browser.spec.ts:337:1 › worker management merges the node menus and shows real heartbeats with servers derived from them (1.9s)
 
-  16 passed (1.2m)
+  29 passed (59.0s)

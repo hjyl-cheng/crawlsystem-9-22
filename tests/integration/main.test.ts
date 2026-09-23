@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { Store, StoreError } from '@crawlsystem/store';
 import { createPool } from '@crawlsystem/store/config';
 import { migrate } from '@crawlsystem/store/migrate';
+import {prepareDatabase} from './database-ready.ts';
 import { fixtureSubmission, submissionHash } from '@crawlsystem/contracts/hash';
 import { ApiErrorSchema, ChannelDetailSchema, PlanDetailSchema, PlanSchema, ReceiptSchema, SessionSchema, WorkerSchema, type Domain, type Principal, type Submission, type WorkflowStarter } from '@crawlsystem/contracts';
 import { issueToken } from '@crawlsystem/http/auth';
@@ -17,7 +18,7 @@ import { IntentDispatcher } from '../../apps/control-api/src/dispatcher.ts';
 const pool=createPool(),store=new Store(pool),key=randomBytes(48);
 const control=createControlApi({store,signingKey:key,allowedOrigin:'http://127.0.0.1:18102'});
 const ingest=createIngestApi({store,signingKey:key});
-before(async()=>{await migrate(pool);await Promise.all([control.ready(),ingest.ready()]);});
+before(async()=>{await prepareDatabase(pool);await Promise.all([control.ready(),ingest.ready()]);});
 after(async()=>{await Promise.all([control.close(),ingest.close()]);await pool.end();});
 function identities() {
   const workspace_id=`test-${randomUUID()}`;

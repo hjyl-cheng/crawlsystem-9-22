@@ -1,0 +1,12 @@
+/* One type scale for the whole console. Every stylesheet takes font sizes from
+   these roles instead of literals, so the same role reads the same everywhere. */
+:root {
+  --fs-display: 26px; /* KPI headline figures */
+  --fs-title: 22px;   /* page title */
+  --fs-metric: 20px;  /* secondary figures: funnel steps, status cells, stats */
+  --fs-card: 15px;    /* card titles */
+  --fs-body: 13px;    /* emphasis, primary navigation */
+  --fs-text: 12px;    /* table cells, fields, buttons, links, subtitles */
+  --fs-meta: 11px;    /* table headers, notes, badges, footers */
+  --fs-micro: 10px;   /* smallest; dense tags and in-diagram captions only */
+}

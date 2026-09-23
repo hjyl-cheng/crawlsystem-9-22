@@ -24,9 +24,13 @@
     "dev:ingest": "tsx apps/ingest/src/main.ts",
     "dev:dispatcher": "tsx apps/control-api/src/dispatch-main.ts",
     "console:accounts": "tsx apps/control-api/src/console-accounts.ts",
-    "token": "tsx scripts/dev/token.ts"
+    "token": "tsx scripts/dev/token.ts",
+    "test:http": "tsx --test packages/http/test/*.test.ts"
   },
   "dependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/core": "2.11.0",
+    "@opentelemetry/sdk-trace-base": "2.11.0",
     "@temporalio/activity": "1.24.0",
     "@temporalio/client": "1.24.0",
     "@temporalio/common": "1.24.0",
@@ -47,6 +51,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
+    "esbuild": "0.28.2",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vite": "8.3.0"

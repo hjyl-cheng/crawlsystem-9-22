@@ -58,7 +58,7 @@ function Content({ detail, refresh, refreshing }: { detail: PlanDetail; refresh:
   const latestEvent = [...events].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
   const reasons = events.filter(event => ['WAITING', 'ERROR', 'FAILED'].includes(event.kind));
   return <>
-    <div className="plan-summary"><div className="inline"><SampleBadge/><PlanBadge status={plan.status}/><span className="muted">状态更新于 {time(plan.updated_at)}</span></div><CancelAction plan={plan} refresh={refresh} refreshing={refreshing}/></div>
+    <div className="plan-summary"><div className="inline"><SampleBadge/><PlanBadge status={plan.status}/><span className={`summary-progress ${applied < plan.required_domains.length ? 'partial' : ''}`} title="必需领域入库进度"><span><i style={{ width: `${applied / plan.required_domains.length * 100}%` }}/></span>{applied} / {plan.required_domains.length} 必需领域已入库</span><span className="muted">状态更新于 {time(plan.updated_at)}</span></div><CancelAction plan={plan} refresh={refresh} refreshing={refreshing}/></div>
     {applied > 0 && applied < plan.required_domains.length && <div className="notice warning">部分必需领域已有入库结果（{applied} / {plan.required_domains.length}）。请继续核对本轮计划状态与未完成领域。</div>}
     <div className="detail-grid"><Panel title="本轮目标与业务身份"><Fields rows={[
       ['Plan ID', <code>{plan.plan_id}</code>], ['业务轮次 ID', <code>{plan.run_id}</code>], ['频道', <Link to={channelPath(plan.channel_id)}>{plan.channel_id}</Link>], ['工作空间', plan.workspace_id],
@@ -77,5 +77,5 @@ function Content({ detail, refresh, refreshing }: { detail: PlanDetail; refresh:
 export default function PlanDetailPage() {
   const { id = '' } = useParams(); const { api } = useAuth();
   const resource = useResource(`plan:${id}`, signal => api.plan(id, signal), d => !isTerminal(d.plan));
-  return <><PageHeading title="Plan 详情" description="核对本轮领域结果、执行阶段与持久回执。"><Link className="button" to="/plans">返回计划列表</Link></PageHeading><ResourceView resource={resource}>{detail => <Content key={id} detail={detail} refresh={resource.refresh} refreshing={resource.refreshing}/>}</ResourceView></>;
+  return <><PageHeading title="采集任务详情" description="核对本轮领域结果、执行阶段与持久回执。"><Link className="button" to="/plans">返回计划列表</Link></PageHeading><ResourceView resource={resource}>{detail => <Content key={id} detail={detail} refresh={resource.refresh} refreshing={resource.refreshing}/>}</ResourceView></>;
 }

@@ -1,5 +1,22 @@
 {
-  "name": "@crawlsystem/http", "version": "0.1.0", "private": true, "type": "module",
-  "exports": {".": "./src/index.ts", "./auth": "./src/auth.ts", "./runtime": "./src/runtime.ts"},
-  "dependencies": {"@crawlsystem/contracts":"0.1.0", "@crawlsystem/store":"0.1.0", "fastify":"5.12.5", "jose":"6.2.12", "zod":"4.6.5"}
+  "name": "@crawlsystem/http",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./auth": "./src/auth.ts",
+    "./runtime": "./src/runtime.ts",
+    "./tracing": "./src/tracing.ts"
+  },
+  "dependencies": {
+    "@crawlsystem/contracts": "0.1.0",
+    "@crawlsystem/store": "0.1.0",
+    "fastify": "5.12.5",
+    "jose": "6.2.12",
+    "zod": "4.6.5",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/core": "2.11.0",
+    "@opentelemetry/sdk-trace-base": "2.11.0"
+  }
 }

@@ -1,0 +1,32 @@
+/* Full collection. Uses the discover chrome and 4-column grid: funnel spans 3
+   with waiting reasons beside it; status spans 2 beside domains and errors;
+   the plan list takes the remaining height and scrolls inside. */
+.row-flow>.plans-funnel { grid-column: span 3; }
+.plans-page .row-state>.span-2 { grid-column: span 2; }
+.funnel.six { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
+.funnel.six .funnel-step:not(:last-child)::after { right: -13px; }
+.source-tag { padding: 1px 5px; border-radius: 3px; background: #eaf2ff; color: #2562cf; font-size: var(--fs-meta); }
+.status-grid.six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.plans-page .row-state { min-height: 176px; }
+.plans-page .row-state .table-scroll { padding: 0 10px 8px; }
+.domain-bars { flex: 1; display: grid; align-content: center; gap: 10px; padding: 2px 14px 12px; }
+.domain-bars>div { display: grid; grid-template-columns: 76px minmax(0, 1fr) 46px auto; column-gap: 8px; align-items: center; font-size: var(--fs-text); color: #52688c; }
+.domain-bars b { font-weight: 500; text-align: right; color: #253f6a; font-variant-numeric: tabular-nums; }
+.domain-bars small { font-size: var(--fs-meta); text-align: right; white-space: nowrap; color: #7a8ca8; font-variant-numeric: tabular-nums; }
+/* .dashboard .panel sets min-height: 0; this list must keep its readable minimum. */
+.dashboard.plans-page .plans-list { flex: 1 1 0; min-height: 226px; }
+.plans-list .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
+.plans-list td { vertical-align: middle; }
+.plans-list .resource-meta { padding: 0 14px; min-height: 26px; font-size: var(--fs-meta); }
+.filter-inline { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-text); color: #52688c; }
+.filter-inline select { padding: 4px 24px 4px 9px; border: 1px solid #dde6f1; border-radius: 5px; background-color: #fff; font-size: var(--fs-text); color: #52688c; }
+.domain-chips { display: inline-flex; gap: 3px; }
+.domain-chips>span { padding: 1px 5px; border-radius: 3px; background: #eaf2ff; color: #2562cf; font-size: var(--fs-meta); white-space: nowrap; }
+.domain-chips>span.done { background: #e7f8f1; color: #0b8a63; }
+.domain-chips>span.todo { background: #eef2f7; color: #8797b0; }
+.plans-page .pagination { padding: 6px 14px; border-top: 1px solid #eef3f9; font-size: var(--fs-meta); }
+@media (max-width: 1040px), (max-height: 600px) {
+  .row-flow>.plans-funnel, .plans-page .row-state>.span-2 { grid-column: 1 / -1; }
+  .dashboard.plans-page .plans-list { flex: none; min-height: 360px; }
+  .status-grid.six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

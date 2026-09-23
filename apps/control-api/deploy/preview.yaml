@@ -47,6 +47,8 @@ spec:
             - { name: CONTROL_PORT, value: "18100" }
             - { name: PG_POOL_MAX, value: "1" }
             - { name: CONSOLE_PG_POOL_MAX, value: "1" }
+            - { name: M1_WORKSPACE_ID, value: "m1-main" }
+            - { name: TRACE_SAMPLE_RATIO, value: "0.1" }
             - { name: PG_CA_FILE, value: /secrets/pg-ca.crt }
             - { name: PG_TLS_SERVERNAME, value: crawler-pg-pool.db.svc.cluster.local }
             - { name: M1_JWT_SECRET_FILE, value: /secrets/jwt-secret }
@@ -111,4 +113,23 @@ spec:
         - ipBlock: { cidr: 10.4.4.12/32 }
         - ipBlock: { cidr: 10.42.0.0/32 }
         - ipBlock: { cidr: 10.42.0.1/32 }
+      ports: [{ port: 18100 }]
+---
+# Existing Prometheus reads only the internal metrics endpoint. Business API
+# routes continue to require their own authorization.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: control-api-preview-from-prometheus
+  namespace: control
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: control-api-preview }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+          podSelector:
+            matchLabels: { app: prometheus }
       ports: [{ port: 18100 }]

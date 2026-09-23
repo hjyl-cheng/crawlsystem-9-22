@@ -34,8 +34,22 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       return json({ items: matches && url.searchParams.get('cursor') !== '20' ? [state.detail!.plan] : [], next_cursor: state.pageTwo && url.searchParams.get('cursor') === '0' ? '20' : null });
     }
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
-    if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id }] : [], next_cursor: null });
+    if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status }] : [], next_cursor: null });
     if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan));
+    if (path === '/v1/overview/plans') {
+      const p = state.detail?.plan, by_status = { QUEUED: 0, RUNNING: 0, WAITING: 0, COMPLETED: 0, CANCELLED: 0, FAILED: 0 };
+      if (p) by_status[p.status]++;
+      return json({ observed_at: '2026-09-23T08:00:00.000Z', total: p ? 1 : 0, by_status, created_24h: p ? 1 : 0, completed_24h: p?.status === 'COMPLETED' ? 1 : 0, avg_completion_seconds_24h: null,
+        domains: p ? p.required_domains.map(domain => ({ domain, required: 1, applied: state.detail!.domains.some(d => d.domain === domain && d.state === 'APPLIED') ? 1 : 0 })) : [], waiting_reasons: [] });
+    }
+    if (path === '/v1/overview/completeness') {
+      const required = state.detail?.plan.required_domains ?? [];
+      const applied = state.detail ? state.detail.domains.filter(d => required.includes(d.domain) && d.state === 'APPLIED').map(d => d.domain) : [];
+      const total = state.detail ? 1 : 0, lacks = (domain: string) => required.includes(domain as never) && !applied.includes(domain as never) ? 1 : 0;
+      return json({ basis: 'latest_plan_required_domains', observed_at: '2026-09-23T08:00:00.000Z', total_channels: total,
+        complete: total && applied.length === required.length ? 1 : 0, partial: total && applied.length > 0 && applied.length < required.length ? 1 : 0, missing: total && applied.length === 0 ? 1 : 0,
+        missing_by_domain: { ABOUT: lacks('ABOUT'), VIDEO: lacks('VIDEO'), AGENT: lacks('AGENT') }, latest_channel_update_at: state.detail?.plan.updated_at ?? null, freshness: 'NOT_IMPLEMENTED' });
+    }
     if (path === '/v1/workers') return json({ items: state.workers, next_cursor: null });
     if (path === '/v1/errors') return json({ items: state.errors, next_cursor: null });
     if (path.startsWith('/v1/receipts/') && state.detail) return json(state.detail.receipts.find(receipt => path.endsWith(receipt.submission_id)));
@@ -78,14 +92,14 @@ test('completed sample keeps Agent and delivery boundaries visible', async ({ pa
 test('rapid create clicks produce one request and one logical plan', async ({ page }) => {
   const state = await mock(page); await login(page, '/plans/new');
   await page.getByRole('button', { name: '创建并查看计划' }).evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
-  await expect(page.getByRole('heading', { name: 'Plan 详情', exact: true })).toBeVisible(); expect(state.creates).toHaveLength(1);
+  await expect(page.getByRole('heading', { name: '采集任务详情', exact: true })).toBeVisible(); expect(state.creates).toHaveLength(1);
   expect(state.creates[0]?.request_id).toMatch(/^[0-9a-f-]{36}$/);
 });
 test('lost creation response retries the original identity across navigation', async ({ page }) => {
   const state = await mock(page); state.loseCreate = true; await login(page, '/plans/new');
   await page.getByRole('button', { name: '创建并查看计划' }).click(); await expect(page.getByRole('alert')).toContainText('无法连接服务');
   await page.getByRole('link', { name: '返回计划列表' }).click(); await page.getByRole('link', { name: '创建样本计划' }).click();
-  await page.getByRole('button', { name: '核对并重试本次创建' }).click(); await expect(page.getByRole('heading', { name: 'Plan 详情', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '核对并重试本次创建' }).click(); await expect(page.getByRole('heading', { name: '采集任务详情', exact: true })).toBeVisible();
   expect(state.creates).toHaveLength(2); expect(state.creates[1]).toEqual(state.creates[0]);
 });
 test('cancel conflict requires explicit refresh and preserves the submitted expected version', async ({ page }) => {
@@ -142,7 +156,7 @@ test('unauthenticated responses clear the visible workspace', async ({ page }) =
 test('leaving a list stops its polling; phone layout has a working navigation drawer', async ({ page }) => {
   const state = await mock(page, detailFixture()); await page.setViewportSize({ width: 390, height: 844 }); await login(page, '/plans');
   // The drawer is intentionally offscreen until opened on phones.
-  await page.getByRole('button', { name: '打开导航' }).click(); await page.getByRole('link', { name: '频道数据', exact: true }).click(); await expect(page.getByRole('heading', { name: '频道数据', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '打开导航' }).click(); await page.getByRole('link', { name: '频道管理', exact: true }).click(); await expect(page.getByRole('heading', { name: '频道管理', exact: true })).toBeVisible();
   const previous = state.reads.filter(url => url.startsWith('/api/v1/plans?')).length;
   await page.clock.install(); await page.clock.runFor(6_000);
   expect(state.reads.filter(url => url.startsWith('/api/v1/plans?')).length).toBe(previous);
@@ -164,16 +178,171 @@ test('continuous dependency failure reaches a finite polling budget', async ({ p
   const state = await mock(page, detailFixture()); await login(page, '/plans');
   await expect(page.getByRole('table').getByText('等待执行', { exact: true })).toBeVisible();
   await page.clock.install(); state.fail = true;
-  const count = state.reads.length;
+  const listReads = () => state.reads.filter(url => url.startsWith('/api/v1/plans?')).length;
+  const count = listReads();
   await page.getByRole('button', { name: '刷新数据' }).click();
-  await expect.poll(() => state.reads.length).toBe(count + 1);
+  await expect.poll(listReads).toBe(count + 1);
   for (let i = 2; i <= 5; i++) {
     await expect(page.getByRole('button', { name: '刷新数据' })).toBeEnabled();
     await page.clock.fastForward(60_000);
-    await expect.poll(() => state.reads.length).toBe(count + i);
+    await expect.poll(listReads).toBe(count + i);
   }
   await expect(page.getByRole('button', { name: '刷新数据' })).toBeEnabled();
   await page.clock.fastForward(60_000);
   await expect(page.getByText('自动更新已暂停，可点击刷新重新查询。')).toBeVisible();
-  await page.clock.fastForward(600_000); expect(state.reads.length).toBe(count + 5);
+  await page.clock.fastForward(600_000); expect(listReads()).toBe(count + 5);
+});
+
+test('overview completeness shows the backend aggregate, not counts derived from list pages', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'WAITING' }, ['ABOUT'])); await login(page);
+  const card = page.locator('.completeness-card');
+  await expect(card.getByText('数据完整性与新鲜度')).toBeVisible();
+  await expect(card.locator('.completeness-metrics .blue strong')).toHaveText('1');
+  await expect(card.locator('.completeness-metrics .green strong')).toHaveText('0');
+  await expect(card.locator('.completeness-reasons div', { hasText: '视频 / 评论未入库' }).locator('b')).toHaveText('1');
+  await expect(card.locator('.completeness-metrics .pending strong').first()).toHaveText('—');
+});
+test('desktop overview fits one screen and card columns line up', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await page.setViewportSize({ width: 1920, height: 937 }); await login(page);
+  await expect(page.getByText('必需领域已入库', { exact: true })).toBeVisible();
+  for (const [width, height] of [[1920, 937], [1586, 992]] as const) {
+    await page.setViewportSize({ width, height });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+    const edges = await page.evaluate(() => [...document.querySelectorAll('.dashboard-row')].map(row => [...row.children].map(cell => Math.round(cell.getBoundingClientRect().left))));
+    expect(edges[0]).toEqual(edges[1]);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0);
+});
+test('overview polling updates the pipeline in place without hiding nodes or edges', async ({ page }) => {
+  const state = await mock(page, detailFixture({ status: 'RUNNING' }, ['ABOUT'])); await page.clock.install(); await login(page);
+  await expect(page.getByText('必需领域已入库', { exact: true })).toBeVisible();
+  const visible = () => page.evaluate(() => {
+    const nodes = [...document.querySelectorAll('#pipeline .react-flow__node')];
+    return { hidden: nodes.filter(node => getComputedStyle(node).visibility === 'hidden').length, nodes: nodes.length, edges: document.querySelectorAll('#pipeline .react-flow__edge').length };
+  });
+  const before = await visible(); expect(before.hidden).toBe(0); expect(before.edges).toBe(10);
+  const reads = state.reads.length;
+  await page.clock.runFor(31_000);
+  await expect.poll(() => state.reads.length).toBeGreaterThan(reads);
+  await expect.poll(visible).toEqual(before);
+});
+test('query discovery shows no figures until the sample preview is switched on, and then warns', async ({ page }) => {
+  await mock(page); await login(page, '/discover/queries');
+  await expect(page.getByRole('heading', { name: 'Query 发现', exact: true })).toBeVisible();
+  await expect(page.getByText('尚无 Query', { exact: true })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toHaveCount(0);
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('1,284');
+  await page.getByLabel('预览示例数据').uncheck();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+test('candidate channels show no figures until the sample preview is switched on, and then warn', async ({ page }) => {
+  await mock(page); await login(page, '/discover/candidates');
+  await expect(page.getByRole('heading', { name: '候选频道', exact: true })).toBeVisible();
+  await expect(page.getByText('尚无候选频道', { exact: true })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
+  await expect(page.getByRole('button', { name: '选择文件' })).toBeDisabled();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('12,438');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByLabel('预览示例数据')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+test('full collection shows backend plan statistics next to the real plan list', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'WAITING' }, ['ABOUT'])); await login(page, '/plans');
+  await expect(page.getByRole('heading', { name: '全量采集', exact: true })).toBeVisible();
+  await expect(page.locator('.status-cell.amber strong')).toHaveText('1');
+  await expect(page.locator('.domain-bars div', { hasText: '频道基础信息' }).locator('b')).toHaveText('100.0%');
+  await expect(page.locator('.domain-bars div', { hasText: '视频与评论' }).locator('b')).toHaveText('0.0%');
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toHaveCount(0);
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('156');
+});
+test('update collection shows no figures until the sample preview is switched on, and has no Clock menu', async ({ page }) => {
+  await mock(page); await login(page, '/update');
+  await expect(page.getByRole('heading', { name: '更新采集', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '主导航' }).getByText('Clock 调度')).toHaveCount(0);
+  await expect(page.getByText('尚无更新任务', { exact: true })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('256');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+test('agent tasks show only the real waiting-plan count until the sample preview is switched on', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'WAITING', required_domains: ['ABOUT', 'VIDEO', 'AGENT'] }, ['ABOUT', 'VIDEO'])); await login(page, '/agent');
+  await expect(page.getByRole('heading', { name: 'Agent 任务', exact: true })).toBeVisible();
+  await expect(page.getByText('1 个计划的 Agent 结果未入库', { exact: false })).toBeVisible();
+  await expect(page.getByText('尚无 Agent 任务', { exact: true })).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await page.getByRole('row', { name: /Web Forge/ }).click();
+  await expect(page.locator('.agent-detail').getByText('本轮未产出有效画像', { exact: false })).toBeVisible();
+  await page.getByRole('tab', { name: /失败/ }).click();
+  await expect(page.locator('.agent-list tbody tr')).toHaveCount(1);
+});
+test('data API page covers collector-side external calls and shows no figures until the sample preview', async ({ page }) => {
+  await mock(page); await login(page, '/data-api');
+  await expect(page.getByRole('heading', { name: '数据 API', exact: true })).toBeVisible();
+  await expect(page.getByText('尚无接口调用', { exact: true })).toBeVisible();
+  await expect(page.getByText('调用趋势尚未接入', { exact: true })).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.endpoint-list').getByRole('cell', { name: 'channels.list', exact: true })).toBeVisible();
+  const chart = page.locator('.trend-box svg'); const box = (await chart.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
+  await expect(page.locator('.trend-tip')).toContainText('成功');
+});
+test('delivery treats sent as unconfirmed and shows the real completed-plan count until the sample preview', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await login(page, '/delivery');
+  await expect(page.getByRole('heading', { name: '发布交付', exact: true })).toBeVisible();
+  await expect(page.getByText('1 个计划已完成采集', { exact: false })).toBeVisible();
+  await expect(page.getByText('尚无交付记录', { exact: true })).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await page.getByRole('row', { name: /Deep Talk Pod/ }).click();
+  await expect(page.locator('.delivery-detail').getByText('回执到达前不计为已交付', { exact: false })).toBeVisible();
+  await page.getByRole('tab', { name: /已交付/ }).click();
+  await expect(page.locator('.delivery-list tbody tr')).toHaveCount(3);
+});
+test('channel management lists real channel facts and shows the selected channel beside the list', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await login(page, '/channels');
+  await expect(page.getByRole('heading', { name: '频道管理', exact: true })).toBeVisible();
+  const row = page.locator('.channels-list tbody tr').first();
+  await expect(row).toContainText('M1 固定样本频道'); await expect(row).toContainText('本轮已完成');
+  await expect(page.locator('.channel-detail').getByText('已入库视频', { exact: true })).toBeVisible();
+  await page.locator('.channel-detail').getByRole('tab', { name: '更新策略' }).click();
+  await expect(page.locator('.channel-detail').getByText('未接入').first()).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.channels-list tbody tr')).toHaveCount(10);
+});
+test('IP resource management replaces three proxy menus and reports the real proxy status of Workers', async ({ page }) => {
+  const state = await mock(page); state.workers = [{ worker_id: 'w1', server_id: 'n1', build_version: 'v1', accepting_work: true, capacity: 1, running_plan_ids: [], last_heartbeat_at: '2026-09-23T08:00:00.000Z', stale: false, proxy_status: 'NOT_CONFIGURED' }];
+  await login(page, '/proxies');
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await expect(nav.getByRole('link', { name: 'IP 资源管理' })).toBeVisible();
+  for (const old of ['IP 管理', 'IP 分组', '服务器管理']) await expect(nav.getByText(old, { exact: true })).toHaveCount(0);
+  await expect(page.getByText('1 个 Worker 未配置代理', { exact: false })).toBeVisible();
+  await expect(page.getByText('尚无代理 IP', { exact: true })).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.locator('.ip-list tbody tr')).toHaveCount(10);
+  await expect(page.locator('.ip-list tbody')).toContainText('192.0.2.34');
+});
+test('worker management merges the node menus and shows real heartbeats with servers derived from them', async ({ page }) => {
+  const state = await mock(page); state.workers = [workerFixture()]; await login(page, '/workers');
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await expect(nav.getByRole('link', { name: 'Worker 管理' })).toBeVisible();
+  for (const old of ['采集节点', '服务器总览']) await expect(nav.getByText(old, { exact: true })).toHaveCount(0);
+  await expect(page.locator('.row-servers tbody tr')).toHaveCount(1);
+  await expect(page.locator('.row-servers tbody')).toContainText('fixture-node');
+  await expect(page.locator('.worker-detail')).toContainText('fixture-worker');
+  await expect(page.getByText('资源指标尚未接入（Prometheus）', { exact: false }).first()).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.locator('.worker-list tbody tr')).toHaveCount(8);
 });

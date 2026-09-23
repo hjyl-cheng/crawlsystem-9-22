@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import { CONTRACT_VERSION, WORKER_STALE_SECONDS, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
   type Principal, type Role, type ErrorCode, type Plan, type PlanInput, type PlanDetail, type Domain, type DomainResult, type FrozenInput, type CreatePlan, type Submission, type Receipt,
-  type Page, type ChannelSummary, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput } from '@crawlsystem/contracts';
+  type Page, type Completeness, type PlansSummary, type PlanStatus, type ChannelSummary, type ChannelListItem, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput } from '@crawlsystem/contracts';
 import { contentHash, submissionHash } from '@crawlsystem/contracts/hash';
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
 
@@ -235,10 +235,16 @@ export class Store {
     const rows = await this.pool.query("SELECT e.* FROM m1.events e JOIN m1.plans p USING(plan_id) WHERE p.workspace_id=$1 AND e.data->>'kind' IN ('ERROR','FAILED') ORDER BY e.created_at DESC,e.event_id LIMIT $2 OFFSET $3",[principal.workspace_id,limit+1,offset]);
     return page(rows.rows.map(r => ({...r.data,plan_id:r.plan_id,created_at:iso(r.created_at)} as StoredEvent)),limit,offset);
   }
-  async listChannels(principal: Principal, limit=20, offset=0): Promise<Page<ChannelSummary>> {
+  async listChannels(principal: Principal, limit=20, offset=0): Promise<Page<ChannelListItem>> {
     requireRole(principal,'reader','operator');
-    const rows = await this.pool.query('SELECT * FROM m1.channels WHERE workspace_id=$1 ORDER BY updated_at DESC,channel_id LIMIT $2 OFFSET $3',[principal.workspace_id,limit+1,offset]);
-    return page(rows.rows.map(r => ({channel_id:r.channel_id,title:r.about?.title ?? null,source_mode:'fixture',updated_at:iso(r.updated_at),latest_plan_id:r.latest_plan_id})),limit,offset);
+    // Country and subscribers come from the current About facts; stored_videos counts this workspace's video rows.
+    const rows = await this.pool.query(`SELECT c.*, p.status AS latest_plan_status,
+        (SELECT count(*)::int FROM m1.videos v WHERE v.workspace_id=c.workspace_id AND v.channel_id=c.channel_id) AS stored_videos
+      FROM m1.channels c JOIN m1.plans p ON p.plan_id=c.latest_plan_id
+      WHERE c.workspace_id=$1 ORDER BY c.updated_at DESC,c.channel_id LIMIT $2 OFFSET $3`,[principal.workspace_id,limit+1,offset]);
+    return page(rows.rows.map(r => ({channel_id:r.channel_id,title:r.about?.title ?? null,source_mode:'fixture' as const,updated_at:iso(r.updated_at),latest_plan_id:r.latest_plan_id,
+      country:r.about?.country ?? null, subscriber_count:typeof r.about?.subscriber_count?.value === 'number' ? r.about.subscriber_count.value : null,
+      stored_videos:r.stored_videos, latest_plan_status:r.latest_plan_status})),limit,offset);
   }
   async getChannel(principal: Principal, channelId: string): Promise<ChannelDetail> {
     requireRole(principal,'reader','operator');
@@ -283,6 +289,56 @@ export class Store {
       }
       return rows.rowCount ?? 0;
     });
+  }
+  /** Plan statistics for one workspace; see PlansSummary for each figure's basis. */
+  async plansSummary(principal: Principal): Promise<PlansSummary> {
+    requireRole(principal,'reader','operator');
+    // One SQL statement gives all cards the same MVCC snapshot and clock, and
+    // consumes one pool slot even while concurrent plans change state.
+    const row=(await this.pool.query(`
+      WITH plans AS MATERIALIZED (SELECT * FROM m1.plans WHERE workspace_id=$1),
+      totals AS (SELECT count(*)::int AS total,
+        count(*) FILTER (WHERE created_at>=statement_timestamp()-interval '24 hours')::int AS created_24h,
+        count(*) FILTER (WHERE status='COMPLETED' AND finished_at>=statement_timestamp()-interval '24 hours')::int AS completed_24h,
+        round(extract(epoch FROM avg(finished_at-created_at) FILTER (WHERE status='COMPLETED' AND finished_at>=statement_timestamp()-interval '24 hours')))::float8 AS avg_seconds FROM plans),
+      statuses AS (SELECT status,count(*)::int AS n FROM plans GROUP BY status),
+      domains AS (SELECT r.domain,count(*)::int AS required,count(*) FILTER (WHERE d.state='APPLIED')::int AS applied
+        FROM plans p CROSS JOIN LATERAL unnest(p.required_domains) AS r(domain)
+        LEFT JOIN m1.domains d ON d.plan_id=p.plan_id AND d.domain=r.domain GROUP BY r.domain),
+      reasons AS (SELECT coalesce(e.data->>'phase','未上报等待原因') AS reason,count(*)::int AS plans
+        FROM plans p LEFT JOIN LATERAL (SELECT data FROM m1.events WHERE plan_id=p.plan_id AND data->>'kind' IN ('WAITING','ERROR') ORDER BY created_at DESC,event_id DESC LIMIT 1) e ON true
+        WHERE p.status='WAITING' GROUP BY 1 ORDER BY 2 DESC,1 LIMIT 6)
+      SELECT totals.*, statement_timestamp() AS observed,
+        coalesce((SELECT jsonb_object_agg(status,n) FROM statuses),'{}') AS statuses,
+        coalesce((SELECT jsonb_agg(domains ORDER BY domain) FROM domains),'[]') AS domains,
+        coalesce((SELECT jsonb_agg(reasons ORDER BY plans DESC,reason) FROM reasons),'[]') AS reasons FROM totals`,[principal.workspace_id])).rows[0]!;
+    const by_status={QUEUED:0,RUNNING:0,WAITING:0,COMPLETED:0,CANCELLED:0,FAILED:0,...row.statuses} as Record<PlanStatus,number>;
+    return {observed_at:iso(row.observed),total:row.total,by_status,created_24h:row.created_24h,completed_24h:row.completed_24h,
+      avg_completion_seconds_24h:row.avg_seconds,domains:row.domains,
+      waiting_reasons:row.reasons.map((r:{reason:string;plans:number})=>({reason:r.reason.slice(0,80),plans:r.plans}))};
+  }
+
+  /** One aggregate over the workspace's channels; see Completeness for the basis. */
+  async completeness(principal: Principal): Promise<Completeness> {
+    requireRole(principal,'reader','operator');
+    const row = (await this.pool.query(`
+      WITH per AS (
+        SELECT p.required_domains AS required,
+               coalesce(array_agg(d.domain) FILTER (WHERE d.state='APPLIED' AND d.domain = ANY(p.required_domains)), '{}') AS applied
+        FROM m1.channels c JOIN m1.plans p ON p.plan_id = c.latest_plan_id
+        LEFT JOIN m1.domains d ON d.plan_id = p.plan_id
+        WHERE c.workspace_id = $1 GROUP BY c.channel_id, p.required_domains)
+      SELECT count(*)::int AS total,
+        count(*) FILTER (WHERE cardinality(applied) = cardinality(required))::int AS complete,
+        count(*) FILTER (WHERE cardinality(applied) > 0 AND cardinality(applied) < cardinality(required))::int AS partial,
+        count(*) FILTER (WHERE cardinality(applied) = 0)::int AS missing,
+        count(*) FILTER (WHERE 'ABOUT' = ANY(required) AND NOT 'ABOUT' = ANY(applied))::int AS about,
+        count(*) FILTER (WHERE 'VIDEO' = ANY(required) AND NOT 'VIDEO' = ANY(applied))::int AS video,
+        count(*) FILTER (WHERE 'AGENT' = ANY(required) AND NOT 'AGENT' = ANY(applied))::int AS agent,
+        (SELECT max(updated_at) FROM m1.channels WHERE workspace_id = $1) AS latest, clock_timestamp() AS observed
+      FROM per`,[principal.workspace_id])).rows[0]!;
+    return { basis:'latest_plan_required_domains', observed_at:iso(row.observed), total_channels:row.total, complete:row.complete, partial:row.partial, missing:row.missing,
+      missing_by_domain:{ ABOUT:row.about, VIDEO:row.video, AGENT:row.agent }, latest_channel_update_at:row.latest ? iso(row.latest) : null, freshness:'NOT_IMPLEMENTED' };
   }
   async businessMetrics(workspaceId:string):Promise<Array<{metric:string;state:string;value:number}>> {
     const result=await this.pool.query(`

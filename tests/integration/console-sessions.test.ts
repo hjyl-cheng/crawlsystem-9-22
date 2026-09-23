@@ -2,7 +2,7 @@ import { before,after,test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes,randomUUID,createHash } from 'node:crypto';
 import { createPool } from '@crawlsystem/store/config';
-import { migrate } from '@crawlsystem/store/migrate';
+import {prepareDatabase} from './database-ready.ts';
 import { Store } from '@crawlsystem/store';
 import { PgConsoleSessions } from '@crawlsystem/store/console-sessions';
 import { contentHash } from '@crawlsystem/contracts/hash';
@@ -10,7 +10,7 @@ import { ConsoleAuth,passwordRecord } from '../../apps/control-api/src/console-a
 import { createControlApi } from '../../apps/control-api/src/app.ts';
 
 const pool=createPool(),key=randomBytes(48),headers={'x-console-request':'1'},password='test-durable-session-password';
-before(()=>migrate(pool));after(()=>pool.end());
+before(()=>prepareDatabase(pool));after(()=>pool.end());
 async function account() {return {username:'reader',subject:'test-reader',workspace_id:`auth-test-${randomUUID()}`,role:'reader' as const,...await passwordRecord(password)};}
 const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
 function app(accounts:unknown,db=pool) {return createControlApi({store:new Store(db),signingKey:key,consoleAuth:new ConsoleAuth(accounts,true,Date.now,new PgConsoleSessions(db))});}

@@ -1,0 +1,21 @@
+{
+  "verified_at": "2026-09-23T13:05:19.581Z",
+  "build": "653a09601e8188c6643cfae840ad0f60cdf8e3ea",
+  "replicas": [
+    {
+      "pod": "control-api-preview-65f9dcb94b-4lhmr",
+      "node": "s2"
+    },
+    {
+      "pod": "control-api-preview-65f9dcb94b-sdwvs",
+      "node": "a1"
+    }
+  ],
+  "same_cookie_after_rollout": "passed",
+  "shared_login_budget": "passed",
+  "logout_other_replica_status": 401,
+  "reader_write_denied": true,
+  "api_schemas": "passed",
+  "business_metrics": "passed",
+  "trace_id": "3e2c02494bdd1bd391468813b8fe7d7f"
+}

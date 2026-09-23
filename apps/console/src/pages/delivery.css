@@ -1,0 +1,25 @@
+/* Publication and delivery. Discover chrome on the 4-column grid: delivery
+   list (3) with a detail panel (1); both fill the remaining height. */
+.delivery-page .row-delivery { flex: 1 1 0; min-height: 320px; }
+.dashboard.delivery-page .delivery-list { grid-column: span 3; min-height: 0; }
+.dashboard.delivery-page .delivery-detail { min-height: 0; }
+.delivery-list .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
+.delivery-list td { vertical-align: middle; }
+.delivery-list tbody tr { cursor: pointer; }
+.delivery-list tbody tr.selected { background: #eef5ff; }
+.delivery-filters { justify-content: flex-start; padding: 8px 14px; }
+.week-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.week-stats>div { display: grid; justify-items: center; padding: 7px 4px; border-radius: 5px; background: #f5f8fc; }
+.week-stats b { font-size: var(--fs-card); color: #0c1e43; font-variant-numeric: tabular-nums; }
+.week-stats small { font-size: var(--fs-meta); color: #7a8ca8; }
+.delivery-log { margin: 0; padding: 0; list-style: none; }
+.delivery-log li { position: relative; display: flex; gap: 10px; padding: 0 0 10px; }
+.delivery-log li:not(:last-child)::before { content: ""; position: absolute; left: 6px; top: 16px; bottom: 0; width: 2px; background: #dce9f9; }
+.delivery-log li i { width: 14px; height: 14px; margin-top: 2px; flex-shrink: 0; border-radius: 50%; background: #c5d1e0; }
+.delivery-log li.done i { background: #11c38c; box-shadow: 0 0 0 3px #e7f8f1; }
+.delivery-log b { display: block; font-size: var(--fs-text); color: #193257; }
+.delivery-log small { display: block; font-size: var(--fs-meta); color: #7a8ca8; }
+@media (max-width: 1040px), (max-height: 600px) {
+  .delivery-page .row-delivery { flex: none; }
+  .dashboard.delivery-page .delivery-list, .dashboard.delivery-page .delivery-detail { grid-column: 1 / -1; min-height: 360px; }
+}

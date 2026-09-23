@@ -1,0 +1,51 @@
+/* Update collection. Discover chrome on the shared 4-column grid: schedule flow
+   (3) + notes (1); task list (3) + waiting / node cards stacked (1); incidents
+   (2) + recent completions (2). The task row takes the remaining height. */
+.update-page .row-schedule { flex: none; height: 160px; min-height: 0; }
+.row-schedule>.schedule-card { grid-column: span 3; }
+.update-page .row-tasks { flex: 1 1 0; min-height: 250px; }
+.row-tasks>.task-list { grid-column: span 3; }
+.update-page .row-results { flex: none; height: 184px; min-height: 0; }
+.row-results>.span-2 { grid-column: span 2; }
+.update-page .discover-kpi .kpi-foot em { font-style: normal; font-weight: 600; margin-left: 4px; }
+.update-page .discover-kpi .kpi-foot em.good { color: #0aa878; }
+.update-page .discover-kpi .kpi-foot em.bad { color: #e0524a; }
+
+/* Schedule flow */
+.schedule-flow { flex: 1; display: flex; align-items: stretch; gap: 6px; padding: 0 14px 12px; min-height: 0; }
+.flow-step { flex: 1 1 0; min-width: 0; display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px solid #e4edf8; border-radius: 6px; background: linear-gradient(180deg, #fbfdff, #f5f9ff); }
+.flow-step b { display: block; font-size: var(--fs-text); color: #193257; white-space: nowrap; }
+.flow-step small { display: block; margin-top: 2px; font-size: var(--fs-meta); color: #7a8ca8; line-height: 1.4; }
+.flow-step em { display: block; margin-top: 3px; font-style: normal; font-size: var(--fs-meta); font-weight: 600; color: #0aa878; }
+.flow-icon { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 7px; background: #eaf2ff; color: #2f78f0; }
+.flow-arrow { align-self: center; flex-shrink: 0; color: #7aa7f5; }
+.flow-branch { flex: 1 1 0; min-width: 0; display: grid; gap: 6px; }
+.flow-branch .flow-step { padding: 4px 8px; align-items: center; }
+/* Stacked branch cards show title and count only, so both fit the row. */
+.flow-branch .flow-step small { display: none; }
+.flow-branch .flow-step em { margin-top: 0; }
+.flow-branch .flow-step:first-child .flow-icon { background: #f3ecff; color: #8539e9; }
+.flow-branch .flow-step:last-child .flow-icon { background: #fff2e8; color: #f17717; }
+.flow-branch .flow-icon { width: 24px; height: 24px; }
+.schedule-notes { margin: 0; padding: 0 14px; list-style: none; display: grid; gap: 4px; font-size: var(--fs-text); color: #52688c; }
+.schedule-notes li { display: flex; align-items: center; gap: 6px; }
+.schedule-notes svg { color: #277cf7; flex-shrink: 0; }
+.schedule-hint { margin: auto 14px 10px; padding: 5px 10px; border-radius: 5px; background: #eef5ff; color: #3a6fc4; font-size: var(--fs-meta); }
+
+.update-page .row-tasks .table-scroll, .update-page .row-results .table-scroll { flex: 1; min-height: 0; padding: 0 10px 8px; }
+.update-page td { vertical-align: middle; }
+.update-page .source-body { padding-bottom: 8px; }
+
+@media (max-width: 1320px) {
+  .flow-step small { display: none; }
+}
+@media (max-width: 1040px), (max-height: 600px) {
+  .update-page .row-schedule, .update-page .row-results { height: auto; }
+  .row-schedule>.schedule-card, .row-tasks>.task-list, .row-results>.span-2, .side-stack { grid-column: 1 / -1; }
+  .update-page .row-tasks { flex: none; }
+  .update-page .row-tasks .table-scroll { max-height: 360px; }
+  .side-stack>.panel { min-height: 190px; }
+  .schedule-flow { flex-wrap: wrap; }
+  .flow-step, .flow-branch { flex-basis: 30%; }
+  .flow-arrow { display: none; }
+}

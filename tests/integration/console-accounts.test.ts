@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomBytes,randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createPool } from '@crawlsystem/store/config';
-import { migrate } from '@crawlsystem/store/migrate';
+import {prepareDatabase} from './database-ready.ts';
 import { PgConsoleSessions } from '@crawlsystem/store/console-sessions';
 import { StoreError } from '@crawlsystem/store';
 import { ConsoleAuth,passwordRecord } from '../../apps/control-api/src/console-auth.ts';
@@ -12,7 +12,7 @@ import { setAccountPassword,setAccountDisabled } from '../../apps/control-api/sr
 
 const pool=createPool(),budget=new PgConsoleSessions(pool),password='isolated-account-password';
 before(async()=>{
-  await migrate(pool);
+  await prepareDatabase(pool);
   // Apply the account schema only inside createPool's isolated M1 test database.
   // Production ownership/grants are deployment concerns, never edited by tests.
   const present=await pool.query("SELECT to_regclass('console.accounts') AS name");

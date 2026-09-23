@@ -66,3 +66,11 @@ node --import tsx --test apps/control-api/test/console-auth.test.ts
 测试（内存账号存储）覆盖 Cookie/会话恢复、密码错误、撤销退出、8 小时过期、登录预算、CSRF、权限输入拒绝和 Worker Bearer 兼容。真实公网浏览器证据见 [public-password-results.json](../console/docs/evidence/public-password-results.json)。
 
 主线另在隔离 PostgreSQL 验证账号/角色/停用即时生效、改密撤销与旧验证阻断、并发会话容量、跨 API 会话恢复和共享预算。实际页面创建/等待/取消、API 重启及退出重放的证据见 [主 Agent 报告](../../docs/m1/reports/main.md)；此页面联调由测试程序提交固定样本，尚不是 Temporal 业务执行验收。
+
+## 主线构建与运行验收
+
+`node --import tsx scripts/dev/build-control-image.ts` 从干净提交构建，固定 Node 镜像 digest、esbuild 版本并记录 bundle SHA-256。生成物写入本 worktree 的 `.runtime/control-api-image-<revision>/`；每台可调度节点须预先导入镜像，再按具体镜像名应用清单。`/healthz.build_version` 必须与该源码提交一致。没有镜像仓库时不可仅修改镜像 tag 而跳过各节点导入。
+
+`/readyz` 在配置数据库账号时同时检查事实池、账号表和共享预算表。`verify-preview-replicas.ts capture` 使用 `CONSOLE_VERIFY_CREDENTIALS_FILE` 的现有测试账号，Cookie 仅存入私有 .runtime；滚动后运行 `EXPECTED_BUILD=<revision> node --import tsx scripts/dev/verify-preview-replicas.ts` 验证两个 Pod 的版本、同一 Cookie、共享限流、退出撤销、只读权限及统计 schema。限流探针使用随机不存在账号，不占用真实用户的用户名预算。
+
+HTTP 追踪和现有监控接入见 [observability.md](../../docs/m1/observability.md)。更新镜像前核对其他会话是否正在发布；保留旧 Deployment 与镜像供失败回退。
