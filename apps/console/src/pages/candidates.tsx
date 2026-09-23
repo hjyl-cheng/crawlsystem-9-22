@@ -38,7 +38,7 @@ export default function Candidates() {
   }, [sampleOn]);
   return <div className="dashboard discover candidates">
     <header className="dashboard-heading">
-      <div><h1>候选频道</h1><p>管理 Query 发现的候选频道，支持批量导入、去重、筛选、审核和转入计划采集</p><span className="data-freshness failing"><i/>{data ? '示例数据' : NOT_CONNECTED}</span></div>
+      <div><h1>候选频道</h1><p>管理 Query 发现的候选频道，支持批量导入、去重、筛选、审核和转入全量采集</p><span className="data-freshness failing"><i/>{data ? '示例数据' : NOT_CONNECTED}</span></div>
       <div className="dashboard-period"><label className="sample-switch" htmlFor="candidates-sample"><input id="candidates-sample" type="checkbox" checked={sampleOn} onChange={event => setSampleOn(event.target.checked)}/>预览示例数据</label></div>
     </header>
     {data && <div className="sample-banner" role="note"><TriangleAlert size={14}/>以下为设计示例数据（频道均为虚构），用于预览页面效果，不是真实候选。候选频道后端接入后显示真实数据。</div>}
@@ -78,7 +78,7 @@ export default function Candidates() {
       </div>
       <div className="candidate-toolbar">
         <span>已选择 0 项</span>
-        {['通过审核', '拒绝', '加入计划', '添加标签', '删除'].map(action => <button key={action} className="button small" disabled>{action}</button>)}
+        {['通过审核', '拒绝', '转入全量采集', '添加标签', '删除'].map(action => <button key={action} className="button small" disabled>{action}</button>)}
         <button className="button small" disabled><Download size={12}/>导出</button>
         <button className="button small primary push" disabled title={NOT_CONNECTED}><Plus size={13}/>导入候选频道</button>
       </div>

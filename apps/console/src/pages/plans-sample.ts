@@ -3,6 +3,8 @@
  * under a warning banner. The default view uses the real plan APIs. */
 import type { PlanStatus, PlansSummary } from '@crawlsystem/contracts';
 
+/** Approved candidate channels feeding full collection (candidate backend not built yet). */
+export const approvedCandidatesSample = 1412;
 export interface PlansSampleRow { id: string; channel: string; domains: { domain: 'ABOUT' | 'VIDEO' | 'AGENT'; applied: boolean }[]; status: PlanStatus; waiting: string | null; created: string; updated: string }
 export const plansSummarySample: PlansSummary = {
   observed_at: '2026-09-22T13:21:00.000Z', total: 1236,

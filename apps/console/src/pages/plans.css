@@ -3,6 +3,9 @@
    the plan list takes the remaining height and scrolls inside. */
 .row-flow>.plans-funnel { grid-column: span 3; }
 .plans-page .row-state>.span-2 { grid-column: span 2; }
+.funnel.six { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
+.funnel.six .funnel-step:not(:last-child)::after { right: -13px; }
+.source-tag { padding: 1px 5px; border-radius: 3px; background: #eaf2ff; color: #2562cf; font-size: var(--fs-meta); }
 .status-grid.six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .plans-page .row-state { min-height: 176px; }
 .plans-page .row-state .table-scroll { padding: 0 10px 8px; }
