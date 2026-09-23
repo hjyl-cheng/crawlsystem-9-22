@@ -2,7 +2,7 @@
 
 独立 React / TypeScript / Vite 前端，调用 Fastify Control API。生产输出为静态文件，无 SSR、Server Actions、前端数据库连接或内置业务 API。
 
-界面使用 Tailwind CSS、自建组件、Radix Dialog、React Flow 和 ECharts，没有套用第三方 Dashboard 工程。业务实体、状态、输入和响应校验统一导入 `@crawlsystem/contracts`，接口版本 `m1.v1`。
+界面使用 Tailwind CSS、自建组件、Radix Dialog 和 React Flow，没有套用第三方 Dashboard 工程。保留 ECharts 依赖供后续真实统计接入；当前首页未提供无数据来源的统计图。业务实体、状态、输入和响应校验统一导入 `@crawlsystem/contracts`，接口版本 `m1.v1`。
 
 ## 开发与构建
 
@@ -47,12 +47,18 @@ npm run preview --workspace @crawlsystem/console
 
 ## 页面与状态
 
-- 总览：最近计划的领域结果与采集链路，最近计划、频道、Worker 和错误各最多 5 条。不提供未经后端统计的全局总量、成功率或趋势图。
+- 总览：按用户原型采用 174px 深色侧栏、46px 工具栏、四条采集分支汇入 Ingest / Channel Current 的链路，以及两排三列看板。最近计划、频道、Worker 和错误各最多查询 5 条；IP 和趋势区域明确显示尚未接入。手机上链路可横向滑动，列表纵向排列。[桌面截图](docs/evidence/overview-prototype-aligned.png) / [手机截图](docs/evidence/overview-mobile.png)。
 - Plan：状态筛选、20 条分页、固定样本创建、目标与必需领域、输入版本、领域证明、事件及回执；取消带期望版本与命令身份。
 - 频道：当前基础资料、视频、首屏评论、指标来源/时间/可用性和 Agent 区域。当前数据与本轮结果分开；未知不填零，未采集不当空结果。
 - Worker / 节点：登记关系、版本、最后心跳、服务端失联判定、接单上报、关联 Plan。节点 CPU/内存、代理额度未接入。
 - 错误：按实际事件展示，可打开 Plan 及其最近回执。当前 API 没有错误聚合、直接回执关联或独立节点详情，不推测这些关联。
 - Agent 未接入、固定样本不使用代理、交付未启用，界面明确标识。样本完成不表示真实采集或模型已执行。
+
+## 数据来源与后端依赖
+
+Fastify 是前端统一查询与操作入口。现有 `@crawlsystem/store` 读取采集 PostgreSQL 中的 Plan、领域结果、频道、视频、回执、Worker 心跳和事件；这些是采集业务事实，不是独立的一套控制台展示数据。内部预览账号来自受保护的账号文件，会话暂存在 API 进程内，并未接入 Keycloak。
+
+完整系统还需由后端接入 ClickHouse 历史分析和监控数据源：历史趋势、跨频道统计来自分析投影；节点 CPU / 内存等来自监控；执行详情结合 Temporal 和持久执行事件。当前 M1 API 尚无这些查询，相关页面不能靠前端推算或填入示例数字。分析延迟不改变 PostgreSQL 中的 Plan 完成与回执事实，接入后应显示统计时间与数据更新时间。浏览器始终只访问 API，不持有数据库或监控系统凭据。
 
 ## 请求与写操作约束
 

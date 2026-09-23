@@ -1,0 +1,130 @@
+{
+  "verified_at": "2026-09-23T06:22:42.275Z",
+  "url": "https://occupations-ferry-advanced-recommends.trycloudflare.com",
+  "browser": "153.0.8010.12",
+  "desktop": {
+    "width": 1586,
+    "scrollWidth": 1586,
+    "height": 992,
+    "panels": [
+      {
+        "label": "采集链路实时状态",
+        "rect": {
+          "x": 194,
+          "y": 106,
+          "width": 1372,
+          "height": 418.5,
+          "top": 106,
+          "right": 1566,
+          "bottom": 524.5,
+          "left": 194
+        }
+      },
+      {
+        "label": "采集节点状态",
+        "rect": {
+          "x": 194,
+          "y": 538.5,
+          "width": 507.625,
+          "height": 184,
+          "top": 538.5,
+          "right": 701.625,
+          "bottom": 722.5,
+          "left": 194
+        }
+      },
+      {
+        "label": "IP 使用情况",
+        "rect": {
+          "x": 713.625,
+          "y": 538.5,
+          "width": 388.1875,
+          "height": 184,
+          "top": 538.5,
+          "right": 1101.8125,
+          "bottom": 722.5,
+          "left": 713.625
+        }
+      },
+      {
+        "label": "Worker 运行状态",
+        "rect": {
+          "x": 1113.8125,
+          "y": 538.5,
+          "width": 452.1875,
+          "height": 184,
+          "top": 538.5,
+          "right": 1566,
+          "bottom": 722.5,
+          "left": 1113.8125
+        }
+      },
+      {
+        "label": "最近采集的频道",
+        "rect": {
+          "x": 194,
+          "y": 736.5,
+          "width": 500.671875,
+          "height": 216,
+          "top": 736.5,
+          "right": 694.671875,
+          "bottom": 952.5,
+          "left": 194
+        }
+      },
+      {
+        "label": "关键错误与 Bug 线索",
+        "rect": {
+          "x": 706.671875,
+          "y": 736.5,
+          "width": 449.34375,
+          "height": 216,
+          "top": 736.5,
+          "right": 1156.015625,
+          "bottom": 952.5,
+          "left": 706.671875
+        }
+      },
+      {
+        "label": "采集趋势",
+        "rect": {
+          "x": 1168.015625,
+          "y": 736.5,
+          "width": 397.984375,
+          "height": 216,
+          "top": 736.5,
+          "right": 1566,
+          "bottom": 952.5,
+          "left": 1168.015625
+        }
+      }
+    ],
+    "overflow": []
+  },
+  "mobile": {
+    "width": 390,
+    "scrollWidth": 390,
+    "height": 1746,
+    "sidebarRight": 0,
+    "canvasWidth": 1150
+  },
+  "desktop_resize": "passed",
+  "error_navigation": "passed",
+  "pipeline_links": "passed",
+  "mobile_navigation": "passed",
+  "mobile_touch_scroll": "passed",
+  "paused_manual_refresh": "passed",
+  "worker_query_failure_injection": [
+    {
+      "panel": "采集节点状态",
+      "errorVisible": true,
+      "retryVisible": true
+    },
+    {
+      "panel": "Worker 运行状态",
+      "errorVisible": true,
+      "retryVisible": true
+    }
+  ],
+  "browser_errors": []
+}

@@ -16,8 +16,8 @@
 
 | 任务 | 实现与证据 |
 | --- | --- |
-| UI-01 基础与 API | React 19 / TypeScript / Vite 独立静态应用；Tailwind CSS、自建组件、Radix Dialog；导入公共契约校验请求和响应；Bearer 登录验证、reader/operator 权限、Worker 登录拒绝、401 退出、403/404 清理受限结果。 |
-| UI-02 频道与 Plan | 总览、频道列表/详情、Plan 列表/详情、创建页面和回执详情。状态筛选、20 条分页、必需领域、输入版本、执行代次、阶段事件、等待/失败原因、持久回执。React Flow 展示最近 Plan 链路，ECharts 仅统计该 Plan 的必需领域。 |
+| UI-01 基础与 API | React 19 / TypeScript / Vite 独立静态应用；Tailwind CSS、自建组件、Radix Dialog；导入公共契约校验请求和响应；账号密码与 Cookie 登录，显式兼容开发 Bearer 模式；reader/operator 权限、Worker 登录拒绝、401 退出、403/404 清理受限结果。 |
+| UI-02 频道与 Plan | 总览、频道列表/详情、Plan 列表/详情、创建页面和回执详情。状态筛选、20 条分页、必需领域、输入版本、执行代次、阶段事件、等待/失败原因、持久回执。总览按原型展示 React Flow 四路链路和六块看板，最近 Plan 的必需领域与回执使用真实查询；统计未接入时显示明确占位。 |
 | UI-03 Worker 与错误 | 展示登记节点、Worker 版本/容量/接单上报、最后心跳和服务端 `stale`。错误关联 Plan、Worker 及该 Plan 的最近回执。没有代理、节点资源或错误聚合数据时明确说明。 |
 | UI-04 操作交互 | 创建采用稳定 `request_id` 和同步连点保护；未确认的创建输入按工作空间/用户存入 sessionStorage，导航后可重放原操作。取消需确认，携带 `command_id` 和捕获的期望版本，冲突要求显式刷新、不自动换版本重提；后端拒绝不会显示成功。 |
 | UI-05 验证与文档 | 6 项客户端测试、16 项浏览器行为测试、3 条真实 API E2E，类型检查和生产构建通过；运行说明、环境变量、Nginx 示例及实际页面截图已提交。 |
@@ -45,7 +45,7 @@
 | `npm run test:contracts` | 3 / 3 通过 |
 | `npm run test --workspace @crawlsystem/console` | 6 / 6 通过 |
 | `npm run test:browser --workspace @crawlsystem/console` | 16 / 16 通过，最终命令退出码 0 |
-| `npm run build --workspace @crawlsystem/console` | 通过，输出 `apps/console/dist/`；路由与 ECharts 分包 |
+| `npm run build --workspace @crawlsystem/console` | 通过，输出 `apps/console/dist/`；按路由分包 |
 | `npm run test:live --workspace @crawlsystem/console`（凭据变量见下文） | 3 / 3 通过，约 1.8 分钟 |
 
 浏览器行为测试使用独立端口 `18112` 和明确的 API 拦截，覆盖空结果、加载、等待、部分入库、终态、只读入口、创建连点、响应丢失后重试、取消冲突与权限拒绝、服务端失联状态、错误至回执关联、网络过期与恢复、schema 不兼容、分页筛选、401、移动导航、离页停止轮询及有限失败预算。这些测试与真实接口测试分别记录。
@@ -129,3 +129,17 @@ npm run build --workspace @crawlsystem/console
 新增验证：`node --import tsx --test apps/control-api/test/console-auth.test.ts` 6/6 通过；原 16 项浏览器测试、6 项客户端测试和 3 项契约测试通过。公网 `test:login-live` 1/1 通过，包含密码错误、正确登录、页面刷新恢复、只读写入 403、缺失 CSRF/外部来源 403、退出后旧 Cookie 重放 401，浏览器无运行错误。[完整公网结果](../../../apps/console/docs/evidence/public-password-results.json)。
 
 根类型检查与前端生产构建通过。使用现有隔离 PG 环境运行 `node --env-file=.runtime/main.env --import tsx --test --test-name-pattern='HTTP authentication|all console query' /home/ubuntu/workspace/crawlsystem-console/tests/integration/main.test.ts`（工作目录为主 Agent worktree，`PG_POOL_MAX=1`），2/2 通过，验证原有 Bearer 身份/权限/来源/输入限制和全部控制台查询的持久结果契约。
+
+## 总览原型对齐（2026-09-23）
+
+针对用户反馈“首页与提供的 UI 图差距很大”，按原图 `UI/cd46e11a7a47704ab025b79383e90687.png` 重做首页布局：174px 深色层级导航、46px 顶栏、四条彩色采集分支汇入 Ingest / Channel Current，再到发布与 Business DB；下方采用节点 / IP / Worker、频道 / 错误 / 趋势两排三列看板。移除了首页顶部大块能力卡片与侧边领域圆环，调整了表格、间距、边框和文字密度。
+
+链路状态标注为最近 Plan 的状态；回执数与必需领域入库数来自该 Plan 的持久查询。首次发现、增量调度、真实 Agent、Data API 和交付路径明确标记待接入；虚线不表示任务已经执行。节点列表按已登记 Worker 展示，不从样本数量推断节点或 Worker 总量；CPU / 内存 / IP 和趋势无 API 支撑，显示“—”或“尚未接入”。日期范围与尚未实施的菜单不可执行；已有导航、Plan 定位、频道与错误关联保持可用。
+
+桌面在 1586×992（与原图一致）下完整容纳链路和六块面板，无页面横向溢出或链路卡片文字溢出。图随桌面尺寸变化重新适配；390×844 手机采用可原生触摸横向滚动的链路、纵向看板和导航抽屉。失败/轮询暂停时面板允许增高，错误信息与重试按钮不会被固定高度裁掉。
+
+本次验证：生产构建及类型检查通过；现有浏览器回归 16/16，通过真实公网 Fastify + PostgreSQL 的密码登录验证 1/1；另检查桌面缩放、手机触摸滚动及导航、链路卡片到 Plan / 频道的跳转、首页错误关联跳转和轮询暂停后的手动恢复，无浏览器运行错误。Worker 查询 503 的布局验证使用浏览器明确注入的故障，和真实接口结果分开记录。验证期间共享 PG 开发转发曾报告 reset / Kubernetes 代理 502，API 返回 503；已有重连脚本恢复后，真实查询及最终截图检查通过，未修改集群或数据库。
+
+证据：[桌面总览](../../../apps/console/docs/evidence/overview-prototype-aligned.png)、[手机总览](../../../apps/console/docs/evidence/overview-mobile.png)、[受控查询失败](../../../apps/console/docs/evidence/overview-query-failure.png)、[尺寸与交互核对结果](../../../apps/console/docs/evidence/overview-prototype-check.json)。旧 `live-*.png` 保留为之前真实业务 E2E 的历史证据。
+
+后端数据依赖说明已补入应用 README：当前 Fastify 直接通过 Store 查询采集 PostgreSQL 事实；完整系统的 ClickHouse 分析、Prometheus 等资源监控和 Temporal 执行查询仍需后端逐项接入，前端始终只调用 API。当前页面可视布局对齐不等于这些能力已经实现。

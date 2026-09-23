@@ -31,7 +31,7 @@ export function ErrorBox({ error, refresh }: { error: ApiFailure; refresh?: () =
 }
 export function ResourceView<T>({ resource, children, showMeta = true }: { resource: Resource<T>; children: (data: T) => ReactNode; showMeta?: boolean }) {
   return <>
-    {(showMeta || resource.error) && <div className="resource-meta"><span>{resource.updatedAt ? `最近查询 ${time(resource.updatedAt)}` : '等待查询结果'}{resource.refreshing && <LoaderCircle size={13} className="spin"/>}</span>
+    {(showMeta || resource.error || resource.paused) && <div className="resource-meta"><span>{resource.updatedAt ? `最近查询 ${time(resource.updatedAt)}` : '等待查询结果'}{resource.refreshing && <LoaderCircle size={13} className="spin"/>}</span>
       <button className="icon-button" aria-label="刷新数据" title="刷新数据" onClick={resource.refresh} disabled={resource.refreshing}><RefreshCw size={15}/></button></div>}
     {resource.error && <ErrorBox error={resource.error} refresh={resource.refresh}/>}
     {resource.error && resource.data !== undefined && <div className="notice warning">数据可能已过期。以下保留最近一次成功查询的结果。</div>}
