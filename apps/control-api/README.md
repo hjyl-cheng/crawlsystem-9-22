@@ -19,9 +19,9 @@ React 静态前端与 Fastify API 独立运行。新增账号入口使用公共 
 | `console.accounts` | 用户名、subject、工作空间、角色（reader/operator）、加盐 scrypt 摘要、停用时间 |
 | `console.sessions` | Cookie 秘密的 SHA-256、所属账号、创建与过期时间；退出即删除该行 |
 
-`CONSOLE_DATABASE_URL` 指向 `crawler` 库，使用 `console_app` 角色连接（与 `DATABASE_URL` 共用 `PG_CA_FILE` / `PG_TLS_SERVERNAME` 的 TLS 校验，连接池最多 2）。未配置时可用 `M1_CONSOLE_ACCOUNTS_FILE` 指向隔离测试的账号摘要文件，此模式的会话和限流同样写入 M1 PostgreSQL；两项都未配置时账号登录明确返回尚未接入，Bearer 接口仍可使用。
+`CONSOLE_DATABASE_URL` 指向 `crawler` 库，使用 `console_app` 角色连接（与 `DATABASE_URL` 共用 `PG_CA_FILE` / `PG_TLS_SERVERNAME` 的 TLS 校验，`CONSOLE_PG_POOL_MAX` 默认 1，可设 1～2）。未配置时可用 `M1_CONSOLE_ACCOUNTS_FILE` 指向隔离测试的账号摘要文件，此模式的会话和限流同样写入 M1 PostgreSQL；两项都未配置时账号登录明确返回尚未接入，Bearer 接口仍可使用。
 
-`console_app` 只有 `console` schema 的 USAGE、`accounts` 的 SELECT/INSERT/UPDATE、`sessions` 的读写删；表归 `crawler_owner` 所有，该角色不能建表、删账号或访问其他 schema。角色由管理员单独创建（连接上限 3，`statement_timeout=5s`），密码只以 SCRAM 校验值发送给数据库，运行密码存于忽略的 0600 运行文件。
+`console_app` 只有 `console` schema 的 USAGE、`accounts` 的 SELECT/INSERT/UPDATE、`sessions` 的读写删；表归 `crawler_owner` 所有，该角色不能建表、删账号或访问其他 schema。角色由管理员单独创建（连接上限 3，`statement_timeout=5s`；双副本各 1 个连接，保留 1 个维护连接），密码只以 SCRAM 校验值发送给数据库，运行密码存于忽略的 0600 运行文件。
 
 账号管理使用命令行，密码只从标准输入读取：
 
@@ -47,7 +47,17 @@ npm run console:accounts -- import accounts.json                              # 
 
 ## 当前预览部署与验证
 
-为落实用户的账号密码登录要求，本分支补充了 Control API、共享 HTTP 认证扩展和公共登录契约。预览单独运行本分支 API 在 loopback `18104`（`console-preview-api` 用户服务，PG_POOL_MAX=1），连接既有隔离样本库；没有重启原有 `18100/18101` 联调服务。主线现已合入前端、后端账号库与共享契约，并补上跨副本限流、并发会话容量及原子改密；这次主线验证没有重启该预览服务。预览的历史部署证据与主线验证证据分开记录。
+**2026-09-23 起预览 API 运行在集群 `control` 命名空间**（[`deploy/preview.yaml`](deploy/preview.yaml)，2 副本），通过 Service 网络直连 `crawler-pg-pool.db.svc.cluster.local`，不再经过 `kubectl port-forward`。原因：port-forward 所有连接共用一条 API Server→kubelet 通道，单个连接被重置就会整体退出，重连期间请求全部 503。
+
+- 镜像：`npx esbuild apps/control-api/src/main.ts --bundle --platform=node --format=esm` 打成单文件，用 `crane append` 叠加到按 digest 锁定的 `node:22.22.1-alpine`，导入 6 台节点的 containerd（暂无镜像仓库，`imagePullPolicy: Never`）。产物位于忽略目录 `.runtime/control-api-image/`。
+- 双副本账号池各 1 个连接；滚动更新不增加临时副本，避免越过账号角色连接预算。重新部署主线镜像后这些配置和共享限流才会生效。
+- Secret `control/control-api-preview`：`database-url`、`console-database-url`（主机改为集群内 PgBouncer）、`pg-ca.crt`、`jwt-secret`，由现有运行文件生成，不进 Git。
+- NetworkPolicy 只允许 A1 主机访问 18100；预览静态站 `CONTROL_API_PROXY_TARGET` 指向该 Service 的 ClusterIP。
+- 本机 `console-preview-api` 已停用。回退：`systemctl --user enable --now console-preview-api`，恢复 `.runtime/console-preview/preview.env.bak-local-api`，再重启 `console-preview-web`。
+
+以下为此前本机运行方式的记录：
+
+为落实用户的账号密码登录要求，本分支补充了 Control API、共享 HTTP 认证扩展和公共登录契约。预览单独运行本分支 API 在 loopback `18104`（`console-preview-api` 用户服务，PG_POOL_MAX=1），连接既有隔离样本库；没有重启原有 `18100/18101` 联调服务。主线已集成前端、后端账号库与公共契约，并补上共享限流、并发会话容量及原子改密。主线没有重新构建/部署该预览镜像；公网预览的历史证据与本轮代码联调分开记录。
 
 ```bash
 node --import tsx --test apps/control-api/test/console-auth.test.ts
