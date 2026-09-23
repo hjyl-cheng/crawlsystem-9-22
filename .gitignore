@@ -24,3 +24,14 @@
 
 # Environment-local Git metadata
 .git-meta/
+
+# Application build and local development state
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+.runtime/
+test-results/
+playwright-report/
