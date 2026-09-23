@@ -207,3 +207,16 @@ test('desktop overview fits one screen and card columns line up', async ({ page 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0);
 });
+test('overview polling updates the pipeline in place without hiding nodes or edges', async ({ page }) => {
+  const state = await mock(page, detailFixture({ status: 'RUNNING' }, ['ABOUT'])); await page.clock.install(); await login(page);
+  await expect(page.getByText('必需领域已入库', { exact: true })).toBeVisible();
+  const visible = () => page.evaluate(() => {
+    const nodes = [...document.querySelectorAll('#pipeline .react-flow__node')];
+    return { hidden: nodes.filter(node => getComputedStyle(node).visibility === 'hidden').length, nodes: nodes.length, edges: document.querySelectorAll('#pipeline .react-flow__edge').length };
+  });
+  const before = await visible(); expect(before.hidden).toBe(0); expect(before.edges).toBe(10);
+  const reads = state.reads.length;
+  await page.clock.runFor(31_000);
+  await expect.poll(() => state.reads.length).toBeGreaterThan(reads);
+  await expect.poll(visible).toEqual(before);
+});

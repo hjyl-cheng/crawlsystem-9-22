@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Handle, MarkerType, Position, ReactFlow, type Node, type NodeProps, type ReactFlowInstance } from '@xyflow/react';
+import { Handle, MarkerType, Position, ReactFlow, useNodesState, type Node, type NodeProps, type ReactFlowInstance } from '@xyflow/react';
 import { Link } from 'react-router';
 import { ArrowRight, Bot, Box, Check, Clock3, CodeXml, Database, FileText, RefreshCw, Search, Send } from 'lucide-react';
 import type { Completeness, PlanDetail } from '@crawlsystem/contracts';
@@ -56,44 +56,68 @@ function CompletenessCard({ data }: NodeProps<CompletenessNode>) {
 }
 
 const nodeTypes = { stage: StageCard, lane: LaneCard, capabilities: Capabilities, completeness: CompletenessCard };
-// Shrink to fit narrow screens, but never enlarge: text stays at its designed size.
+// Designed canvas; wider panels stretch it horizontally instead of leaving side margins.
+const BASE_WIDTH = 1338, BASE_HEIGHT = 354;
+// Shrink to fit narrow or short panels, but never enlarge: text stays at its designed size.
 const fitViewOptions = { padding: 0.008, maxZoom: 1 };
-export default function Pipeline({ detail, completeness }: { detail?: PlanDetail; completeness?: Resource<Completeness> }) {
-  const canvas = useRef<HTMLDivElement>(null);
-  const [flow, setFlow] = useState<ReactFlowInstance<FlowNode> | null>(null);
-  useEffect(() => {
-    if (!flow || !canvas.current) return;
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => { void flow.fitView(fitViewOptions); });
-    });
-    observer.observe(canvas.current);
-    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
-  }, [flow]);
+type Box = { x: number; y: number; w: number; h: number };
+
+function buildNodes(detail: PlanDetail | undefined, completeness: Resource<Completeness> | undefined, stretch: number): FlowNode[] {
   const applied = detail?.domains.filter(domain => detail.plan.required_domains.includes(domain.domain) && domain.state === 'APPLIED').length;
-  const stage = (id: string, x: number, y: number, width: number, height: number, data: Stage['data']): Stage => ({ id, type: 'stage', position: { x, y }, data, style: { width, height }, zIndex: 2, draggable: false });
-  const lane = (id: string, y: number, height: number, data: Lane['data']): Lane => ({ id, type: 'lane', position: { x: 0, y }, data, style: { width: 574, height }, zIndex: 0, draggable: false });
-  // Logical canvas 1338 × 354: collection lanes on the left, completeness above the
-  // shared ingest → delivery path on the right (as in the supplied mockup).
-  const nodes: FlowNode[] = [
+  // Containers stretch fully; cards stretch a little and stay centred in their slot.
+  const wide = ({ x, y, w, h }: Box) => ({ position: { x: x * stretch, y }, width: w * stretch, height: h });
+  const card = ({ x, y, w, h }: Box) => { const width = w * Math.min(stretch, 1.18); return { position: { x: x * stretch + (w * stretch - width) / 2, y }, width, height: h }; };
+  const stage = (id: string, box: Box, data: Stage['data']): Stage => ({ id, type: 'stage', ...card(box), data, zIndex: 2, draggable: false });
+  const lane = (id: string, y: number, h: number, data: Lane['data']): Lane => ({ id, type: 'lane', ...wide({ x: 0, y, w: 574, h }), data, zIndex: 0, draggable: false });
+  // Collection lanes on the left, completeness above the shared ingest → delivery path on the right (as in the mockup).
+  return [
     lane('first-lane', 0, 126, { title: '首次采集链', description: '新频道的发现与全量抓取', tone: 'blue' }),
     lane('update-lane', 138, 101, { title: '持续更新链', description: '已纳管频道的增量更新', tone: 'green' }),
     lane('agent', 250, 47, { title: 'Agent 任务（并行分支）', description: '补充信息抓取、复杂场景、定期采集', tone: 'purple', compact: true, status: '尚未接入' }),
     lane('data-api', 307, 47, { title: 'Data API（条件/兜底分支）', description: '无法直接抓取时，通过数据 API 获取', tone: 'orange', compact: true, status: '尚未接入' }),
-    stage('discover', 152, 23, 124, 99, { title: 'Query Discover', description: '发现线索', value: '未接入', foot: '真实发现待接入', tone: 'blue', icon: 'search', pending: true }),
-    stage('candidate', 285, 23, 124, 99, { title: '候选频道', description: '评估与过滤', value: '未接入', foot: '候选筛选待接入', tone: 'blue', icon: 'file', pending: true }),
-    stage('full', 418, 23, 143, 99, { title: '全量抓取', description: 'Main + Agent', value: '固定样本', foot: '当前为样本验证', tone: 'blue', icon: 'box', href: detail ? planPath(detail.plan.plan_id) : '/plans' }),
-    stage('clock', 152, 150, 139, 86, { title: 'Clock 到期', description: '触发更新', value: '未接入', foot: '更新调度待接入', tone: 'green', icon: 'clock', pending: true }),
-    stage('update', 317, 150, 139, 86, { title: '更新采集', description: '增量抓取', value: '未接入', foot: '增量采集待接入', tone: 'green', icon: 'refresh', pending: true }),
-    { id: 'completeness', type: 'completeness', position: { x: 607, y: 0 }, style: { width: 731, height: 136 }, data: { resource: completeness }, zIndex: 2, draggable: false },
-    stage('ingest', 607, 148, 169, 112, { title: 'Ingest / APPLIED', description: '清洗入库', value: detail ? String(detail.receipts.length) : '—', caption: '本轮持久回执', foot: detail ? `${applied} / ${detail.plan.required_domains.length}` : '等待计划数据', footLabel: detail ? '必需领域已入库' : undefined, tone: 'blue', icon: 'box', href: detail ? planPath(detail.plan.plan_id) : '/plans' }),
-    stage('current', 796, 148, 169, 112, { title: 'Channel Current', description: '频道当前视图', value: detail ? '查看数据' : '—', caption: '资料 / 视频 / 评论', foot: '以已入库事实为准', tone: 'blue', icon: 'file', href: detail ? channelPath(detail.plan.channel_id) : '/channels' }),
-    stage('publish', 996, 148, 158, 112, { title: '发布交付', description: '内容分发', value: '未启用', caption: '当前不触发交付', foot: '交付能力待接入', tone: 'blue', icon: 'send', pending: true }),
-    stage('business', 1180, 148, 158, 112, { title: 'Business DB', description: '下游业务数据库', value: '未接入', caption: '等待交付链路', foot: '暂无交付记录', tone: 'green', icon: 'database', pending: true }),
-    { id: 'capabilities', type: 'capabilities', position: { x: 796, y: 276 }, style: { width: 542, height: 78 }, data: {}, zIndex: 2, draggable: false },
+    stage('discover', { x: 152, y: 23, w: 124, h: 99 }, { title: 'Query Discover', description: '发现线索', value: '未接入', foot: '真实发现待接入', tone: 'blue', icon: 'search', pending: true }),
+    stage('candidate', { x: 285, y: 23, w: 124, h: 99 }, { title: '候选频道', description: '评估与过滤', value: '未接入', foot: '候选筛选待接入', tone: 'blue', icon: 'file', pending: true }),
+    stage('full', { x: 418, y: 23, w: 143, h: 99 }, { title: '全量抓取', description: 'Main + Agent', value: '固定样本', foot: '当前为样本验证', tone: 'blue', icon: 'box', href: detail ? planPath(detail.plan.plan_id) : '/plans' }),
+    stage('clock', { x: 152, y: 150, w: 139, h: 86 }, { title: 'Clock 到期', description: '触发更新', value: '未接入', foot: '更新调度待接入', tone: 'green', icon: 'clock', pending: true }),
+    stage('update', { x: 317, y: 150, w: 139, h: 86 }, { title: '更新采集', description: '增量抓取', value: '未接入', foot: '增量采集待接入', tone: 'green', icon: 'refresh', pending: true }),
+    { id: 'completeness', type: 'completeness', ...wide({ x: 607, y: 0, w: 731, h: 136 }), data: { resource: completeness }, zIndex: 2, draggable: false },
+    stage('ingest', { x: 607, y: 148, w: 169, h: 112 }, { title: 'Ingest / APPLIED', description: '清洗入库', value: detail ? String(detail.receipts.length) : '—', caption: '本轮持久回执', foot: detail ? `${applied} / ${detail.plan.required_domains.length}` : '等待计划数据', footLabel: detail ? '必需领域已入库' : undefined, tone: 'blue', icon: 'box', href: detail ? planPath(detail.plan.plan_id) : '/plans' }),
+    stage('current', { x: 796, y: 148, w: 169, h: 112 }, { title: 'Channel Current', description: '频道当前视图', value: detail ? '查看数据' : '—', caption: '资料 / 视频 / 评论', foot: '以已入库事实为准', tone: 'blue', icon: 'file', href: detail ? channelPath(detail.plan.channel_id) : '/channels' }),
+    stage('publish', { x: 996, y: 148, w: 158, h: 112 }, { title: '发布交付', description: '内容分发', value: '未启用', caption: '当前不触发交付', foot: '交付能力待接入', tone: 'blue', icon: 'send', pending: true }),
+    stage('business', { x: 1180, y: 148, w: 158, h: 112 }, { title: 'Business DB', description: '下游业务数据库', value: '未接入', caption: '等待交付链路', foot: '暂无交付记录', tone: 'green', icon: 'database', pending: true }),
+    { id: 'capabilities', type: 'capabilities', ...wide({ x: 796, y: 276, w: 542, h: 78 }), data: {}, zIndex: 2, draggable: false },
   ];
-  const edge = (source: string, target: string, color: string, pending = false, targetHandle?: string) => ({ id: `${source}-${target}`, source, target, targetHandle, type: 'smoothstep', zIndex: 1, markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color }, style: { stroke: color, strokeWidth: 1.15, ...(pending ? { strokeDasharray: '4 3' } : {}) } });
-  const edges = [edge('discover', 'candidate', '#377cfa', true), edge('candidate', 'full', '#377cfa', true), edge('full', 'ingest', '#377cfa'), edge('clock', 'update', '#13bc8b', true), edge('update', 'ingest', '#13bc8b', true), edge('agent', 'ingest', '#a063ff', true, 'agent'), edge('data-api', 'ingest', '#ff9a45', true, 'data-api'), edge('ingest', 'current', '#377cfa'), edge('current', 'publish', '#377cfa', true), edge('publish', 'business', '#377cfa', true)];
-  return <div className="prototype-pipeline" role="region" aria-label="采集链路图，小屏可左右滚动" tabIndex={0}><div ref={canvas} className="pipeline-canvas"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onInit={setFlow} fitView fitViewOptions={fitViewOptions} nodesDraggable={false} nodesConnectable={false} nodesFocusable={false} edgesFocusable={false} elementsSelectable={false} zoomOnScroll={false} zoomOnPinch={false} zoomOnDoubleClick={false} panOnDrag={false} preventScrolling={false} minZoom={0.25} maxZoom={1}/></div></div>;
+}
+const edge = (source: string, target: string, color: string, pending = false, targetHandle?: string) => ({ id: `${source}-${target}`, source, target, targetHandle, type: 'smoothstep', zIndex: 1, markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color }, style: { stroke: color, strokeWidth: 1.15, ...(pending ? { strokeDasharray: '4 3' } : {}) } });
+const edges = [edge('discover', 'candidate', '#377cfa', true), edge('candidate', 'full', '#377cfa', true), edge('full', 'ingest', '#377cfa'), edge('clock', 'update', '#13bc8b', true), edge('update', 'ingest', '#13bc8b', true), edge('agent', 'ingest', '#a063ff', true, 'agent'), edge('data-api', 'ingest', '#ff9a45', true, 'data-api'), edge('ingest', 'current', '#377cfa'), edge('current', 'publish', '#377cfa', true), edge('publish', 'business', '#377cfa', true)];
+
+export default function Pipeline({ detail, completeness }: { detail?: PlanDetail; completeness?: Resource<Completeness> }) {
+  const canvas = useRef<HTMLDivElement>(null);
+  const [flow, setFlow] = useState<ReactFlowInstance<FlowNode> | null>(null);
+  const [stretch, setStretch] = useState(1);
+  // React Flow owns the node list (including measured sizes). Polling only swaps
+  // node data/geometry in place, so a refresh never re-hides or re-measures nodes.
+  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(buildNodes(detail, completeness, stretch));
+  useEffect(() => {
+    const next = buildNodes(detail, completeness, stretch);
+    setNodes(current => next.map(node => { const previous = current.find(n => n.id === node.id); return (previous ? { ...previous, data: node.data, position: node.position, width: node.width, height: node.height } : node) as FlowNode; }));
+  }, [detail, completeness, stretch, setNodes]);
+  useEffect(() => {
+    const element = canvas.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry!.contentRect;
+      if (!width || !height) return;
+      const scale = Math.min(1, height / BASE_HEIGHT);
+      setStretch(Math.max(1, Math.round(width / scale / BASE_WIDTH * 100) / 100));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!flow) return;
+    const frame = requestAnimationFrame(() => { void flow.fitView(fitViewOptions); });
+    return () => cancelAnimationFrame(frame);
+  }, [flow, stretch]);
+  return <div className="prototype-pipeline" role="region" aria-label="采集链路图，小屏可左右滚动" tabIndex={0}><div ref={canvas} className="pipeline-canvas"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} nodeTypes={nodeTypes} onInit={setFlow} fitView fitViewOptions={fitViewOptions} nodesDraggable={false} nodesConnectable={false} nodesFocusable={false} edgesFocusable={false} elementsSelectable={false} zoomOnScroll={false} zoomOnPinch={false} zoomOnDoubleClick={false} panOnDrag={false} preventScrolling={false} minZoom={0.25} maxZoom={1}/></div></div>;
 }
