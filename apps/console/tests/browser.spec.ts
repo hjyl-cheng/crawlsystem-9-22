@@ -34,7 +34,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       return json({ items: matches && url.searchParams.get('cursor') !== '20' ? [state.detail!.plan] : [], next_cursor: state.pageTwo && url.searchParams.get('cursor') === '0' ? '20' : null });
     }
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
-    if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id }] : [], next_cursor: null });
+    if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status }] : [], next_cursor: null });
     if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan));
     if (path === '/v1/overview/plans') {
       const p = state.detail?.plan, by_status = { QUEUED: 0, RUNNING: 0, WAITING: 0, COMPLETED: 0, CANCELLED: 0, FAILED: 0 };
@@ -156,7 +156,7 @@ test('unauthenticated responses clear the visible workspace', async ({ page }) =
 test('leaving a list stops its polling; phone layout has a working navigation drawer', async ({ page }) => {
   const state = await mock(page, detailFixture()); await page.setViewportSize({ width: 390, height: 844 }); await login(page, '/plans');
   // The drawer is intentionally offscreen until opened on phones.
-  await page.getByRole('button', { name: '打开导航' }).click(); await page.getByRole('link', { name: '频道数据', exact: true }).click(); await expect(page.getByRole('heading', { name: '频道数据', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '打开导航' }).click(); await page.getByRole('link', { name: '频道管理', exact: true }).click(); await expect(page.getByRole('heading', { name: '频道管理', exact: true })).toBeVisible();
   const previous = state.reads.filter(url => url.startsWith('/api/v1/plans?')).length;
   await page.clock.install(); await page.clock.runFor(6_000);
   expect(state.reads.filter(url => url.startsWith('/api/v1/plans?')).length).toBe(previous);
@@ -309,4 +309,16 @@ test('delivery treats sent as unconfirmed and shows the real completed-plan coun
   await expect(page.locator('.delivery-detail').getByText('回执到达前不计为已交付', { exact: false })).toBeVisible();
   await page.getByRole('tab', { name: /已交付/ }).click();
   await expect(page.locator('.delivery-list tbody tr')).toHaveCount(3);
+});
+test('channel management lists real channel facts and shows the selected channel beside the list', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await login(page, '/channels');
+  await expect(page.getByRole('heading', { name: '频道管理', exact: true })).toBeVisible();
+  const row = page.locator('.channels-list tbody tr').first();
+  await expect(row).toContainText('M1 固定样本频道'); await expect(row).toContainText('本轮已完成');
+  await expect(page.locator('.channel-detail').getByText('已入库视频', { exact: true })).toBeVisible();
+  await page.locator('.channel-detail').getByRole('tab', { name: '更新策略' }).click();
+  await expect(page.locator('.channel-detail').getByText('未接入').first()).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.channels-list tbody tr')).toHaveCount(10);
 });

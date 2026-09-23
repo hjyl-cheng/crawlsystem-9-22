@@ -1,0 +1,23 @@
+/* Channel management. Discover chrome on the 4-column grid: channel list (3)
+   with a detail panel (1); both fill the remaining height. */
+.channels-page .row-channels { flex: 1 1 0; min-height: 320px; }
+.dashboard.channels-page .channels-list { grid-column: span 3; min-height: 0; }
+.dashboard.channels-page .channel-detail { min-height: 0; }
+.channels-list .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
+.channels-list td { vertical-align: middle; }
+.channels-list tbody tr { cursor: pointer; }
+.channels-list tbody tr.selected { background: #eef5ff; }
+.channels-list .resource-meta { padding: 0 14px; min-height: 26px; font-size: var(--fs-meta); }
+.channels-page .pagination { padding: 6px 14px; border-top: 1px solid #eef3f9; font-size: var(--fs-meta); }
+.channel-filters { justify-content: flex-start; padding: 8px 14px; }
+.channel-detail .detail-head>a { margin-left: auto; color: #277cf7; font-size: var(--fs-meta); white-space: nowrap; }
+.policy-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px 0; border-bottom: 1px solid #eef3f9; font-size: var(--fs-text); }
+.policy-row b { color: #193257; }
+.policy-row span { grid-row: 2; font-size: var(--fs-meta); color: #7a8ca8; }
+.policy-row em { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-style: normal; font-size: var(--fs-meta); padding: 1px 6px; border-radius: 4px; background: #eef2f7; color: #8797b0; }
+.policy-row em.on { background: #e7f8f1; color: #0b8a63; }
+.channel-detail .detail-note { margin-top: 10px; }
+@media (max-width: 1040px), (max-height: 600px) {
+  .channels-page .row-channels { flex: none; }
+  .dashboard.channels-page .channels-list, .dashboard.channels-page .channel-detail { grid-column: 1 / -1; min-height: 360px; }
+}

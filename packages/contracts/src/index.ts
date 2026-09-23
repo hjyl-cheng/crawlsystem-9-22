@@ -118,6 +118,8 @@ export type Heartbeat = z.infer<typeof HeartbeatSchema>;
 export interface Worker extends Heartbeat { last_heartbeat_at: string; stale: boolean; proxy_status: 'NOT_CONFIGURED'; }
 export interface PlanDetail extends PlanInput { events: StoredEvent[]; }
 export interface ChannelSummary { channel_id: string; title: string | null; source_mode: 'fixture'; updated_at: string; latest_plan_id: string; }
+/** A channel row for list pages: the summary plus current facts cheap to read in one query. */
+export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; }
 export interface ChannelDetail extends ChannelSummary { about: ChannelFacts | null; videos: VideoFacts[]; agent: AgentResult | null; latest_plan: Plan; }
 export interface Page<T> { items: T[]; next_cursor: string | null; }
 /** Workspace-wide plan statistics for the full-collection page. Counts are over
@@ -158,6 +160,7 @@ export const StoredEventSchema: z.ZodType<StoredEvent> = ExecutionEventSchema.ex
 export const PlanDetailSchema: z.ZodType<PlanDetail> = z.strictObject({ plan: PlanSchema, input: FrozenInputSchema, domains: z.array(DomainResultSchema).max(3), receipts: z.array(ReceiptSchema).max(300), events: z.array(StoredEventSchema).max(100) });
 export const ChannelSummarySchema: z.ZodType<ChannelSummary> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: z.literal('fixture'), updated_at: Timestamp, latest_plan_id: z.uuid() });
 export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: z.literal('fixture'), updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoFactsSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema });
+export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: z.literal('fixture'), updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema });
 export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.literal('NOT_CONFIGURED') });
 export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, contract_version: z.literal(CONTRACT_VERSION) });
 export const ApiErrorSchema: z.ZodType<ApiError> = z.strictObject({ error: z.strictObject({ code: ErrorCodeSchema, message: z.string(), retryable: z.boolean(), correlation_id: z.string() }) });

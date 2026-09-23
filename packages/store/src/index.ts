@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import { CONTRACT_VERSION, WORKER_STALE_SECONDS, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
   type Principal, type Role, type ErrorCode, type Plan, type PlanInput, type PlanDetail, type Domain, type DomainResult, type FrozenInput, type CreatePlan, type Submission, type Receipt,
-  type Page, type Completeness, type PlansSummary, type PlanStatus, type ChannelSummary, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput } from '@crawlsystem/contracts';
+  type Page, type Completeness, type PlansSummary, type PlanStatus, type ChannelSummary, type ChannelListItem, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput } from '@crawlsystem/contracts';
 import { contentHash, submissionHash } from '@crawlsystem/contracts/hash';
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
 
@@ -235,10 +235,16 @@ export class Store {
     const rows = await this.pool.query("SELECT e.* FROM m1.events e JOIN m1.plans p USING(plan_id) WHERE p.workspace_id=$1 AND e.data->>'kind' IN ('ERROR','FAILED') ORDER BY e.created_at DESC,e.event_id LIMIT $2 OFFSET $3",[principal.workspace_id,limit+1,offset]);
     return page(rows.rows.map(r => ({...r.data,plan_id:r.plan_id,created_at:iso(r.created_at)} as StoredEvent)),limit,offset);
   }
-  async listChannels(principal: Principal, limit=20, offset=0): Promise<Page<ChannelSummary>> {
+  async listChannels(principal: Principal, limit=20, offset=0): Promise<Page<ChannelListItem>> {
     requireRole(principal,'reader','operator');
-    const rows = await this.pool.query('SELECT * FROM m1.channels WHERE workspace_id=$1 ORDER BY updated_at DESC,channel_id LIMIT $2 OFFSET $3',[principal.workspace_id,limit+1,offset]);
-    return page(rows.rows.map(r => ({channel_id:r.channel_id,title:r.about?.title ?? null,source_mode:'fixture',updated_at:iso(r.updated_at),latest_plan_id:r.latest_plan_id})),limit,offset);
+    // Country and subscribers come from the current About facts; stored_videos counts this workspace's video rows.
+    const rows = await this.pool.query(`SELECT c.*, p.status AS latest_plan_status,
+        (SELECT count(*)::int FROM m1.videos v WHERE v.workspace_id=c.workspace_id AND v.channel_id=c.channel_id) AS stored_videos
+      FROM m1.channels c JOIN m1.plans p ON p.plan_id=c.latest_plan_id
+      WHERE c.workspace_id=$1 ORDER BY c.updated_at DESC,c.channel_id LIMIT $2 OFFSET $3`,[principal.workspace_id,limit+1,offset]);
+    return page(rows.rows.map(r => ({channel_id:r.channel_id,title:r.about?.title ?? null,source_mode:'fixture' as const,updated_at:iso(r.updated_at),latest_plan_id:r.latest_plan_id,
+      country:r.about?.country ?? null, subscriber_count:typeof r.about?.subscriber_count?.value === 'number' ? r.about.subscriber_count.value : null,
+      stored_videos:r.stored_videos, latest_plan_status:r.latest_plan_status})),limit,offset);
   }
   async getChannel(principal: Principal, channelId: string): Promise<ChannelDetail> {
     requireRole(principal,'reader','operator');
