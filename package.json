@@ -14,6 +14,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test:contracts": "tsx --test packages/contracts/test/*.test.ts",
+    "test:auth": "tsx --test apps/control-api/test/*.test.ts",
+    "test:console": "npm run test --workspace @crawlsystem/console",
+    "test:browser": "npm run test:browser --workspace @crawlsystem/console",
+    "build:console": "npm run build --workspace @crawlsystem/console",
     "test:integration": "tsx --test --test-concurrency=1 tests/integration/*.test.ts",
     "migrate": "tsx scripts/dev/migrate.ts",
     "dev:control": "tsx apps/control-api/src/main.ts",
@@ -24,6 +28,7 @@
   "dependencies": {
     "@temporalio/activity": "1.24.0",
     "@temporalio/client": "1.24.0",
+    "@temporalio/common": "1.24.0",
     "@temporalio/testing": "1.24.0",
     "@temporalio/worker": "1.24.0",
     "@temporalio/workflow": "1.24.0",

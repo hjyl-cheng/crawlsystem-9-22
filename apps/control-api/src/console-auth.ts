@@ -4,6 +4,8 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import { IdSchema, type Principal } from '@crawlsystem/contracts';
 import { StoreError } from '@crawlsystem/store';
+import type { ConsoleSessionRepository } from '@crawlsystem/store/console-sessions';
+import { contentHash } from '@crawlsystem/contracts/hash';
 
 const derive = promisify(scrypt);
 const AccountSchema = z.strictObject({
@@ -21,8 +23,8 @@ export async function passwordRecord(password: string) {
   return { salt, password_hash: (await derive(password, salt, 64) as Buffer).toString('hex') };
 }
 
-/** Small internal-console account store. Passwords are salted scrypt hashes;
- * sessions are opaque, revocable, bounded, and expire on restart or after 8 hours. */
+/** Passwords are salted scrypt hashes. Production entrypoint requires shared PG
+ * sessions; in-memory state is retained solely for isolated unit tests. */
 export class ConsoleAuth {
   private readonly accounts: Account[];
   private readonly sessions = new Map<string, { principal: Principal; expires: number }>();
@@ -30,11 +32,13 @@ export class ConsoleAuth {
   private inFlight = 0;
   readonly lifetimeMs = 8 * 60 * 60_000;
   readonly cookieName: string;
-  constructor(accounts: unknown, private secure = true, private now = Date.now) {
+  private readonly authority:string;
+  constructor(accounts: unknown, private secure = true, private now = Date.now, private repository?:ConsoleSessionRepository) {
     this.accounts = AccountsSchema.parse(accounts);
+    this.authority=contentHash([...this.accounts].sort((a,b)=>a.username.localeCompare(b.username)));
     this.cookieName = secure ? '__Host-crawlsystem-session' : 'crawlsystem-session';
   }
-  static fromFile(path: string, secure = true) { return new ConsoleAuth(JSON.parse(readFileSync(path, 'utf8')), secure); }
+  static fromFile(path: string, secure:boolean, repository:ConsoleSessionRepository) { return new ConsoleAuth(JSON.parse(readFileSync(path, 'utf8')), secure, Date.now, repository); }
   private cookieValue(header?: string) {
     const values = (header ?? '').split(';').map(part => part.trim()).filter(part => part.startsWith(this.cookieName + '='));
     const value = values.length === 1 ? values[0]!.slice(this.cookieName.length + 1) : '';
@@ -53,7 +57,9 @@ export class ConsoleAuth {
     entry.count++; this.attempts.set(key, entry);
   }
   async login(username: string, password: string, previousCookie?: string) {
-    this.clean(); this.limit('all', 60); this.limit('user:' + digest(username), 10);
+    if(this.repository) {
+      if(!await this.repository.consumeAttempt(this.authority,digest(username))) throw new StoreError('UNAVAILABLE','Too many login attempts; try again in one minute',429,true);
+    } else { this.clean(); this.limit('all', 60); this.limit('user:' + digest(username), 10); }
     if (this.inFlight >= 2) throw new StoreError('UNAVAILABLE', 'Login capacity reached', 503, true);
     this.inFlight++;
     try {
@@ -62,16 +68,26 @@ export class ConsoleAuth {
       const actual = await derive(password, candidate.salt, 64) as Buffer;
       const matches = timingSafeEqual(actual, Buffer.from(candidate.password_hash, 'hex'));
       if (!account || !matches) throw new StoreError('UNAUTHENTICATED', 'Username or password is incorrect', 401);
-      this.revoke(previousCookie);
-      if (this.sessions.size >= 200) throw new StoreError('UNAVAILABLE', 'Session capacity reached', 503, true);
       const principal: Principal = { subject: account.subject, workspace_id: account.workspace_id, role: account.role };
       const secret = randomBytes(32).toString('base64url');
-      this.sessions.set(digest(secret), { principal, expires: this.now() + this.lifetimeMs });
+      if(this.repository) {
+        const previous=this.cookieValue(previousCookie);
+        if(!await this.repository.save(this.authority,digest(secret),principal,this.lifetimeMs,previous?digest(previous):undefined)) throw new StoreError('UNAVAILABLE','Session capacity reached',503,true);
+      } else {
+        await this.revoke(previousCookie);
+        if(this.sessions.size>=200)throw new StoreError('UNAVAILABLE','Session capacity reached',503,true);
+        this.sessions.set(digest(secret), { principal, expires: this.now() + this.lifetimeMs });
+      }
       return { principal, cookie: this.cookie(secret, this.lifetimeMs / 1000) };
     } finally { this.inFlight--; }
   }
-  authenticate(header?: string): Principal {
+  async authenticate(header?: string): Promise<Principal> {
     const value = this.cookieValue(header);
+    if(this.repository) {
+      const principal=value?await this.repository.find(this.authority,digest(value)):undefined;
+      if(!principal)throw new StoreError('UNAUTHENTICATED','Session expired; sign in again',401);
+      return principal;
+    }
     const key = digest(value), session = value ? this.sessions.get(key) : undefined;
     if (!session || session.expires <= this.now()) {
       this.sessions.delete(key);
@@ -79,7 +95,10 @@ export class ConsoleAuth {
     }
     return session.principal;
   }
-  revoke(header?: string) { const value = this.cookieValue(header); if (value) this.sessions.delete(digest(value)); }
+  async revoke(header?: string) {
+    const value=this.cookieValue(header);
+    if(value) {if(this.repository)await this.repository.revoke(this.authority,digest(value));else this.sessions.delete(digest(value));}
+  }
   private cookie(value: string, seconds: number) {
     return `${this.cookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${seconds}${this.secure ? '; Secure' : ''}`;
   }

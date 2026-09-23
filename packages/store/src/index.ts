@@ -284,4 +284,14 @@ export class Store {
       return rows.rowCount ?? 0;
     });
   }
+  async businessMetrics(workspaceId:string):Promise<Array<{metric:string;state:string;value:number}>> {
+    const result=await this.pool.query(`
+      SELECT 'plans' AS metric,status AS state,count(*)::float8 AS value FROM m1.plans WHERE workspace_id=$1 GROUP BY status
+      UNION ALL SELECT 'domains',d.domain||'_'||d.state,count(*)::float8 FROM m1.domains d JOIN m1.plans p USING(plan_id) WHERE p.workspace_id=$1 GROUP BY d.domain,d.state
+      UNION ALL SELECT 'intents',i.kind||'_'||i.state,count(*)::float8 FROM m1.intents i JOIN m1.plans p USING(plan_id) WHERE p.workspace_id=$1 GROUP BY i.kind,i.state
+      UNION ALL SELECT 'receipts','APPLIED',count(*)::float8 FROM m1.receipts WHERE workspace_id=$1
+      UNION ALL SELECT 'workers',CASE WHEN last_heartbeat_at<clock_timestamp()-interval '90 seconds' THEN 'STALE' ELSE 'FRESH' END,count(*)::float8 FROM m1.workers WHERE workspace_id=$1 GROUP BY 2
+      UNION ALL SELECT 'oldest_intent_seconds','PENDING',coalesce(extract(epoch FROM clock_timestamp()-min(i.created_at)),0)::float8 FROM m1.intents i JOIN m1.plans p USING(plan_id) WHERE p.workspace_id=$1 AND i.state IN ('PENDING','LEASED')`,[workspaceId]);
+    return result.rows as Array<{metric:string;state:string;value:number}>;
+  }
 }

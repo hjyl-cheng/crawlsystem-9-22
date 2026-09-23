@@ -196,6 +196,20 @@ test('durable start survives dispatcher restart and lost acknowledgement using s
   await new IntentDispatcher(new Store(pool),starter,t.worker.workspace_id).tick();
   assert.equal(calls,2);assert.equal(started.size,1);assert.equal((await pool.query('SELECT state FROM m1.intents WHERE plan_id=$1',[t.plan.plan_id])).rows[0].state,'DONE');
 });
+test('business metrics use committed facts in the configured workspace and bounded labels',async()=>{
+  const t=await setup();await store.apply(t.worker,t.about);
+  const app=createControlApi({store,signingKey:key,metricsWorkspace:t.worker.workspace_id});
+  try {
+    await app.inject({url:'/v1/session',headers:await auth(t.reader)});
+    const response=await app.inject({url:'/metrics'});assert.equal(response.statusCode,200);
+    assert.match(response.body,/m1_plans\{state="RUNNING"\} 1/);
+    assert.match(response.body,/m1_domains\{state="ABOUT_APPLIED"\} 1/);
+    assert.match(response.body,/m1_domains\{state="VIDEO_PENDING"\} 1/);
+    assert.match(response.body,/m1_receipts\{state="APPLIED"\} 1/);
+    assert.match(response.body,/m1_http_request_duration_seconds_bucket/);
+    assert.ok(!response.body.includes(t.plan.plan_id));assert.ok(!response.body.includes(t.worker.workspace_id));
+  } finally {await app.close();}
+});
 test('expired leases can be claimed; stale claimants cannot overwrite newer acknowledgement',async()=>{
   const t=await setup();const first=await store.claimIntent(30,t.worker.workspace_id);assert.ok(first);
   await pool.query("UPDATE m1.intents SET lease_until=clock_timestamp()-interval '1 second' WHERE intent_id=$1",[first.intent_id]);
