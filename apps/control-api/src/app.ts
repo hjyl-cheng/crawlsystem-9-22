@@ -38,6 +38,7 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.post('/v1/plans/:id/events',async request=>store.event(request.principal,planId(request),ExecutionEventSchema.parse(request.body)));
   app.get('/v1/receipts/:id',async request=>store.getReceipt(request.principal,planId(request)));
   app.get('/v1/channels',async request=>{const q=pagination(request.query);return store.listChannels(request.principal,q.limit,q.offset);});
+  app.get(ApiRoutes.plansSummary,async request=>store.plansSummary(request.principal));
   app.get(ApiRoutes.completeness,async request=>store.completeness(request.principal));
   app.get('/v1/channels/:id',async request=>store.getChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id));
   app.post('/v1/workers/heartbeat',async request=>store.heartbeat(request.principal,HeartbeatSchema.parse(request.body)));

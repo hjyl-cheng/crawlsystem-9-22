@@ -3,15 +3,13 @@
    and the candidate list takes the rest of the screen, scrolling inside. */
 .candidates .row-import { flex: none; height: 200px; min-height: 0; }
 .row-import>.import-card { grid-column: span 3; }
-.candidates-list { flex: 1 1 0; min-height: 300px; }
+/* .dashboard .panel sets min-height: 0; this list must keep its readable minimum. */
+.dashboard .candidates-list { flex: 1 1 0; min-height: 300px; }
 
 /* KPI tones and the small bar series */
 .candidates .discover-kpi { min-height: 96px; }
 .candidates .discover-kpi>div { flex: 1; }
 .candidates .discover-kpi em span { margin-left: 8px; }
-.tone-amber .kpi-icon { background: linear-gradient(145deg, #fff0d6, #fff9ee); color: #e49410; }
-.tone-green .kpi-icon { background: linear-gradient(145deg, #dcf6ec, #f2fcf8); color: #0aa878; }
-.tone-red .kpi-icon { background: linear-gradient(145deg, #ffe3e1, #fff5f4); color: #e0524a; }
 .kpi-bars { width: 72px; height: 40px; flex-shrink: 0; align-self: center; }
 .kpi-bars.blue rect { fill: #3d88ff; } .kpi-bars.amber rect { fill: #f0a92c; } .kpi-bars.green rect { fill: #11c38c; } .kpi-bars.red rect { fill: #ff6868; }
 

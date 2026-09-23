@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowRight, Box, CircleAlert, CircleCheck, CirclePlay, Clock3, FileText, Funnel, Info, OctagonX, Plus, Search, Snowflake, TriangleAlert, Zap } from 'lucide-react';
 import { Empty } from '../ui.js';
+import Donut from '../components/donut.js';
 import type { DiscoverView } from './discover-sample.js';
 import './overview.css';
 import './discover.css';
@@ -25,17 +26,6 @@ function Card({ title, subtitle, extra, className = '', children }: { title: str
   return <section className={`panel discover-card ${className}`}><div className="panel-heading"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{extra}</div>{children}</section>;
 }
 const Unavailable = ({ children = '查看详情' }: { children?: string }) => <span className="dashboard-unavailable" title={NOT_CONNECTED}>{children}<ArrowRight size={12}/></span>;
-
-function Donut({ parts }: { parts?: DiscoverView['sources'] }) {
-  const total = parts?.reduce((sum, part) => sum + part.count, 0) ?? 0, r = 42, c = 2 * Math.PI * r;
-  let offset = 0;
-  return <svg className="discover-donut" viewBox="0 0 110 110" role="img" aria-label={parts ? `新增频道 ${total} 个的来源构成` : '来源构成尚未接入'}>
-    <circle cx="55" cy="55" r={r} fill="none" stroke="#e9eff7" strokeWidth="16"/>
-    {parts?.map(part => { const length = part.count / total * c; const el = <circle key={part.label} cx="55" cy="55" r={r} fill="none" stroke={part.color} strokeWidth="16" strokeDasharray={`${length} ${c - length}`} strokeDashoffset={-offset} transform="rotate(-90 55 55)"/>; offset += length; return el; })}
-    <text x="55" y="53" textAnchor="middle" className="donut-value">{parts ? total : '—'}</text>
-    <text x="55" y="68" textAnchor="middle" className="donut-caption">{parts ? '新增频道' : '尚未接入'}</text>
-  </svg>;
-}
 
 export default function Discover() {
   const [sampleOn, setSampleOn] = useState(false);
@@ -75,7 +65,7 @@ export default function Discover() {
         </div>; })}</div>
       </Card>
       <Card title="来源构成" extra={<Unavailable/>}>
-        <div className="source-body"><Donut parts={data?.sources}/><div className="legend">{(data?.sources ?? ['手工关键词', '标签派生', '视频标题', '频道简介', '相关搜索', 'Agent 建议'].map(label => ({ label, count: 0, color: '#c9d4e3' }))).map(s => <div key={s.label}><i style={{ background: s.color }}/><span>{s.label}</span><b>{data ? pct(s.count, sourceTotal) : '—'}</b><small>{data ? s.count : ''}</small></div>)}</div></div>
+        <div className="source-body"><Donut parts={data?.sources} caption="新增频道" label={data ? '新增频道的来源构成' : '来源构成尚未接入'}/><div className="legend">{(data?.sources ?? ['手工关键词', '标签派生', '视频标题', '频道简介', '相关搜索', 'Agent 建议'].map(label => ({ label, count: 0, color: '#c9d4e3' }))).map(s => <div key={s.label}><i style={{ background: s.color }}/><span>{s.label}</span><b>{data ? pct(s.count, sourceTotal) : '—'}</b><small>{data ? s.count : ''}</small></div>)}</div></div>
       </Card>
       <Card title="国家与业务分类" extra={<div className="segmented" role="tablist"><button role="tab" aria-selected={dimension === 'country'} className={dimension === 'country' ? 'on' : ''} onClick={() => setDimension('country')}>国家</button><button role="tab" aria-selected={dimension === 'category'} className={dimension === 'category' ? 'on' : ''} onClick={() => setDimension('category')}>业务分类</button></div>}>
         {bars.length ? <div className="dim-bars">{bars.map(b => <div key={b.name}><span>{b.code && <i className="cc">{b.code}</i>}{b.name}</span><div className="dim-bar"><i style={{ width: `${b.count / barMax * 100}%` }}/></div><b>{pct(b.count, barTotal)}</b><small>{b.count}</small></div>)}</div> : <Empty title="尚无分布数据">{NOT_CONNECTED}</Empty>}

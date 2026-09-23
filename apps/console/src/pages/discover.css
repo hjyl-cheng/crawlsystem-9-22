@@ -24,6 +24,10 @@
 .discover-kpi { flex-direction: row !important; gap: 16px; padding: 14px 18px; align-items: center; min-height: 104px; }
 .kpi-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 11px; background: linear-gradient(145deg, #e3edff, #f5f9ff); color: #2f78f0; flex-shrink: 0; }
 .discover-kpi>div { flex: 1; min-width: 0; display: grid; line-height: 1.4; }
+/* Icon tile tones, shared by the discover-style pages. */
+.tone-amber .kpi-icon { background: linear-gradient(145deg, #fff0d6, #fff9ee); color: #e49410; }
+.tone-green .kpi-icon { background: linear-gradient(145deg, #dcf6ec, #f2fcf8); color: #0aa878; }
+.tone-red .kpi-icon { background: linear-gradient(145deg, #ffe3e1, #fff5f4); color: #e0524a; }
 .discover-kpi small { font-size: var(--fs-body); color: #1d3355; font-weight: 600; }
 .discover-kpi strong { font-size: var(--fs-display); margin-top: 2px; line-height: 1.25; font-weight: 700; color: #0c1e43; font-variant-numeric: tabular-nums; }
 .discover-kpi em { font-style: normal; font-size: var(--fs-text); color: #0aa878; font-weight: 600; }

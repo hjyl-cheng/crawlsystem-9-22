@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import { CONTRACT_VERSION, WORKER_STALE_SECONDS, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
   type Principal, type Role, type ErrorCode, type Plan, type PlanInput, type PlanDetail, type Domain, type DomainResult, type FrozenInput, type CreatePlan, type Submission, type Receipt,
-  type Page, type Completeness, type ChannelSummary, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput } from '@crawlsystem/contracts';
+  type Page, type Completeness, type PlansSummary, type PlanStatus, type ChannelSummary, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput } from '@crawlsystem/contracts';
 import { contentHash, submissionHash } from '@crawlsystem/contracts/hash';
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
 
@@ -283,6 +283,34 @@ export class Store {
       }
       return rows.rowCount ?? 0;
     });
+  }
+  /** Plan statistics for one workspace; see PlansSummary for each figure's basis. */
+  async plansSummary(principal: Principal): Promise<PlansSummary> {
+    requireRole(principal,'reader','operator');
+    const ws = principal.workspace_id;
+    const [totals, statuses, domains, reasons] = await Promise.all([
+      this.pool.query(`SELECT count(*)::int AS total,
+          count(*) FILTER (WHERE created_at >= clock_timestamp() - interval '24 hours')::int AS created_24h,
+          count(*) FILTER (WHERE status='COMPLETED' AND finished_at >= clock_timestamp() - interval '24 hours')::int AS completed_24h,
+          extract(epoch FROM avg(finished_at - created_at) FILTER (WHERE status='COMPLETED' AND finished_at >= clock_timestamp() - interval '24 hours'))::float8 AS avg_seconds,
+          clock_timestamp() AS observed
+        FROM m1.plans WHERE workspace_id=$1`, [ws]),
+      this.pool.query('SELECT status, count(*)::int AS n FROM m1.plans WHERE workspace_id=$1 GROUP BY status', [ws]),
+      this.pool.query(`SELECT r.domain, count(*)::int AS required, count(*) FILTER (WHERE d.state='APPLIED')::int AS applied
+        FROM m1.plans p CROSS JOIN LATERAL unnest(p.required_domains) AS r(domain)
+        LEFT JOIN m1.domains d ON d.plan_id=p.plan_id AND d.domain=r.domain
+        WHERE p.workspace_id=$1 GROUP BY r.domain ORDER BY r.domain`, [ws]),
+      this.pool.query(`SELECT coalesce(e.data->>'phase', '未上报等待原因') AS reason, count(*)::int AS plans
+        FROM m1.plans p LEFT JOIN LATERAL (SELECT data FROM m1.events WHERE plan_id=p.plan_id AND data->>'kind' IN ('WAITING','ERROR') ORDER BY created_at DESC LIMIT 1) e ON true
+        WHERE p.workspace_id=$1 AND p.status='WAITING' GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 6`, [ws]),
+    ]);
+    const t = totals.rows[0]!;
+    const by_status = { QUEUED: 0, RUNNING: 0, WAITING: 0, COMPLETED: 0, CANCELLED: 0, FAILED: 0 } as Record<PlanStatus, number>;
+    for (const row of statuses.rows) by_status[row.status as PlanStatus] = row.n;
+    return { observed_at: iso(t.observed), total: t.total, by_status, created_24h: t.created_24h, completed_24h: t.completed_24h,
+      avg_completion_seconds_24h: t.avg_seconds === null ? null : Math.round(t.avg_seconds),
+      domains: domains.rows.map(r => ({ domain: r.domain, required: r.required, applied: r.applied })),
+      waiting_reasons: reasons.rows.map(r => ({ reason: String(r.reason).slice(0, 80), plans: r.plans })) };
   }
   /** One aggregate over the workspace's channels; see Completeness for the basis. */
   async completeness(principal: Principal): Promise<Completeness> {

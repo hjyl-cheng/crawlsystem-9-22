@@ -120,6 +120,17 @@ export interface PlanDetail extends PlanInput { events: StoredEvent[]; }
 export interface ChannelSummary { channel_id: string; title: string | null; source_mode: 'fixture'; updated_at: string; latest_plan_id: string; }
 export interface ChannelDetail extends ChannelSummary { about: ChannelFacts | null; videos: VideoFacts[]; agent: AgentResult | null; latest_plan: Plan; }
 export interface Page<T> { items: T[]; next_cursor: string | null; }
+/** Workspace-wide plan statistics for the full-collection page. Counts are over
+ * all plans unless named *_24h (rolling 24 hours at the server clock). domains
+ * count plans that
+ * require the domain and how many of those have it APPLIED; waiting_reasons group
+ * WAITING plans by the phase of their latest WAITING/ERROR event. */
+export interface PlansSummary {
+  observed_at: string; total: number; by_status: Record<PlanStatus, number>;
+  created_24h: number; completed_24h: number; avg_completion_seconds_24h: number | null;
+  domains: { domain: Domain; required: number; applied: number }[];
+  waiting_reasons: { reason: string; plans: number }[];
+}
 /** Channel completeness for a workspace. Basis: whether every required domain of
  * each channel's latest plan is APPLIED. complete + partial + missing = total_channels.
  * missing_by_domain counts channels lacking that required domain (a channel may count
@@ -158,9 +169,16 @@ export const CompletenessSchema: z.ZodType<Completeness> = z.strictObject({
   missing_by_domain: z.strictObject({ ABOUT: Count, VIDEO: Count, AGENT: Count }), latest_channel_update_at: Timestamp.nullable(),
   freshness: z.literal('NOT_IMPLEMENTED'),
 }).refine(c => c.complete + c.partial + c.missing === c.total_channels, 'completeness buckets must sum to total');
+export const PlansSummarySchema: z.ZodType<PlansSummary> = z.strictObject({
+  observed_at: Timestamp, total: Count,
+  by_status: z.strictObject({ QUEUED: Count, RUNNING: Count, WAITING: Count, COMPLETED: Count, CANCELLED: Count, FAILED: Count }),
+  created_24h: Count, completed_24h: Count, avg_completion_seconds_24h: z.number().nonnegative().nullable(),
+  domains: z.array(z.strictObject({ domain: DomainSchema, required: Count, applied: Count })).max(3),
+  waiting_reasons: z.array(z.strictObject({ reason: z.string().min(1).max(80), plans: Count })).max(6),
+});
 export const pageSchema = <T extends z.ZodType>(item: T) => z.strictObject({ items: z.array(item).max(100), next_cursor: z.string().nullable() });
 export const ApiRoutes = {
-  session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', workers: '/v1/workers', errors: '/v1/errors',
+  session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions',
   plan: (id: string) => `/v1/plans/${encodeURIComponent(id)}`,
   input: (id: string) => `/v1/plans/${encodeURIComponent(id)}/input`,

@@ -36,6 +36,12 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
     if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id }] : [], next_cursor: null });
     if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan));
+    if (path === '/v1/overview/plans') {
+      const p = state.detail?.plan, by_status = { QUEUED: 0, RUNNING: 0, WAITING: 0, COMPLETED: 0, CANCELLED: 0, FAILED: 0 };
+      if (p) by_status[p.status]++;
+      return json({ observed_at: '2026-09-23T08:00:00.000Z', total: p ? 1 : 0, by_status, created_24h: p ? 1 : 0, completed_24h: p?.status === 'COMPLETED' ? 1 : 0, avg_completion_seconds_24h: null,
+        domains: p ? p.required_domains.map(domain => ({ domain, required: 1, applied: state.detail!.domains.some(d => d.domain === domain && d.state === 'APPLIED') ? 1 : 0 })) : [], waiting_reasons: [] });
+    }
     if (path === '/v1/overview/completeness') {
       const required = state.detail?.plan.required_domains ?? [];
       const applied = state.detail ? state.detail.domains.filter(d => required.includes(d.domain) && d.state === 'APPLIED').map(d => d.domain) : [];
@@ -172,18 +178,19 @@ test('continuous dependency failure reaches a finite polling budget', async ({ p
   const state = await mock(page, detailFixture()); await login(page, '/plans');
   await expect(page.getByRole('table').getByText('等待执行', { exact: true })).toBeVisible();
   await page.clock.install(); state.fail = true;
-  const count = state.reads.length;
+  const listReads = () => state.reads.filter(url => url.startsWith('/api/v1/plans?')).length;
+  const count = listReads();
   await page.getByRole('button', { name: '刷新数据' }).click();
-  await expect.poll(() => state.reads.length).toBe(count + 1);
+  await expect.poll(listReads).toBe(count + 1);
   for (let i = 2; i <= 5; i++) {
     await expect(page.getByRole('button', { name: '刷新数据' })).toBeEnabled();
     await page.clock.fastForward(60_000);
-    await expect.poll(() => state.reads.length).toBe(count + i);
+    await expect.poll(listReads).toBe(count + i);
   }
   await expect(page.getByRole('button', { name: '刷新数据' })).toBeEnabled();
   await page.clock.fastForward(60_000);
   await expect(page.getByText('自动更新已暂停，可点击刷新重新查询。')).toBeVisible();
-  await page.clock.fastForward(600_000); expect(state.reads.length).toBe(count + 5);
+  await page.clock.fastForward(600_000); expect(listReads()).toBe(count + 5);
 });
 
 test('overview completeness shows the backend aggregate, not counts derived from list pages', async ({ page }) => {
@@ -245,4 +252,15 @@ test('candidate channels show no figures until the sample preview is switched on
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByLabel('预览示例数据')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+test('full collection shows backend plan statistics next to the real plan list', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'WAITING' }, ['ABOUT'])); await login(page, '/plans');
+  await expect(page.getByRole('heading', { name: '全量采集', exact: true })).toBeVisible();
+  await expect(page.locator('.status-cell.amber strong')).toHaveText('1');
+  await expect(page.locator('.domain-bars div', { hasText: '频道基础信息' }).locator('b')).toHaveText('100.0%');
+  await expect(page.locator('.domain-bars div', { hasText: '视频与评论' }).locator('b')).toHaveText('0.0%');
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toHaveCount(0);
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('156');
 });
