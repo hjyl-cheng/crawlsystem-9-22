@@ -220,3 +220,16 @@ test('overview polling updates the pipeline in place without hiding nodes or edg
   await expect.poll(() => state.reads.length).toBeGreaterThan(reads);
   await expect.poll(visible).toEqual(before);
 });
+test('query discovery shows no figures until the sample preview is switched on, and then warns', async ({ page }) => {
+  await mock(page); await login(page, '/discover/queries');
+  await expect(page.getByRole('heading', { name: 'Query 发现', exact: true })).toBeVisible();
+  await expect(page.getByText('尚无 Query', { exact: true })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toHaveCount(0);
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('1,284');
+  await page.getByLabel('预览示例数据').uncheck();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
