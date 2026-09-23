@@ -1,66 +1,44 @@
-# 主 Agent 交付与未完成项
+# 主 Agent 当前交付状态
 
-最新推进：已审查合入控制台至 `2aea207`，修复并发统计的一致快照，增加 OTel HTTP 追踪、双库 readiness、构建版本、Worker 最小凭据配置及权限核验。最新真实 PG **28/28**、页面回归 **29/29**、HTTP 追踪 **2/2** 通过，合并后页面与真实数据库再次联调通过。镜像发布与副本/监控验收正在继续，结果另行追加。下面早先记录用于说明前一批交付，不代表最新部署结果。
+更新：2026-09-23 21:10（Asia/Shanghai）。**已完成本轮后端发布、双副本验收、权限核验及 HTTP 观测接入；M1 完整业务链仍未验收。**
 
-日期：2026-09-23。工作区 `crawlsystem-business`，分支 `business/crawler-platform`。**后端与控制台已集成验证，M1 整体尚未完成。**原先 18 项后端测试通过不代表主 Agent 全部任务结束；本报告替代此前过于宽泛的 G1 完成表述。
+实际部署源码：`653a09601e8188c6643cfae840ad0f60cdf8e3ea`。镜像：`docker.io/crawlsystem/control-api:main-653a09601e81-52eabbc4`，基础镜像固定 Node 22.22.1-alpine digest。该提交合入控制台至 `2aea207`，保留既有页面和显式设计示例开关。当前后续提交只更新审计脚本、测试证据输出位置及交付文档；以镜像内 healthz.build_version 为部署版本依据。
 
-本轮基于 G0 `ca3973f`、后端 `bc720cb`，已集成控制台 `ab6c094`、数据库账号版本 `7760e2f`，以及预览部署清单 `1df6d6e`。主线 `83f1eb6` 增加共享认证、迁移/索引和 Temporal 接入；`a4b177c` 完成账号并发修复与集成验证；本报告所在后续合并补充新预览清单和双副本账号连接预算。完整 SHA 可用 `git log -1 --format=%H -- docs/m1/reports/main.md` 查询，历史测试不冒充当前版本验收。
+## 本轮完成
 
-## 已完成并验证
+1. 审查控制台新增的公共契约/Store/API；频道列表补充真实国家、订阅数、已存视频数及最近计划状态。将采集统计改为单条 SQL 的一致快照，修复任务并发变化时总数/状态/领域分项可能不一致的问题，并补 schema 约束与真实 PG 测试。
+2. 发布主线后端到既有 control/control-api-preview，两个副本分布在 A1/S2。每副本事实池 1、账号池 1，滚动 maxSurge=0；镜像先导入六台节点。readyz 同时核对账号表与共享登录预算依赖，healthz 返回源码提交。没有新建外围系统。
+3. 验证发布前的 Cookie 在两个新副本都可恢复；登录预算跨副本共享；一个副本退出后另一个副本拒绝 Cookie；只读账号不能创建计划。实际公网浏览器登录、刷新、CSRF/来源拒绝、权限与退出测试通过。
+4. 接入 OpenTelemetry HTTP server spans 和 W3C 上下文传播；队列、采样、字段有界。现有 Alloy → Loki 已收集两个节点的 span；现有 Prometheus 新增一个业务采集 job，两个副本均 up，业务指标已查询到。
+5. 生成 Worker 专用 allowlist 环境和短期令牌，不带数据库凭据或签名密钥；实际 18100/18101 readyz 均为 200。该配置供执行模块交付后接入，不表示 Worker 已运行。
+6. 核验账号库角色权限与连接限额。Temporal mTLS 连接正常，但现有证书可读取 crawlsystem namespace 元数据；namespace 权限隔离未成立，已记录真实结果，不擅自修改共享 Temporal 全局认证配置。
 
-- 工程：前端依赖纳入集中锁文件；根检查/构建/浏览器命令和 CI 已接入。契约版本仍为 `m1.v1`，固定样本包含频道、视频和评论，不生成伪 Agent 分析。
-- Store/Ingest：授权、载荷/schema/Hash 校验、代次隔离、幂等/冲突、Current 版本保护；事实、检查点、APPLIED 和样本收口义务同事务。取消、失败、缺领域与并发收口有真实 PostgreSQL 证据。
-- 数据库：迁移 001/002，检查已应用版本和校验值；补齐查询/截止扫描/认证索引以及逐表数据用途、增长边界和回收资格。
-- 控制台后端：创建/取消、频道/Plan/回执、输入/检查点、错误和 Worker 查询；持久 START/CANCEL 意图和租约恢复；请求日志、延迟分桶与持久业务指标。
-- 认证集成：数据库账号/会话与隔离账号文件模式共用认证接口，登录预算跨副本共享。审查 `7760e2f` 后修复了会话容量并发竞争、进程内限流及改密与会话撤销非原子的问题；登录创建会话时重新校验账号，阻断已验证旧密码的并发请求。
-- 页面：合并控制台生产构建后，使用真实 HTTP/PG 验证登录、创建、ABOUT/VIDEO 入库后完成、缺 Agent 等待、页面取消、API 重启保留会话、退出后旧 Cookie 被拒绝。结果由固定样本测试程序提交，未经过业务 Workflow。
-- Temporal 环境：mTLS SDK、隔离 namespace 和 7 天历史保留已落地；一个实际 TypeScript Workflow 调用 Activity 并完成。该接入测试不是 `fixturePlanWorkflow`。
+## 验证与证据
 
-逐项任务状态见 [主任务复核](main-audit.md)。
-
-## 实际环境与边界
-
-| 项目 | 本次验证 |
+| 验证 | 结果 |
 | --- | --- |
-| PostgreSQL / PgBouncer | PG 18.6，TLS 和服务域名校验，事务池；独立 crawlsystem_m1_main_test，m1_main_app 连接上限 8 |
-| 连接预算 | 实际集成 PG_POOL_MAX=2；浏览器测试每池 1；Control/Ingest/Dispatcher 事实池建议总计 ≤ 6，保留维护余量 |
-| 账号库 | 现有控制台预览使用 crawler.console / console_app；主线账号测试只在独立测试库复制同结构，未测试正式库的角色授权或改动正式账号 |
-| 私有配置 | .runtime/main.env、pg-ca.crt、jwt-secret、temporal/ 证书及短期 Token；0600，忽略入 Git |
-| 开发监听 | Control 18100、Ingest 18101；UI 原预览 API 18104 已由控制台分支停用，改为 control/control-api-preview；主线页面测试临时 API 端口＋前端 18114，测试完成即关闭 |
-| Temporal | server 1.32.0、UI 2.54.1、TS SDK 1.24.0；namespace crawlsystem-m1-main，retention 604800 秒；Secret temporal/temporal-smoke-client，本地转发 17233 |
-| Temporal 资源 | frontend/history/matching/worker 每容器 request 100m CPU/256Mi，limit 600m/512Mi；现场只读核对，未更改配置 |
-| 测试数据 | 每次使用独立 workspace，保留诊断/回执；没有真实采集、业务发布或旧数据迁移 |
+| 新干净目录 npm ci、类型检查 | 通过；新增 OTel/esbuild 依赖均固定在根锁文件 |
+| 契约 / 认证 / 前端请求测试 | 3/3、6/6、6/6 |
+| HTTP 追踪测试 | 2/2：父子传播、错误状态、无效上下文、并发隔离、敏感字段不进入 span |
+| 真实 TLS PgBouncer → PostgreSQL 18.6 | **28/28**，约 11.7 秒；[TAP](main-integration-current.tap) |
+| 控制台生产构建及页面回归 | 构建通过，**29/29**；[输出](main-browser-regression.log) |
+| 合并后真实页面＋HTTP＋PG | 创建/完成、缺 Agent 等待、取消、API 重启保留登录、退出重放 401；[证据](main-browser.json) |
+| 打包后的 API | 实际启动打包文件，healthz 版本、readyz、统计接口及 schema 通过 |
+| 发布后的两个副本 | 版本一致、旧 Cookie 恢复、共享限流、跨副本撤销、只读写入拒绝；[证据](preview-replicas.json) |
+| 实际公网浏览器 | 1/1，约 5.4 秒；[证据](public-main/public-password-results.json)、[页面](public-main/public-password-overview.png) |
+| 实际监控 | 两个 Prometheus targets up，2 条副本业务指标；Loki 查得同一 trace_id 的 12 条 span，来自 A1/S2；[证据](runtime-observability.json) |
+| 权限与运行配置 | [实际权限](runtime-access.json)、[镜像与导入](main-deployment.json) |
 
-本机经 kubectl port-forward 接入 PgBouncer。转发曾因连接 reset 和集群代理错误退出，引起测试 ECONNREFUSED/登录 503；现有监督脚本会重连。直接 ClusterIP 从当前主机访问被拒绝，因此最终仍用已恢复的 TLS 转发完成 26 项回归。该开发转发不能当作生产网络可靠性验收。
+本机开发 PG 转发会在连接 reset 后短暂重连；这轮有一次测试初始化等待重连。套件只在初始化对 ECONNREFUSED/ECONNRESET 等待，最多 5 次；断言、事务故障注入和业务重试预算不自动重置。当前部署 API 通过集群 Service 接入数据库，不使用此开发转发。
 
-共用主机出现明显 IO 压力，初次并行浏览器回归超时；限制单 worker 后 16/16 通过。没有通过放宽业务断言来隐藏超时，也未由这组小样本宣称生产性能或线性伸缩已经达标。
+公共样本仍是独立测试数据。页面联调用受控程序提交 ABOUT/VIDEO，经真实 Ingest/PG 入库；它没有经过 fixturePlanWorkflow。已有 Temporal readiness Workflow 只验证 SDK/mTLS/Activity 可用。数据库 START/CANCEL 恢复测试仍使用启动适配器测试替身，不能据此宣称真实执行链恢复已通过。
 
-## 验证证据
+## 未完成及责任
 
-| 命令 / 场景 | 结果与证据 |
-| --- | --- |
-| 干净目录 npm ci | 通过，310 个包；集中锁文件已包含控制台依赖，后续账号合并未新增依赖 |
-| npm run typecheck | 通过；最新合并的认证源码在干净安装目录再次检查 |
-| npm run test:contracts | 3/3 通过 |
-| npm run test:auth | 6/6 通过 |
-| npm run test:console | 6/6 通过 |
-| npm run build:console | 通过，Vite 生产构建；本轮后续认证合并未修改前端源码 |
-| npm run test:browser | 单 worker 16/16 通过；[回归输出](main-browser-regression.log)，使用受控 API 响应 |
-| PG_POOL_MAX=2 node --env-file=.runtime/main.env --import tsx --test --test-concurrency=1 tests/integration/*.test.ts | 26/26 通过，24.4 秒，真实 TLS PgBouncer → PostgreSQL；[当前 TAP](main-integration-current.tap) |
-| scripts/dev/verify-integrated-console.ts | 真实 HTTP/PG 浏览器联调通过；[业务身份和结果](main-browser.json)、[取消页面](main-browser-cancelled.png) |
-| scripts/dev/prepare-temporal.ts / temporal-readiness.ts | namespace 核对及真实 Workflow/Activity 通过；[接入结果](main-temporal-readiness.json) |
+- **执行模块集成（MAIN-02/04/05）**：执行分支已开始编写 execution-client 和 execution-worker，当前仍是未提交工作，没有可集成的交付 SHA 或执行验收结果。主 Agent 仍负责审查合并、共享依赖/CI、运行配置和最终集成。
+- **真实执行恢复（MAIN-03/04/05）**：启动确认丢失、重复派发、实际取消传播、Worker 强杀重启、重复 Activity、有限预算、历史重放及同一业务回执联合验证尚未完成。
+- **完整链路追踪和页面验收**：HTTP 基础与现有日志/指标已接通；Temporal/Worker 的上下文传播、业务因果链及页面对应的同一 Workflow/Worker/Receipt 尚需执行模块交付。
+- **Temporal namespace 授权**：已核验并确认缺口，当前证书不是限定到 M1 namespace 的身份。部署新的 namespace authorizer 必须统筹现有客户端，当前仅内部固定样本联调，不宣称生产租户隔离达标。
+- **生产验收**：容量/伸缩/背压压测、正式账号审计、业务级恢复演练尚未完成。真实采集、代理、API/Agent、分发和历史迁移属后续里程碑。
 
-26 项集成测试包括原 Store/API 的幂等、冲突、越权、8 路重复提交、并发收口、缺领域、冻结目标、事务异常回滚、COMMIT 前 SIGKILL、提交成功但 HTTP 响应丢失、新连接查询回执、取消竞争/迟到结果、Current 防旧覆盖、数据库不可用、期限和意图租约恢复；本轮增加持久业务指标、共享会话/预算/容量以及数据库账号改密和停用一致性。
-
-START/CANCEL 的恢复测试仍用 WorkflowStarter 测试替身，证明数据库意图恢复，不证明真实 Temporal 重复启动/历史重放。浏览器重启验证使用隔离账号文件适配器和真实 PG 会话；数据库账号适配器由单独的真实 PG 测试覆盖。账号生产授权/公网部署没有在本轮重复执行。
-
-主线页面测试已完成 Plan：`a80e00c9-a1aa-476f-b7e9-581795089735`；已取消 Plan：`0479d56f-8f1e-4308-820d-91cb8330fac7`。Temporal readiness ID：`m1-readiness-97342360-8e09-4727-a466-171571f0586e`，与上述业务 Plan 不是同一条执行链。
-
-## 尚未完成及下一步责任
-
-1. 执行模块尚无交付：本次核对执行分支 `451e3af`，未实现 execution-client、fixturePlanWorkflow、Activity/Worker。主线派发入口在模块缺失时明确失败。
-2. 主 Agent 需审查并合入执行模块，补根依赖/CI/运行配置，验证稳定 Workflow 身份、启动确认丢失、实际取消传播和有限预算。数据库意图的测试不能替代这些验证。
-3. 主 Agent 联合执行模块完成 Worker 强杀重启、重复 Activity、历史重放与 Ingest 恢复，并从浏览器核对同一 Plan/Worker/Workflow/Receipt，之后才具备 MAIN-05/M1 完成条件。
-4. 完整分布式追踪、生产容量/背压压测、正式身份审计与恢复演练仍未完成；真实采集/代理/API/Agent、分发和历史迁移属于后续里程碑。
-
-运行命令、认证配置与测试预算见 [集成基线](../integration-baseline.md)，可立即交给执行 Agent 的具体事项见 [执行集成交接](../execution-integration-handoff.md)。UI 页面继续由 Claude 负责，主 Agent 保留全部后端与最终集成责任。本轮未重新部署控制台公网预览。最新清单来自控制台分支 `1df6d6e`；主线把账号池改为可配置且默认 1，清单双副本各 1、滚动 maxSurge=0，以适配 console_app 的 3 连接预算。配置校验和类型检查通过；这一后续改动不改变已通过的 Store/认证事务。新镜像尚未由主线部署，不能把代码修复视为已在公网预览生效。
+启动与接口见 [集成基线](../integration-baseline.md)，监控与追踪见 [observability.md](../observability.md)，执行接入见 [交接单](../execution-integration-handoff.md)。UI 设计继续由 Claude 负责，全部后端和最终验收责任保留在主 Agent。

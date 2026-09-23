@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 test('public password login, refresh recovery, reader permission and revocable logout', async ({ page, context, browser, baseURL }) => {
   const credentials: { username: string; password: string } = JSON.parse(readFileSync(process.env.CONSOLE_LOGIN_FILE!, 'utf8'));
-  const evidence = resolve('docs/evidence'); mkdirSync(evidence, { recursive: true });
+  const evidence = resolve(process.env.CONSOLE_EVIDENCE_DIR ?? 'docs/evidence'); mkdirSync(evidence, { recursive: true });
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/'); await expect(page.getByLabel('账号', { exact: true })).toBeEnabled();
   await page.screenshot({ path: resolve(evidence, 'public-password-login.png'), fullPage: true });

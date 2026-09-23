@@ -6,7 +6,7 @@
 
 G0 已发布（`ca3973f43d4ee3bc355cb0cc3ab1a373f5292a92`），后端与控制台已继续集成。接口仍为 `m1.v1`；同步主线本文件所在的具体提交后，从根目录运行 `npm ci`、`npm run typecheck`、`npm run test:contracts`。主线已有 Control/Ingest、持久 START/CANCEL 意图、固定输入、回执查询、心跳/错误接口和测试资源，执行开发无须再等待 G0。
 
-截至本次核对，执行分支为 `451e3af`，没有 `apps/execution-worker` 或 `packages/execution-client`。旧准备报告中“G0 尚未发布”的信息已经过时。
+截至本轮同步前核对，执行分支 HEAD 为 `4615e9e`，`apps/execution-worker` 与 `packages/execution-client` 已出现未提交实现；主线未复制这些工作中代码。旧准备报告中“G0 尚未发布”的信息已经过时。
 
 ## 需要交付的实际模块
 
@@ -38,3 +38,11 @@ G0 已发布（`ca3973f43d4ee3bc355cb0cc3ab1a373f5292a92`），后端与控制�
 - 浏览器显示的 Plan、Worker、领域回执与 Temporal Workflow ID 一一对应；保存实际历史和数据库证据。
 
 上述最终集成由主 Agent负责。启动派发器依赖真实 execution-client，模块缺失时明确报错；不提供假执行器来替代验收。
+
+## 本轮可使用的运行与追踪基础
+
+主线 653a096 已部署 Control 预览 API；主机联调 Control 18100、Ingest 18101 的 readyz 均通过。`.runtime/execution.env` 由主线工具按 allowlist 生成，令牌只保存到主线私有 execution-worker-token。执行会话可使用主线给出的绝对环境文件路径；令牌 1 小时后失效，需要开始联调时重新签发，不能拷贝 main.env。
+
+HTTP API 支持 W3C traceparent/tracestate，返回本次 span 的 traceparent；执行 Activity 应通过实际 Temporal tracing interceptor/headers 传播上下文，不能在确定性 Workflow 内直接调用 Node SDK。实现与限制见 observability.md。
+
+权限审计发现现有 Temporal 客户端证书可读取另一个 namespace；namespace 分隔不是授权边界。固定样本仍限内部可信执行器；正式隔离接入前需协调共享服务的 authorizer/身份方案。

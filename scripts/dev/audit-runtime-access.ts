@@ -14,14 +14,15 @@ const rows=JSON.parse(kubectl(['-n','db','exec','crawler-pg-1','--','psql','-U',
   'sessions_delete',has_table_privilege('console_app','console.sessions','DELETE'));`]).trim());
 if(rows.role.rolsuper||rows.role.rolcreatedb||rows.role.rolcreaterole||rows.schema_create||rows.database_create||rows.accounts_delete||rows.accounts_truncate||!rows.schema_usage||!rows.accounts_select||!rows.sessions_delete)throw new Error('Console role privileges differ from expected scope');
 const options=temporalOptions(),connection=await Connection.connect({address:options.address,tls:options.tls,connectTimeout:'10s'});
+const probeNamespace=process.env.TEMPORAL_AUDIT_OTHER_NAMESPACE??'crawlsystem';
 let crossNamespace:'ALLOWED'|'DENIED'|'NOT_FOUND';
 try {
   await connection.withDeadline(Date.now()+10000,()=>connection.workflowService.describeNamespace({namespace:options.namespace}));
-  try {await connection.withDeadline(Date.now()+10000,()=>connection.workflowService.describeNamespace({namespace:'default'}));crossNamespace='ALLOWED';}
+  try {await connection.withDeadline(Date.now()+10000,()=>connection.workflowService.describeNamespace({namespace:probeNamespace}));crossNamespace='ALLOWED';}
   catch(error){const code=(error as {code?:number}).code;if(code===7||code===16)crossNamespace='DENIED';else if(code===5)crossNamespace='NOT_FOUND';else throw error;}
 } finally {await connection.close();}
 const deployment=JSON.parse(kubectl(['-n','control','get','deployment','control-api-preview','-o','json']));
 const container=deployment.spec.template.spec.containers[0];
 const poolLimits=Object.fromEntries(container.env.filter((e:{name:string})=>['PG_POOL_MAX','CONSOLE_PG_POOL_MAX'].includes(e.name)).map((e:{name:string;value:string})=>[e.name,Number(e.value)]));
-const report={verified_at:new Date().toISOString(),console_database:rows,temporal:{namespace:options.namespace,mtls_connection:'passed',other_namespace_describe:crossNamespace,namespace_authorization:crossNamespace==='DENIED'?'describe denied; execution scope not yet verified':'not established',scope:'read-only namespace metadata probe; no workflow or permissions modified'},deployment:{image:container.image,replicas:deployment.spec.replicas,ready_replicas:deployment.status.readyReplicas,pool_limits:poolLimits,max_surge:deployment.spec.strategy.rollingUpdate.maxSurge}};
+const report={verified_at:new Date().toISOString(),console_database:rows,temporal:{namespace:options.namespace,mtls_connection:'passed',probed_namespace:probeNamespace,other_namespace_describe:crossNamespace,namespace_authorization:crossNamespace==='DENIED'?'describe denied; execution scope not yet verified':'not established',scope:'read-only namespace metadata probe; no workflow or permissions modified'},deployment:{image:container.image,replicas:deployment.spec.replicas,ready_replicas:deployment.status.readyReplicas,pool_limits:poolLimits,max_surge:deployment.spec.strategy.rollingUpdate.maxSurge}};
 writeFileSync('docs/m1/reports/runtime-access.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));

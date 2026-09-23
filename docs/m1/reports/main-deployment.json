@@ -1,0 +1,17 @@
+{
+  "revision": "653a09601e8188c6643cfae840ad0f60cdf8e3ea",
+  "base": "node:22.22.1-alpine@sha256:92d51e5f20b7ff58faa5a969af1a1cec6cbec3fbff7e0f523242b9b5c85ad887",
+  "image": "docker.io/crawlsystem/control-api:main-653a09601e81-52eabbc4",
+  "bundle_sha256": "52eabbc464ed2b060a342ab38336afc6d073d711b270c144fab0318caf742535",
+  "nodes": [
+    "a1",
+    "a2",
+    "a3",
+    "s1",
+    "s2",
+    "s3"
+  ],
+  "rollout": "two replicas ready; old cookie and cross-replica checks passed",
+  "previous_image": "docker.io/crawlsystem/control-api:862e562-04fd6330",
+  "rollback": "Set deployment image to previous_image; old image remains imported. Preserve current Secret and account schema. Re-query replica readiness before marking rollback complete."
+}
