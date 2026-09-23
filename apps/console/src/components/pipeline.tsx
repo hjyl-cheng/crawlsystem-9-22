@@ -114,10 +114,13 @@ export default function Pipeline({ detail, completeness }: { detail?: PlanDetail
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  // Fit only after the stretched node sizes are in the store (two frames after
+  // the node update), otherwise the view is fitted to the previous layout.
   useEffect(() => {
     if (!flow) return;
-    const frame = requestAnimationFrame(() => { void flow.fitView(fitViewOptions); });
-    return () => cancelAnimationFrame(frame);
-  }, [flow, stretch]);
+    let inner = 0;
+    const outer = requestAnimationFrame(() => { inner = requestAnimationFrame(() => { void flow.fitView(fitViewOptions); }); });
+    return () => { cancelAnimationFrame(outer); cancelAnimationFrame(inner); };
+  }, [flow, nodes]);
   return <div className="prototype-pipeline" role="region" aria-label="采集链路图，小屏可左右滚动" tabIndex={0}><div ref={canvas} className="pipeline-canvas"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} nodeTypes={nodeTypes} onInit={setFlow} fitView fitViewOptions={fitViewOptions} nodesDraggable={false} nodesConnectable={false} nodesFocusable={false} edgesFocusable={false} elementsSelectable={false} zoomOnScroll={false} zoomOnPinch={false} zoomOnDoubleClick={false} panOnDrag={false} preventScrolling={false} minZoom={0.25} maxZoom={1}/></div></div>;
 }
