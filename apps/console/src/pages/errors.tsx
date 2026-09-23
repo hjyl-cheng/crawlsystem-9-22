@@ -11,7 +11,7 @@ function ErrorContext({ event }: { event: StoredEvent }) {
   const resource = useResource(`error-plan:${event.plan_id}`, signal => api.plan(event.plan_id, signal), false);
   return <Panel title="错误关联"><Fields rows={[
     ['事件身份', <code>{event.event_id}</code>], ['类别', event.error_code ? `${errorCodeLabels[event.error_code]}（${event.error_code}）` : event.kind], ['阶段', event.phase], ['发生时间', time(event.created_at)], ['原因', event.message], ['领域', event.domain ? domainLabels[event.domain] : '未指定'], ['执行代次', event.execution_epoch], ['关联 Plan', <Link to={planPath(event.plan_id)}>{event.plan_id}</Link>], ['关联 Worker', <Link to={`/workers?highlight=${encodeURIComponent(event.worker_id)}`}>{event.worker_id}</Link>],
-  ]}/><div className="panel-heading"><h3>关联 Plan 的最近回执</h3><Link to={planPath(event.plan_id)}>进入 Plan 详情 →</Link></div><ResourceView resource={resource}>{detail => <Receipts receipts={[...detail.receipts].sort((a,b) => b.applied_at.localeCompare(a.applied_at)).slice(0, 5)}/>}</ResourceView><p className="fine-print inset">错误按单次事件展示。事件未提供直接关联的回执、节点或首次/最近发生时间聚合。</p></Panel>;
+  ]}/><div className="panel-heading"><h3>关联任务的最近回执</h3><Link to={planPath(event.plan_id)}>进入任务详情 →</Link></div><ResourceView resource={resource}>{detail => <Receipts receipts={[...detail.receipts].sort((a,b) => b.applied_at.localeCompare(a.applied_at)).slice(0, 5)}/>}</ResourceView><p className="fine-print inset">错误按单次事件展示。事件未提供直接关联的回执、节点或首次/最近发生时间聚合。</p></Panel>;
 }
 export default function Errors() {
   const { api } = useAuth(); const paging = usePagination();

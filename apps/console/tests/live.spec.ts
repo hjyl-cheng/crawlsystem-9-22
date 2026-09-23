@@ -38,7 +38,7 @@ async function createFromUi(page: Page, requireAgent = false) {
   const response = page.waitForResponse(r => new URL(r.url()).pathname.endsWith(ApiRoutes.plans) && r.request().method() === 'POST');
   await page.getByRole('button', { name: '创建并查看计划' }).click();
   const plan = PlanSchema.parse(await (await response).json());
-  await expect(page.getByRole('heading', { name: 'Plan 详情', exact: true })).toBeVisible(); return plan;
+  await expect(page.getByRole('heading', { name: '采集任务详情', exact: true })).toBeVisible(); return plan;
 }
 async function apply(planId: string, domain: 'ABOUT'|'VIDEO') {
   const context = await request(ApiRoutes.input(planId), worker, PlanInputSchema);
@@ -105,7 +105,7 @@ test('complete sample and channel comments match the actual API; reader writes a
   await expect(page.getByText('Agent 尚未执行', { exact: true })).toBeVisible(); await capture(page, 'live-channel.png');
   await page.getByRole('button', { name: '退出登录' }).click(); await page.getByLabel('访问令牌', { exact: true }).fill(reader); await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('navigation', { name: '主导航' }).getByText('任务管理', { exact: true }).click();
-  await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: 'Plan 管理' }).click();
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '全量采集' }).click();
   await expect(page.getByRole('link', { name: '创建样本计划' })).toHaveCount(0);
   const body: CreatePlan = { request_id: randomUUID(), fixture_id: 'channel-basic-v1', required_domains: ['ABOUT', 'VIDEO'] };
   const response = await fetch(control + ApiRoutes.plans, { method: 'POST', headers: { Authorization: `Bearer ${reader}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

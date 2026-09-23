@@ -35,7 +35,7 @@ export function Layout() {
         <NavLink className="nav-primary" to="/" end aria-label="采集总览"><House size={16}/><span>首页</span></NavLink>
         <NavGroup icon={<BriefcaseBusiness size={16}/>} label="任务管理" active={under('/plans', '/discover')}>
           <NavLink to="/discover/queries">Query 发现</NavLink><NavLink to="/discover/candidates">候选频道</NavLink>
-          <NavLink to="/plans" aria-label="Plan 管理">全量采集 / Plan</NavLink>
+          <NavLink to="/plans">全量采集</NavLink>
           <Pending>Clock 调度</Pending><Pending>更新采集</Pending><Pending>Agent 任务</Pending><Pending>数据 API</Pending><Pending>发布交付</Pending>
         </NavGroup>
         <NavLink className="nav-primary" to="/channels" aria-label="频道数据"><Database size={16}/><span>频道管理</span></NavLink>

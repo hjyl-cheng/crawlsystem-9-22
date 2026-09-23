@@ -86,14 +86,14 @@ test('completed sample keeps Agent and delivery boundaries visible', async ({ pa
 test('rapid create clicks produce one request and one logical plan', async ({ page }) => {
   const state = await mock(page); await login(page, '/plans/new');
   await page.getByRole('button', { name: '创建并查看计划' }).evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
-  await expect(page.getByRole('heading', { name: 'Plan 详情', exact: true })).toBeVisible(); expect(state.creates).toHaveLength(1);
+  await expect(page.getByRole('heading', { name: '采集任务详情', exact: true })).toBeVisible(); expect(state.creates).toHaveLength(1);
   expect(state.creates[0]?.request_id).toMatch(/^[0-9a-f-]{36}$/);
 });
 test('lost creation response retries the original identity across navigation', async ({ page }) => {
   const state = await mock(page); state.loseCreate = true; await login(page, '/plans/new');
   await page.getByRole('button', { name: '创建并查看计划' }).click(); await expect(page.getByRole('alert')).toContainText('无法连接服务');
   await page.getByRole('link', { name: '返回计划列表' }).click(); await page.getByRole('link', { name: '创建样本计划' }).click();
-  await page.getByRole('button', { name: '核对并重试本次创建' }).click(); await expect(page.getByRole('heading', { name: 'Plan 详情', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '核对并重试本次创建' }).click(); await expect(page.getByRole('heading', { name: '采集任务详情', exact: true })).toBeVisible();
   expect(state.creates).toHaveLength(2); expect(state.creates[1]).toEqual(state.creates[0]);
 });
 test('cancel conflict requires explicit refresh and preserves the submitted expected version', async ({ page }) => {

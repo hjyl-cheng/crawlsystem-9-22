@@ -77,5 +77,5 @@ function Content({ detail, refresh, refreshing }: { detail: PlanDetail; refresh:
 export default function PlanDetailPage() {
   const { id = '' } = useParams(); const { api } = useAuth();
   const resource = useResource(`plan:${id}`, signal => api.plan(id, signal), d => !isTerminal(d.plan));
-  return <><PageHeading title="Plan 详情" description="核对本轮领域结果、执行阶段与持久回执。"><Link className="button" to="/plans">返回计划列表</Link></PageHeading><ResourceView resource={resource}>{detail => <Content key={id} detail={detail} refresh={resource.refresh} refreshing={resource.refreshing}/>}</ResourceView></>;
+  return <><PageHeading title="采集任务详情" description="核对本轮领域结果、执行阶段与持久回执。"><Link className="button" to="/plans">返回计划列表</Link></PageHeading><ResourceView resource={resource}>{detail => <Content key={id} detail={detail} refresh={resource.refresh} refreshing={resource.refreshing}/>}</ResourceView></>;
 }
