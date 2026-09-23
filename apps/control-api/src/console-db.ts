@@ -13,7 +13,9 @@ export function createConsolePool(env: NodeJS.ProcessEnv = process.env): Pool {
   const url = new URL(connectionString);
   if ([...url.searchParams.keys()].some(key => key.startsWith('ssl'))) throw new Error('Use PG_CA_FILE instead of URL TLS overrides');
   if (!env.PG_CA_FILE) throw new Error('PG_CA_FILE is required for the console database');
-  const pool = new Pool({ connectionString, max: 2, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10_000,
+  const max=Number(env.CONSOLE_PG_POOL_MAX ?? '1');
+  if(!Number.isInteger(max)||max<1||max>2)throw new Error('CONSOLE_PG_POOL_MAX must be between 1 and 2');
+  const pool = new Pool({ connectionString, max, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10_000,
     ssl: { ca: readFileSync(env.PG_CA_FILE, 'utf8'), rejectUnauthorized: true, servername: env.PG_TLS_SERVERNAME },
     application_name: 'crawlsystem-console', query_timeout: 5000,
   });

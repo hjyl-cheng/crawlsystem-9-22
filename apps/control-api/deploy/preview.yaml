@@ -1,0 +1,114 @@
+# Control API for the console preview, running inside the cluster so it reaches
+# PgBouncer over the Service network instead of a kubectl port-forward.
+#
+# The image is built from a single esbuild bundle on the pinned official Node
+# image and imported into each node's containerd (no registry yet), hence
+# imagePullPolicy: Never. Secret `control-api-preview` is created from ignored
+# runtime files; see apps/control-api/README.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-api-preview
+  namespace: control
+  labels: { app.kubernetes.io/name: control-api-preview }
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 0, maxUnavailable: 1 }
+  selector:
+    matchLabels: { app.kubernetes.io/name: control-api-preview }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: control-api-preview }
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: control-api-preview }
+      containers:
+        - name: control-api
+          image: docker.io/crawlsystem/control-api:IMAGE_TAG
+          imagePullPolicy: Never
+          command: ["node", "/app/control-api.mjs"]
+          ports: [{ name: http, containerPort: 18100 }]
+          env:
+            - { name: HOST, value: "0.0.0.0" }
+            - { name: CONTROL_PORT, value: "18100" }
+            - { name: PG_POOL_MAX, value: "1" }
+            - { name: CONSOLE_PG_POOL_MAX, value: "1" }
+            - { name: PG_CA_FILE, value: /secrets/pg-ca.crt }
+            - { name: PG_TLS_SERVERNAME, value: crawler-pg-pool.db.svc.cluster.local }
+            - { name: M1_JWT_SECRET_FILE, value: /secrets/jwt-secret }
+            # The preview gateway validates the public origin, then maps it to this one.
+            - { name: CONSOLE_ORIGIN, value: "http://127.0.0.1:18102" }
+            - { name: CONSOLE_COOKIE_SECURE, value: "true" }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: control-api-preview, key: database-url } }
+            - name: CONSOLE_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: control-api-preview, key: console-database-url } }
+          volumeMounts:
+            - { name: secrets, mountPath: /secrets, readOnly: true }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 6
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      volumes:
+        - name: secrets
+          secret:
+            secretName: control-api-preview
+            defaultMode: 0440
+            items:
+              - { key: pg-ca.crt, path: pg-ca.crt }
+              - { key: jwt-secret, path: jwt-secret }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-api-preview
+  namespace: control
+spec:
+  selector: { app.kubernetes.io/name: control-api-preview }
+  ports: [{ name: http, port: 18100, targetPort: http }]
+---
+# `control` is default-deny for ingress. Only the A1 host, where the preview
+# static server and Cloudflare tunnel run, may reach the API. Host traffic
+# arrives from the node address or its flannel/cni0 address.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: control-api-preview-from-a1
+  namespace: control
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: control-api-preview }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock: { cidr: 10.4.4.12/32 }
+        - ipBlock: { cidr: 10.42.0.0/32 }
+        - ipBlock: { cidr: 10.42.0.1/32 }
+      ports: [{ port: 18100 }]

@@ -63,7 +63,7 @@ Worker 和脚本使用 `Authorization: Bearer <JWT>`；JWT 为 HS256，issuer=`c
 
 已于 2026-09-23 现场核对六节点 Ready、PG 18.6、PgBouncer 事务池和 Temporal 服务存在。Temporal server 1.32.0、UI 2.54.1；frontend/history/matching/worker 每容器请求 100m CPU/256Mi，限额 600m/512Mi。地址与 Secret 引用采用部署资料；不重复安装外围组件。
 
-主 Agent 联调保留端口：Control 18100、Ingest 18101、Console 18102；本地 PG 转发 15432、Temporal 转发 17233。测试库 `crawlsystem_m1_main_test`、Temporal namespace/queue `crawlsystem-m1-main`。控制台预览独立 API 使用 18104；主线浏览器测试使用临时 API 端口和前端 18114，完成后关闭。执行与 UI 单元测试使用独立 mock/server 端口；需要独立实际库时先向主 Agent申请资源名，避免共用破坏性测试。
+主 Agent 联调保留端口：Control 18100、Ingest 18101、Console 18102；本地 PG 转发 15432、Temporal 转发 17233。测试库 `crawlsystem_m1_main_test`、Temporal namespace/queue `crawlsystem-m1-main`。控制台预览已由其分支部署到 control/control-api-preview，原本机 18104 服务停用；主线浏览器测试使用临时 API 端口和前端 18114，完成后关闭。执行与 UI 单元测试使用独立 mock/server 端口；需要独立实际库时先向主 Agent申请资源名，避免共用破坏性测试。
 
 `.env.example` 是配置模板，不含可用密钥。namespace 已注册且历史保留期为 7 天，mTLS TypeScript Workflow/Activity 接入测试通过；实际 `fixturePlanWorkflow`、Worker 重启、启动核对与取消传播尚需集成。页面已通过真实 HTTP/PG 联调，但结果由测试程序提交。完整业务执行验收后才标记 M1 完成。
 
@@ -80,7 +80,7 @@ node --env-file=.runtime/main.env --import tsx scripts/dev/token.ts operator m1-
 node --env-file=.runtime/main.env --import tsx scripts/dev/token.ts worker m1-worker-1 m1-main .runtime/worker-token
 
 # 各自前台运行；事实库三个进程各 2 个连接，总预算 6，保留维护余量。
-# 若启用独立账号库，Control 另用最多 2 个 console_app 连接。
+# 若启用独立账号库，Control 另用 CONSOLE_PG_POOL_MAX（默认 1）个 console_app 连接。
 PG_POOL_MAX=2 node --env-file=.runtime/main.env --import tsx apps/control-api/src/main.ts
 PG_POOL_MAX=2 node --env-file=.runtime/main.env --import tsx apps/ingest/src/main.ts
 

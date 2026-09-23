@@ -2,7 +2,7 @@
 
 日期：2026-09-23。工作区 `crawlsystem-business`，分支 `business/crawler-platform`。**后端与控制台已集成验证，M1 整体尚未完成。**原先 18 项后端测试通过不代表主 Agent 全部任务结束；本报告替代此前过于宽泛的 G1 完成表述。
 
-本轮基于 G0 `ca3973f`、后端 `bc720cb`，已集成控制台 `ab6c094` 和数据库账号版本 `7760e2f`。主线 `83f1eb6` 增加共享认证、迁移/索引和 Temporal 接入；本报告所在合并提交继续修复账号并发问题。完整 SHA 可用 `git log -1 --format=%H -- docs/m1/reports/main.md` 查询，历史测试不冒充当前版本验收。
+本轮基于 G0 `ca3973f`、后端 `bc720cb`，已集成控制台 `ab6c094`、数据库账号版本 `7760e2f`，以及预览部署清单 `1df6d6e`。主线 `83f1eb6` 增加共享认证、迁移/索引和 Temporal 接入；`a4b177c` 完成账号并发修复与集成验证；本报告所在后续合并补充新预览清单和双副本账号连接预算。完整 SHA 可用 `git log -1 --format=%H -- docs/m1/reports/main.md` 查询，历史测试不冒充当前版本验收。
 
 ## 已完成并验证
 
@@ -24,7 +24,7 @@
 | 连接预算 | 实际集成 PG_POOL_MAX=2；浏览器测试每池 1；Control/Ingest/Dispatcher 事实池建议总计 ≤ 6，保留维护余量 |
 | 账号库 | 现有控制台预览使用 crawler.console / console_app；主线账号测试只在独立测试库复制同结构，未测试正式库的角色授权或改动正式账号 |
 | 私有配置 | .runtime/main.env、pg-ca.crt、jwt-secret、temporal/ 证书及短期 Token；0600，忽略入 Git |
-| 开发监听 | Control 18100、Ingest 18101；UI 原预览 API 18104；主线页面测试临时 API 端口＋前端 18114，测试完成即关闭 |
+| 开发监听 | Control 18100、Ingest 18101；UI 原预览 API 18104 已由控制台分支停用，改为 control/control-api-preview；主线页面测试临时 API 端口＋前端 18114，测试完成即关闭 |
 | Temporal | server 1.32.0、UI 2.54.1、TS SDK 1.24.0；namespace crawlsystem-m1-main，retention 604800 秒；Secret temporal/temporal-smoke-client，本地转发 17233 |
 | Temporal 资源 | frontend/history/matching/worker 每容器 request 100m CPU/256Mi，limit 600m/512Mi；现场只读核对，未更改配置 |
 | 测试数据 | 每次使用独立 workspace，保留诊断/回执；没有真实采集、业务发布或旧数据迁移 |
@@ -61,4 +61,4 @@ START/CANCEL 的恢复测试仍用 WorkflowStarter 测试替身，证明数据�
 3. 主 Agent 联合执行模块完成 Worker 强杀重启、重复 Activity、历史重放与 Ingest 恢复，并从浏览器核对同一 Plan/Worker/Workflow/Receipt，之后才具备 MAIN-05/M1 完成条件。
 4. 完整分布式追踪、生产容量/背压压测、正式身份审计与恢复演练仍未完成；真实采集/代理/API/Agent、分发和历史迁移属于后续里程碑。
 
-运行命令、认证配置与测试预算见 [集成基线](../integration-baseline.md)，可立即交给执行 Agent 的具体事项见 [执行集成交接](../execution-integration-handoff.md)。UI 页面继续由 Claude 负责，主 Agent 保留全部后端与最终集成责任。本轮未重新部署控制台公网预览。
+运行命令、认证配置与测试预算见 [集成基线](../integration-baseline.md)，可立即交给执行 Agent 的具体事项见 [执行集成交接](../execution-integration-handoff.md)。UI 页面继续由 Claude 负责，主 Agent 保留全部后端与最终集成责任。本轮未重新部署控制台公网预览。最新清单来自控制台分支 `1df6d6e`；主线把账号池改为可配置且默认 1，清单双副本各 1、滚动 maxSurge=0，以适配 console_app 的 3 连接预算。配置校验和类型检查通过；这一后续改动不改变已通过的 Store/认证事务。新镜像尚未由主线部署，不能把代码修复视为已在公网预览生效。

@@ -21,7 +21,7 @@
 | 服务 | 作用 |
 | --- | --- |
 | `console-preview-build` | `npm run build:preview --workspace @crawlsystem/console`，监听并构建源码 |
-| `console-preview-api` | 独立 Fastify 账号验证与业务 API，loopback `18104`，PG_POOL_MAX=1 |
+| `console-preview-api` | 已停用（2026-09-23）。API 改为集群 `control/control-api-preview`，见 [Control API README](../../control-api/README.md) |
 | `console-preview-web` | `npm run serve:preview --workspace @crawlsystem/console`，在 loopback `18103` 提供静态页面与受控 API 转发 |
 | `console-preview-tunnel` | `cloudflared tunnel --no-autoupdate --protocol http2 --url http://127.0.0.1:18103`，建立免费 HTTPS 入口 |
 
