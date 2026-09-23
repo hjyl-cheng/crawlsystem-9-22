@@ -1,0 +1,27 @@
+// Explicit browser-test fixtures. Never imported by the application.
+import { randomUUID } from 'node:crypto';
+import { CONTRACT_VERSION, PlanSchema, PlanDetailSchema, ReceiptSchema, WorkerSchema, StoredEventSchema, ChannelDetailSchema, type Plan, type Domain } from '@crawlsystem/contracts';
+import { createFrozenFixture, fixtureChannel, fixtureVideo } from '@crawlsystem/contracts/fixtures';
+import { contentHash, fixtureSubmission } from '@crawlsystem/contracts/hash';
+
+export const timestamp = '2026-09-23T08:00:00.000Z';
+export function detailFixture(overrides: Partial<Plan> = {}, applied: Domain[] = []) {
+  const required = overrides.required_domains ?? ['ABOUT', 'VIDEO'];
+  const input = createFrozenFixture(required, '2026-09-23T08:30:00.000Z');
+  const plan = PlanSchema.parse({ plan_id: randomUUID(), run_id: randomUUID(), workspace_id: 'console-browser-fixture', channel_id: fixtureChannel.channel_id, source_revision: 1, source_mode: 'fixture', fixture_id: 'channel-basic-v1', required_domains: required, status: 'QUEUED', version: 1, execution_epoch: 1, input_hash: contentHash(input), workflow_id: 'fixture-workflow', created_at: timestamp, updated_at: timestamp, finished_at: null, deadline_at: input.deadline_at, publication_status: 'NOT_ENABLED', ...overrides });
+  const context = { plan, input, domains: required.map(domain => ({ domain, state: applied.includes(domain) ? 'APPLIED' as const : 'PENDING' as const, completed_at: applied.includes(domain) ? timestamp : null })), receipts: [] };
+  const receipts = applied.filter((d): d is 'ABOUT'|'VIDEO' => d !== 'AGENT').map(domain => {
+    const submission = fixtureSubmission(context, domain);
+    return ReceiptSchema.parse({ schema_version: CONTRACT_VERSION, submission_id: submission.submission_id, plan_id: plan.plan_id, logical_batch_key: submission.logical_batch_key, domain, payload_hash: submission.payload_hash, state: 'APPLIED', applied_at: timestamp });
+  });
+  return PlanDetailSchema.parse({ ...context, receipts, events: [] });
+}
+export function workerFixture(stale = false) {
+  return WorkerSchema.parse({ worker_id: 'fixture-worker', server_id: 'fixture-node', build_version: 'm1.v1-test', accepting_work: true, capacity: 2, running_plan_ids: [], last_heartbeat_at: timestamp, stale, proxy_status: 'NOT_CONFIGURED' });
+}
+export function errorFixture(planId: string) {
+  return StoredEventSchema.parse({ event_id: randomUUID(), plan_id: planId, execution_epoch: 1, worker_id: 'fixture-worker', phase: 'fixture-ingest', kind: 'ERROR', domain: 'VIDEO', message: '测试专用：视频结果提交失败', error_code: 'UNAVAILABLE', created_at: timestamp });
+}
+export function channelFixture(plan: Plan) {
+  return ChannelDetailSchema.parse({ channel_id: fixtureChannel.channel_id, title: fixtureChannel.title, source_mode: 'fixture', updated_at: timestamp, latest_plan_id: plan.plan_id, about: fixtureChannel, videos: [fixtureVideo], agent: null, latest_plan: plan });
+}

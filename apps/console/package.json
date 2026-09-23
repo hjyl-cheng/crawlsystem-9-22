@@ -1,0 +1,38 @@
+{
+  "name": "@crawlsystem/console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 18102 --strictPort",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 18102 --strictPort",
+    "build:preview": "vite build --watch --outDir dist-preview",
+    "serve:preview": "vite preview --host 127.0.0.1 --port 18103 --strictPort --outDir dist-preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test tests/api.test.ts",
+    "test:browser": "playwright test --config playwright.config.ts",
+    "test:live": "playwright test --config playwright.live.config.ts",
+    "test:login-live": "playwright test --config playwright.login.config.ts"
+  },
+  "dependencies": {
+    "@crawlsystem/contracts": "0.1.0",
+    "@radix-ui/react-dialog": "1.1.23",
+    "@xyflow/react": "12.11.6",
+    "echarts": "6.1.0",
+    "lucide-react": "1.47.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router": "8.4.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.0"
+  }
+}

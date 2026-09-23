@@ -1,10 +1,34 @@
 import { z } from 'zod';
-import { CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema } from '@crawlsystem/contracts';
-import { requireRole } from '@crawlsystem/store';
+import { ApiRoutes, CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema, LoginSchema } from '@crawlsystem/contracts';
+import { requireRole, StoreError } from '@crawlsystem/store';
 import { createServer, pagination, planId, type ServerOptions } from '@crawlsystem/http';
+import { authenticate } from '@crawlsystem/http/auth';
+import { ConsoleAuth } from './console-auth.ts';
 
-export function createControlApi(options:ServerOptions) {
-  const app=createServer('control',options),store=options.store;
+export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth }) {
+  const auth=options.consoleAuth;
+  const app=createServer('control',{...options,authenticateRequest:async request=>{
+    const path=request.url.split('?')[0];
+    const publicAuth=request.method==='POST' && (path===ApiRoutes.login || path===ApiRoutes.logout);
+    if(publicAuth || (request.headers.cookie && !request.headers.authorization && request.method!=='GET' && request.method!=='HEAD')) {
+      if(request.headers['x-console-request']!=='1') throw new StoreError('FORBIDDEN','Console request header is required',403);
+    }
+    if(publicAuth) return undefined;
+    if(request.headers.authorization) return authenticate(request.headers.authorization,options.signingKey);
+    if(auth) return auth.authenticate(request.headers.cookie);
+    return authenticate(undefined,options.signingKey);
+  }}),store=options.store;
+  app.post(ApiRoutes.login,{bodyLimit:2048},async(request,reply)=>{
+    if(!auth) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Account login is not configured',503);
+    const input=LoginSchema.parse(request.body);
+    const result=await auth.login(input.username,input.password,request.headers.cookie);
+    reply.header('set-cookie',result.cookie);
+    return {...result.principal,contract_version:CONTRACT_VERSION};
+  });
+  app.post(ApiRoutes.logout,{bodyLimit:2048},async(request,reply)=>{
+    if(auth) {auth.revoke(request.headers.cookie);reply.header('set-cookie',auth.clearCookie());}
+    return {ok:true};
+  });
   app.get('/v1/session',async request=>({...request.principal,contract_version:CONTRACT_VERSION}));
   app.post('/v1/plans',async request=>store.createPlan(request.principal,CreatePlanSchema.parse(request.body)));
   app.get('/v1/plans',async request=>{const q=pagination(request.query);return store.listPlans(request.principal,q.limit,q.offset,q.status);});

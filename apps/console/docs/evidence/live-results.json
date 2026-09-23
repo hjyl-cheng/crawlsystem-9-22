@@ -1,0 +1,33 @@
+{
+  "mode": "actual Fastify + PostgreSQL; controlled fixture submissions, not Temporal execution",
+  "started_at": "2026-09-23T04:25:12.083Z",
+  "control": "http://127.0.0.1:18100",
+  "ingest": "http://127.0.0.1:18101",
+  "workspace_id": "console-e2e-3814487a386c",
+  "browser": "153.0.8010.12",
+  "waiting_plan_id": "28d14aaa-b227-48c6-a051-fdbb8fdca4f6",
+  "waiting_scenario": {
+    "result": "passed",
+    "plan_id": "28d14aaa-b227-48c6-a051-fdbb8fdca4f6",
+    "receipts": [
+      "95f81feb-8a43-8a06-aeee-9bfe71d1d129",
+      "08524f06-ea64-89a8-8f0a-d2009f02ea86"
+    ],
+    "error_event_id": "2a41d51f-79a0-42a3-a11b-4085c9b7bffb",
+    "final_status": "CANCELLED"
+  },
+  "completed_scenario": {
+    "result": "passed",
+    "plan_id": "1f92224f-6a27-4d09-a2ca-f04a921be45f",
+    "reader_create_status": 403,
+    "reader_cancel_status": 403
+  },
+  "heartbeat_scenario": {
+    "result": "passed",
+    "worker_id": "console-e2e-worker",
+    "stale": true,
+    "transient_dependency_failures": 2,
+    "source": "server clock; no DB mutation or mocked heartbeat threshold"
+  },
+  "finished_at": "2026-09-23T04:26:55.831Z"
+}
