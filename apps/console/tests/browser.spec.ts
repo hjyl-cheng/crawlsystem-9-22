@@ -36,6 +36,14 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
     if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id }] : [], next_cursor: null });
     if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan));
+    if (path === '/v1/overview/completeness') {
+      const required = state.detail?.plan.required_domains ?? [];
+      const applied = state.detail ? state.detail.domains.filter(d => required.includes(d.domain) && d.state === 'APPLIED').map(d => d.domain) : [];
+      const total = state.detail ? 1 : 0, lacks = (domain: string) => required.includes(domain as never) && !applied.includes(domain as never) ? 1 : 0;
+      return json({ basis: 'latest_plan_required_domains', observed_at: '2026-09-23T08:00:00.000Z', total_channels: total,
+        complete: total && applied.length === required.length ? 1 : 0, partial: total && applied.length > 0 && applied.length < required.length ? 1 : 0, missing: total && applied.length === 0 ? 1 : 0,
+        missing_by_domain: { ABOUT: lacks('ABOUT'), VIDEO: lacks('VIDEO'), AGENT: lacks('AGENT') }, latest_channel_update_at: state.detail?.plan.updated_at ?? null, freshness: 'NOT_IMPLEMENTED' });
+    }
     if (path === '/v1/workers') return json({ items: state.workers, next_cursor: null });
     if (path === '/v1/errors') return json({ items: state.errors, next_cursor: null });
     if (path.startsWith('/v1/receipts/') && state.detail) return json(state.detail.receipts.find(receipt => path.endsWith(receipt.submission_id)));
@@ -176,4 +184,26 @@ test('continuous dependency failure reaches a finite polling budget', async ({ p
   await page.clock.fastForward(60_000);
   await expect(page.getByText('自动更新已暂停，可点击刷新重新查询。')).toBeVisible();
   await page.clock.fastForward(600_000); expect(state.reads.length).toBe(count + 5);
+});
+
+test('overview completeness shows the backend aggregate, not counts derived from list pages', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'WAITING' }, ['ABOUT'])); await login(page);
+  const card = page.locator('.completeness-card');
+  await expect(card.getByText('数据完整性与新鲜度')).toBeVisible();
+  await expect(card.locator('.completeness-metrics .blue strong')).toHaveText('1');
+  await expect(card.locator('.completeness-metrics .green strong')).toHaveText('0');
+  await expect(card.locator('.completeness-reasons div', { hasText: '视频 / 评论未入库' }).locator('b')).toHaveText('1');
+  await expect(card.locator('.completeness-metrics .pending strong').first()).toHaveText('—');
+});
+test('desktop overview fits one screen and card columns line up', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await page.setViewportSize({ width: 1920, height: 937 }); await login(page);
+  await expect(page.getByText('必需领域已入库', { exact: true })).toBeVisible();
+  for (const [width, height] of [[1920, 937], [1586, 992]] as const) {
+    await page.setViewportSize({ width, height });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+    const edges = await page.evaluate(() => [...document.querySelectorAll('.dashboard-row')].map(row => [...row.children].map(cell => Math.round(cell.getBoundingClientRect().left))));
+    expect(edges[0]).toEqual(edges[1]);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0);
 });

@@ -76,6 +76,7 @@ test('create → partial data → wait → locate error and receipt → version 
   await refresh(page); await capture(page, 'live-plan-waiting.png');
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '采集总览' }).click();
   await expect(page.getByText('必需领域已入库', { exact: true })).toBeVisible(); await capture(page, 'live-overview.png');
+  await page.getByRole('navigation', { name: '主导航' }).getByText('系统管理', { exact: true }).click();
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '错误与追踪' }).click();
   await page.getByRole('button', { name: '查看错误关联' }).first().click();
   await page.getByRole('link', { name: about.submission_id, exact: true }).click(); await expect(page.getByRole('heading', { name: '持久回执', exact: true })).toBeVisible();
@@ -103,6 +104,7 @@ test('complete sample and channel comments match the actual API; reader writes a
   await page.getByText('首屏评论 · 1 条已入库').click(); await expect(page.getByText('固定样本评论', { exact: true })).toBeVisible();
   await expect(page.getByText('Agent 尚未执行', { exact: true })).toBeVisible(); await capture(page, 'live-channel.png');
   await page.getByRole('button', { name: '退出登录' }).click(); await page.getByLabel('访问令牌', { exact: true }).fill(reader); await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('navigation', { name: '主导航' }).getByText('任务管理', { exact: true }).click();
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: 'Plan 管理' }).click();
   await expect(page.getByRole('link', { name: '创建样本计划' })).toHaveCount(0);
   const body: CreatePlan = { request_id: randomUUID(), fixture_id: 'channel-basic-v1', required_domains: ['ABOUT', 'VIDEO'] };

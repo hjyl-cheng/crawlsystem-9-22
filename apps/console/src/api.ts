@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import {
   ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,
-  ChannelSummarySchema, ChannelDetailSchema, WorkerSchema, StoredEventSchema,
+  ChannelSummarySchema, ChannelDetailSchema, CompletenessSchema, WorkerSchema, StoredEventSchema,
   ReceiptSchema, CreatePlanSchema, CancelPlanSchema, LoginSchema, LogoutSchema, pageSchema,
   type CreatePlan, type ErrorCode, type PlanStatus, type Login,
 } from '@crawlsystem/contracts';
@@ -89,6 +89,7 @@ export class ControlApi {
   create = (body: CreatePlan, signal?: AbortSignal) => this.request(ApiRoutes.plans, PlanSchema, signal, CreatePlanSchema.parse(body));
   cancel = (id: string, body: z.infer<typeof CancelPlanSchema>, signal?: AbortSignal) => this.request(ApiRoutes.cancel(id), PlanSchema, signal, CancelPlanSchema.parse(body));
   channels = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.channels}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(ChannelSummarySchema), signal);
+  completeness = (signal?: AbortSignal) => this.request(ApiRoutes.completeness, CompletenessSchema, signal);
   channel = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.channel(id), ChannelDetailSchema, signal);
   workers = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.workers}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(WorkerSchema), signal);
   errors = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.errors}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(StoredEventSchema), signal);

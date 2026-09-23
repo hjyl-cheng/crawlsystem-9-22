@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import { CONTRACT_VERSION, WORKER_STALE_SECONDS, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
   type Principal, type Role, type ErrorCode, type Plan, type PlanInput, type PlanDetail, type Domain, type DomainResult, type FrozenInput, type CreatePlan, type Submission, type Receipt,
-  type Page, type ChannelSummary, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput } from '@crawlsystem/contracts';
+  type Page, type Completeness, type ChannelSummary, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput } from '@crawlsystem/contracts';
 import { contentHash, submissionHash } from '@crawlsystem/contracts/hash';
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
 
@@ -283,6 +283,28 @@ export class Store {
       }
       return rows.rowCount ?? 0;
     });
+  }
+  /** One aggregate over the workspace's channels; see Completeness for the basis. */
+  async completeness(principal: Principal): Promise<Completeness> {
+    requireRole(principal,'reader','operator');
+    const row = (await this.pool.query(`
+      WITH per AS (
+        SELECT p.required_domains AS required,
+               coalesce(array_agg(d.domain) FILTER (WHERE d.state='APPLIED' AND d.domain = ANY(p.required_domains)), '{}') AS applied
+        FROM m1.channels c JOIN m1.plans p ON p.plan_id = c.latest_plan_id
+        LEFT JOIN m1.domains d ON d.plan_id = p.plan_id
+        WHERE c.workspace_id = $1 GROUP BY c.channel_id, p.required_domains)
+      SELECT count(*)::int AS total,
+        count(*) FILTER (WHERE cardinality(applied) = cardinality(required))::int AS complete,
+        count(*) FILTER (WHERE cardinality(applied) > 0 AND cardinality(applied) < cardinality(required))::int AS partial,
+        count(*) FILTER (WHERE cardinality(applied) = 0)::int AS missing,
+        count(*) FILTER (WHERE 'ABOUT' = ANY(required) AND NOT 'ABOUT' = ANY(applied))::int AS about,
+        count(*) FILTER (WHERE 'VIDEO' = ANY(required) AND NOT 'VIDEO' = ANY(applied))::int AS video,
+        count(*) FILTER (WHERE 'AGENT' = ANY(required) AND NOT 'AGENT' = ANY(applied))::int AS agent,
+        (SELECT max(updated_at) FROM m1.channels WHERE workspace_id = $1) AS latest, clock_timestamp() AS observed
+      FROM per`,[principal.workspace_id])).rows[0]!;
+    return { basis:'latest_plan_required_domains', observed_at:iso(row.observed), total_channels:row.total, complete:row.complete, partial:row.partial, missing:row.missing,
+      missing_by_domain:{ ABOUT:row.about, VIDEO:row.video, AGENT:row.agent }, latest_channel_update_at:row.latest ? iso(row.latest) : null, freshness:'NOT_IMPLEMENTED' };
   }
   async businessMetrics(workspaceId:string):Promise<Array<{metric:string;state:string;value:number}>> {
     const result=await this.pool.query(`

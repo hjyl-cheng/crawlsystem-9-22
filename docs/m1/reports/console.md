@@ -153,3 +153,11 @@ npm run build --workspace @crawlsystem/console
 - 迁移：原 `preview` 账号以原摘要导入，密码不变。预览服务 `console-preview-api` 改为读取 `.runtime/console-preview/console-db.env`；旧 `accounts.json` 不再使用。
 - 验证：`tsc --noEmit` 通过；`apps/control-api/test/console-auth.test.ts` 6 / 6 通过；公网 `test:login-live` 1 / 1 通过；公网实测登录 → 重启 API → 会话仍有效（200）→ 退出 → 旧 Cookie 401。
 - 待主 Agent 审查：`crawler` 库中的 `console` schema 与 `console_app` 角色属于新增正式库对象，需纳入数据库变更管理与备份核对；审计表待定。
+
+## 首页第二版原型与完整性统计（2026-09-23，Claude Agent）
+
+按用户提供的第二张原型（`/home/ubuntu/workspace/UI/8593fa717e6a8de413bfa4f77f77bb61.png`）调整首页，并修复用户指出的对齐与滚动问题。
+
+- **新增接口（待主 Agent 审查）**：`GET /v1/overview/completeness`，reader/operator 可读。契约 `CompletenessSchema`（`packages/contracts`），查询 `Store.completeness`（`packages/store`）。口径：各频道 `latest_plan_id` 对应计划的必需领域是否全部 APPLIED，得到完整 / 部分 / 待补全三类，三者之和等于频道总数（契约校验）；另按缺失领域计数。一次聚合查询，测试库实测 0.1 ms。更新策略与 Clock 尚未实现，契约固定 `freshness: 'NOT_IMPLEMENTED'`，页面“待更新 / 更新逾期”显示“未接入”。
+- **布局**：首页按窗口高度排版，1920×937 与 1586×992 无滚动；更矮窗口保持最小可读高度并允许滚动。上下两排卡片共用列模板，边缘对齐。完整性卡片作为链路图节点放在右上方，随链路缩放。新增“容量与增长风险”占位（监控指标未接入控制台 API）。侧栏仅展开当前页面所在分组。错误码显示中文短标签；最小字号 10px。
+- **验证**：类型检查通过；浏览器行为测试 18 / 18（新增完整性展示、单屏无滚动与列对齐、手机无横向溢出）；控制 API 测试 6 / 6、契约测试 3 / 3。集群 `control-api-preview` 已更新镜像，公网接口返回 `total_channels=1, complete=1`。`live.spec.ts` 的两处导航改为先展开分组，本轮未重新运行真实 API E2E。
