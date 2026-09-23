@@ -264,3 +264,14 @@ test('full collection shows backend plan statistics next to the real plan list',
   await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
   await expect(page.locator('.discover-kpi strong').first()).toHaveText('156');
 });
+test('update collection shows no figures until the sample preview is switched on, and has no Clock menu', async ({ page }) => {
+  await mock(page); await login(page, '/update');
+  await expect(page.getByRole('heading', { name: '更新采集', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '主导航' }).getByText('Clock 调度')).toHaveCount(0);
+  await expect(page.getByText('尚无更新任务', { exact: true })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('256');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
