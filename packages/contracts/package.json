@@ -1,0 +1,8 @@
+{
+  "name": "@crawlsystem/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./fixtures": "./src/fixtures.ts", "./hash": "./src/hash.ts" },
+  "dependencies": { "zod": "4.6.5" }
+}

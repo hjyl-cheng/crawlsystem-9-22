@@ -1,0 +1,5 @@
+{
+  "name": "@crawlsystem/store", "version": "0.1.0", "private": true, "type": "module",
+  "exports": { ".": "./src/index.ts", "./config": "./src/config.ts", "./migrate": "./src/migrate.ts" },
+  "dependencies": { "@crawlsystem/contracts": "0.1.0", "pg": "8.23.0" }
+}
