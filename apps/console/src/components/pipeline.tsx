@@ -13,7 +13,7 @@ type Lane = Node<{ title: string; description: string; tone: string; compact?: b
 type Capability = Node<Record<string, never>>;
 function StageCard({ data }: NodeProps<Stage>) {
   const Icon = icons[data.icon];
-  const content = <><div className="stage-heading"><span className="stage-icon"><Icon size={25}/></span><div><strong>{data.title}</strong><small>{data.description}</small></div></div><div className={`stage-value ${data.pending ? 'unavailable-value' : ''}`}>{data.value}</div>{data.caption && <span className="stage-caption">{data.caption}</span>}<span className={`stage-foot ${data.pending ? 'pending-foot' : ''}`}>{data.foot}{data.footLabel && <> <span>{data.footLabel}</span></>}</span></>;
+  const content = <><div className="stage-heading"><span className="stage-icon"><Icon size={25}/></span><div><strong>{data.title}</strong><small>{data.description}</small></div></div><div className={`stage-value ${data.pending ? 'unavailable-value' : /^[\d,.\s/%—-]+$/.test(data.value) ? '' : 'text-value'}`}>{data.value}</div>{data.caption && <span className="stage-caption">{data.caption}</span>}<span className={`stage-foot ${data.pending ? 'pending-foot' : ''}`}>{data.foot}{data.footLabel && <> <span>{data.footLabel}</span></>}</span></>;
   return <div className={`prototype-stage ${data.tone}`}><Handle type="target" position={Position.Left}/>{data.href ? <Link to={data.href} className="nodrag stage-link">{content}</Link> : content}<Handle type="source" position={Position.Right}/><Handle id="agent" type="target" position={Position.Bottom} style={{ left: '18%' }}/><Handle id="data-api" type="target" position={Position.Bottom} style={{ left: '29%' }}/></div>;
 }
 function LaneCard({ data }: NodeProps<Lane>) {
@@ -26,6 +26,8 @@ function Capabilities() {
   ].map(([label, enabled]) => <span key={String(label)} className={enabled ? '' : 'pending'}><i>{enabled ? <Check size={11}/> : '·'}</i>{label}</span>)}</div>;
 }
 const nodeTypes = { stage: StageCard, lane: LaneCard, capabilities: Capabilities };
+// Shrink to fit narrow screens, but never enlarge: text stays at its designed size.
+const fitViewOptions = { padding: 0.008, maxZoom: 1 };
 export default function Pipeline({ detail }: { detail?: PlanDetail }) {
   const canvas = useRef<HTMLDivElement>(null);
   const [flow, setFlow] = useState<ReactFlowInstance<Stage | Lane | Capability> | null>(null);
@@ -34,7 +36,7 @@ export default function Pipeline({ detail }: { detail?: PlanDetail }) {
     let frame = 0;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => { void flow.fitView({ padding: 0.008 }); });
+      frame = requestAnimationFrame(() => { void flow.fitView(fitViewOptions); });
     });
     observer.observe(canvas.current);
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
@@ -60,5 +62,5 @@ export default function Pipeline({ detail }: { detail?: PlanDetail }) {
   ];
   const edge = (source: string, target: string, color: string, pending = false, targetHandle?: string) => ({ id: `${source}-${target}`, source, target, targetHandle, type: 'smoothstep', zIndex: 1, markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color }, style: { stroke: color, strokeWidth: 1.15, ...(pending ? { strokeDasharray: '4 3' } : {}) } });
   const edges = [edge('discover', 'candidate', '#377cfa', true), edge('candidate', 'full', '#377cfa', true), edge('full', 'ingest', '#377cfa'), edge('clock', 'update', '#13bc8b', true), edge('update', 'ingest', '#13bc8b', true), edge('agent', 'ingest', '#a063ff', true, 'agent'), edge('data-api', 'ingest', '#ff9a45', true, 'data-api'), edge('ingest', 'current', '#377cfa'), edge('current', 'publish', '#377cfa', true), edge('publish', 'business', '#377cfa', true)];
-  return <div className="prototype-pipeline" role="region" aria-label="采集链路图，小屏可左右滚动" tabIndex={0}><div ref={canvas} className="pipeline-canvas"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onInit={setFlow} fitView fitViewOptions={{ padding: 0.008 }} nodesDraggable={false} nodesConnectable={false} nodesFocusable={false} edgesFocusable={false} elementsSelectable={false} zoomOnScroll={false} zoomOnPinch={false} zoomOnDoubleClick={false} panOnDrag={false} preventScrolling={false} minZoom={0.25} maxZoom={1.3}/></div></div>;
+  return <div className="prototype-pipeline" role="region" aria-label="采集链路图，小屏可左右滚动" tabIndex={0}><div ref={canvas} className="pipeline-canvas"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onInit={setFlow} fitView fitViewOptions={fitViewOptions} nodesDraggable={false} nodesConnectable={false} nodesFocusable={false} edgesFocusable={false} elementsSelectable={false} zoomOnScroll={false} zoomOnPinch={false} zoomOnDoubleClick={false} panOnDrag={false} preventScrolling={false} minZoom={0.25} maxZoom={1}/></div></div>;
 }

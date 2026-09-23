@@ -1,29 +1,37 @@
 import { Link } from 'react-router';
 import { Activity, ArrowRight, CalendarDays, ChevronDown, CircleHelp, Clock3, RefreshCw, Server } from 'lucide-react';
-import type { Plan, PlanDetail, Worker } from '@crawlsystem/contracts';
+import type { Page, Plan, PlanDetail, Worker } from '@crawlsystem/contracts';
 import { useAuth } from '../auth.js';
 import { useResource, type Resource } from '../resource.js';
-import { Badge, Empty, Panel, PlanBadge, ResourceView } from '../ui.js';
+import { Badge, Empty, ErrorBox, Panel, PlanBadge, ResourceView } from '../ui.js';
 import { channelPath, isTerminal, planPath, shortId, time } from '../presentation.js';
 import Pipeline from '../components/pipeline.js';
 import './overview.css';
 
+// Overview data changes on the scale of plan runs; poll less often than detail pages.
+const OVERVIEW_INTERVAL_MS = 15_000;
 const compactTime = (value: string) => new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
 function More({ to, children = '查看全部' }: { to: string; children?: string }) { return <Link className="dashboard-more" to={to}>{children}<ArrowRight size={12}/></Link>; }
 function Refresh({ resource }: { resource: Resource<unknown> }) {
   return <button className="dashboard-refresh" aria-label="刷新链路" disabled={resource.refreshing} onClick={resource.refresh} title={resource.updatedAt ? `最近查询 ${time(resource.updatedAt)}` : '刷新链路'}><RefreshCw size={12}/></button>;
 }
-function PipelinePanel({ detail, resource }: { detail?: PlanDetail; resource?: Resource<PlanDetail> }) {
+function PipelinePanel({ detail, resource, loading = false }: { detail?: PlanDetail; resource?: Resource<PlanDetail>; loading?: boolean }) {
   return <>
-    <div className="chain-heading"><div><h2>采集链路实时状态</h2>{detail ? <><span className="chain-scope">最近 Plan</span><PlanBadge status={detail.plan.status}/></> : <Badge>等待计划数据</Badge>}</div><div className="chain-actions">{resource && <Refresh resource={resource}/>}<More to={detail ? planPath(detail.plan.plan_id) : '/plans'}>查看链路详情</More></div></div>
+    <div className="chain-heading"><div><h2>采集链路实时状态</h2>{detail ? <><span className="chain-scope">最近 Plan</span><PlanBadge status={detail.plan.status}/></> : <Badge>{loading ? '正在查询…' : '等待计划数据'}</Badge>}</div><div className="chain-actions">{resource && <Refresh resource={resource}/>}<More to={detail ? planPath(detail.plan.plan_id) : '/plans'}>查看链路详情</More></div></div>
     <Pipeline detail={detail}/>
-    <div className="chain-foot"><span><i/>实线为样本已接入路径，虚线为待接入环节</span><span className="mobile-chain-hint">左右滑动查看完整链路 →</span>{detail ? <Link to={planPath(detail.plan.plan_id)}>最近 Plan：{shortId(detail.plan.plan_id)} · 固定样本</Link> : <span>还没有样本计划，创建后可查看领域结果与回执</span>}</div>
+    <div className="chain-foot"><span><i/>实线为样本已接入路径，虚线为待接入环节</span><span className="mobile-chain-hint">左右滑动查看完整链路 →</span>{detail ? <Link to={planPath(detail.plan.plan_id)}>最近 Plan：{shortId(detail.plan.plan_id)} · 固定样本</Link> : <span>{loading ? '正在查询最近计划…' : '还没有样本计划，创建后可查看领域结果与回执'}</span>}</div>
   </>;
 }
 function LatestPipeline({ id }: { id: string }) {
   const { api } = useAuth();
-  const resource = useResource(`overview-plan:${id}`, signal => api.plan(id, signal), detail => !isTerminal(detail.plan));
-  return <ResourceView resource={resource} showMeta={false}>{detail => <PipelinePanel detail={detail} resource={resource}/>}</ResourceView>;
+  const resource = useResource(`overview-plan:${id}`, signal => api.plan(id, signal), detail => !isTerminal(detail.plan), OVERVIEW_INTERVAL_MS);
+  return <>{resource.error && <ErrorBox error={resource.error} refresh={resource.refresh}/>}<PipelinePanel detail={resource.data} resource={resource} loading={resource.loading}/></>;
+}
+/** The chain's structure does not depend on data, so it renders at once and fills in. */
+function ChainSection({ plans }: { plans: Resource<Page<Plan>> }) {
+  const latest = plans.data?.items[0]?.plan_id;
+  if (latest) return <LatestPipeline id={latest}/>;
+  return <>{plans.error && <ErrorBox error={plans.error} refresh={plans.refresh}/>}<PipelinePanel loading={plans.loading}/></>;
 }
 function NodeRows({ workers }: { workers: Worker[] }) {
   return <div className="node-rows">{workers.slice(0, 3).map(worker => <Link className="node-row" key={worker.worker_id} to={`/workers?highlight=${encodeURIComponent(worker.worker_id)}`}>
@@ -46,14 +54,14 @@ function Trends() {
 }
 export default function Overview() {
   const { api } = useAuth();
-  const plans = useResource('overview-plans', signal => api.plans('0', undefined, 5, signal));
-  const channels = useResource('overview-channels', signal => api.channels('0', 5, signal));
-  const workers = useResource('overview-workers', signal => api.workers('0', 5, signal));
-  const errors = useResource('overview-errors', signal => api.errors('0', 5, signal));
+  const plans = useResource('overview-plans', signal => api.plans('0', undefined, 5, signal), true, OVERVIEW_INTERVAL_MS);
+  const channels = useResource('overview-channels', signal => api.channels('0', 5, signal), true, OVERVIEW_INTERVAL_MS);
+  const workers = useResource('overview-workers', signal => api.workers('0', 5, signal), true, OVERVIEW_INTERVAL_MS);
+  const errors = useResource('overview-errors', signal => api.errors('0', 5, signal), true, OVERVIEW_INTERVAL_MS);
   const planFor = (id: string): Plan | undefined => plans.data?.items.find(plan => plan.plan_id === id);
   return <div className="dashboard">
     <header className="dashboard-heading"><div><h1>采集链路总览</h1><p>从发现到交付，全链路状态与业务追踪</p></div><div className="dashboard-period" title="时间范围统计尚未接入"><span className="date-placeholder">时间范围未接入<CalendarDays size={13}/></span><div><button disabled>近24小时</button><button disabled>近7天</button><button disabled>近30天</button></div></div></header>
-    <section className="chain-panel" id="pipeline" aria-label="采集链路实时状态"><ResourceView resource={plans} showMeta={false}>{page => page.items[0] ? <LatestPipeline id={page.items[0].plan_id}/> : <PipelinePanel/>}</ResourceView></section>
+    <section className="chain-panel" id="pipeline" aria-label="采集链路实时状态"><ChainSection plans={plans}/></section>
     <div className="dashboard-row operations-row">
       <Panel title="采集节点状态" extra={<More to="/workers">查看全部节点</More>} className="nodes-panel"><ResourceView resource={workers} showMeta={false}>{page => page.items.length ? <><NodeRows workers={page.items}/><div className="dashboard-panel-note">按登记 Worker 展示 · CPU / 内存 / IP 尚未接入</div></> : <Empty title="尚无登记的 Worker">等待采集节点注册并上报心跳。</Empty>}</ResourceView></Panel>
       <IpUsage/>
