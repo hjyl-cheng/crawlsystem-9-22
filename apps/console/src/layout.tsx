@@ -1,11 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
-import { Bell, BriefcaseBusiness, ChevronDown, CircleHelp, Database, FileChartColumn, Hexagon, House, LogOut, Menu, Network, Search, Server, Settings, Workflow, X } from 'lucide-react';
+import { Bell, BriefcaseBusiness, ChevronDown, CircleHelp, Database, FileChartColumn, Hexagon, House, LogOut, Menu, Network, Search, Server, Settings, X } from 'lucide-react';
 import { useAuth } from './auth.js';
 import { roleLabels } from './presentation.js';
 
+/** Same look as a real child link; a trailing tag marks it as not yet available. */
 function Pending({ children }: { children: ReactNode }) {
-  return <span className="nav-pending" aria-disabled="true" title="此功能尚未接入">{children}</span>;
+  return <span className="nav-pending" aria-disabled="true" title="此功能尚未接入">{children}<small>待接入</small></span>;
 }
 /** Only the group holding the current page starts expanded, keeping the sidebar short. */
 function NavGroup({ icon, label, active = false, children }: { icon: ReactNode; label: string; active?: boolean; children: ReactNode }) {
@@ -32,14 +33,12 @@ export function Layout() {
       <button className="mobile-only sidebar-close icon-button" aria-label="关闭导航" onClick={() => setMenuOpen(false)}><X size={18}/></button>
       <nav aria-label="主导航" onClick={event => { if ((event.target as HTMLElement).closest('a')) setMenuOpen(false); }}>
         <NavLink className="nav-primary" to="/" end aria-label="采集总览"><House size={16}/><span>首页</span></NavLink>
-        <Link className="nav-primary" to="/#pipeline"><Workflow size={16}/><span>采集链路</span></Link>
         <NavGroup icon={<BriefcaseBusiness size={16}/>} label="任务管理" active={under('/plans')}>
           <Pending>Query 发现</Pending><Pending>候选频道</Pending>
           <NavLink to="/plans" aria-label="Plan 管理">全量采集 / Plan</NavLink>
-          <Link to="/channels">频道管理</Link><Pending>计时器 Clock</Pending><Pending>更新采集</Pending><Pending>Agent 任务</Pending><Pending>数据 API</Pending><Pending>发布交付</Pending>
+          <Pending>Clock 调度</Pending><Pending>更新采集</Pending><Pending>Agent 任务</Pending><Pending>数据 API</Pending><Pending>发布交付</Pending>
         </NavGroup>
         <NavLink className="nav-primary" to="/channels" aria-label="频道数据"><Database size={16}/><span>频道管理</span></NavLink>
-        <span className="nav-primary unavailable" title="独立视频管理尚未接入" aria-disabled="true"><FileChartColumn size={16}/><span>视频管理</span></span>
         <NavGroup icon={<Network size={16}/>} label="代理资源"><Pending>IP 管理</Pending><Pending>IP 分组</Pending><Pending>服务器管理</Pending></NavGroup>
         <NavGroup icon={<Server size={16}/>} label="采集节点" active={under('/workers')}><NavLink to="/workers" aria-label="Worker / 节点">服务器总览</NavLink><Link to="/workers">Worker 管理</Link></NavGroup>
         <NavGroup icon={<FileChartColumn size={16}/>} label="数据与分析"><Pending>采集统计</Pending><Pending>质量分析</Pending><Link to="/#trends">趋势分析</Link></NavGroup>
