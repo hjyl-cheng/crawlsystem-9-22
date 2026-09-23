@@ -21,3 +21,6 @@
 # GitHub repository deploy key (local only)
 .github_crawlsystem_deploy_key
 .github_crawlsystem_deploy_key.pub
+
+# Environment-local Git metadata
+.git-meta/
