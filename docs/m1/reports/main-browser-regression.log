@@ -1,0 +1,31 @@
+
+> @crawlsystem/console@0.1.0 test:browser
+> playwright test --config playwright.config.ts --workers=1
+
+[WebServer] (node:815069) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:815107) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 16 tests using 1 worker
+
+(node:815144) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/browser.spec.ts:51:1 › empty overview is explicit; read-only users cannot create even through a direct URL (5.9s)
+  ✓   2 tests/browser.spec.ts:60:1 › waiting plans distinguish partially available data, unexecuted Agent and delivery (1.9s)
+  ✓   3 tests/browser.spec.ts:72:1 › completed sample keeps Agent and delivery boundaries visible (1.9s)
+  ✓   4 tests/browser.spec.ts:78:1 › rapid create clicks produce one request and one logical plan (1.9s)
+  ✓   5 tests/browser.spec.ts:84:1 › lost creation response retries the original identity across navigation (2.1s)
+  ✓   6 tests/browser.spec.ts:91:1 › cancel conflict requires explicit refresh and preserves the submitted expected version (2.2s)
+  ✓   7 tests/browser.spec.ts:102:1 › backend permission denial is visible and never shown as successful cancellation (1.9s)
+  ✓   8 tests/browser.spec.ts:108:1 › worker loss of heartbeat follows the server state (1.5s)
+  ✓   9 tests/browser.spec.ts:113:1 › error entry links to the correct plan and its persisted receipt (1.8s)
+  ✓  10 tests/browser.spec.ts:119:1 › network failure marks old results stale and manual refresh recovers (2.4s)
+  ✓  11 tests/browser.spec.ts:124:1 › malformed response does not become an empty successful page (2.5s)
+  ✓  12 tests/browser.spec.ts:128:1 › pagination and filtering issue bounded requests with no invented totals (4.0s)
+  ✓  13 tests/browser.spec.ts:135:1 › unauthenticated responses clear the visible workspace (3.6s)
+  ✓  14 tests/browser.spec.ts:142:1 › leaving a list stops its polling; phone layout has a working navigation drawer (6.0s)
+  ✓  15 tests/browser.spec.ts:152:1 › loading remains distinct from an empty successful result (1.8s)
+  ✓  16 tests/browser.spec.ts:163:1 › continuous dependency failure reaches a finite polling budget (2.1s)
+
+  16 passed (1.2m)

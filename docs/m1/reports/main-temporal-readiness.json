@@ -1,0 +1,16 @@
+{
+  "namespace": {
+    "namespace": "crawlsystem-m1-main",
+    "state": 1,
+    "retention_seconds": "604800",
+    "tls": true,
+    "scope": "namespace readiness only"
+  },
+  "execution": {
+    "namespace": "crawlsystem-m1-main",
+    "workflow_id": "m1-readiness-97342360-8e09-4727-a466-171571f0586e",
+    "result": "PASSED",
+    "tls": true,
+    "scope": "TypeScript SDK Workflow/Activity readiness; not the M1 business workflow"
+  }
+}

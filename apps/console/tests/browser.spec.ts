@@ -1,0 +1,179 @@
+import { test, expect, type Page } from '@playwright/test';
+import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker } from '@crawlsystem/contracts';
+import { detailFixture, channelFixture, workerFixture, errorFixture } from './fixtures.js';
+
+async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false };
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
+    const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
+    const failure = (status: number, code: string) => json({ error: { code, message: `测试替身：${code}`, retryable: status === 503, correlation_id: 'fixture-correlation' } }, status);
+    const session = { subject: 'browser-fixture', workspace_id: 'console-browser-fixture', role: state.role, contract_version: CONTRACT_VERSION };
+    if (path === '/v1/auth/login') { state.authenticated = true; return json(session); }
+    if (path === '/v1/auth/logout') { state.authenticated = false; return json({ ok: true }); }
+    if (path === '/v1/session') return state.authenticated ? json(session) : failure(401, 'UNAUTHENTICATED');
+    if (method === 'GET') state.reads.push(url.pathname + url.search);
+    if (state.fail) return failure(503, 'UNAVAILABLE');
+    if (state.malformed) return json({ unexpected: true });
+    if (path === '/v1/plans' && method === 'POST') {
+      state.creates.push(route.request().postDataJSON());
+      if (state.forbidden) return failure(403, 'FORBIDDEN');
+      state.detail ??= detailFixture({ required_domains: state.creates[0]!.required_domains });
+      if (state.loseCreate) { state.loseCreate = false; return route.abort('failed'); }
+      await new Promise(resolve => setTimeout(resolve, 80));
+      return json(state.detail.plan);
+    }
+    if (path.endsWith('/cancel')) {
+      state.cancels.push(route.request().postDataJSON());
+      if (state.forbidden) return failure(403, 'FORBIDDEN');
+      if (state.conflict) return failure(409, 'CONFLICT');
+      if (state.detail) { state.detail.plan.status = 'CANCELLED'; state.detail.plan.version++; state.detail.plan.finished_at = '2026-09-23T08:10:00.000Z'; return json(state.detail.plan); }
+    }
+    if (path === '/v1/plans') {
+      const matches = state.detail && (!url.searchParams.get('status') || url.searchParams.get('status') === state.detail.plan.status);
+      return json({ items: matches && url.searchParams.get('cursor') !== '20' ? [state.detail!.plan] : [], next_cursor: state.pageTwo && url.searchParams.get('cursor') === '0' ? '20' : null });
+    }
+    if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
+    if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id }] : [], next_cursor: null });
+    if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan));
+    if (path === '/v1/workers') return json({ items: state.workers, next_cursor: null });
+    if (path === '/v1/errors') return json({ items: state.errors, next_cursor: null });
+    if (path.startsWith('/v1/receipts/') && state.detail) return json(state.detail.receipts.find(receipt => path.endsWith(receipt.submission_id)));
+    return failure(404, 'NOT_FOUND');
+  });
+  return state;
+}
+async function login(page: Page, path = '/') {
+  await page.goto(path); await page.getByLabel('账号', { exact: true }).fill('fixture'); await page.getByLabel('密码', { exact: true }).fill('browser-fixture-password'); await page.getByRole('button', { name: '进入控制台' }).click();
+  await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible();
+}
+
+test('empty overview is explicit; read-only users cannot create even through a direct URL', async ({ page }) => {
+  await mock(page, undefined, 'reader'); await login(page);
+  await expect(page.getByText('尚无登记的 Worker')).toBeVisible();
+  await expect(page.getByText('尚无频道记录')).toBeVisible();
+  await expect(page.getByRole('link', { name: '创建样本计划' })).toHaveCount(0);
+  await page.goto('/plans/new'); // The authenticated session survives a full page reload.
+  await expect(page.getByRole('alert')).toContainText('没有创建计划的权限');
+  await expect(page.getByRole('button', { name: '创建并查看计划' })).toHaveCount(0);
+});
+test('waiting plans distinguish partially available data, unexecuted Agent and delivery', async ({ page }) => {
+  const detail = detailFixture({ status: 'WAITING', required_domains: ['ABOUT', 'VIDEO', 'AGENT'] }, ['ABOUT', 'VIDEO']);
+  await mock(page, detail); await login(page, `/plans/${detail.plan.plan_id}`);
+  await expect(page.getByText('等待依赖', { exact: true })).toBeVisible();
+  await expect(page.getByText(/部分必需领域已有入库结果/)).toBeVisible();
+  await expect(page.getByText('本轮已完成', { exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: detail.plan.channel_id, exact: true }).click();
+  await expect(page.getByText('Agent 尚未执行', { exact: true })).toBeVisible();
+  await page.getByText('首屏评论 · 1 条已入库').click(); await expect(page.getByText('固定样本评论', { exact: true })).toBeVisible();
+  await expect(page.getByText('点赞 0', { exact: false })).toBeVisible();
+  await expect(page.getByText('未启用。已有采集数据不代表已完成对外交付。')).toBeVisible();
+});
+test('completed sample keeps Agent and delivery boundaries visible', async ({ page }) => {
+  const detail = detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO']); await mock(page, detail); await login(page, `/plans/${detail.plan.plan_id}`);
+  await expect(page.getByText('本轮已完成', { exact: true })).toBeVisible(); await expect(page.getByText('本轮已结束')).toBeVisible();
+  await expect(page.getByRole('button', { name: '取消本轮' })).toHaveCount(0);
+  await expect(page.locator('dd').filter({ hasText: /^未启用$/ })).toBeVisible();
+});
+test('rapid create clicks produce one request and one logical plan', async ({ page }) => {
+  const state = await mock(page); await login(page, '/plans/new');
+  await page.getByRole('button', { name: '创建并查看计划' }).evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
+  await expect(page.getByRole('heading', { name: 'Plan 详情', exact: true })).toBeVisible(); expect(state.creates).toHaveLength(1);
+  expect(state.creates[0]?.request_id).toMatch(/^[0-9a-f-]{36}$/);
+});
+test('lost creation response retries the original identity across navigation', async ({ page }) => {
+  const state = await mock(page); state.loseCreate = true; await login(page, '/plans/new');
+  await page.getByRole('button', { name: '创建并查看计划' }).click(); await expect(page.getByRole('alert')).toContainText('无法连接服务');
+  await page.getByRole('link', { name: '返回计划列表' }).click(); await page.getByRole('link', { name: '创建样本计划' }).click();
+  await page.getByRole('button', { name: '核对并重试本次创建' }).click(); await expect(page.getByRole('heading', { name: 'Plan 详情', exact: true })).toBeVisible();
+  expect(state.creates).toHaveLength(2); expect(state.creates[1]).toEqual(state.creates[0]);
+});
+test('cancel conflict requires explicit refresh and preserves the submitted expected version', async ({ page }) => {
+  const detail = detailFixture({ status: 'WAITING' }); const state = await mock(page, detail); state.conflict = true;
+  await login(page, `/plans/${detail.plan.plan_id}`); await page.getByRole('button', { name: '取消本轮', exact: true }).click();
+  await page.getByRole('button', { name: '确认取消', exact: true }).click(); await expect(page.getByText('计划状态或版本已经变化。', { exact: false })).toBeVisible();
+  expect(state.cancels).toHaveLength(1); expect(state.cancels[0]?.expected_version).toBe(1);
+  state.detail!.plan.version = 2; state.conflict = false;
+  await page.getByRole('button', { name: '刷新计划', exact: true }).click();
+  await expect(page.getByRole('button', { name: '取消本轮', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: '取消本轮', exact: true }).click(); await page.getByRole('button', { name: '确认取消', exact: true }).click();
+  await expect(page.getByText('已取消', { exact: true })).toBeVisible(); expect(state.cancels[1]?.expected_version).toBe(2); expect(state.cancels[1]?.command_id).not.toBe(state.cancels[0]?.command_id);
+});
+test('backend permission denial is visible and never shown as successful cancellation', async ({ page }) => {
+  const detail = detailFixture(); const state = await mock(page, detail); state.forbidden = true;
+  await login(page, `/plans/${detail.plan.plan_id}`); await page.getByRole('button', { name: '取消本轮', exact: true }).click(); await page.getByRole('button', { name: '确认取消', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('没有执行此操作的权限'); await expect(page.getByRole('button', { name: '确认取消', exact: true })).toBeDisabled();
+  await expect(page.getByText('已取消', { exact: true })).toHaveCount(0);
+});
+test('worker loss of heartbeat follows the server state', async ({ page }) => {
+  const state = await mock(page); state.workers = [workerFixture()]; await login(page, '/workers'); await expect(page.getByText('心跳正常', { exact: true })).toBeVisible();
+  state.workers[0]!.stale = true; await page.getByRole('button', { name: '刷新数据' }).click(); await expect(page.getByText('心跳失联', { exact: true })).toBeVisible();
+  await expect(page.getByText('固定样本不使用代理', { exact: true })).toBeVisible();
+});
+test('error entry links to the correct plan and its persisted receipt', async ({ page }) => {
+  const detail = detailFixture({ status: 'FAILED' }, ['ABOUT']); await mock(page, detail); await login(page, '/errors');
+  await page.getByRole('button', { name: '查看错误关联' }).click(); await expect(page.getByRole('heading', { name: '错误关联', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: detail.receipts[0]!.submission_id }).click(); await expect(page.getByRole('heading', { name: '持久回执', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '查看对应 Plan' })).toHaveAttribute('href', `/plans/${detail.plan.plan_id}`);
+});
+test('network failure marks old results stale and manual refresh recovers', async ({ page }) => {
+  const detail = detailFixture(); const state = await mock(page, detail); await login(page, '/plans'); await expect(page.getByRole('link', { name: detail.plan.plan_id })).toBeVisible();
+  state.fail = true; await page.getByRole('button', { name: '刷新数据' }).click(); await expect(page.getByText('数据可能已过期。', { exact: false })).toBeVisible();
+  await expect(page.getByRole('link', { name: detail.plan.plan_id })).toBeVisible(); state.fail = false; await page.getByRole('button', { name: '重新查询' }).click(); await expect(page.getByRole('alert')).toHaveCount(0);
+});
+test('malformed response does not become an empty successful page', async ({ page }) => {
+  const state = await mock(page); state.malformed = true; await login(page, '/channels');
+  await expect(page.getByRole('alert')).toContainText('公共契约不兼容'); await expect(page.getByText('尚无频道记录', { exact: true })).toHaveCount(0);
+});
+test('pagination and filtering issue bounded requests with no invented totals', async ({ page }) => {
+  const state = await mock(page, detailFixture()); state.pageTwo = true; await login(page, '/plans');
+  await page.getByRole('button', { name: '下一页' }).click(); await expect(page.getByText('没有符合条件的计划')).toBeVisible();
+  expect(state.reads.some(url => url.includes('limit=20&cursor=20'))).toBe(true);
+  await page.getByLabel('计划状态').selectOption('WAITING'); await expect(page).toHaveURL(/cursor=0.*status=WAITING/);
+  expect(state.reads.every(url => !url.includes('limit=1000'))).toBe(true);
+});
+test('unauthenticated responses clear the visible workspace', async ({ page }) => {
+  await mock(page, detailFixture()); await login(page, '/plans');
+  await page.route('**/api/v1/plans?**', route => route.fulfill({ status: 401, json: { error: { code: 'UNAUTHENTICATED', message: 'expired', retryable: false, correlation_id: 'fixture-401' } } }));
+  await page.getByRole('button', { name: '刷新数据' }).click(); await expect(page.getByRole('heading', { name: '连接工作空间' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '主导航' })).toHaveCount(0);
+  expect(await page.evaluate(() => Object.values(localStorage).some(value => String(value).includes('browser-fixture-password')))).toBe(false);
+});
+test('leaving a list stops its polling; phone layout has a working navigation drawer', async ({ page }) => {
+  const state = await mock(page, detailFixture()); await page.setViewportSize({ width: 390, height: 844 }); await login(page, '/plans');
+  // The drawer is intentionally offscreen until opened on phones.
+  await page.getByRole('button', { name: '打开导航' }).click(); await page.getByRole('link', { name: '频道数据', exact: true }).click(); await expect(page.getByRole('heading', { name: '频道数据', exact: true })).toBeVisible();
+  const previous = state.reads.filter(url => url.startsWith('/api/v1/plans?')).length;
+  await page.clock.install(); await page.clock.runFor(6_000);
+  expect(state.reads.filter(url => url.startsWith('/api/v1/plans?')).length).toBe(previous);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('loading remains distinct from an empty successful result', async ({ page }) => {
+  await mock(page);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/v1/channels?**', async route => { await gate; await route.fulfill({ json: { items: [], next_cursor: null } }); });
+  await login(page, '/channels');
+  await expect(page.getByRole('status').filter({ hasText: '正在加载…' })).toBeVisible();
+  await expect(page.getByText('尚无频道记录', { exact: true })).toHaveCount(0);
+  release(); await expect(page.getByText('尚无频道记录', { exact: true })).toBeVisible();
+});
+
+test('continuous dependency failure reaches a finite polling budget', async ({ page }) => {
+  const state = await mock(page, detailFixture()); await login(page, '/plans');
+  await expect(page.getByRole('table').getByText('等待执行', { exact: true })).toBeVisible();
+  await page.clock.install(); state.fail = true;
+  const count = state.reads.length;
+  await page.getByRole('button', { name: '刷新数据' }).click();
+  await expect.poll(() => state.reads.length).toBe(count + 1);
+  for (let i = 2; i <= 5; i++) {
+    await expect(page.getByRole('button', { name: '刷新数据' })).toBeEnabled();
+    await page.clock.fastForward(60_000);
+    await expect.poll(() => state.reads.length).toBe(count + i);
+  }
+  await expect(page.getByRole('button', { name: '刷新数据' })).toBeEnabled();
+  await page.clock.fastForward(60_000);
+  await expect(page.getByText('自动更新已暂停，可点击刷新重新查询。')).toBeVisible();
+  await page.clock.fastForward(600_000); expect(state.reads.length).toBe(count + 5);
+});

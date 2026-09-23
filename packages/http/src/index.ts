@@ -7,7 +7,7 @@ import { Store, StoreError } from '@crawlsystem/store';
 import { authenticate } from './auth.ts';
 
 declare module 'fastify' { interface FastifyRequest { principal:Principal; } }
-export interface ServerOptions { store:Store; signingKey:Uint8Array; logger?:boolean; allowedOrigin?:string; maxInFlight?:number; }
+export interface ServerOptions { store:Store; signingKey:Uint8Array; logger?:boolean; allowedOrigin?:string; maxInFlight?:number; metricsWorkspace?:string; authenticateRequest?:(request:FastifyRequest)=>Promise<Principal|undefined>; }
 export function pagination(query:unknown): {limit:number;offset:number;status?:string} {
   const q=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(20),cursor:z.string().regex(/^\d{1,6}$/).default('0'),status:PlanStatusSchema.optional()}).parse(query);
   const offset=Number(q.cursor);if(offset>100000) throw new StoreError('INVALID_REQUEST','Cursor exceeds maximum',400);
@@ -19,14 +19,15 @@ export function createServer(service:'control'|'ingest',options:ServerOptions):F
     genReqId:()=>randomUUID(),logController:new LogController({disableRequestLogging:true}),logger:options.logger ?? false});
   app.decorateRequest('principal');
   let inflight=0;
-  const metrics=new Map<string,{count:number;sum:number}>();
+  const buckets=[0.01,0.05,0.1,0.25,0.5,1,2.5,5,10,Infinity];
+  const metrics=new Map<string,{count:number;sum:number;buckets:number[]}>();
   const starts=new WeakMap<FastifyRequest,number>();
   app.addHook('onRequest',async(request,reply)=>{
     starts.set(request,performance.now());
     reply.header('x-request-id',request.id).header('cache-control','no-store').header('x-content-type-options','nosniff');
     const origin=request.headers.origin;
     if(origin && options.allowedOrigin && origin===options.allowedOrigin) {
-      reply.header('access-control-allow-origin',origin).header('vary','Origin').header('access-control-allow-headers','Authorization,Content-Type').header('access-control-allow-methods','GET,POST,OPTIONS');
+      reply.header('access-control-allow-origin',origin).header('access-control-allow-credentials','true').header('vary','Origin').header('access-control-allow-headers','Authorization,Content-Type,X-Console-Request').header('access-control-allow-methods','GET,POST,OPTIONS');
       if(request.method==='OPTIONS') return reply.code(204).send();
     }
     if(origin && origin!==options.allowedOrigin) throw new StoreError('FORBIDDEN','Origin is not allowed',403);
@@ -35,13 +36,17 @@ export function createServer(service:'control'|'ingest',options:ServerOptions):F
     let released=false;
     const release=()=>{if(!released){released=true;inflight--;}};
     reply.raw.once('finish',release);reply.raw.once('close',release);
-    if(request.url.startsWith('/v1/')) request.principal=await authenticate(request.headers.authorization,options.signingKey);
+    if(request.url.startsWith('/v1/')) {
+      const principal=options.authenticateRequest ? await options.authenticateRequest(request) : await authenticate(request.headers.authorization,options.signingKey);
+      if(principal) request.principal=principal;
+    }
   });
   app.addHook('onResponse',async(request,reply)=>{
     const route=request.routeOptions.url ?? 'unmatched';
     const elapsed=(performance.now()-(starts.get(request) ?? performance.now()))/1000;
     const label=`service="${service}",route="${route}",method="${request.routeOptions.method}",status="${reply.statusCode}"`;
-    const m=metrics.get(label) ?? {count:0,sum:0};m.count++;m.sum+=elapsed;metrics.set(label,m);
+    const m=metrics.get(label) ?? {count:0,sum:0,buckets:buckets.map(()=>0)};m.count++;m.sum+=elapsed;
+    buckets.forEach((bound,index)=>{if(elapsed<=bound)m.buckets[index]=m.buckets[index]!+1;});metrics.set(label,m);
     request.log.info({request_id:request.id,route,status:reply.statusCode,duration_ms:Math.round(elapsed*1000)},'request completed');
   });
   app.setErrorHandler((err:Error & {statusCode?:number;code?:string},request,reply)=>{
@@ -52,15 +57,23 @@ export function createServer(service:'control'|'ingest',options:ServerOptions):F
     else if(['ECONNREFUSED','ECONNRESET','ETIMEDOUT','57P01','53300','55P03','57014'].includes(err.code ?? '') || /^08/.test(err.code ?? '') || /connection.*(timeout|terminated)|timeout.*connection|query read timeout/i.test(err.message)) error=new StoreError('UNAVAILABLE','Database or dependency is temporarily unavailable',503,true);
     else error=new StoreError('INTERNAL_ERROR','Unexpected server error',500);
     if(error.status>=500) request.log.error({request_id:request.id,code:error.code,internal_code:err.code ?? 'unknown'},'request failed');
-    if(error.retryable) reply.header('retry-after','1');
+    if(error.retryable) reply.header('retry-after',error.status===429?'60':'1');
     reply.code(error.status).send({error:{code:error.code,message:error.message,retryable:error.retryable,correlation_id:request.id}});
   });
   app.setNotFoundHandler((request,reply)=>reply.code(404).send({error:{code:'NOT_FOUND',message:'Route not found',retryable:false,correlation_id:request.id}}));
   app.get('/healthz',async()=>({status:'ok',service}));
   app.get('/readyz',async()=>{await options.store.pool.query('SELECT 1');return {status:'ready',service};});
   app.get('/metrics',async(_request,reply)=>{
-    const rows=['# TYPE m1_http_requests_total counter','# TYPE m1_http_request_duration_seconds_sum counter',`m1_http_inflight{service="${service}"} ${inflight}`];
-    for(const [label,m] of metrics) rows.push(`m1_http_requests_total{${label}} ${m.count}`,`m1_http_request_duration_seconds_sum{${label}} ${m.sum}`);
+    const rows=['# TYPE m1_http_requests_total counter','# TYPE m1_http_request_duration_seconds histogram','# TYPE m1_http_inflight gauge',`m1_http_inflight{service="${service}"} ${inflight}`];
+    for(const [label,m] of metrics) {
+      rows.push(`m1_http_requests_total{${label}} ${m.count}`,`m1_http_request_duration_seconds_sum{${label}} ${m.sum}`,`m1_http_request_duration_seconds_count{${label}} ${m.count}`);
+      buckets.forEach((bound,index)=>rows.push(`m1_http_request_duration_seconds_bucket{${label},le="${Number.isFinite(bound)?bound:'+Inf'}"} ${m.buckets[index]}`));
+    }
+    if(options.metricsWorkspace) {
+      const facts=await options.store.businessMetrics(options.metricsWorkspace);
+      for(const metric of new Set(facts.map(fact=>fact.metric)))rows.push(`# TYPE m1_${metric} gauge`);
+      for(const fact of facts)rows.push(`m1_${fact.metric}{state="${fact.state}"} ${fact.value}`);
+    }
     return reply.type('text/plain; version=0.0.4').send(rows.join('\n')+'\n');
   });
   app.options('/*',async(_request,reply)=>reply.code(204).send());

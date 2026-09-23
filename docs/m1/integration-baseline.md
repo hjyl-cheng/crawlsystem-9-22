@@ -1,6 +1,6 @@
-# G0：M1 公共代码基线
+# M1 公共代码与集成基线
 
-接口版本：`m1.v1`。迁移：`database/migrations/001_m1.sql`。本文件随代码基线提交；同步具体 SHA 见发布消息或主分支日志。
+接口版本：`m1.v1`。事实库迁移：`database/migrations/001_m1.sql`、`002_console_sessions_and_indexes.sql`；独立账号库：`database/console/001_console.sql`。已应用的迁移不可修改，迁移程序核对历史 SHA-256。当前已集成控制台与账号后端；Temporal SDK 接入通过，业务执行模块尚未交付，M1 尚未整体验收。具体提交和证据见 [主 Agent 报告](reports/main.md)。
 
 ## 工程与职责
 
@@ -16,10 +16,14 @@ Temporal SDK `1.24.0`、React/React DOM `19.3.0`、Vite `8.3.0`、React 插件 `
 
 ## HTTP 契约
 
-所有 `/v1/*` 接口使用 `Authorization: Bearer <JWT>`；JWT 为 HS256，issuer=`crawlsystem-m1`、audience=`crawlsystem-api`，含 `sub`、`workspace_id`、`role` (`reader/operator/worker`)、`iat/exp`。后端签发开发令牌，不向浏览器提供签名密钥；前端可在开发登录入口手动输入操作令牌，仅存内存。TLS 与凭据来自运行配置，生产身份服务可替换此开发接入。
+控制台默认使用账号密码登录：`POST /v1/auth/login` 设置最长 8 小时的 HttpOnly/Secure/SameSite=Strict Cookie；`GET /v1/session` 恢复会话；`POST /v1/auth/logout` 持久撤销。登录、退出和 Cookie 写请求发送 `X-Console-Request: 1`，Origin 精确匹配配置。账号配置、数据库连接和命令见 [Control API 说明](../../apps/control-api/README.md)。共享限流和会话容量由 PostgreSQL 约束；角色/租户仍由后端校验。
+
+Worker 和脚本使用 `Authorization: Bearer <JWT>`；JWT 为 HS256，issuer=`crawlsystem-m1`、audience=`crawlsystem-api`，含 `sub`、`workspace_id`、`role` (`reader/operator/worker`)、`iat/exp`。后端签发开发令牌，不向浏览器提供签名密钥；旧前端令牌模式仅供显式开启的开发兼容入口。TLS 与凭据来自运行配置，正式身份服务可替换此开发接入。
 
 | 方法与路径 | 使用者 | 输入/输出 |
 | --- | --- | --- |
+| POST `/v1/auth/login` | 未登录控制台 | `Login` → `Session` + 不透明 Cookie |
+| POST `/v1/auth/logout` | 控制台 | `Logout` → `{ok:true}`，撤销并清除 Cookie |
 | GET `/v1/session` | 全部 | `Session` |
 | POST `/v1/plans` | operator | `CreatePlan` → `Plan`；`request_id` 幂等 |
 | GET `/v1/plans?limit=20&cursor=0&status=…` | reader/operator | `Page<Plan>` |
@@ -35,7 +39,7 @@ Temporal SDK `1.24.0`、React/React DOM `19.3.0`、Vite `8.3.0`、React 插件 `
 | GET `/v1/workers?limit=20&cursor=0` | reader/operator | `Page<Worker>`，心跳超过 90 秒 stale=true |
 | GET `/v1/errors?limit=20&cursor=0` | reader/operator | `Page<StoredEvent>`，仅 ERROR 事件 |
 
-错误统一 `ApiError`；400 INVALID_REQUEST，401 UNAUTHENTICATED，403 FORBIDDEN，404 NOT_FOUND；状态/Hash/代次冲突 409（细分 code）；请求超限 413，过载/依赖不可用 503。只对 retryable=true 的响应执行有界重试。列表 limit 1～100，cursor 为十进制偏移量，最大 100000，无全表 total。页面仅显示已知数量，不推算系统总量。
+错误统一 `ApiError`；400 INVALID_REQUEST，401 UNAUTHENTICATED，403 FORBIDDEN，404 NOT_FOUND；状态/Hash/代次冲突 409（细分 code）；请求超限 413，登录预算超限 429（Retry-After 60 秒），过载/依赖不可用 503。只对 retryable=true 的响应执行有界重试。列表 limit 1～100，cursor 为十进制偏移量，最大 100000，无全表 total。页面仅显示已知数量，不推算系统总量。[接口示例](api-examples.json)使用非现场身份，只说明协议。
 
 ## 状态、回执与样本执行
 
@@ -53,15 +57,15 @@ Temporal SDK `1.24.0`、React/React DOM `19.3.0`、Vite `8.3.0`、React 插件 `
 
 数字指标采用 `{value,status,source,observed_at}`，对应旧字段的值、状态、来源和时间列；不是新增业务评分。评论和 Agent 十项字段来自既有字段参考。字段以具体 schema 为准，不允许 worker 带任意透传大 JSON。Current 使用实体身份与 `source_revision` 防止旧计划结果覆盖新计划当前态；各 Plan 仍保有自己的完成证明。
 
-数据集：plans/domains/plan_items/receipts/commands/intents/obligations 为活动执行与重放证据；channels/videos 为 Current；workers 只更新当前心跳；events 为有界诊断。M1 无自动清理，测试计划与证据保留到人工核对和受控测试环境回收；不得删除仍活动/可重放的证据。M2 上线前补充实际增长预算与批准保留期限。FIXTURE_PLAN_SETTLED 只是内部测试收口义务，不产生正式 publication/Kafka 交付。
+数据集的用途、身份、大小/增长边界、索引和删除资格见 [数据登记与保留规则](data-retention.md)。业务证据无自动清理，不得删除仍活动/可重放的记录；会话与登录预算按独立期限有界清理。FIXTURE_PLAN_SETTLED 只是内部测试收口义务，不产生正式 publication/Kafka 交付。
 
 ## 运行资源与当前状态
 
-已于 2026-09-23 现场核对六节点 Ready、PG 18.6、PgBouncer 事务池和 Temporal 服务存在。地址与 Secret 引用采用部署资料；不重复安装外围组件。
+已于 2026-09-23 现场核对六节点 Ready、PG 18.6、PgBouncer 事务池和 Temporal 服务存在。Temporal server 1.32.0、UI 2.54.1；frontend/history/matching/worker 每容器请求 100m CPU/256Mi，限额 600m/512Mi。地址与 Secret 引用采用部署资料；不重复安装外围组件。
 
-主 Agent 联调保留端口：Control 18100、Ingest 18101、Console 18102；本地 PG 转发 15432、Temporal 转发 17233。测试库 `crawlsystem_m1_main_test`、Temporal namespace/queue `crawlsystem-m1-main`。执行与 UI 单元测试使用独立 mock/server 端口；需要独立实际库时先向主 Agent申请资源名，避免共用破坏性测试。
+主 Agent 联调保留端口：Control 18100、Ingest 18101、Console 18102；本地 PG 转发 15432、Temporal 转发 17233。测试库 `crawlsystem_m1_main_test`、Temporal namespace/queue `crawlsystem-m1-main`。控制台预览独立 API 使用 18104；主线浏览器测试使用临时 API 端口和前端 18114，完成后关闭。执行与 UI 单元测试使用独立 mock/server 端口；需要独立实际库时先向主 Agent申请资源名，避免共用破坏性测试。
 
-`.env.example` 是配置模板，不含可用密钥。G0 发布时 API 尚在实现；G1 现已提供下述运行入口，测试结果见 [主 Agent 报告](reports/main.md)。真实 Temporal 和浏览器集成通过后才标记 M1 完成。
+`.env.example` 是配置模板，不含可用密钥。namespace 已注册且历史保留期为 7 天，mTLS TypeScript Workflow/Activity 接入测试通过；实际 `fixturePlanWorkflow`、Worker 重启、启动核对与取消传播尚需集成。页面已通过真实 HTTP/PG 联调，但结果由测试程序提交。完整业务执行验收后才标记 M1 完成。
 
 ## G1 后端运行
 
@@ -75,7 +79,8 @@ node --env-file=.runtime/main.env --import tsx scripts/dev/migrate.ts
 node --env-file=.runtime/main.env --import tsx scripts/dev/token.ts operator m1-operator m1-main .runtime/operator-token
 node --env-file=.runtime/main.env --import tsx scripts/dev/token.ts worker m1-worker-1 m1-main .runtime/worker-token
 
-# 各自前台运行；三个进程各 2 个连接，总预算 6，保留维护余量。
+# 各自前台运行；事实库三个进程各 2 个连接，总预算 6，保留维护余量。
+# 若启用独立账号库，Control 另用最多 2 个 console_app 连接。
 PG_POOL_MAX=2 node --env-file=.runtime/main.env --import tsx apps/control-api/src/main.ts
 PG_POOL_MAX=2 node --env-file=.runtime/main.env --import tsx apps/ingest/src/main.ts
 
@@ -94,12 +99,30 @@ K3S_CONFIG_FILE=/dev/null kubectl -n db port-forward --address 127.0.0.1 service
 
 npm run typecheck
 npm run test:contracts
+npm run test:auth
+npm run test:console
+npm run build:console
+npm run test:browser
 node --env-file=.runtime/main.env --import tsx --test --test-concurrency=1 tests/integration/*.test.ts
 node --env-file=.runtime/main.env --import tsx scripts/dev/backend-smoke.ts
+PG_POOL_MAX=1 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-integrated-console.ts
 ```
 
 持续同机联调可用 `node --import tsx scripts/dev/pg-tunnel.ts 15432` 替代第一条手动转发（不要同时占用同一个端口）。该开发脚本在 kubectl 因单连接 reset 退出后 1 秒重连，Ctrl-C 会结束子进程；不会创建或修改集群资源。15433 同理。断线期间 API 返回 retryable 503，不能把隧道重连理解为请求自动成功。
 
 测试每次创建独立 workspace，保留测试证据；故障触发器只匹配该次 workspace，并在 finally 中删除。SIGKILL 测试只结束自己创建的子进程。`backend-smoke.ts` 直接提交固定样本，仅用于 HTTP/数据库验收，不能算作 Temporal 完整闭环。
 
-服务提供 `/healthz`、`/readyz`、`/metrics`；日志记录请求 ID、路由模板、状态和时长，不记录 Bearer、正文和数据库连接串。每个进程最多 64 个在途请求，超出返回 retryable 503；指标使用固定路由标签，避免 Plan/频道 ID 形成高基数。分布式追踪和正式可观测性看板仍需 G2 联调补齐，未宣称达到生产 SLO。
+服务提供 `/healthz`、`/readyz`、`/metrics`；日志记录请求 ID、路由模板、状态和时长，不记录 Bearer、正文和数据库连接串。每个进程最多 64 个在途请求，超出返回 retryable 503；指标包含响应时长分桶、HTTP 状态，以及 `M1_WORKSPACE_ID` 的持久 Plan/领域/回执/派发意图/Worker 数量和最老待派发时间。固定指标标签避免 Plan/频道 ID 形成高基数。`/metrics` 保留在受控内部网络，不通过公开前端入口暴露。分布式追踪和正式可观测性看板仍需 G2 联调补齐，未宣称达到生产 SLO。
+
+## Temporal 接入验收与执行交接
+
+现场凭据引用为 Secret `temporal/temporal-smoke-client`，主线私有证书位于 `.runtime/temporal/`，namespace 为 `crawlsystem-m1-main`。证书及 namespace 的存在不代表已实现按 namespace 的授权隔离。执行器只能取得 API 令牌和 Temporal 配置，不使用主线包含 PG/JWT 签名密钥的完整环境文件。
+
+```bash
+K3S_CONFIG_FILE=/dev/null kubectl -n temporal port-forward --address 127.0.0.1 service/temporal-frontend 17233:7233
+# prepare 在已存在时仅核对；不存在时注册指定 M1 namespace。
+node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-temporal.ts
+node --env-file=.runtime/main.env --import tsx scripts/dev/temporal-readiness.ts
+```
+
+接入测试使用独立 readiness Workflow 和 task queue，仅核对 SDK/mTLS/Workflow/Activity。执行 Agent 当前可直接按已发布的 `WorkflowStarter`、`WorkflowInput`、API 与样本契约实施；不存在“尚未发布 G0”的前置阻碍。模块具体交接与未通过场景见 [执行集成交接](execution-integration-handoff.md)。

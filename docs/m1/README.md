@@ -1,6 +1,6 @@
 # M1 三 Agent 协作与验收
 
-日期：2026-09-23｜状态：G0 已发布，进入 G1 并行实现与验证；M1 全链路尚未验收。
+日期：2026-09-23｜状态：公共后端与控制台已集成，26 项真实 PG 测试与页面联调通过；执行模块待交付，M1 全链路尚未验收。
 
 M1 交付一条使用固定样本、具备持久回执与中断恢复、控制台可追踪的内部链路。之后的 M2 再接真实采集、本地代理及所需 API/Agent，交付频道基础信息、视频、评论和 Agent 分析结果。
 
@@ -10,13 +10,13 @@ M1 交付一条使用固定样本、具备持久回执与中断恢复、控制�
 | --- | --- | --- | --- |
 | 主 Agent：公共基础与集成 | `/home/ubuntu/workspace/crawlsystem-business` | `business/crawler-platform` | [主 Agent 任务](agent-main.md) |
 | 执行 Agent：Temporal 与 Worker | `/home/ubuntu/workspace/crawlsystem-execution` | `business/m1-execution` | [执行 Agent 任务](agent-execution.md) |
-| 控制台 Agent：业务前端 | `/home/ubuntu/workspace/crawlsystem-console` | `business/m1-console` | [控制台 Agent 任务](agent-console.md) |
+| 控制台 Agent（Claude）：业务前端 | `/home/ubuntu/workspace/crawlsystem-console` | `business/m1-console` | [控制台 Agent 任务](agent-console.md)、[Claude 接手说明](claude-ui-handoff.md) |
 
 共同资料：[开发计划](../业务平台开发计划_讨论稿_2026-09-23.md)、[旧系统字段参考](../业务数据范围_旧系统字段参考_2026-09-23.md)。旧仓库 `/home/ubuntu/workspace/oldsystem` 仅作为参考；本轮固定提交为 `e92d9227a5a3847430e5d062bea13227564ee419`。
 
 用户已明确：旧代码和算法允许重新设计；先用独立数据验证新系统；第一版是采集管理平台，预留下游交付接口；质量目标为性能、并发、伸缩性、可靠性、安全、可观测性、易用性和可维护性。
 
-共同文档基线来自 `4fb6c8f`。公共代码 G0 为 `ca3973f43d4ee3bc355cb0cc3ab1a373f5292a92`，已经同步至两个 worktree；工程、契约、迁移及当前接入说明见 [integration-baseline.md](integration-baseline.md)。各模块实际完成程度以报告和测试证据为准，G0 不代表 M1 已验收。
+共同文档基线来自 `4fb6c8f`。公共代码 G0 为 `ca3973f43d4ee3bc355cb0cc3ab1a373f5292a92`，已经同步至两个 worktree；工程、契约、迁移及当前接入说明见 [integration-baseline.md](integration-baseline.md)。各模块实际完成程度以报告和测试证据为准，G0 不代表 M1 已验收。最新状态见 [主 Agent 报告](reports/main.md)和[执行集成交接](execution-integration-handoff.md)；原执行准备报告中的 G0 等待状态已过时。
 
 ## 2. 目录所有权
 

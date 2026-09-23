@@ -1,7 +1,15 @@
 import { Store } from '@crawlsystem/store';
 import { createPool } from '@crawlsystem/store/config';
+import { PgConsoleSessions } from '@crawlsystem/store/console-sessions';
 import { loadSigningKey } from '@crawlsystem/http/auth';
 import { listen } from '@crawlsystem/http/runtime';
 import { createControlApi } from './app.ts';
-const pool=createPool();
-await listen(createControlApi({store:new Store(pool),signingKey:loadSigningKey(),logger:true,allowedOrigin:process.env.CONSOLE_ORIGIN}),pool,Number(process.env.CONTROL_PORT ?? '18100'));
+import { ConsoleAuth } from './console-auth.ts';
+import { createConsolePool,PgAccountStore } from './console-db.ts';
+const pool=createPool(),shared=new PgConsoleSessions(pool);
+const consolePool=process.env.CONSOLE_DATABASE_URL?createConsolePool():undefined;
+const secure=process.env.CONSOLE_COOKIE_SECURE!=='false';
+const consoleAuth=consolePool?new ConsoleAuth(new PgAccountStore(consolePool,shared),secure):process.env.M1_CONSOLE_ACCOUNTS_FILE?ConsoleAuth.fromFile(process.env.M1_CONSOLE_ACCOUNTS_FILE,secure,shared):undefined;
+const app=createControlApi({store:new Store(pool),signingKey:loadSigningKey(),logger:true,allowedOrigin:process.env.CONSOLE_ORIGIN,consoleAuth,metricsWorkspace:process.env.M1_WORKSPACE_ID});
+if(consolePool)app.addHook('onClose',async()=>{await consolePool.end();});
+await listen(app,pool,Number(process.env.CONTROL_PORT??'18100'));
