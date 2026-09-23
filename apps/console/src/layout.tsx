@@ -1,14 +1,16 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
-import { Bell, BriefcaseBusiness, ChevronDown, CircleHelp, Database, FileChartColumn, Hexagon, House, LogOut, Menu, Network, Search, Server, Settings, Workflow, X } from 'lucide-react';
+import { Bell, BriefcaseBusiness, ChevronDown, CircleHelp, Database, FileChartColumn, Hexagon, House, LogOut, Menu, Network, Search, Server, Settings, X } from 'lucide-react';
 import { useAuth } from './auth.js';
 import { roleLabels } from './presentation.js';
 
+/** Same look as a real child link; a trailing tag marks it as not yet available. */
 function Pending({ children }: { children: ReactNode }) {
-  return <span className="nav-pending" aria-disabled="true" title="此功能尚未接入">{children}</span>;
+  return <span className="nav-pending" aria-disabled="true" title="此功能尚未接入">{children}<small>待接入</small></span>;
 }
-function NavGroup({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
-  return <details className="nav-group" open><summary>{icon}<span>{label}</span><ChevronDown size={12}/></summary><div className="nav-children">{children}</div></details>;
+/** Only the group holding the current page starts expanded, keeping the sidebar short. */
+function NavGroup({ icon, label, active = false, children }: { icon: ReactNode; label: string; active?: boolean; children: ReactNode }) {
+  return <details className="nav-group" open={active}><summary>{icon}<span>{label}</span><ChevronDown size={12}/></summary><div className="nav-children">{children}</div></details>;
 }
 export function Layout() {
   const { session, logout } = useAuth();
@@ -17,6 +19,7 @@ export function Layout() {
   const [searchError, setSearchError] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const under = (...prefixes: string[]) => prefixes.some(prefix => location.pathname.startsWith(prefix));
   function lookup(event: FormEvent) {
     event.preventDefault();
     if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(search.trim())) { setSearchError(true); return; }
@@ -30,18 +33,16 @@ export function Layout() {
       <button className="mobile-only sidebar-close icon-button" aria-label="关闭导航" onClick={() => setMenuOpen(false)}><X size={18}/></button>
       <nav aria-label="主导航" onClick={event => { if ((event.target as HTMLElement).closest('a')) setMenuOpen(false); }}>
         <NavLink className="nav-primary" to="/" end aria-label="采集总览"><House size={16}/><span>首页</span></NavLink>
-        <Link className="nav-primary" to="/#pipeline"><Workflow size={16}/><span>采集链路</span></Link>
-        <NavGroup icon={<BriefcaseBusiness size={16}/>} label="任务管理">
-          <Pending>Query 发现</Pending><Pending>候选频道</Pending>
-          <NavLink to="/plans" aria-label="Plan 管理">全量采集 / Plan</NavLink>
-          <Link to="/channels">频道管理</Link><Pending>计时器 Clock</Pending><Pending>更新采集</Pending><Pending>Agent 任务</Pending><Pending>数据 API</Pending><Pending>发布交付</Pending>
+        <NavGroup icon={<BriefcaseBusiness size={16}/>} label="任务管理" active={under('/plans', '/discover', '/update', '/agent', '/data-api', '/delivery')}>
+          <NavLink to="/discover/queries">Query 发现</NavLink><NavLink to="/discover/candidates">候选频道</NavLink>
+          <NavLink to="/plans">全量采集</NavLink>
+          <NavLink to="/update">更新采集</NavLink><NavLink to="/agent">Agent 任务</NavLink><NavLink to="/data-api">数据 API</NavLink><NavLink to="/delivery">发布交付</NavLink>
         </NavGroup>
-        <NavLink className="nav-primary" to="/channels" aria-label="频道数据"><Database size={16}/><span>频道管理</span></NavLink>
-        <span className="nav-primary unavailable" title="独立视频管理尚未接入" aria-disabled="true"><FileChartColumn size={16}/><span>视频管理</span></span>
-        <NavGroup icon={<Network size={16}/>} label="代理资源"><Pending>IP 管理</Pending><Pending>IP 分组</Pending><Pending>服务器管理</Pending></NavGroup>
-        <NavGroup icon={<Server size={16}/>} label="采集节点"><NavLink to="/workers" aria-label="Worker / 节点">服务器总览</NavLink><Link to="/workers">Worker 管理</Link></NavGroup>
+        <NavLink className="nav-primary" to="/channels"><Database size={16}/><span>频道管理</span></NavLink>
+        <NavLink className="nav-primary" to="/proxies"><Network size={16}/><span>IP 资源管理</span></NavLink>
+        <NavLink className="nav-primary" to="/workers"><Server size={16}/><span>Worker 管理</span></NavLink>
         <NavGroup icon={<FileChartColumn size={16}/>} label="数据与分析"><Pending>采集统计</Pending><Pending>质量分析</Pending><Link to="/#trends">趋势分析</Link></NavGroup>
-        <NavGroup icon={<Settings size={16}/>} label="系统管理"><Pending>用户管理</Pending><Pending>配置管理</Pending><NavLink to="/errors" aria-label="错误与追踪">错误与日志</NavLink></NavGroup>
+        <NavGroup icon={<Settings size={16}/>} label="系统管理" active={under('/errors')}><Pending>用户管理</Pending><Pending>配置管理</Pending><NavLink to="/errors" aria-label="错误与追踪">错误与日志</NavLink></NavGroup>
       </nav>
       <div className="sidebar-version">M1 · 固定样本联调 <span title="灰色菜单表示尚未接入的功能"><CircleHelp size={12}/></span></div>
     </aside>
@@ -50,7 +51,7 @@ export function Layout() {
         <form className="quick-search" onSubmit={lookup}><Search size={15}/><input aria-label="按 Plan ID 定位" placeholder="搜索 Plan ID，定位计划与执行结果…" value={search} onChange={e => { setSearch(e.target.value); setSearchError(false); }}/>{searchError && <span role="alert">请输入完整 Plan UUID</span>}</form>
         <div className="topbar-right"><Link className="icon-button" to="/errors" aria-label="查看错误事件" title="查看错误事件"><Bell size={19}/></Link><div className="identity"><span className="avatar">{session.subject.slice(0, 1).toUpperCase()}</span><div><strong title={`${session.subject} · ${session.workspace_id}`}>{session.subject === 'console-preview-reader' ? 'preview' : session.subject}</strong><small>{roleLabels[session.role]}</small></div><button className="icon-button" aria-label="退出登录" title="退出登录" onClick={logout}><LogOut size={15}/></button></div></div>
       </header>
-      <main id="main-content" className={`main-content ${location.pathname === '/' ? 'overview-content' : ''}`} key={`${session.workspace_id}:${session.subject}`}><Outlet/></main>
+      <main id="main-content" className={`main-content ${location.pathname === '/' || location.pathname === '/plans' || location.pathname === '/update' || location.pathname === '/agent' || location.pathname === '/data-api' || location.pathname === '/delivery' || location.pathname === '/channels' || location.pathname === '/proxies' || location.pathname === '/workers' || location.pathname.startsWith('/discover/') ? 'overview-content' : 'page-content'}`} key={`${session.workspace_id}:${session.subject}`}><Outlet/></main>
     </div>
   </div>;
 }

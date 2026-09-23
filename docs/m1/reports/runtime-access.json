@@ -1,0 +1,36 @@
+{
+  "verified_at": "2026-09-23T12:51:50.070Z",
+  "console_database": {
+    "role": {
+      "rolname": "console_app",
+      "rolsuper": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolconnlimit": 3
+    },
+    "schema_usage": true,
+    "schema_create": false,
+    "database_create": false,
+    "accounts_select": true,
+    "accounts_delete": false,
+    "accounts_truncate": false,
+    "sessions_delete": true
+  },
+  "temporal": {
+    "namespace": "crawlsystem-m1-main",
+    "mtls_connection": "passed",
+    "other_namespace_describe": "NOT_FOUND",
+    "namespace_authorization": "not established",
+    "scope": "read-only namespace metadata probe; no workflow or permissions modified"
+  },
+  "deployment": {
+    "image": "docker.io/crawlsystem/control-api:862e562-04fd6330",
+    "replicas": 2,
+    "ready_replicas": 2,
+    "pool_limits": {
+      "PG_POOL_MAX": 1,
+      "CONSOLE_PG_POOL_MAX": 1
+    },
+    "max_surge": 0
+  }
+}

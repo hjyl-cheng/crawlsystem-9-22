@@ -1,0 +1,68 @@
+/* Candidate channels. Shares the discover chrome (KPI cards, sample switch,
+   4-column grid); sizes come from tokens.css. The import row keeps its height
+   and the candidate list takes the rest of the screen, scrolling inside. */
+.candidates .row-import { flex: none; height: 200px; min-height: 0; }
+.row-import>.import-card { grid-column: span 3; }
+/* .dashboard .panel sets min-height: 0; this list must keep its readable minimum. */
+.dashboard.candidates .candidates-list { flex: 1 1 0; min-height: 300px; }
+
+/* KPI tones and the small bar series */
+.candidates .discover-kpi { min-height: 96px; }
+.candidates .discover-kpi>div { flex: 1; }
+.candidates .discover-kpi em span { margin-left: 8px; }
+.kpi-bars { width: 72px; height: 40px; flex-shrink: 0; align-self: center; }
+.kpi-bars.blue rect { fill: #3d88ff; } .kpi-bars.amber rect { fill: #f0a92c; } .kpi-bars.green rect { fill: #11c38c; } .kpi-bars.red rect { fill: #ff6868; }
+
+/* Import */
+.import-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 12px; padding: 0 14px 12px; }
+.dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 1.5px dashed #9cc2f7; border-radius: 6px; background: #f7fbff; color: #277cf7; text-align: center; padding: 8px; }
+.dropzone b { font-size: var(--fs-body); color: #193257; }
+.dropzone small { font-size: var(--fs-meta); color: #7a8ca8; }
+.dropzone .button { margin-top: 4px; }
+.import-notes { border-radius: 6px; background: #f5f8fc; padding: 10px 14px; font-size: var(--fs-text); color: #52688c; overflow: auto; }
+.import-notes b { display: block; font-size: var(--fs-text); color: #193257; margin-bottom: 4px; }
+.import-notes ul { margin: 0; padding-left: 16px; line-height: 1.75; list-style: disc; }
+.import-list { flex: 1; min-height: 0; overflow: auto; padding: 0 14px 10px; display: grid; align-content: start; }
+.import-list>div { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid #edf2f9; }
+.import-list>div:last-child { border-bottom: 0; }
+.import-list>div>svg { color: #7a8ca8; }
+.import-list b { display: block; font-size: var(--fs-text); font-weight: 500; color: #193257; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.import-list small { font-size: var(--fs-meta); color: #7a8ca8; }
+.import-list em { font-style: normal; margin-left: 6px; }
+.import-list em.ok { color: #0aa878; } .import-list em.bad { color: #e0524a; }
+.import-list time { display: grid; justify-items: end; font-size: var(--fs-meta); color: #52688c; white-space: nowrap; }
+
+/* Filters and bulk toolbar */
+.candidate-filters { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #eef3f9; }
+.list-search.wide { height: 30px; flex: 1 1 220px; max-width: 320px; }
+.list-search.wide input { width: 100%; font-size: var(--fs-text); }
+.filter-field { display: grid; gap: 3px; font-size: var(--fs-meta); color: #7a8ca8; }
+.filter-field select { min-width: 118px; padding: 5px 24px 5px 9px; border: 1px solid #dde6f1; border-radius: 5px; background-color: #fff; font-size: var(--fs-text); color: #52688c; }
+.date-range { display: inline-flex; align-items: center; gap: 10px; height: 30px; padding: 0 9px; border: 1px solid #dde6f1; border-radius: 5px; background: #fff; font-size: var(--fs-text); color: #9aa9bf; }
+.candidate-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 14px; font-size: var(--fs-text); color: #52688c; }
+.candidate-toolbar>span { margin-right: 6px; }
+.candidate-toolbar .push { margin-left: auto; }
+
+/* Table */
+.candidates-list .table-scroll { flex: 1; min-height: 0; }
+.candidates-list th.check, .candidates-list td.check { width: 30px; }
+.candidates-list td { vertical-align: middle; }
+.candidates .row-actions { align-items: center; }
+.candidates .row-actions svg { color: #8aa6d0; }
+.page-size { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid #dde6f1; border-radius: 5px; }
+.pages { display: flex; gap: 4px; }
+.pages button { min-width: 26px; height: 26px; border: 1px solid #dde6f1; border-radius: 5px; background: #fff; font-size: var(--fs-text); color: #52688c; }
+.pages button.on { background: #277cf7; border-color: #277cf7; color: #fff; }
+.pages button:disabled { cursor: default; }
+.pages button:disabled:not(.on) { opacity: .75; }
+
+@media (max-width: 1040px), (max-height: 600px) {
+  .candidates .row-import { height: auto; }
+  .row-import>.import-card, .row-import>.imports-card { grid-column: 1 / -1; }
+  .dashboard.candidates .candidates-list { flex: none; min-height: 360px; }
+}
+@media (max-width: 680px) {
+  .import-body { grid-template-columns: minmax(0, 1fr); }
+  .kpi-bars { display: none; }
+  .candidate-toolbar .push { margin-left: 0; }
+}

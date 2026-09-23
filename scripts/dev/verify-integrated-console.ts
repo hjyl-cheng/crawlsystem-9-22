@@ -59,7 +59,7 @@ try {
     const result=page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/v1/plans')&&r.request().method()==='POST');
     await page.getByRole('button',{name:'创建并查看计划'}).click();
     const plan=PlanSchema.parse(await (await result).json());
-    await expect(page.getByRole('heading',{name:'Plan 详情',exact:true})).toBeVisible();return plan;
+    await expect(page.getByRole('heading',{name:'采集任务详情',exact:true})).toBeVisible();return plan;
   }
   async function apply(id:string) {
     const input=PlanInputSchema.parse(await api(`/v1/plans/${id}/input`));

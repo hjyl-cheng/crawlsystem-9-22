@@ -4,10 +4,12 @@
 
 | 任务 | 本轮补齐并验证的部分 | 仍未通过的验收 |
 | --- | --- | --- |
-| MAIN-01 环境 | 独立 PG/PgBouncer、账号/池预算；Temporal mTLS、隔离 namespace、7 天保留；真实 TypeScript Workflow/Activity 接入通过 | 业务 Worker 的运行配置需随执行实现最终验收；namespace 授权隔离未验证 |
+| MAIN-01 环境 | 独立 PG/PgBouncer、账号/池预算；Temporal mTLS、隔离 namespace、7 天保留；真实 TypeScript Workflow/Activity 接入通过 | 业务 Worker 的运行配置需随执行实现最终验收；namespace 授权尚未实现（mTLS 只证明客户端证书可信） |
 | MAIN-02 公共基础 | 控制台/登录契约和根锁集成；迁移 002、索引、逐表保留规则、接口例子与 CI；干净安装、类型、契约/认证/前端模块检查及构建通过 | 执行模块尚未交付，其新增依赖与根 CI 集成未完成 |
-| MAIN-03 Store/Ingest | 真实 PG 26 项通过，含幂等、冲突、SIGKILL 回滚、响应丢失、取消/并发收口、认证共享状态；不接受假 APPLIED | 与真实 Worker 重启、重复 Activity 的联合恢复测试未执行 |
-| MAIN-04 API/派发 | 完整控制台 API；会话/预算持久共享；账号改密/停用原子撤销和旧验证隔离；业务指标；START/CANCEL 持久意图与数据库恢复测试 | 实际 Workflow 重复启动核对、启动确认丢失与取消传播；完整分布式追踪 |
-| MAIN-05 集成 | 审查并集成控制台具体提交 ab6c094、7760e2f；16 项页面回归；真实 HTTP/PG 页面创建/等待/取消、API 重启保留登录、退出撤销均通过 | 执行分支仅有准备文档；API → Temporal → Worker → Ingest → PG → Console 同身份验收尚未完成 |
+| MAIN-03 Store/Ingest | 真实 PG 28 项通过，含幂等、冲突、SIGKILL 回滚、响应丢失、取消/并发收口、认证共享状态；不接受假 APPLIED | 与真实 Worker 重启、重复 Activity 的联合恢复测试未执行 |
+| MAIN-04 API/派发 | 完整控制台 API；会话/预算持久共享；账号改密/停用原子撤销和旧验证隔离；业务指标；START/CANCEL 持久意图与数据库恢复测试 | 实际 Workflow 重复启动核对、启动确认丢失与取消传播；HTTP W3C/OTel 与日志已实现，Temporal/Worker 追踪未完成 |
+| MAIN-05 集成 | 审查并集成控制台具体提交至 2aea207；29 项页面回归；真实 HTTP/PG 页面创建/等待/取消、API 重启保留登录、退出撤销均通过 | 执行分支仅有准备文档；API → Temporal → Worker → Ingest → PG → Console 同身份验收尚未完成 |
 
 UI 设计由 Claude 负责；主 Agent 仍负责全部控制台后端、共享契约、依赖、执行分支审查与最终联合验收。实际测试范围和限制见 [主报告](main.md)。执行模块未交付不意味着主 Agent 的集成责任已经完成，也不能把 readiness Workflow 当成业务执行器。
+
+本轮新增：Worker 私有 allowlist 配置、账号角色权限核验、按同一快照查询统计、HTTP 标准追踪和可核对的构建版本。镜像部署/跨副本/现有监控验收继续进行；具体运行证据另记主报告。

@@ -1,0 +1,15 @@
+/* Agent tasks. Discover chrome on the 4-column grid: task list (3) with a
+   detail panel (1); both fill the remaining height and scroll inside. */
+.agent-page .row-agent { flex: 1 1 0; min-height: 320px; }
+.dashboard.agent-page .agent-list { grid-column: span 3; min-height: 0; }
+.dashboard.agent-page .agent-detail { min-height: 0; }
+.agent-list .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
+.agent-list td { vertical-align: middle; }
+.agent-list tbody tr { cursor: pointer; }
+.agent-list tbody tr.selected { background: #eef5ff; }
+.agent-filters { justify-content: flex-start; padding: 8px 14px; }
+
+@media (max-width: 1040px), (max-height: 600px) {
+  .agent-page .row-agent { flex: none; }
+  .dashboard.agent-page .agent-list, .dashboard.agent-page .agent-detail { grid-column: 1 / -1; min-height: 360px; }
+}

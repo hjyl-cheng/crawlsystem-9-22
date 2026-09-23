@@ -33,7 +33,9 @@ Worker 和脚本使用 `Authorization: Bearer <JWT>`；JWT 为 HS256，issuer=`c
 | POST `/v1/plans/:id/events` | worker | `ExecutionEvent` → `{accepted:true}`；worker_id 必须等于令牌 sub |
 | POST `/v1/submissions`（Ingest 端口） | worker | `Submission` → `Receipt` |
 | GET `/v1/receipts/:submission_id`（Control 端口） | 全部 | `Receipt`；不存在 404，查询失败不是 404 |
-| GET `/v1/channels?limit=20&cursor=0` | reader/operator | `Page<ChannelSummary>` |
+| GET `/v1/channels?limit=20&cursor=0` | reader/operator | `Page<ChannelListItem>`：基础摘要加国家/订阅数/已存视频数/最近计划状态 |
+| GET `/v1/overview/plans` | reader/operator | `PlansSummary`，同一 MVCC 快照内的总数/分项/领域/等待原因 |
+| GET `/v1/overview/completeness` | reader/operator | `Completeness`，依据每个频道最新 Plan 的必需领域，freshness 尚未实现 |
 | GET `/v1/channels/:channel_id` | reader/operator | `ChannelDetail`；M1 视频有界至 100 条，Agent 尚未接入为 null |
 | POST `/v1/workers/heartbeat` | worker | `Heartbeat` → `Worker`；worker_id 必须等于令牌 sub |
 | GET `/v1/workers?limit=20&cursor=0` | reader/operator | `Page<Worker>`，心跳超过 90 秒 stale=true |
@@ -126,3 +128,23 @@ node --env-file=.runtime/main.env --import tsx scripts/dev/temporal-readiness.ts
 ```
 
 接入测试使用独立 readiness Workflow 和 task queue，仅核对 SDK/mTLS/Workflow/Activity。执行 Agent 当前可直接按已发布的 `WorkflowStarter`、`WorkflowInput`、API 与样本契约实施；不存在“尚未发布 G0”的前置阻碍。模块具体交接与未通过场景见 [执行集成交接](execution-integration-handoff.md)。
+
+## 2026-09-23 主线后续集成
+
+已审查合入控制台至 `2aea207` 的具体提交；设计示例仍需要用户显式打开，默认页面不使用示例冒充真实数据。频道列表现在使用 ChannelListItemSchema，前后端须一同同步该公共契约。
+
+统计总数/状态/领域/原因来自单条 SQL 的一致快照，避免并发更新出现卡片互相矛盾。账号库配置时 readyz 同时检查账号和共享预算表。healthz 包含构建版本供副本验收。
+
+新增检查 `npm run test:http`；追踪与监控接入见 [observability.md](observability.md)。真实 PG 集成套件仅在初始化遇 ECONNREFUSED/ECONNRESET 时等待本地开发转发，最多 5 次；业务请求、业务断言和故障注入没有自动重跑。
+
+```bash
+# 由持有签名密钥的主 Agent 执行，输入变量参考 .env.example。
+node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-worker-env.ts
+# 输出仅含 allowlist，Worker 不加载 main.env；Token 默认 1 小时，开工时重新签发。
+# 执行模块交付后使用：node --env-file=.runtime/execution.env ...
+node --env-file=.runtime/main.env --import tsx scripts/dev/audit-runtime-access.ts
+# 源码提交后构建，固定基础镜像 digest / esbuild / 代码提交，拒绝脏工作区：
+node --import tsx scripts/dev/build-control-image.ts
+```
+
+实际权限检查确认 console_app 无超级用户/建库/建角色/建表/删除账号权限，连接上限 3。Temporal mTLS 可连接，服务未配置 namespace 授权；独立 namespace 仅隔离执行历史，不能视为凭据权限边界。M1 仅内部固定样本联调；完善共享 Temporal 授权需要与既有客户端共同安排，不能在这里直接改变全局授权令其他业务失效。

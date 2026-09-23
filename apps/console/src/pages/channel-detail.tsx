@@ -7,7 +7,7 @@ import { number, planPath, time } from '../presentation.js';
 
 const metricLabels: Record<ChannelFacts['subscriber_count']['status'], string> = { exact: '精确值', estimated: '估算值', empty: '合法空值', unavailable: '不可获得', unresolved: '尚未解析', disabled: '已关闭' };
 function Metric({ label, metric }: { label: string; metric: ChannelFacts['subscriber_count'] }) {
-  return <div className="metric"><span>{label}</span><strong>{number(metric.value)}</strong><Badge>{metricLabels[metric.status]}</Badge><small>{metric.source}</small><small>{time(metric.observed_at)}</small></div>;
+  return <div className="metric"><span>{label}</span><strong>{number(metric.value)}</strong><Badge>{metricLabels[metric.status]}</Badge><small title={`${metric.source} · ${time(metric.observed_at)}`}>{metric.source} · {time(metric.observed_at)}</small></div>;
 }
 const nullableBoolean = (value: boolean | null) => value === null ? '未知' : value ? '是' : '否';
 function Video({ video }: { video: VideoFacts }) {

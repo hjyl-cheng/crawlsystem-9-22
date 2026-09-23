@@ -1,0 +1,28 @@
+/* Worker management. Discover chrome on the 4-column grid: Worker list (3)
+   with a detail panel (1); servers (2) + task trend (1) + resources (1). */
+.workers-page .row-workers { flex: 1 1 0; min-height: 300px; }
+.dashboard.workers-page .worker-list { grid-column: span 3; min-height: 0; }
+.dashboard.workers-page .worker-detail { min-height: 0; }
+.worker-list .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
+.workers-page td { vertical-align: middle; }
+.worker-list tbody tr { cursor: pointer; }
+.worker-list tbody tr.selected { background: #eef5ff; }
+.worker-list .resource-meta { padding: 0 14px; min-height: 26px; font-size: var(--fs-meta); }
+.worker-list .notice { margin: 4px 14px; }
+.workers-page .pagination { padding: 6px 14px; border-top: 1px solid #eef3f9; font-size: var(--fs-meta); }
+.worker-filters { justify-content: flex-start; padding: 8px 14px; }
+.workers-page .row-servers { flex: none; height: 210px; min-height: 0; }
+.workers-page .row-servers>.span-2 { grid-column: span 2; }
+.workers-page .row-servers .table-scroll { flex: 1; min-height: 0; padding: 0 10px 8px; }
+.live-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; background: #11c38c; box-shadow: 0 0 0 3px #e7f8f1; }
+.live-dot.off { background: #e0524a; box-shadow: 0 0 0 3px #ffecea; }
+.meter { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-meta); color: #52688c; font-variant-numeric: tabular-nums; }
+.meter>span { width: 46px; height: 5px; border-radius: 3px; background: #e8eef7; overflow: hidden; }
+.meter i { display: block; height: 100%; background: #3d88ff; }
+.meter i.hot { background: #e0524a; }
+.plan-links { margin: 0; padding-left: 16px; font-size: var(--fs-text); line-height: 1.8; }
+@media (max-width: 1040px), (max-height: 600px) {
+  .workers-page .row-workers, .workers-page .row-servers { flex: none; height: auto; }
+  .dashboard.workers-page .worker-list, .dashboard.workers-page .worker-detail, .workers-page .row-servers>.span-2 { grid-column: 1 / -1; min-height: 300px; }
+  .workers-page .row-servers>.panel { min-height: 220px; }
+}

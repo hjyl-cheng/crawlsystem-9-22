@@ -1,0 +1,34 @@
+/* Data API (collector-side calls to external data APIs). Discover chrome on the
+   4-column grid: trend (2) + status (1) + failure reasons (1); endpoint list (3)
+   + quota and recent failures stacked (1). */
+.data-api-page .row-charts { flex: none; height: 206px; min-height: 0; }
+.data-api-page .row-charts>.span-2 { grid-column: span 2; }
+.data-api-page .row-endpoints { flex: 1 1 0; min-height: 300px; }
+.dashboard.data-api-page .endpoint-list { grid-column: span 3; min-height: 0; }
+.endpoint-list .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
+.data-api-page td { vertical-align: middle; }
+.data-api-page .side-stack .table-scroll { flex: 1; min-height: 0; padding: 0 10px 8px; }
+
+/* Failure reasons */
+.reason-bars { flex: 1; display: grid; align-content: center; gap: 8px; padding: 0 14px 12px; }
+.reason-bars>div { display: grid; grid-template-columns: 32px minmax(0, 1.2fr) minmax(0, 1fr) 26px 40px; align-items: center; gap: 6px; font-size: var(--fs-meta); color: #52688c; }
+.reason-bars .code { font-family: var(--font-mono, ui-monospace, monospace); color: #253f6a; }
+.reason-bars span:nth-child(2) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reason-bars .dim-bar i { background: #f08a84; }
+.reason-bars b { font-weight: 500; text-align: right; color: #253f6a; font-variant-numeric: tabular-nums; }
+.reason-bars small { text-align: right; color: #7a8ca8; font-variant-numeric: tabular-nums; }
+
+/* Quota */
+.quota-list { display: grid; gap: 8px; padding: 0 14px 12px; }
+.quota-head { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-text); color: #253f6a; margin-bottom: 3px; }
+.quota-head span { display: inline-flex; align-items: center; gap: 5px; }
+.quota-head svg { color: #7a8ca8; }
+.quota-list small { display: block; margin-top: 2px; font-size: var(--fs-meta); color: #7a8ca8; font-variant-numeric: tabular-nums; }
+.quota-list .dim-bar i.ok { background: #3d88ff; } .quota-list .dim-bar i.near { background: #f0a92c; } .quota-list .dim-bar i.exhausted { background: #e0524a; }
+
+@media (max-width: 1040px), (max-height: 600px) {
+  .data-api-page .row-charts { height: auto; }
+  .data-api-page .row-charts>.span-2, .dashboard.data-api-page .endpoint-list { grid-column: 1 / -1; }
+  .data-api-page .row-charts>.panel, .dashboard.data-api-page .endpoint-list { min-height: 220px; }
+  .data-api-page .row-endpoints { flex: none; }
+}

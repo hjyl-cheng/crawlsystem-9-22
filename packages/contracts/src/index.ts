@@ -118,8 +118,31 @@ export type Heartbeat = z.infer<typeof HeartbeatSchema>;
 export interface Worker extends Heartbeat { last_heartbeat_at: string; stale: boolean; proxy_status: 'NOT_CONFIGURED'; }
 export interface PlanDetail extends PlanInput { events: StoredEvent[]; }
 export interface ChannelSummary { channel_id: string; title: string | null; source_mode: 'fixture'; updated_at: string; latest_plan_id: string; }
+/** A channel row for list pages: the summary plus current facts cheap to read in one query. */
+export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; }
 export interface ChannelDetail extends ChannelSummary { about: ChannelFacts | null; videos: VideoFacts[]; agent: AgentResult | null; latest_plan: Plan; }
 export interface Page<T> { items: T[]; next_cursor: string | null; }
+/** Workspace-wide plan statistics for the full-collection page. Counts are over
+ * all plans unless named *_24h (rolling 24 hours at the server clock). domains
+ * count plans that
+ * require the domain and how many of those have it APPLIED; waiting_reasons group
+ * WAITING plans by the phase of their latest WAITING/ERROR event. */
+export interface PlansSummary {
+  observed_at: string; total: number; by_status: Record<PlanStatus, number>;
+  created_24h: number; completed_24h: number; avg_completion_seconds_24h: number | null;
+  domains: { domain: Domain; required: number; applied: number }[];
+  waiting_reasons: { reason: string; plans: number }[];
+}
+/** Channel completeness for a workspace. Basis: whether every required domain of
+ * each channel's latest plan is APPLIED. complete + partial + missing = total_channels.
+ * missing_by_domain counts channels lacking that required domain (a channel may count
+ * under several). Freshness buckets need an update policy, which M1 does not have. */
+export interface Completeness {
+  basis: 'latest_plan_required_domains'; observed_at: string; total_channels: number;
+  complete: number; partial: number; missing: number;
+  missing_by_domain: Record<Domain, number>; latest_channel_update_at: string | null;
+  freshness: 'NOT_IMPLEMENTED';
+}
 export interface Session { subject: string; workspace_id: string; role: Role; contract_version: typeof CONTRACT_VERSION; }
 export interface WorkflowInput { schema_version: typeof CONTRACT_VERSION; plan_id: string; workspace_id: string; execution_epoch: number; input_hash: string; workflow_id: string; }
 export interface WorkflowStarter { start(input: WorkflowInput): Promise<{ workflow_id: string; run_id: string }>; cancel(workflow_id: string): Promise<void>; }
@@ -137,13 +160,29 @@ export const StoredEventSchema: z.ZodType<StoredEvent> = ExecutionEventSchema.ex
 export const PlanDetailSchema: z.ZodType<PlanDetail> = z.strictObject({ plan: PlanSchema, input: FrozenInputSchema, domains: z.array(DomainResultSchema).max(3), receipts: z.array(ReceiptSchema).max(300), events: z.array(StoredEventSchema).max(100) });
 export const ChannelSummarySchema: z.ZodType<ChannelSummary> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: z.literal('fixture'), updated_at: Timestamp, latest_plan_id: z.uuid() });
 export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: z.literal('fixture'), updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoFactsSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema });
+export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: z.literal('fixture'), updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema });
 export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.literal('NOT_CONFIGURED') });
 export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, contract_version: z.literal(CONTRACT_VERSION) });
 export const ApiErrorSchema: z.ZodType<ApiError> = z.strictObject({ error: z.strictObject({ code: ErrorCodeSchema, message: z.string(), retryable: z.boolean(), correlation_id: z.string() }) });
 export const WorkflowInputSchema: z.ZodType<WorkflowInput> = z.strictObject({ schema_version: z.literal(CONTRACT_VERSION), plan_id: z.uuid(), workspace_id: IdSchema, execution_epoch: z.number().int().positive(), input_hash: Hash, workflow_id: z.string() });
+const Count = z.number().int().nonnegative();
+export const CompletenessSchema: z.ZodType<Completeness> = z.strictObject({
+  basis: z.literal('latest_plan_required_domains'), observed_at: Timestamp, total_channels: Count,
+  complete: Count, partial: Count, missing: Count,
+  missing_by_domain: z.strictObject({ ABOUT: Count, VIDEO: Count, AGENT: Count }), latest_channel_update_at: Timestamp.nullable(),
+  freshness: z.literal('NOT_IMPLEMENTED'),
+}).refine(c => c.complete + c.partial + c.missing === c.total_channels, 'completeness buckets must sum to total');
+export const PlansSummarySchema: z.ZodType<PlansSummary> = z.strictObject({
+  observed_at: Timestamp, total: Count,
+  by_status: z.strictObject({ QUEUED: Count, RUNNING: Count, WAITING: Count, COMPLETED: Count, CANCELLED: Count, FAILED: Count }),
+  created_24h: Count, completed_24h: Count, avg_completion_seconds_24h: z.number().nonnegative().nullable(),
+  domains: z.array(z.strictObject({ domain: DomainSchema, required: Count, applied: Count })).max(3),
+  waiting_reasons: z.array(z.strictObject({ reason: z.string().min(1).max(80), plans: Count })).max(6),
+}).refine(s=>Object.values(s.by_status).reduce((a,b)=>a+b,0)===s.total,'status counts must sum to total')
+  .refine(s=>s.domains.every(d=>d.applied<=d.required)&&new Set(s.domains.map(d=>d.domain)).size===s.domains.length,'domain counts must be distinct and applied cannot exceed required');
 export const pageSchema = <T extends z.ZodType>(item: T) => z.strictObject({ items: z.array(item).max(100), next_cursor: z.string().nullable() });
 export const ApiRoutes = {
-  session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', workers: '/v1/workers', errors: '/v1/errors',
+  session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions',
   plan: (id: string) => `/v1/plans/${encodeURIComponent(id)}`,
   input: (id: string) => `/v1/plans/${encodeURIComponent(id)}/input`,
