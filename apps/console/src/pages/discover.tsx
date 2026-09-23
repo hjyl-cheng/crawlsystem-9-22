@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowRight, Box, CircleAlert, CirclePlay, Clock3, FileText, Info, OctagonX, Plus, Search, Snowflake, TriangleAlert, Zap } from 'lucide-react';
+import { ArrowRight, Box, CircleAlert, CircleCheck, CirclePlay, Clock3, FileText, Funnel, Info, OctagonX, Plus, Search, Snowflake, TriangleAlert, Zap } from 'lucide-react';
 import { Empty } from '../ui.js';
 import type { DiscoverView } from './discover-sample.js';
 import './overview.css';
@@ -13,7 +13,8 @@ const statusMeta: Record<Status, { label: string; tone: string; icon: ReactNode 
   lowyield: { label: '低效观察', tone: 'amber', icon: <TriangleAlert size={16}/> },
   disabled: { label: '停用', tone: 'red', icon: <OctagonX size={16}/> },
 };
-const kpiIcons = [<Search size={20}/>, <FileText size={20}/>, <Box size={20}/>, <Zap size={20}/>];
+const kpiIcons = [<Search size={22}/>, <FileText size={22}/>, <Box size={22}/>, <Zap size={22}/>];
+const funnelIcons = [<CirclePlay size={20}/>, <FileText size={20}/>, <Funnel size={20}/>, <Box size={20}/>, <CircleCheck size={20}/>];
 const kpiLabels = ['今日执行 Query', '今日发现频道', '去重后新频道', '转入全量采集'];
 const funnelLabels = ['今日执行', '发现频道', '去重后', '进入候选', '转入全量'];
 const fmt = (n: number) => n.toLocaleString('zh-CN');
@@ -67,18 +68,17 @@ export default function Discover() {
     </section>; })}</div>
 
     <div className="discover-row row-flow">
-      <Card title="Query 执行与发现漏斗" subtitle="今日口径：从执行 Query 到转入全量采集" className="funnel-card">
+      <Card title="Query 执行与发现漏斗" subtitle="今日口径：从执行 Query 到转入全量采集；Query 池存量不计入转化率" className="funnel-card">
         <div className="funnel">{funnelLabels.map((label, i) => { const step = data?.funnel[i]; return <div key={label} className="funnel-step">
-          <small>{label}</small><strong>{step ? fmt(step.value) : '—'}</strong><span className="funnel-note">{step?.note ?? '尚未接入'}</span>
+          <span className="funnel-icon">{funnelIcons[i]}</span><small>{label}</small><strong>{step ? fmt(step.value) : '—'}</strong><span className="funnel-note">{step?.note ?? '尚未接入'}</span>
           {step ? <span className={`funnel-badge ${step.tone}`}>{step.badge}</span> : <span className="funnel-badge slate">—</span>}
         </div>; })}</div>
-        <p className="card-note">Query 池存量不参与漏斗转化率计算；存量见下方状态分布。</p>
       </Card>
       <Card title="来源构成" extra={<Unavailable/>}>
         <div className="source-body"><Donut parts={data?.sources}/><div className="legend">{(data?.sources ?? ['手工关键词', '标签派生', '视频标题', '频道简介', '相关搜索', 'Agent 建议'].map(label => ({ label, count: 0, color: '#c9d4e3' }))).map(s => <div key={s.label}><i style={{ background: s.color }}/><span>{s.label}</span><b>{data ? pct(s.count, sourceTotal) : '—'}</b><small>{data ? s.count : ''}</small></div>)}</div></div>
       </Card>
       <Card title="国家与业务分类" extra={<div className="segmented" role="tablist"><button role="tab" aria-selected={dimension === 'country'} className={dimension === 'country' ? 'on' : ''} onClick={() => setDimension('country')}>国家</button><button role="tab" aria-selected={dimension === 'category'} className={dimension === 'category' ? 'on' : ''} onClick={() => setDimension('category')}>业务分类</button></div>}>
-        {bars.length ? <div className="dim-bars">{bars.map(b => <div key={b.name}><span>{b.name}</span><div className="dim-bar"><i style={{ width: `${b.count / barMax * 100}%` }}/></div><b>{pct(b.count, barTotal)}</b><small>{b.count}</small></div>)}</div> : <Empty title="尚无分布数据">{NOT_CONNECTED}</Empty>}
+        {bars.length ? <div className="dim-bars">{bars.map(b => <div key={b.name}><span>{b.code && <i className="cc">{b.code}</i>}{b.name}</span><div className="dim-bar"><i style={{ width: `${b.count / barMax * 100}%` }}/></div><b>{pct(b.count, barTotal)}</b><small>{b.count}</small></div>)}</div> : <Empty title="尚无分布数据">{NOT_CONNECTED}</Empty>}
       </Card>
     </div>
 

@@ -5,8 +5,8 @@ export interface DiscoverView {
   kpis: { label: string; value: number; delta: string; compare: string; total: string }[];
   funnel: { label: string; value: number; note: string; badge: string; tone: 'green' | 'blue' | 'amber' | 'slate' }[];
   sources: { label: string; count: number; color: string }[];
-  countries: { name: string; count: number }[];
-  categories: { name: string; count: number }[];
+  countries: { name: string; count: number; code?: string }[];
+  categories: { name: string; count: number; code?: string }[];
   statuses: { key: 'pending' | 'running' | 'cooldown' | 'lowyield' | 'disabled'; count: number }[];
   policies: { window: string; rule: string; next: string }[];
   alerts: { tone: 'red' | 'amber' | 'blue'; count: number; title: string; detail: string; when: string }[];
@@ -34,7 +34,7 @@ export const discoverSample: DiscoverView = {
     { label: '视频标题', count: 64, color: '#ffad21' }, { label: '频道简介', count: 42, color: '#ff8a4c' },
     { label: '相关搜索', count: 39, color: '#c05cf0' }, { label: 'Agent 建议', count: 24, color: '#8fb4ff' },
   ],
-  countries: [{ name: '美国', count: 97 }, { name: '日本', count: 62 }, { name: '巴西', count: 43 }, { name: '英国', count: 35 }, { name: '其他', count: 105 }],
+  countries: [{ name: '美国', code: 'US', count: 97 }, { name: '日本', code: 'JP', count: 62 }, { name: '巴西', code: 'BR', count: 43 }, { name: '英国', code: 'GB', count: 35 }, { name: '其他', count: 105 }],
   categories: [{ name: '科技数码', count: 88 }, { name: '教育', count: 71 }, { name: '旅行', count: 52 }, { name: '美食', count: 47 }, { name: '其他', count: 84 }],
   statuses: [{ key: 'pending', count: 426 }, { key: 'running', count: 583 }, { key: 'cooldown', count: 178 }, { key: 'lowyield', count: 64 }, { key: 'disabled', count: 32 }],
   policies: [
