@@ -26,7 +26,7 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     return {...result.principal,contract_version:CONTRACT_VERSION};
   });
   app.post(ApiRoutes.logout,{bodyLimit:2048},async(request,reply)=>{
-    if(auth) {auth.revoke(request.headers.cookie);reply.header('set-cookie',auth.clearCookie());}
+    if(auth) {await auth.revoke(request.headers.cookie);reply.header('set-cookie',auth.clearCookie());}
     return {ok:true};
   });
   app.get('/v1/session',async request=>({...request.principal,contract_version:CONTRACT_VERSION}));

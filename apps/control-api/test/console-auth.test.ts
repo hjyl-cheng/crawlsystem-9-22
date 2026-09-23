@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { randomBytes } from 'node:crypto';
 import type { Store } from '@crawlsystem/store';
 import { issueToken } from '@crawlsystem/http/auth';
-import { ConsoleAuth, passwordRecord } from '../src/console-auth.ts';
+import { ConsoleAuth, MemoryAccountStore, passwordRecord } from '../src/console-auth.ts';
 import { createControlApi } from '../src/app.ts';
 
 const password = 'test-only-password-47';
@@ -12,7 +12,7 @@ const key = randomBytes(32), origin = 'https://console.example.test';
 const headers = { origin, 'x-console-request': '1' };
 function fixture() {
   let now = Date.now();
-  const auth = new ConsoleAuth([account], true, () => now);
+  const auth = new ConsoleAuth(new MemoryAccountStore([account]), true, () => now);
   const app = createControlApi({ store: {} as Store, signingKey: key, allowedOrigin: origin, consoleAuth: auth });
   const login = (value = password) => app.inject({ method: 'POST', url: '/v1/auth/login', headers, payload: { username: account.username, password: value } });
   return { app, auth, login, advance: (ms: number) => { now += ms; } };

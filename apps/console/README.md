@@ -41,7 +41,7 @@ npm run preview --workspace @crawlsystem/console
 
 默认使用账号和密码登录，Fastify 通过 `/v1/auth/login` 校验加盐 scrypt 密码摘要，并设置 HttpOnly / Secure / SameSite=Strict 会话 Cookie。页面刷新通过 `/v1/session` 恢复登录，最长 8 小时；退出调用 `/v1/auth/logout` 撤销服务端会话。账号密码与会话身份不写入浏览器存储、URL 或前端构建。`reader` 只读，`operator` 可创建和取消；`worker` 不可进入管理界面。
 
-当前为内部账号文件与单进程会话实现；重启 API 后需重新登录。Keycloak、账号自助管理、密码找回与多实例共享会话尚未接入。[后端账号配置](../control-api/README.md)说明凭据配置和测试方式。仅兼容旧 API 联调时显式设置 `VITE_AUTH_MODE=token`，公网预览不使用该模式。
+账号与会话存于 `crawler` 库的 `console` schema，重启 API 不影响登录。Keycloak、账号管理页面、密码找回与审计表尚未接入。[后端账号配置](../control-api/README.md)说明凭据配置和测试方式。仅兼容旧 API 联调时显式设置 `VITE_AUTH_MODE=token`，公网预览不使用该模式。
 
 后端基础服务启动与 Worker 令牌签发见 [集成基线](../../docs/m1/integration-baseline.md)。静态前端不签发令牌，不需要 JWT 签名密钥。账号验证位于独立 Fastify API。
 

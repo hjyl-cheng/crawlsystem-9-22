@@ -101,7 +101,7 @@ npm run build --workspace @crawlsystem/console
 
 ## 已知限制与后续联调
 
-1. 已提供内部账号密码登录；Keycloak、账号/角色管理页面及多副本会话存储尚未实现。会话存在单个 API 进程中，重启需重新登录；业务权限继续使用 reader/operator 并由后端验证。
+1. 已提供内部账号密码登录，账号与会话存于 `crawler` 库 `console` schema（见下文“账号入库”）；Keycloak、账号/角色管理页面、登录与操作审计尚未实现。业务权限继续使用 reader/operator 并由后端验证。
 2. 实际 Worker/Temporal 的启动、恢复、取消传播与端到端执行证据由主 Agent 和执行 Agent 集成后补齐。当前 UI 已显示契约中的 Workflow 身份、执行代次和上报事件，不以身份已分配推断执行已经启动。
 3. 当前错误 API 没有首次/最近时间聚合或直接回执/节点身份。页面展示单次事件时间、关联 Worker 和该 Plan 的最近回执，不虚构直接关联。Worker/错误定位依赖有界列表翻页，当前页缺少目标会明确提示。
 4. 频道详情只有契约规定的有界数据，没有视频/评论的游标分页接口。系统总量、趋势统计、节点 CPU/内存和代理资源查询尚未提供。
@@ -143,3 +143,13 @@ npm run build --workspace @crawlsystem/console
 证据：[桌面总览](../../../apps/console/docs/evidence/overview-prototype-aligned.png)、[手机总览](../../../apps/console/docs/evidence/overview-mobile.png)、[受控查询失败](../../../apps/console/docs/evidence/overview-query-failure.png)、[尺寸与交互核对结果](../../../apps/console/docs/evidence/overview-prototype-check.json)。旧 `live-*.png` 保留为之前真实业务 E2E 的历史证据。
 
 后端数据依赖说明已补入应用 README：当前 Fastify 直接通过 Store 查询采集 PostgreSQL 事实；完整系统的 ClickHouse 分析、Prometheus 等资源监控和 Temporal 执行查询仍需后端逐项接入，前端始终只调用 API。当前页面可视布局对齐不等于这些能力已经实现。
+
+## 账号入库（2026-09-23，Claude Agent）
+
+按用户要求，后台账号和会话从运行文件与 API 进程内存迁入数据库。
+
+- 位置：正式业务库 `crawler` 新建 `console` schema，表 `console.accounts`、`console.sessions`，SQL 为 `database/console/001_console.sql`。表归 `crawler_owner`；新增登录角色 `console_app`（连接上限 3，只有上述两表的必要权限，已验证不能建表、删账号或建 schema）。用户确认账号表放正式库；M1 采集样本仍在 `crawlsystem_m1_main_test`，未写入 `crawler`。
+- 代码：`console-auth.ts` 抽出 `AccountStore` 接口（测试用内存实现），`console-db.ts` 为 PostgreSQL 实现与独立连接池，`console-accounts.ts` 为账号管理命令（`npm run console:accounts`）。`main.ts` 由 `CONSOLE_DATABASE_URL` 启用数据库账号，旧 `M1_CONSOLE_ACCOUNTS_FILE` 已移除。
+- 迁移：原 `preview` 账号以原摘要导入，密码不变。预览服务 `console-preview-api` 改为读取 `.runtime/console-preview/console-db.env`；旧 `accounts.json` 不再使用。
+- 验证：`tsc --noEmit` 通过；`apps/control-api/test/console-auth.test.ts` 6 / 6 通过；公网 `test:login-live` 1 / 1 通过；公网实测登录 → 重启 API → 会话仍有效（200）→ 退出 → 旧 Cookie 401。
+- 待主 Agent 审查：`crawler` 库中的 `console` schema 与 `console_app` 角色属于新增正式库对象，需纳入数据库变更管理与备份核对；审计表待定。
