@@ -98,6 +98,8 @@ node --env-file=.runtime/main.env --import tsx --test --test-concurrency=1 tests
 node --env-file=.runtime/main.env --import tsx scripts/dev/backend-smoke.ts
 ```
 
+持续同机联调可用 `node --import tsx scripts/dev/pg-tunnel.ts 15432` 替代第一条手动转发（不要同时占用同一个端口）。该开发脚本在 kubectl 因单连接 reset 退出后 1 秒重连，Ctrl-C 会结束子进程；不会创建或修改集群资源。15433 同理。断线期间 API 返回 retryable 503，不能把隧道重连理解为请求自动成功。
+
 测试每次创建独立 workspace，保留测试证据；故障触发器只匹配该次 workspace，并在 finally 中删除。SIGKILL 测试只结束自己创建的子进程。`backend-smoke.ts` 直接提交固定样本，仅用于 HTTP/数据库验收，不能算作 Temporal 完整闭环。
 
 服务提供 `/healthz`、`/readyz`、`/metrics`；日志记录请求 ID、路由模板、状态和时长，不记录 Bearer、正文和数据库连接串。每个进程最多 64 个在途请求，超出返回 retryable 503；指标使用固定路由标签，避免 Plan/频道 ID 形成高基数。分布式追踪和正式可观测性看板仍需 G2 联调补齐，未宣称达到生产 SLO。
