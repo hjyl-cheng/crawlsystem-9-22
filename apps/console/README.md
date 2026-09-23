@@ -22,6 +22,8 @@ npm run preview --workspace @crawlsystem/console
 
 开发地址 `http://127.0.0.1:18102`，构建目录 `apps/console/dist`。
 
+公网开发预览已通过 Cloudflare 免费 HTTPS 子域名接入，自动构建、只读登录与停止方式见[预览说明](docs/preview.md)。
+
 共享锁文件由主 Agent 管理。集成本模块时，需要主 Agent 根据本目录 `package.json` 更新根锁文件，再验证干净环境的 `npm ci`。在锁文件更新前，本模块开发验证使用 `npm install --package-lock=false --ignore-scripts`，不改写根锁文件；不能把这种安装方式当成已完成锁文件集成。
 
 前端构建只需要公共契约包，不需要数据库、Temporal 或 Worker 凭据。
