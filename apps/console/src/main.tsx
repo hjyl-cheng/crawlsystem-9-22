@@ -5,6 +5,7 @@ import { AuthProvider } from './auth.js';
 import { Layout } from './layout.js';
 import './styles.css';
 import './shell.css';
+import './pages.css';
 
 const Overview = lazy(() => import('./pages/overview.js'));
 const Plans = lazy(() => import('./pages/plans.js'));

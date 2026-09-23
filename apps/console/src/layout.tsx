@@ -51,7 +51,7 @@ export function Layout() {
         <form className="quick-search" onSubmit={lookup}><Search size={15}/><input aria-label="按 Plan ID 定位" placeholder="搜索 Plan ID，定位计划与执行结果…" value={search} onChange={e => { setSearch(e.target.value); setSearchError(false); }}/>{searchError && <span role="alert">请输入完整 Plan UUID</span>}</form>
         <div className="topbar-right"><Link className="icon-button" to="/errors" aria-label="查看错误事件" title="查看错误事件"><Bell size={19}/></Link><div className="identity"><span className="avatar">{session.subject.slice(0, 1).toUpperCase()}</span><div><strong title={`${session.subject} · ${session.workspace_id}`}>{session.subject === 'console-preview-reader' ? 'preview' : session.subject}</strong><small>{roleLabels[session.role]}</small></div><button className="icon-button" aria-label="退出登录" title="退出登录" onClick={logout}><LogOut size={15}/></button></div></div>
       </header>
-      <main id="main-content" className={`main-content ${location.pathname === '/' ? 'overview-content' : ''}`} key={`${session.workspace_id}:${session.subject}`}><Outlet/></main>
+      <main id="main-content" className={`main-content ${location.pathname === '/' ? 'overview-content' : 'page-content'}`} key={`${session.workspace_id}:${session.subject}`}><Outlet/></main>
     </div>
   </div>;
 }
