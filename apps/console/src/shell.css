@@ -41,7 +41,7 @@
 .prototype-layout .identity { border: 0; padding-left: 0; gap: 9px; }
 .prototype-layout .avatar { background: #101b2c; color: #fff; box-shadow: 0 2px 6px #14243822; width: 30px; height: 30px; font-size: var(--fs-text); }
 .prototype-layout .identity strong { max-width: 100px; font-size: var(--fs-meta); }
-.prototype-layout .identity small { color: #657696; font-size: var(--fs-micro); margin-top: 1px; }
+.prototype-layout .identity small { color: #657696; font-size: var(--fs-meta); margin-top: 1px; }
 .prototype-layout .main-content { padding: 20px; max-width: 1900px; }
 .prototype-layout .main-content.overview-content { padding: 10px 20px 8px; max-width: none; }
 .prototype-layout .sidebar-close { position: absolute; top: 20px; right: 6px; }

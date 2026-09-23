@@ -38,7 +38,7 @@
 .funnel-step small { font-size: var(--fs-text); color: #253f6a; font-weight: 600; }
 .funnel-step strong { font-size: var(--fs-metric); line-height: 1.25; color: #0c1e43; font-variant-numeric: tabular-nums; }
 .funnel-note { font-size: var(--fs-meta); color: #7a8ca8; }
-.funnel-badge { margin-top: 2px; padding: 1px 6px; border-radius: 4px; font-size: var(--fs-micro); font-weight: 600; white-space: nowrap; }
+.funnel-badge { margin-top: 2px; padding: 1px 6px; border-radius: 4px; font-size: var(--fs-meta); font-weight: 600; white-space: nowrap; }
 .funnel-badge.green { background: #e7f8f1; color: #0b8a63; } .funnel-badge.blue { background: #eaf2ff; color: #2562cf; }
 .funnel-badge.amber { background: #fff4dc; color: #95600a; } .funnel-badge.slate { background: #eef2f7; color: #6b7d97; }
 .card-note { margin: 0; padding: 0 14px 8px; font-size: var(--fs-micro); color: #8797b0; }

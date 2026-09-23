@@ -17,7 +17,7 @@ type FlowNode = Stage | Lane | Capability | CompletenessNode;
 
 function StageCard({ data }: NodeProps<Stage>) {
   const Icon = icons[data.icon];
-  const content = <><div className="stage-heading"><span className="stage-icon"><Icon size={25}/></span><div><strong>{data.title}</strong><small>{data.description}</small></div></div><div className={`stage-value ${data.pending ? 'unavailable-value' : /^[\d,.\s/%—-]+$/.test(data.value) ? '' : 'text-value'}`}>{data.value}</div>{data.caption && <span className="stage-caption">{data.caption}</span>}<span className={`stage-foot ${data.pending ? 'pending-foot' : ''}`}>{data.foot}{data.footLabel && <> <span>{data.footLabel}</span></>}</span></>;
+  const content = <><div className="stage-heading"><span className="stage-icon"><Icon size={18}/></span><div><strong>{data.title}</strong><small>{data.description}</small></div></div><div className={`stage-value ${data.pending ? 'unavailable-value' : /^[\d,.\s/%—-]+$/.test(data.value) ? '' : 'text-value'}`}>{data.value}</div>{data.caption && <span className="stage-caption">{data.caption}</span>}<span className={`stage-foot ${data.pending ? 'pending-foot' : ''}`}>{data.foot}{data.footLabel && <> <span>{data.footLabel}</span></>}</span></>;
   return <div className={`prototype-stage ${data.tone}`}><Handle type="target" position={Position.Left}/>{data.href ? <Link to={data.href} className="nodrag stage-link">{content}</Link> : content}<Handle type="source" position={Position.Right}/><Handle id="agent" type="target" position={Position.Bottom} style={{ left: '18%' }}/><Handle id="data-api" type="target" position={Position.Bottom} style={{ left: '29%' }}/></div>;
 }
 function LaneCard({ data }: NodeProps<Lane>) {
@@ -57,7 +57,7 @@ function CompletenessCard({ data }: NodeProps<CompletenessNode>) {
 
 const nodeTypes = { stage: StageCard, lane: LaneCard, capabilities: Capabilities, completeness: CompletenessCard };
 // Designed canvas; wider panels stretch it horizontally instead of leaving side margins.
-const BASE_WIDTH = 1338, BASE_HEIGHT = 354;
+const BASE_WIDTH = 1338, BASE_HEIGHT = 330;
 // Shrink to fit narrow or short panels, but never enlarge: text stays at its designed size.
 const fitViewOptions = { padding: 0.008, maxZoom: 1 };
 type Box = { x: number; y: number; w: number; h: number };
@@ -68,24 +68,24 @@ function buildNodes(detail: PlanDetail | undefined, completeness: Resource<Compl
   const wide = ({ x, y, w, h }: Box) => ({ position: { x: x * stretch, y }, width: w * stretch, height: h });
   const card = ({ x, y, w, h }: Box) => { const width = w * Math.min(stretch, 1.18); return { position: { x: x * stretch + (w * stretch - width) / 2, y }, width, height: h }; };
   const stage = (id: string, box: Box, data: Stage['data']): Stage => ({ id, type: 'stage', ...card(box), data, zIndex: 2, draggable: false });
-  const lane = (id: string, y: number, h: number, data: Lane['data']): Lane => ({ id, type: 'lane', ...wide({ x: 0, y, w: 574, h }), data, zIndex: 0, draggable: false });
+  const lane = (id: string, y: number, h: number, data: Lane['data']): Lane => ({ id, type: 'lane', ...wide({ x: 0, y, w: 584, h }), data, zIndex: 0, draggable: false });
   // Collection lanes on the left, completeness above the shared ingest → delivery path on the right (as in the mockup).
   return [
-    lane('first-lane', 0, 126, { title: '首次采集链', description: '新频道的发现与全量抓取', tone: 'blue' }),
-    lane('update-lane', 138, 101, { title: '持续更新链', description: '已纳管频道的增量更新', tone: 'green' }),
-    lane('agent', 250, 47, { title: 'Agent 任务（并行分支）', description: '补充信息抓取、复杂场景、定期采集', tone: 'purple', compact: true, status: '尚未接入' }),
-    lane('data-api', 307, 47, { title: 'Data API（条件/兜底分支）', description: '无法直接抓取时，通过数据 API 获取', tone: 'orange', compact: true, status: '尚未接入' }),
-    stage('discover', { x: 152, y: 23, w: 124, h: 99 }, { title: 'Query Discover', description: '发现线索', value: '未接入', foot: '真实发现待接入', tone: 'blue', icon: 'search', pending: true }),
-    stage('candidate', { x: 285, y: 23, w: 124, h: 99 }, { title: '候选频道', description: '评估与过滤', value: '未接入', foot: '候选筛选待接入', tone: 'blue', icon: 'file', pending: true }),
-    stage('full', { x: 418, y: 23, w: 143, h: 99 }, { title: '全量抓取', description: 'Main + Agent', value: '固定样本', foot: '当前为样本验证', tone: 'blue', icon: 'box', href: detail ? planPath(detail.plan.plan_id) : '/plans' }),
-    stage('clock', { x: 152, y: 150, w: 139, h: 86 }, { title: 'Clock 到期', description: '触发更新', value: '未接入', foot: '更新调度待接入', tone: 'green', icon: 'clock', pending: true }),
-    stage('update', { x: 317, y: 150, w: 139, h: 86 }, { title: '更新采集', description: '增量抓取', value: '未接入', foot: '增量采集待接入', tone: 'green', icon: 'refresh', pending: true }),
-    { id: 'completeness', type: 'completeness', ...wide({ x: 607, y: 0, w: 731, h: 136 }), data: { resource: completeness }, zIndex: 2, draggable: false },
-    stage('ingest', { x: 607, y: 148, w: 169, h: 112 }, { title: 'Ingest / APPLIED', description: '清洗入库', value: detail ? String(detail.receipts.length) : '—', caption: '本轮持久回执', foot: detail ? `${applied} / ${detail.plan.required_domains.length}` : '等待计划数据', footLabel: detail ? '必需领域已入库' : undefined, tone: 'blue', icon: 'box', href: detail ? planPath(detail.plan.plan_id) : '/plans' }),
-    stage('current', { x: 796, y: 148, w: 169, h: 112 }, { title: 'Channel Current', description: '频道当前视图', value: detail ? '查看数据' : '—', caption: '资料 / 视频 / 评论', foot: '以已入库事实为准', tone: 'blue', icon: 'file', href: detail ? channelPath(detail.plan.channel_id) : '/channels' }),
-    stage('publish', { x: 996, y: 148, w: 158, h: 112 }, { title: '发布交付', description: '内容分发', value: '未启用', caption: '当前不触发交付', foot: '交付能力待接入', tone: 'blue', icon: 'send', pending: true }),
-    stage('business', { x: 1180, y: 148, w: 158, h: 112 }, { title: 'Business DB', description: '下游业务数据库', value: '未接入', caption: '等待交付链路', foot: '暂无交付记录', tone: 'green', icon: 'database', pending: true }),
-    { id: 'capabilities', type: 'capabilities', ...wide({ x: 796, y: 276, w: 542, h: 78 }), data: {}, zIndex: 2, draggable: false },
+    lane('first-lane', 0, 120, { title: '首次采集链', description: '新频道的发现与全量抓取', tone: 'blue' }),
+    lane('update-lane', 130, 92, { title: '持续更新链', description: '已纳管频道的增量更新', tone: 'green' }),
+    lane('agent', 232, 44, { title: 'Agent 任务（并行分支）', description: '补充信息抓取、复杂场景、定期采集', tone: 'purple', compact: true, status: '尚未接入' }),
+    lane('data-api', 286, 44, { title: 'Data API（条件/兜底分支）', description: '无法直接抓取时，通过数据 API 获取', tone: 'orange', compact: true, status: '尚未接入' }),
+    stage('discover', { x: 132, y: 14, w: 140, h: 92 }, { title: 'Query Discover', description: '发现线索', value: '未接入', foot: '真实发现待接入', tone: 'blue', icon: 'search', pending: true }),
+    stage('candidate', { x: 282, y: 14, w: 140, h: 92 }, { title: '候选频道', description: '评估与过滤', value: '未接入', foot: '候选筛选待接入', tone: 'blue', icon: 'file', pending: true }),
+    stage('full', { x: 432, y: 14, w: 144, h: 92 }, { title: '全量抓取', description: 'Main + Agent', value: '固定样本', foot: '当前为样本验证', tone: 'blue', icon: 'box', href: detail ? planPath(detail.plan.plan_id) : '/plans' }),
+    stage('clock', { x: 132, y: 138, w: 140, h: 76 }, { title: 'Clock 到期', description: '触发更新', value: '未接入', foot: '更新调度待接入', tone: 'green', icon: 'clock', pending: true }),
+    stage('update', { x: 292, y: 138, w: 140, h: 76 }, { title: '更新采集', description: '增量抓取', value: '未接入', foot: '增量采集待接入', tone: 'green', icon: 'refresh', pending: true }),
+    { id: 'completeness', type: 'completeness', ...wide({ x: 608, y: 0, w: 730, h: 138 }), data: { resource: completeness }, zIndex: 2, draggable: false },
+    stage('ingest', { x: 608, y: 150, w: 170, h: 100 }, { title: 'Ingest / APPLIED', description: '清洗入库', value: detail ? String(detail.receipts.length) : '—', caption: '本轮持久回执', foot: detail ? `${applied} / ${detail.plan.required_domains.length}` : '等待计划数据', footLabel: detail ? '必需领域已入库' : undefined, tone: 'blue', icon: 'box', href: detail ? planPath(detail.plan.plan_id) : '/plans' }),
+    stage('current', { x: 796, y: 150, w: 170, h: 100 }, { title: 'Channel Current', description: '频道当前视图', value: detail ? '查看数据' : '—', caption: '资料 / 视频 / 评论', foot: '以已入库事实为准', tone: 'blue', icon: 'file', href: detail ? channelPath(detail.plan.channel_id) : '/channels' }),
+    stage('publish', { x: 996, y: 150, w: 158, h: 100 }, { title: '发布交付', description: '内容分发', value: '未启用', caption: '当前不触发交付', foot: '交付能力待接入', tone: 'blue', icon: 'send', pending: true }),
+    stage('business', { x: 1180, y: 150, w: 158, h: 100 }, { title: 'Business DB', description: '下游业务数据库', value: '未接入', caption: '等待交付链路', foot: '暂无交付记录', tone: 'green', icon: 'database', pending: true }),
+    { id: 'capabilities', type: 'capabilities', ...wide({ x: 796, y: 260, w: 542, h: 70 }), data: {}, zIndex: 2, draggable: false },
   ];
 }
 const edge = (source: string, target: string, color: string, pending = false, targetHandle?: string) => ({ id: `${source}-${target}`, source, target, targetHandle, type: 'smoothstep', zIndex: 1, markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color }, style: { stroke: color, strokeWidth: 1.15, ...(pending ? { strokeDasharray: '4 3' } : {}) } });
