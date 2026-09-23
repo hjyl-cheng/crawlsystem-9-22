@@ -8,9 +8,9 @@
 
 入口提供实际构建的 UI，`/api/v1/*` 转发至独立 Fastify Control API `127.0.0.1:18104`。页面使用账号和密码登录，没有匿名数据接口或自动注入操作员令牌。
 
-只读预览账号为 `preview`，密码已单独交付给用户，私有记录位于 `.runtime/console-preview/login.json`（0600，不提交 Git）。Fastify 只读取 `.runtime/console-preview/accounts.json` 中的加盐 scrypt 摘要。账号范围为已有固定样本工作空间 `console-e2e-3814487a386c`，无创建/取消权限。
+只读预览账号为 `preview`，密码已单独交付给用户，私有记录位于 `.runtime/console-preview/login.json`（0600，不提交 Git）。账号记录存于 `crawler` 库 `console.accounts`（加盐 scrypt 摘要），预览 API 通过 `.runtime/console-preview/console-db.env`（0600）中的 `console_app` 连接读取。账号范围为已有固定样本工作空间 `console-e2e-3814487a386c`，无创建/取消权限。
 
-登录成功后使用 HttpOnly / Secure / SameSite=Strict Cookie，刷新页面恢复会话，最长 8 小时；退出会撤销服务端会话。API 重启后需重新输入账号密码。旧的手动令牌登录已从公开页面移除。
+登录成功后使用 HttpOnly / Secure / SameSite=Strict Cookie，刷新页面恢复会话，最长 8 小时；退出会撤销服务端会话。会话存于数据库，API 重启后仍保持登录。旧的手动令牌登录已从公开页面移除。
 
 ## 更新与进程
 

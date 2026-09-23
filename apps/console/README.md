@@ -6,13 +6,11 @@
 
 ## 开发与构建
 
-Node `22.22.1`、npm `9.2.0`。主 Agent 更新共享锁文件前，在仓库根目录安装本模块依赖：
+Node `22.22.1`、npm `9.2.0`。前端依赖已纳入主线根锁文件，干净目录验证过 `npm ci`。以下命令均在仓库根目录运行：
 
 ```bash
-npm install --package-lock=false --ignore-scripts
+npm ci
 ```
-
-锁文件集成后使用 `npm ci`。启动和构建命令均在仓库根目录运行：
 
 ```bash
 npm run dev --workspace @crawlsystem/console
@@ -24,7 +22,7 @@ npm run preview --workspace @crawlsystem/console
 
 公网开发预览已通过 Cloudflare 免费 HTTPS 子域名接入，自动构建、只读登录与停止方式见[预览说明](docs/preview.md)。
 
-共享锁文件由主 Agent 管理。集成本模块时，需要主 Agent 根据本目录 `package.json` 更新根锁文件，再验证干净环境的 `npm ci`。在锁文件更新前，本模块开发验证使用 `npm install --package-lock=false --ignore-scripts`，不改写根锁文件；不能把这种安装方式当成已完成锁文件集成。
+共享锁文件由主 Agent 管理。新增依赖由主线集中更新；浏览器回归在当前共用主机使用单 worker（根命令 `npm run test:browser`）。
 
 前端构建只需要公共契约包，不需要数据库、Temporal 或 Worker 凭据。
 
@@ -41,7 +39,7 @@ npm run preview --workspace @crawlsystem/console
 
 默认使用账号和密码登录，Fastify 通过 `/v1/auth/login` 校验加盐 scrypt 密码摘要，并设置 HttpOnly / Secure / SameSite=Strict 会话 Cookie。页面刷新通过 `/v1/session` 恢复登录，最长 8 小时；退出调用 `/v1/auth/logout` 撤销服务端会话。账号密码与会话身份不写入浏览器存储、URL 或前端构建。`reader` 只读，`operator` 可创建和取消；`worker` 不可进入管理界面。
 
-当前为内部账号文件与单进程会话实现；重启 API 后需重新登录。Keycloak、账号自助管理、密码找回与多实例共享会话尚未接入。[后端账号配置](../control-api/README.md)说明凭据配置和测试方式。仅兼容旧 API 联调时显式设置 `VITE_AUTH_MODE=token`，公网预览不使用该模式。
+账号与会话存于 `crawler` 库的 `console` schema，重启 API 不影响登录。Keycloak、账号管理页面、密码找回与审计表尚未接入。[后端账号配置](../control-api/README.md)说明凭据配置和测试方式。仅兼容旧 API 联调时显式设置 `VITE_AUTH_MODE=token`，公网预览不使用该模式。
 
 后端基础服务启动与 Worker 令牌签发见 [集成基线](../../docs/m1/integration-baseline.md)。静态前端不签发令牌，不需要 JWT 签名密钥。账号验证位于独立 Fastify API。
 

@@ -43,7 +43,14 @@ try {
   await page.goto(origin+'/plans');
   await page.getByLabel('账号',{exact:true}).fill(accounts[0]!.username);
   await page.getByLabel('密码',{exact:true}).fill(password);
-  await page.getByRole('button',{name:'进入控制台'}).click();
+  for(let attempt=0;attempt<3;attempt++) {
+    const response=page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/v1/auth/login'));
+    await page.getByRole('button',{name:'进入控制台'}).click();
+    const result=await response;
+    if(result.status()===200)break;
+    if(result.status()!==503||attempt===2)throw new Error(`Integrated login HTTP ${result.status()}`);
+    await setTimeout(1000);
+  }
   await expect(page.getByRole('navigation',{name:'主导航'})).toBeVisible({timeout:15_000});
   async function create(requireAgent=false) {
     await page.goto(origin+'/plans');
@@ -80,6 +87,9 @@ try {
   assert.deepEqual(errors,[]);
   const evidence={verified_at:new Date().toISOString(),scope:'Merged console + Control/Ingest + PG; controlled fixture, not Temporal business execution',browser:browser.version(),workspace_id:workspace,completed_plan_id:completed.plan_id,cancelled_plan_id:waiting.plan_id,password_login:'passed',api_restart_same_cookie:'passed',waiting_and_cancel:'passed',logout_replay_status:401,browser_errors:errors.length};
   writeFileSync('docs/m1/reports/main-browser.json',JSON.stringify(evidence,null,2)+'\n');console.log(JSON.stringify(evidence,null,2));
+} catch(error) {
+  // Assertion objects can include password input values in accessibility snapshots.
+  console.error({failure:String(error).split('\n')[0]});process.exitCode=1;
 } finally {
   await browser.close();await new Promise<void>((resolve,reject)=>frontend.httpServer.close(error=>error?reject(error):resolve()));
   await control.close();await ingest.close();await controlPool.end();await ingestPool.end();

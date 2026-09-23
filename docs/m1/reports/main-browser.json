@@ -1,0 +1,13 @@
+{
+  "verified_at": "2026-09-23T07:19:30.204Z",
+  "scope": "Merged console + Control/Ingest + PG; controlled fixture, not Temporal business execution",
+  "browser": "153.0.8010.12",
+  "workspace_id": "main-browser-ffbfc3a3-c4cf-4b38-a238-fa4e6486a456",
+  "completed_plan_id": "a80e00c9-a1aa-476f-b7e9-581795089735",
+  "cancelled_plan_id": "0479d56f-8f1e-4308-820d-91cb8330fac7",
+  "password_login": "passed",
+  "api_restart_same_cookie": "passed",
+  "waiting_and_cancel": "passed",
+  "logout_replay_status": 401,
+  "browser_errors": 0
+}

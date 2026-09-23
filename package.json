@@ -16,13 +16,14 @@
     "test:contracts": "tsx --test packages/contracts/test/*.test.ts",
     "test:auth": "tsx --test apps/control-api/test/*.test.ts",
     "test:console": "npm run test --workspace @crawlsystem/console",
-    "test:browser": "npm run test:browser --workspace @crawlsystem/console",
+    "test:browser": "npm run test:browser --workspace @crawlsystem/console -- --workers=1",
     "build:console": "npm run build --workspace @crawlsystem/console",
     "test:integration": "tsx --test --test-concurrency=1 tests/integration/*.test.ts",
     "migrate": "tsx scripts/dev/migrate.ts",
     "dev:control": "tsx apps/control-api/src/main.ts",
     "dev:ingest": "tsx apps/ingest/src/main.ts",
     "dev:dispatcher": "tsx apps/control-api/src/dispatch-main.ts",
+    "console:accounts": "tsx apps/control-api/src/console-accounts.ts",
     "token": "tsx scripts/dev/token.ts"
   },
   "dependencies": {

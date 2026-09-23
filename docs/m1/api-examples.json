@@ -296,10 +296,10 @@
     "event_id": "00000000-0000-4000-8000-000000000002",
     "execution_epoch": 1,
     "worker_id": "example-worker",
-    "phase": "AGENT",
+    "phase": "VIDEO",
     "kind": "WAITING",
-    "domain": "AGENT",
-    "message": "Required Agent is not connected in M1"
+    "domain": "VIDEO",
+    "message": "Required video result has not been applied"
   },
   "errors": [
     {
