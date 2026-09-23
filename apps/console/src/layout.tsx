@@ -34,7 +34,7 @@ export function Layout() {
       <nav aria-label="主导航" onClick={event => { if ((event.target as HTMLElement).closest('a')) setMenuOpen(false); }}>
         <NavLink className="nav-primary" to="/" end aria-label="采集总览"><House size={16}/><span>首页</span></NavLink>
         <NavGroup icon={<BriefcaseBusiness size={16}/>} label="任务管理" active={under('/plans', '/discover')}>
-          <NavLink to="/discover/queries">Query 发现</NavLink><Pending>候选频道</Pending>
+          <NavLink to="/discover/queries">Query 发现</NavLink><NavLink to="/discover/candidates">候选频道</NavLink>
           <NavLink to="/plans" aria-label="Plan 管理">全量采集 / Plan</NavLink>
           <Pending>Clock 调度</Pending><Pending>更新采集</Pending><Pending>Agent 任务</Pending><Pending>数据 API</Pending><Pending>发布交付</Pending>
         </NavGroup>
@@ -51,7 +51,7 @@ export function Layout() {
         <form className="quick-search" onSubmit={lookup}><Search size={15}/><input aria-label="按 Plan ID 定位" placeholder="搜索 Plan ID，定位计划与执行结果…" value={search} onChange={e => { setSearch(e.target.value); setSearchError(false); }}/>{searchError && <span role="alert">请输入完整 Plan UUID</span>}</form>
         <div className="topbar-right"><Link className="icon-button" to="/errors" aria-label="查看错误事件" title="查看错误事件"><Bell size={19}/></Link><div className="identity"><span className="avatar">{session.subject.slice(0, 1).toUpperCase()}</span><div><strong title={`${session.subject} · ${session.workspace_id}`}>{session.subject === 'console-preview-reader' ? 'preview' : session.subject}</strong><small>{roleLabels[session.role]}</small></div><button className="icon-button" aria-label="退出登录" title="退出登录" onClick={logout}><LogOut size={15}/></button></div></div>
       </header>
-      <main id="main-content" className={`main-content ${location.pathname === '/' || location.pathname === '/discover/queries' ? 'overview-content' : 'page-content'}`} key={`${session.workspace_id}:${session.subject}`}><Outlet/></main>
+      <main id="main-content" className={`main-content ${location.pathname === '/' || location.pathname.startsWith('/discover/') ? 'overview-content' : 'page-content'}`} key={`${session.workspace_id}:${session.subject}`}><Outlet/></main>
     </div>
   </div>;
 }

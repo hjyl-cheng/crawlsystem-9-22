@@ -233,3 +233,16 @@ test('query discovery shows no figures until the sample preview is switched on, 
   await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+test('candidate channels show no figures until the sample preview is switched on, and then warn', async ({ page }) => {
+  await mock(page); await login(page, '/discover/candidates');
+  await expect(page.getByRole('heading', { name: '候选频道', exact: true })).toBeVisible();
+  await expect(page.getByText('尚无候选频道', { exact: true })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
+  await expect(page.getByRole('button', { name: '选择文件' })).toBeDisabled();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('12,438');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByLabel('预览示例数据')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
