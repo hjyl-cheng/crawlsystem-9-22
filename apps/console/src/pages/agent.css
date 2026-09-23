@@ -1,0 +1,44 @@
+/* Agent tasks. Discover chrome on the 4-column grid: task list (3) with a
+   detail panel (1); both fill the remaining height and scroll inside. */
+.agent-page .row-agent { flex: 1 1 0; min-height: 320px; }
+.dashboard .agent-list { grid-column: span 3; min-height: 0; }
+.dashboard .agent-detail { min-height: 0; }
+.agent-list .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
+.agent-list td { vertical-align: middle; }
+.agent-list tbody tr { cursor: pointer; }
+.agent-list tbody tr.selected { background: #eef5ff; }
+.status-tabs { display: flex; gap: 4px; padding: 8px 14px 0; border-bottom: 1px solid #eef3f9; overflow-x: auto; }
+.status-tabs button { padding: 6px 10px 7px; border: 0; border-bottom: 2px solid transparent; background: none; font-size: var(--fs-text); color: #52688c; white-space: nowrap; }
+.status-tabs button span { margin-left: 4px; color: #8797b0; font-variant-numeric: tabular-nums; }
+.status-tabs button.on { color: #277cf7; border-bottom-color: #277cf7; font-weight: 600; }
+.status-tabs button:disabled { cursor: default; }
+.agent-filters { justify-content: flex-start; padding: 8px 14px; }
+.cell-title { display: block; font-size: var(--fs-text); font-weight: 500; color: #193257; }
+.cell-sub { display: block; font-size: var(--fs-meta); color: #7a8ca8; }
+.status-chip.slate { background: #eef2f7; color: #6b7d97; }
+
+/* Detail panel */
+.detail-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px; }
+.detail-head b { display: block; font-size: var(--fs-card); color: #0c1e43; }
+.detail-head small { font-size: var(--fs-meta); color: #7a8ca8; }
+.avatar-dot.big { width: 38px; height: 38px; font-size: var(--fs-card); }
+.detail-tabs { display: flex; margin: 0 14px; border-bottom: 1px solid #eef3f9; }
+.detail-tabs button { flex: 1; padding: 6px 0; border: 0; border-bottom: 2px solid transparent; background: none; font-size: var(--fs-text); color: #7a8ca8; }
+.detail-tabs button.on { color: #277cf7; border-bottom-color: #277cf7; font-weight: 600; }
+.detail-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 14px 8px; }
+.detail-body h3 { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; font-size: var(--fs-text); font-weight: 700; color: #193257; }
+.detail-body dl { margin: 0; }
+.kv-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px; padding: 3px 0; font-size: var(--fs-text); }
+.kv-row dt { color: #7a8ca8; }
+.kv-row dd { margin: 0; color: #253f6a; overflow-wrap: anywhere; }
+.profile .kv-row dd { display: flex; justify-content: space-between; gap: 6px; }
+.conf { flex-shrink: 0; font-style: normal; font-size: var(--fs-meta); padding: 0 5px; border-radius: 3px; }
+.conf.c-red { background: #e7f8f1; color: #0b8a63; } .conf.c-amber { background: #fff4dc; color: #95600a; } .conf.c-blue { background: #eef2f7; color: #6b7d97; }
+.infer-tag { font-size: var(--fs-meta); font-weight: 500; color: #7433cf; background: #f3ecff; border-radius: 3px; padding: 0 5px; }
+.detail-note { margin: 0; padding: 8px 10px; border-radius: 5px; background: #f5f8fc; font-size: var(--fs-text); color: #52688c; }
+.detail-actions { display: flex; gap: 6px; padding: 8px 14px 10px; border-top: 1px solid #eef3f9; }
+.detail-actions .button { flex: 1; justify-content: center; }
+@media (max-width: 1040px), (max-height: 600px) {
+  .agent-page .row-agent { flex: none; }
+  .dashboard .agent-list, .dashboard .agent-detail { grid-column: 1 / -1; min-height: 360px; }
+}

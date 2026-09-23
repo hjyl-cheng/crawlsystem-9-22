@@ -130,3 +130,12 @@
   .discover .dashboard-period { display: flex; }
   .dashboard-period>div { display: none; }
 }
+
+/* List pieces shared by the discover-style pages (candidates, agent tasks). */
+.channel-cell { display: flex; align-items: center; gap: 9px; }
+.avatar-dot { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: #fff; font-size: var(--fs-text); font-weight: 700; flex-shrink: 0; }
+.channel-cell b { display: block; font-size: var(--fs-text); font-weight: 600; color: #152d54; }
+.channel-cell small { display: block; font-size: var(--fs-meta); color: #7a8ca8; }
+.keyword-chip { padding: 1px 6px; border-radius: 4px; background: #eaf2ff; color: #2562cf; font-size: var(--fs-meta); }
+.tag-chip { padding: 1px 6px; border-radius: 4px; background: #eef2f7; color: #52688c; font-size: var(--fs-meta); }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 8px 14px; border-top: 1px solid #eef3f9; font-size: var(--fs-text); color: #52688c; }

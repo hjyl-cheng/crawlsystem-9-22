@@ -275,3 +275,15 @@ test('update collection shows no figures until the sample preview is switched on
   await expect(page.locator('.discover-kpi strong').first()).toHaveText('256');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+test('agent tasks show only the real waiting-plan count until the sample preview is switched on', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'WAITING', required_domains: ['ABOUT', 'VIDEO', 'AGENT'] }, ['ABOUT', 'VIDEO'])); await login(page, '/agent');
+  await expect(page.getByRole('heading', { name: 'Agent 任务', exact: true })).toBeVisible();
+  await expect(page.getByText('1 个计划的 Agent 结果未入库', { exact: false })).toBeVisible();
+  await expect(page.getByText('尚无 Agent 任务', { exact: true })).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await page.getByRole('row', { name: /Web Forge/ }).click();
+  await expect(page.locator('.agent-detail').getByText('本轮未产出有效画像', { exact: false })).toBeVisible();
+  await page.getByRole('tab', { name: /失败/ }).click();
+  await expect(page.locator('.agent-list tbody tr')).toHaveCount(1);
+});

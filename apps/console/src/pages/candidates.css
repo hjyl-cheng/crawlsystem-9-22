@@ -47,15 +47,8 @@
 .candidates-list .table-scroll { flex: 1; min-height: 0; }
 .candidates-list th.check, .candidates-list td.check { width: 30px; }
 .candidates-list td { vertical-align: middle; }
-.channel-cell { display: flex; align-items: center; gap: 9px; }
-.avatar-dot { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: #fff; font-size: var(--fs-text); font-weight: 700; flex-shrink: 0; }
-.channel-cell b { display: block; font-size: var(--fs-text); font-weight: 600; color: #152d54; }
-.channel-cell small { display: block; font-size: var(--fs-meta); color: #7a8ca8; }
-.keyword-chip { padding: 1px 6px; border-radius: 4px; background: #eaf2ff; color: #2562cf; font-size: var(--fs-meta); }
-.tag-chip { padding: 1px 6px; border-radius: 4px; background: #eef2f7; color: #52688c; font-size: var(--fs-meta); }
 .candidates .row-actions { align-items: center; }
 .candidates .row-actions svg { color: #8aa6d0; }
-.pager { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 8px 14px; border-top: 1px solid #eef3f9; font-size: var(--fs-text); color: #52688c; }
 .page-size { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid #dde6f1; border-radius: 5px; }
 .pages { display: flex; gap: 4px; }
 .pages button { min-width: 26px; height: 26px; border: 1px solid #dde6f1; border-radius: 5px; background: #fff; font-size: var(--fs-text); color: #52688c; }
