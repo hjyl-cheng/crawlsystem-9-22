@@ -45,6 +45,15 @@ npm run console:accounts -- import accounts.json                              # 
 
 ## 当前预览部署与验证
 
+**2026-09-23 起预览 API 运行在集群 `control` 命名空间**（[`deploy/preview.yaml`](deploy/preview.yaml)，2 副本），通过 Service 网络直连 `crawler-pg-pool.db.svc.cluster.local`，不再经过 `kubectl port-forward`。原因：port-forward 所有连接共用一条 API Server→kubelet 通道，单个连接被重置就会整体退出，重连期间请求全部 503。
+
+- 镜像：`npx esbuild apps/control-api/src/main.ts --bundle --platform=node --format=esm` 打成单文件，用 `crane append` 叠加到按 digest 锁定的 `node:22.22.1-alpine`，导入 6 台节点的 containerd（暂无镜像仓库，`imagePullPolicy: Never`）。产物位于忽略目录 `.runtime/control-api-image/`。
+- Secret `control/control-api-preview`：`database-url`、`console-database-url`（主机改为集群内 PgBouncer）、`pg-ca.crt`、`jwt-secret`，由现有运行文件生成，不进 Git。
+- NetworkPolicy 只允许 A1 主机访问 18100；预览静态站 `CONTROL_API_PROXY_TARGET` 指向该 Service 的 ClusterIP。
+- 本机 `console-preview-api` 已停用。回退：`systemctl --user enable --now console-preview-api`，恢复 `.runtime/console-preview/preview.env.bak-local-api`，再重启 `console-preview-web`。
+
+以下为此前本机运行方式的记录：
+
 为落实用户的账号密码登录要求，本分支补充了 Control API、共享 HTTP 认证扩展和公共登录契约。预览单独运行本分支 API 在 loopback `18104`（`console-preview-api` 用户服务，PG_POOL_MAX=1），连接既有隔离样本库；没有重启原有 `18100/18101` 联调服务。主 Agent 集成时需同时合入上述后端与契约变化，不能只合入前端。
 
 ```bash
