@@ -26,7 +26,10 @@
 
 ## 集群验证
 
-- 第一步已部署（`fb2469b`）：Control 签发 Temporal 令牌，派发器与 Worker 已携带令牌连接；此时 Temporal 尚未启用授权，令牌被忽略。预览验收 6 项通过（执行、心跳、四服务追踪、Worker 替换、持久取消）。
+- 第一步已部署（`fb2469b`）：Control 签发 Temporal 令牌，派发器与 Worker 已携带令牌连接；此时 Temporal 尚未启用授权，令牌被忽略。预览验收 6 项通过。
+- **2026-09-24 15:27 已启用授权**（Helm revision 2，记录在 `.runtime/temporal-authz.json`）：验证无令牌访问 m1/crawlsystem 均被拒，m1 令牌可访问 m1、访问 crawlsystem 被拒；Temporal 系统 worker 经 internal-frontend 无错误。
+- 启用后发现 Worker 以 `read`+`worker` 完成任务被拒，改为 `write`（`623b104`）后重新部署，预览验收 **6 项通过**（授权生效状态下：执行、心跳、四服务追踪、Worker 替换后重新取得令牌、持久取消）。
+- 基础设施合成 smoke 经 internal-frontend 通过；运行权限审计中的 `other_namespace_describe: ALLOWED` 问题已关闭。
 
 ## 启用顺序
 

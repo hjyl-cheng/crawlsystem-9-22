@@ -1,6 +1,11 @@
 # 主 Agent 当前交付状态
 
-更新：2026-09-24（Asia/Shanghai）。**执行与控制台已合入主线；Control、Ingest、派发器和执行 Worker 已常驻部署到预览集群并通过验收，业务链追踪已贯通四个服务。Temporal namespace 授权和生产验收仍未完成。**
+更新：2026-09-24（Asia/Shanghai）。**M1 完成：Control、Ingest、派发器和执行 Worker 常驻预览集群并通过验收，业务链追踪贯通四个服务，Temporal 已按 namespace 授权。生产级容量与恢复验收属于 M5。**
+
+## 2026-09-24 Temporal namespace 授权与基础设施修复
+
+- Temporal 启用 JWT 授权与 internal-frontend；派发器、Worker 经 Control 以 ServiceAccount 换取 15 分钟 namespace 令牌（均为 `crawlsystem-m1-main:write`）。无令牌、跨 namespace 访问已验证被拒；授权生效下预览验收 6 项通过。详见 [temporal-authorization.md](../temporal-authorization.md)。
+- 发现基础设施 48 小时观察自 09-23 16:05 起失败（CDC 复制槽因缺少 Debezium 心跳被作废）；已修复并重新开始观察（09-24 15:52 起）。详见 [事故记录](../../crawlsystem-infra-a1-s3/reports/cdc-slot-incident-20260923.md)。
 
 ## 2026-09-24 业务链追踪（`6f8572a`，部署 `0c88d09`）
 
@@ -75,7 +80,6 @@
 
 ## 未完成及责任
 
-- **Temporal namespace 授权**：已核验并确认缺口，当前证书不是限定到 M1 namespace 的身份。部署新的 namespace authorizer 必须统筹现有客户端，当前仅内部固定样本联调，不宣称生产租户隔离达标。
 - **生产验收**：容量/伸缩/背压压测、正式账号审计、业务级恢复演练尚未完成。真实采集、代理、API/Agent、分发和历史迁移属后续里程碑。
 
 启动与接口见 [集成基线](../integration-baseline.md)，监控与追踪见 [observability.md](../observability.md)，执行接入见 [交接单](../execution-integration-handoff.md)。UI 设计继续由 Claude 负责，全部后端和最终验收责任保留在主 Agent。

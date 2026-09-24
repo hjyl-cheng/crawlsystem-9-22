@@ -25,7 +25,7 @@
 
 本轮数据库回归 **30/30**，包含从未派发的取消、截止和失败，以及已派发但确认丢失的取消保护。其启动适配器使用测试替身，只证明真实 PG 中的派发状态机，不替代真实 Temporal 验收。
 
-随后主线真实 Temporal 联合验收 **13 项通过**，合并后模块 **34/34**，浏览器已核对由实际 Worker 产生的同一 Plan/Workflow/Worker/Receipt，证据见[主 Agent 报告](reports/main.md)。常驻执行部署与 Worker 令牌轮换已于 `a926c08` 完成并在预览集群验收（见[主 Agent 报告](reports/main.md)）；跨 Temporal 追踪已于 `6f8572a` 完成并在预览验收；第一步只剩 Temporal namespace 授权隔离：实现与本地验证已完成（见 [temporal-authorization.md](temporal-authorization.md)），待在集群启用。
+随后主线真实 Temporal 联合验收 **13 项通过**，合并后模块 **34/34**，浏览器已核对由实际 Worker 产生的同一 Plan/Workflow/Worker/Receipt，证据见[主 Agent 报告](reports/main.md)。常驻执行部署与 Worker 令牌轮换已于 `a926c08` 完成并在预览集群验收（见[主 Agent 报告](reports/main.md)）；跨 Temporal 追踪已于 `6f8572a` 完成并在预览验收；Temporal namespace 授权已于 2026-09-24 15:27 在集群启用并验收（见 [temporal-authorization.md](temporal-authorization.md)）。**第一步（M1）完成**，下一步进入 M2。
 
 审查发现原 `live-acceptance.ts` 后续等待取消直接调用 `starter.cancel()`，未覆盖持久 CANCEL 恢复。主线增加 `M1_VERIFY_DISPATCH_RECOVERY` 验收模式：真实 start 已被 Temporal 接收后让派发器退出，等待原 30 秒租约回收并核对同一 run；取消入库时停止派发器，由新进程读取 CANCEL 意图，随后核对真实 Workflow 取消。故障注入入口只允许 `main-joint-*` 测试 workspace，生产派发器不带故障开关。
 
