@@ -1,38 +1,42 @@
-# Temporal namespace authorization
+# Temporal namespace 授权
 
-Updated: 2026-09-24. Closes the runtime-access audit finding that any certificate issued by the Temporal CA could read the other namespace (`runtime-access.json`, `other_namespace_describe: ALLOWED`).
+更新：2026-09-24。解决运行权限审计发现的问题：Temporal CA 签发的任何证书都能读取其他 namespace（`runtime-access.json` 中 `other_namespace_describe: ALLOWED`）。
 
-## Design
+## 设计
 
-- Temporal enables the default JWT claim mapper and authorizer (`values/temporal.yaml` → `server.config.authorization`). The public frontend (7233) accepts only requests with `Authorization: Bearer <JWT>`, and the `permissions` claim decides namespace and role, for example `crawlsystem-m1-main:write`.
-- The ES256 signing key is `.runtime/temporal-jwt/signing.pem` (ignored by Git), stored only in the Secret `control/temporal-jwt-signing`. Temporal reads just the public key from ConfigMap `temporal/temporal-jwks` via `file://`, refreshed once a minute, and never calls Control. Key ID = the first 16 characters of the public key's SHA-256.
-- Clients use their ServiceAccount token to call `POST /v1/workload/temporal-token` on Control. After TokenReview, Control issues a 15-minute token according to `TEMPORAL_WORKLOAD_PERMISSIONS`. Clients refresh at half-life and switch via `setApiKey`:
+- Temporal 启用默认的 JWT claim mapper 和 authorizer（`values/temporal.yaml` → `server.config.authorization`）。公共 frontend（7233）只接受带 `Authorization: Bearer <JWT>` 的请求，由 `permissions` 声明决定 namespace 与角色，例如 `crawlsystem-m1-main:write`。
+- ES256 私钥为 `.runtime/temporal-jwt/signing.pem`（不进 Git），只放入 Secret `control/temporal-jwt-signing`。Temporal 通过 `file://` 读取 ConfigMap `temporal/temporal-jwks` 中的公钥，每分钟刷新，不访问 Control。Key ID 取公钥 SHA-256 的前 16 位。
+- 客户端用 ServiceAccount 令牌调用 Control 的 `POST /v1/workload/temporal-token`，经 TokenReview 核验后按 `TEMPORAL_WORKLOAD_PERMISSIONS` 签发 15 分钟令牌；客户端在半程刷新，通过 `setApiKey` 切换：
 
-| ServiceAccount | Permissions | Purpose |
+| ServiceAccount | 权限 | 用途 |
 | --- | --- | --- |
-| `crawler/execution-worker` | `crawlsystem-m1-main:read`, `:worker` | poll and complete tasks; cannot start or cancel Workflows |
-| `control/intent-dispatcher` | `crawlsystem-m1-main:write` | start, verify history, cancel |
+| `crawler/execution-worker` | `crawlsystem-m1-main:read`、`:worker` | 轮询与完成任务；不能启动或取消 Workflow |
+| `control/intent-dispatcher` | `crawlsystem-m1-main:write` | 启动、核对历史、取消 |
 
-  Control never issues `system:*` or `admin` permissions. Tokens with a mismatched permission format are rejected both at issuance and by the contract.
-- Temporal's own worker service, admintools and the UI go through **internal-frontend** (7236, no authorization). The `temporal-internal` NetworkPolicy opens 7236/6936 only to the `temporal` namespace. The UI has no per-user JWT and is only reachable in-cluster; public access would require separate OIDC.
-- Local tools: `node --import tsx scripts/dev/temporal-token.ts <file> <ns>:<role>` mints a 1-hour token, used with `TEMPORAL_API_KEY_FILE`. Only `read/write/worker` can be minted.
+  Control 不会签发 `system:*` 或 `admin` 权限；权限格式不符的令牌在签发端和契约中都会被拒绝。
+- Temporal 自身的 worker 服务、admintools 和 UI 改走 **internal-frontend**（7236，不做授权）。`temporal-internal` NetworkPolicy 只对 `temporal` 命名空间开放 7236/6936。UI 没有逐用户的 JWT，只能在集群内访问；如需公开访问，需另行接入 OIDC。
+- 本机工具：`node --import tsx scripts/dev/temporal-token.ts <文件> <ns>:<role>` 签发 1 小时令牌，配合 `TEMPORAL_API_KEY_FILE` 使用；只能签发 read/write/worker。
 
-## Local verification (temporal-server 1.32.0, SQLite, same config)
+## 本地验证（temporal-server 1.32.0，SQLite，与集群相同的授权配置）
 
-- No token: `PERMISSION_DENIED`; an `m1:write` token can describe/start/cancel in m1, but describing or starting in `crawlsystem`, or listing namespaces, is denied.
-- Expired tokens are rejected at connect time; switching to another namespace's token via `setApiKey` takes effect immediately.
-- A Worker with only `worker` cannot pass the startup namespace check; `read`+`worker` polls normally. `createWorkflowStarter`'s idempotent start and cancel pass with a `write` token.
-- After the JWKS changes, new keys only take effect with `refreshInterval` configured (the cluster config sets 1m).
+- 无令牌返回 `PERMISSION_DENIED`；`m1:write` 令牌可以在 m1 中 describe、启动、取消，但 describe 或启动 `crawlsystem`、列出全部 namespace 均被拒绝。
+- 过期令牌在连接阶段即被拒绝；`setApiKey` 换成其他 namespace 的令牌后立即按新权限生效。
+- 只有 `worker` 权限的 Worker 无法通过启动时的 namespace 检查；`read`+`worker` 能正常轮询。`createWorkflowStarter` 的幂等启动与取消在 `write` 令牌下通过。
+- JWKS 变更后必须配置 `refreshInterval` 新密钥才会生效（集群配置为 1 分钟）。
 
-## Order of operations
+## 集群验证
 
-1. `deploy-preview.ts`: publish the signing key and JWKS, and make the dispatcher and Worker start sending tokens. Before authorization is enabled Temporal ignores tokens, so this step has no effect on the service.
-2. `node --env-file=.runtime/main.env --import tsx scripts/dev/temporal-authz.ts enable`: preflight (JWKS exists, both clients configured to send tokens, clean tree) → apply `temporal-internal` → `helm upgrade` → verify that no token and cross-namespace requests are denied. It records the pre-upgrade revision.
-3. Rollback: `... temporal-authz.ts rollback` (helm rollback to the recorded revision).
+- 第一步已部署（`fb2469b`）：Control 签发 Temporal 令牌，派发器与 Worker 已携带令牌连接；此时 Temporal 尚未启用授权，令牌被忽略。预览验收 6 项通过（执行、心跳、四服务追踪、Worker 替换、持久取消）。
 
-Impact:
-- The Helm upgrade restarts Temporal on a1 (single replica); Workflow state is durable and resumes after the restart.
-- It adds an internal-frontend Pod. `temporal_svc` has a 45-connection limit; there are currently 6 actual connections, and the worst-case total pool configuration would exceed it, so this needs monitoring.
-- Other `crawlsystem` namespace clients (the infra smoke/observer) need a `crawlsystem:write` token or must go through internal-frontend.
+## 启用顺序
 
-Key rotation: generate a new `signing.pem` and rename the old file to `previous.pem`, then redeploy (both public keys are published in the JWKS). Once all old tokens have expired (≤15 minutes), delete `previous.pem` and redeploy.
+1. `deploy-preview.ts`：发布签名密钥和 JWKS，派发器与 Worker 开始携带令牌（已完成）。
+2. `node --env-file=.runtime/main.env --import tsx scripts/dev/temporal-authz.ts enable`：预检（JWKS 存在、两个客户端已配置令牌、工作区干净）→ 应用 `temporal-internal` → `helm upgrade` → 验证无令牌和跨 namespace 访问被拒。脚本会记录升级前的 revision。
+3. 回退：`... temporal-authz.ts rollback`（helm rollback 到记录的 revision）。
+
+影响：
+- Helm 升级会重启 a1 上的 Temporal（单副本），Workflow 状态持久保存，重启后继续。
+- 新增一个 internal-frontend Pod。`temporal_svc` 连接上限 45，当前实际 6 个连接；最坏情况下全部连接池之和会超过上限，需要监控。
+- `crawlsystem` namespace 的其他客户端（基础设施 smoke/观察器）需要 `crawlsystem:write` 令牌或改走 internal-frontend。
+
+密钥轮换：生成新的 `signing.pem`，旧文件改名为 `previous.pem` 后重新部署（JWKS 同时发布两个公钥）；待旧令牌全部过期（≤15 分钟）后删除 `previous.pem` 再部署一次。
