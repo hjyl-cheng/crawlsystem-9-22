@@ -84,6 +84,9 @@ spec:
             # Temporal namespace tokens (ES256). Temporal trusts only the public JWKS ConfigMap.
             - { name: TEMPORAL_JWT_KEY_FILE, value: /temporal-jwt/signing.pem }
             - { name: TEMPORAL_TOKEN_SECONDS, value: "900" }
+            # Proxy Control: credential sealing key (Control only) and the Proxy Manager identity.
+            - { name: PROXY_CREDENTIAL_KEY_FILE, value: /proxy-credential/key }
+            - { name: WORKLOAD_NODE_SERVICE_ACCOUNT, value: "system:serviceaccount:crawler:proxy-manager" }
             - name: TEMPORAL_WORKLOAD_PERMISSIONS
               value: '{"system:serviceaccount:crawler:execution-worker":["crawlsystem-m1-main:write"],"system:serviceaccount:control:intent-dispatcher":["crawlsystem-m1-main:write"]}'
             - { name: PG_CA_FILE, value: /secrets/pg-ca.crt }
@@ -99,6 +102,7 @@ spec:
           volumeMounts:
             - { name: secrets, mountPath: /secrets, readOnly: true }
             - { name: temporal-jwt, mountPath: /temporal-jwt, readOnly: true }
+            - { name: proxy-credential, mountPath: /proxy-credential, readOnly: true }
           readinessProbe:
             httpGet: { path: /readyz, port: http }
             periodSeconds: 10
@@ -129,6 +133,11 @@ spec:
             secretName: temporal-jwt-signing
             defaultMode: 0440
             items: [{ key: signing.pem, path: signing.pem }]
+        - name: proxy-credential
+          secret:
+            secretName: proxy-credential-key
+            defaultMode: 0440
+            items: [{ key: key, path: key }]
 ---
 apiVersion: v1
 kind: Service

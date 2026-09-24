@@ -1,9 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
-import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker } from '@crawlsystem/contracts';
+import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView } from '@crawlsystem/contracts';
 import { detailFixture, channelFixture, workerFixture, errorFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
-  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false };
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -52,6 +52,28 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       return json({ basis: 'latest_plan_required_domains', observed_at: '2026-09-23T08:00:00.000Z', total_channels: total,
         complete: total && applied.length === required.length ? 1 : 0, partial: total && applied.length > 0 && applied.length < required.length ? 1 : 0, missing: total && applied.length === 0 ? 1 : 0,
         missing_by_domain: { ABOUT: lacks('ABOUT'), VIDEO: lacks('VIDEO'), AGENT: lacks('AGENT') }, latest_channel_update_at: state.detail?.plan.updated_at ?? null, freshness: 'NOT_IMPLEMENTED' });
+    }
+    if (path === '/v1/proxies/import' && method === 'POST') {
+      const body = route.request().postDataJSON() as { entries: { protocol: 'http'; host: string; port: number; username: string | null; provider: string; group: string; country_code: string | null; kind: 'static'; max_concurrency: number; password: string | null }[] };
+      state.imports.push(body);
+      for (const e of body.entries) state.proxies.push({ proxy_id: crypto.randomUUID(), protocol: e.protocol, host: e.host, port: e.port, username: e.username, has_password: e.password !== null, provider: e.provider, group: e.group,
+        country_code: e.country_code, kind: e.kind, max_concurrency: e.max_concurrency, enabled: true, version: 1, server_id: null, state: 'unassigned', cooldown_until: null, last_success_at: null, last_failure_at: null,
+        last_error: null, requests_today: 0, failures_today: 0, latency_ms: null, observed_at: null, created_at: '2026-09-24T08:00:00.000Z', updated_at: '2026-09-24T08:00:00.000Z' });
+      return json({ created: body.entries.length, updated: 0 });
+    }
+    if (path.startsWith('/v1/proxies/') && method === 'POST') {
+      const body = route.request().postDataJSON() as { expected_version: number; enabled?: boolean; server_id?: string | null }; state.proxyUpdates.push(body);
+      const proxy = state.proxies.find(p => path.endsWith(p.proxy_id))!;
+      if (body.server_id !== undefined) proxy.server_id = body.server_id;
+      if (body.enabled !== undefined) proxy.enabled = body.enabled;
+      proxy.version++; proxy.state = !proxy.enabled ? 'disabled' : proxy.server_id ? 'unknown' : 'unassigned';
+      return json(proxy);
+    }
+    if (path === '/v1/proxies') {
+      const by_state = { healthy: 0, degraded: 0, cooldown: 0, failed: 0, disabled: 0, unassigned: 0, unknown: 0 }; for (const p of state.proxies) by_state[p.state]++;
+      const providers = [...new Set(state.proxies.map(p => p.provider))].map(name => ({ name, count: state.proxies.filter(p => p.provider === name).length, requests_today: 0, failures_today: 0 }));
+      const groups = [...new Set(state.proxies.map(p => p.group))].map(name => ({ name, count: state.proxies.filter(p => p.group === name).length }));
+      return json({ observed_at: '2026-09-24T08:00:00.000Z', items: state.proxies, by_state, providers, groups, requests_today: 0, failures_today: 0, availability_7d: [] });
     }
     if (path === '/v1/workers') return json({ items: state.workers, next_cursor: null });
     if (path === '/v1/errors') return json({ items: state.errors, next_cursor: null });
@@ -331,7 +353,7 @@ test('IP resource management replaces three proxy menus and reports the real pro
   const nav = page.getByRole('navigation', { name: '主导航' });
   await expect(nav.getByRole('link', { name: 'IP 资源管理' })).toBeVisible();
   for (const old of ['IP 管理', 'IP 分组', '服务器管理']) await expect(nav.getByText(old, { exact: true })).toHaveCount(0);
-  await expect(page.getByText('1 个 Worker 未配置代理', { exact: false })).toBeVisible();
+  await expect(page.getByText('1 个 Worker 尚未使用代理', { exact: false })).toBeVisible();
   await expect(page.getByText('尚无代理 IP', { exact: true })).toBeVisible();
   await page.getByLabel('预览示例数据').check();
   await expect(page.locator('.ip-list tbody tr')).toHaveCount(10);
@@ -401,4 +423,28 @@ test('a real YouTube plan freezes a canonical channel ID and the chosen scope', 
   await expect(page.getByRole('heading', { name: '采集任务详情', exact: true })).toBeVisible();
   expect(state.creates).toHaveLength(1);
   expect(state.creates[0]).toMatchObject({ source_mode: 'youtube', channel_id: 'UC_x5XG1OV2P6uZZ5FSM9Ttw', scope: { video_limit: 10, max_age_days: 90, comments_per_video: 20, comment_sort: 'TOP_COMMENTS' } });
+});
+test('operators import proxies without the page ever showing the password, then bind and disable them', async ({ page }) => {
+  const state = await mock(page); state.workers = [{ worker_id: 'w1', server_id: 'a1', build_version: 'v1', accepting_work: true, capacity: 1, running_plan_ids: [], last_heartbeat_at: '2026-09-23T08:00:00.000Z', stale: false, proxy_status: 'NOT_CONFIGURED' }];
+  await login(page, '/proxies');
+  await page.getByRole('button', { name: '添加 IP' }).click();
+  await page.getByLabel('代理地址列表').fill('http://alice:s3cret-pass@198.51.100.10:8080\nnot-a-proxy');
+  await page.getByLabel('服务商').fill('Vendor A'); await page.getByLabel('分组').fill('US Residential'); await page.getByLabel('国家代码').fill('us');
+  await page.getByRole('button', { name: '导入', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('第 2 行不是有效地址'); expect(state.imports).toHaveLength(0);
+  await page.getByLabel('代理地址列表').fill('http://alice:s3cret-pass@198.51.100.10:8080\nsocks5://203.0.113.5:1080');
+  await page.getByRole('button', { name: '导入', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('新增 2 个');
+  expect(state.imports[0]).toMatchObject({ entries: [{ protocol: 'http', host: '198.51.100.10', port: 8080, username: 'alice', password: 's3cret-pass', country_code: 'US' }, { protocol: 'socks5', host: '203.0.113.5', port: 1080, username: null, password: null }] });
+  await expect(page.locator('.ip-list tbody tr')).toHaveCount(2);
+  await expect(page.locator('body')).not.toContainText('s3cret-pass');
+  await page.getByLabel('绑定服务器 198.51.100.10:8080').selectOption('a1');
+  await expect(page.locator('.ip-list tbody tr', { hasText: '198.51.100.10' })).toContainText('未上报');
+  await page.locator('.ip-list tbody tr', { hasText: '198.51.100.10' }).getByRole('button', { name: '停用' }).click();
+  await expect(page.locator('.ip-list tbody tr', { hasText: '198.51.100.10' })).toContainText('已停用');
+  expect(state.proxyUpdates).toEqual([{ expected_version: 1, server_id: 'a1' }, { expected_version: 2, enabled: false }]);
+});
+test('read-only users see the proxy inventory but cannot import or rebind', async ({ page }) => {
+  await mock(page, undefined, 'reader'); await login(page, '/proxies');
+  await expect(page.getByRole('button', { name: '添加 IP' })).toBeDisabled();
 });

@@ -1,6 +1,6 @@
 import {execFileSync,spawn,spawnSync} from 'node:child_process';
 import {createReadStream,existsSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
-import {generateKeyPairSync} from 'node:crypto';
+import {generateKeyPairSync,randomBytes} from 'node:crypto';
 import {temporalJwks,temporalKeyId} from '@crawlsystem/http/temporal-token';
 
 // Deploys the M1 preview stack from the images built by build-images.ts:
@@ -62,7 +62,10 @@ const signing=readFileSync('.runtime/temporal-jwt/signing.pem','utf8');
 const published=[signing,...(existsSync('.runtime/temporal-jwt/previous.pem')?[readFileSync('.runtime/temporal-jwt/previous.pem','utf8')]:[])];
 putSecret('control','temporal-jwt-signing',{'signing.pem':Buffer.from(signing).toString('base64')});
 kubectl(['apply','-f','-'],JSON.stringify({apiVersion:'v1',kind:'ConfigMap',metadata:{name:'temporal-jwks',namespace:'temporal'},data:{'jwks.json':JSON.stringify(await temporalJwks(published))}}));
-step(`secrets ready: control/temporal-client-dispatcher, crawler/temporal-client-worker, ingest/ingest-preview, Temporal signing key ${temporalKeyId(signing)}`);
+// Proxy credential sealing key: generated once and kept; losing it makes stored proxy passwords unreadable.
+if(!existsSync('.runtime/proxy-credential.key'))writeFileSync('.runtime/proxy-credential.key',randomBytes(32).toString('base64')+'\n',{mode:0o600});
+putSecret('control','proxy-credential-key',{key:Buffer.from(readFileSync('.runtime/proxy-credential.key','utf8')).toString('base64')});
+step(`secrets ready: control/temporal-client-dispatcher, control/proxy-credential-key, crawler/temporal-client-worker, ingest/ingest-preview, Temporal signing key ${temporalKeyId(signing)}`);
 
 // 6. Roll out in dependency order: Control (token exchange) and Ingest before Workers.
 const rollouts:[string,string,string][]=[['control-api','control','deployment/control-api-preview'],['ingest','ingest','deployment/ingest-preview'],

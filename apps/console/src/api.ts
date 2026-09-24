@@ -2,8 +2,8 @@ import { z } from 'zod';
 import {
   ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,
   ChannelListItemSchema, ChannelDetailSchema, CompletenessSchema, ConsoleAccountListSchema, PlansSummarySchema, WorkerSchema, StoredEventSchema,
-  ReceiptSchema, CreatePlanSchema, CancelPlanSchema, LoginSchema, LogoutSchema, pageSchema,
-  type CreatePlan, type ErrorCode, type PlanStatus, type Login,
+  ReceiptSchema, CreatePlanSchema, CancelPlanSchema, LoginSchema, LogoutSchema, pageSchema, ProxyOverviewSchema, ProxyImportSchema, ProxyUpdateSchema, ProxyViewSchema,
+  type CreatePlan, type ProxyImport, type ErrorCode, type PlanStatus, type Login,
 } from '@crawlsystem/contracts';
 
 const messages: Record<ErrorCode, string> = {
@@ -96,4 +96,7 @@ export class ControlApi {
   workers = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.workers}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(WorkerSchema), signal);
   errors = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.errors}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(StoredEventSchema), signal);
   receipt = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.receipt(id), ReceiptSchema, signal);
+  proxies = (signal?: AbortSignal) => this.request(ApiRoutes.proxies, ProxyOverviewSchema, signal);
+  importProxies = (body: ProxyImport, signal?: AbortSignal) => this.request(ApiRoutes.proxyImport, z.strictObject({ created: z.number().int(), updated: z.number().int() }), signal, ProxyImportSchema.parse(body));
+  updateProxy = (id: string, body: z.input<typeof ProxyUpdateSchema>, signal?: AbortSignal) => this.request(ApiRoutes.proxy(id), ProxyViewSchema, signal, ProxyUpdateSchema.parse(body));
 }

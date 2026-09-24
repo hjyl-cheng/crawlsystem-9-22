@@ -22,3 +22,14 @@
   .dashboard.proxies-page .ip-list { grid-column: 1 / -1; min-height: 360px; }
   .proxies-page .row-ip-overview>.panel { min-height: 200px; }
 }
+/* Import panel and per-row binding controls (real inventory only). */
+.proxy-import { margin-bottom: 14px; }
+.proxy-import form { padding: 0 16px 16px; display: grid; gap: 10px; }
+.proxy-import textarea { width: 100%; font: 12px/1.5 var(--font-mono, monospace); padding: 8px 10px; border: 1px solid #d8e0ec; border-radius: 6px; resize: vertical; }
+.proxy-import-fields { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.proxy-import-fields label { display: grid; gap: 4px; font-size: var(--fs-meta); color: #547092; }
+.proxy-import-fields input, .proxy-import-fields select { padding: 6px 8px; border: 1px solid #d8e0ec; border-radius: 6px; font: inherit; min-width: 0; }
+.proxy-import .button.primary { justify-self: start; }
+.proxy-actions { display: inline-flex; align-items: center; gap: 6px; }
+.proxy-actions select { max-width: 110px; padding: 2px 4px; font-size: var(--fs-meta); }
+@media (max-width: 900px) { .proxy-import-fields { grid-template-columns: 1fr 1fr; } }

@@ -3,10 +3,12 @@
  * "预览示例数据" switch under a warning banner. Addresses come from the RFC 5737
  * documentation ranges and providers are unnamed, so nothing points at a real
  * host or vendor. Credentials are never shown in the console. */
-export type IpState = 'healthy' | 'degraded' | 'cooldown' | 'failed' | 'disabled';
+export type IpState = 'healthy' | 'degraded' | 'cooldown' | 'failed' | 'disabled' | 'unassigned' | 'unknown';
 export interface ProxiesView {
   kpis: { total: number; totalDelta: string; providers: number; groups: number; healthy: number; healthyRate: string; cooldown: number; failed: number; requests: string; requestsDelta: string };
-  ips: { ip: string; port: number; region: string; provider: string; group: string; state: IpState; success: string; latency: string; requests: number; checked: string; node: string }[];
+  ips: { ip: string; port: number; region: string; provider: string; group: string; state: IpState; success: string; latency: string; requests: number; checked: string; node: string;
+    /** Present for real inventory rows only: identity and editable state. */
+    id?: string; server?: string | null; enabled?: boolean; version?: number }[];
   states: { state: IpState; count: number }[];
   providers: { name: string; count: number }[];
   groups: { name: string; count: number; color: string }[];
