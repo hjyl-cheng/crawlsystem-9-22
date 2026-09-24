@@ -78,3 +78,12 @@ test('the Proxy Manager ServiceAccount gets a node credential naming its server;
   await assert.rejects(make('system:serviceaccount:crawler:other').exchange(`Bearer ${saToken}`), { status: 403 });
   assert.throws(() => new WorkloadIdentity({ serviceAccount, nodeServiceAccount: serviceAccount, audience: 'crawlsystem-control', workspaceId: 'w', signingKey: key, reviewer: async () => undefined }));
 });
+test('a workload session (with server_id) still satisfies the shared session contract', async () => {
+  const { SessionSchema } = await import('@crawlsystem/contracts');
+  const app = createControlApi({ store: {} as Store, signingKey: key, workloadIdentity: identity(pod) });
+  try {
+    const { token } = (await app.inject({ method: 'POST', url: '/v1/workload/token', headers: { authorization: `Bearer ${saToken}` } })).json();
+    const session = (await app.inject({ url: '/v1/session', headers: { authorization: `Bearer ${token}` } })).json();
+    assert.equal(SessionSchema.safeParse(session).success, true); assert.equal(session.server_id, 'a2');
+  } finally { await app.close(); }
+});

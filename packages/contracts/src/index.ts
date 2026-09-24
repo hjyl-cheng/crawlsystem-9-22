@@ -197,7 +197,8 @@ export interface Completeness {
   missing_by_domain: Record<Domain, number>; latest_channel_update_at: string | null;
   freshness: 'NOT_IMPLEMENTED';
 }
-export interface Session { subject: string; workspace_id: string; role: Role; contract_version: typeof CONTRACT_VERSION; }
+/** server_id is present for workload credentials (Worker, Proxy Manager): the node named by TokenReview. */
+export interface Session { subject: string; workspace_id: string; role: Role; server_id?: string; contract_version: typeof CONTRACT_VERSION; }
 export interface WorkflowInput { schema_version: typeof CONTRACT_VERSION; plan_id: string; workspace_id: string; execution_epoch: number; input_hash: string; workflow_id: string; }
 export interface WorkflowStarter { start(input: WorkflowInput): Promise<{ workflow_id: string; run_id: string }>; cancel(workflow_id: string): Promise<void>; }
 export interface PlanWorkflowResult { plan_id: string; status: PlanStatus; }
@@ -216,7 +217,7 @@ export const ChannelSummarySchema: z.ZodType<ChannelSummary> = z.strictObject({ 
 export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoItemSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema });
 export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema });
 export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.literal('NOT_CONFIGURED') });
-export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, contract_version: z.literal(CONTRACT_VERSION) });
+export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, server_id: IdSchema.optional(), contract_version: z.literal(CONTRACT_VERSION) });
 // Kubernetes ServiceAccount token exchange: subject is the Pod, server_id the node reported by TokenReview.
 // Temporal namespace token for the gRPC Authorization header; permissions name one namespace and role.
 export const TemporalTokenSchema = z.strictObject({ token: z.string().min(20).max(4096), permissions: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}:(read|write|worker)$/)).min(1).max(4), expires_in: z.number().int().min(60).max(3600) });
