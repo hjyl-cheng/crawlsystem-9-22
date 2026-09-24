@@ -70,6 +70,7 @@ def main(apply):
                 time.sleep(2)
             else: raise RuntimeError('Connector did not stop for offset reset')
             connect(port, 'DELETE', '/connectors/infra-outbox/offsets')
+        connect(port, 'PUT', '/connectors/infra-outbox/resume')
         connect(port, 'POST', '/connectors/infra-outbox/restart?includeTasks=true&onlyFailed=false')
         # 4. The task recreates the slot; after a heartbeat the retained WAL must shrink.
         deadline = time.time() + 300; first = None
