@@ -21,7 +21,7 @@ export function toPlan(row: QueryResultRow): Plan {
 }
 function page<T>(rows: T[], limit: number, offset: number): Page<T> { return { items: rows.slice(0, limit), next_cursor: rows.length > limit ? String(offset + limit) : null }; }
 const terminal = (status: string) => ['COMPLETED','CANCELLED','FAILED'].includes(status);
-export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; }
+export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; }
 
 export class Store {
   constructor(public readonly pool: Pool) {}
@@ -216,6 +216,7 @@ export class Store {
       await client.query('INSERT INTO m1.events(plan_id,event_id,event_hash,data) VALUES($1,$2,$3,$4)',[planId,input.event_id,hash,input]);
       if (!terminal(row.status) && input.kind === 'FAILED') {
         await client.query("UPDATE m1.plans SET status='FAILED',version=version+1,execution_epoch=execution_epoch+1,updated_at=clock_timestamp(),finished_at=clock_timestamp() WHERE plan_id=$1",[planId]);
+        await client.query("UPDATE m1.intents SET state='SKIPPED' WHERE plan_id=$1 AND kind='START' AND state='PENDING'",[planId]);
         await client.query("INSERT INTO m1.intents(intent_id,plan_id,kind) VALUES($1,$2,'CANCEL') ON CONFLICT DO NOTHING",[randomUUID(),planId]);
       }
       if (!terminal(row.status) && ['STARTED','WAITING'].includes(input.kind)) {
@@ -266,8 +267,13 @@ export class Store {
         FROM candidate c WHERE i.intent_id=c.intent_id RETURNING i.*`,[token,leaseSeconds,workspaceId ?? null]);
       if (!rows.rowCount) return null;
       const intent = rows.rows[0]!;
-      const row = (await client.query('SELECT * FROM m1.plans WHERE plan_id=$1',[intent.plan_id])).rows[0]!;
-      return {intent_id:intent.intent_id,plan_id:intent.plan_id,kind:intent.kind,lease_token:token,attempts:intent.attempts,plan_status:row.status,deadline_at:iso(row.deadline_at),
+      // A skipped START with zero claims proves that no dispatcher could have sent
+      // a start RPC. Any previous claim remains ambiguous, even without a run ID.
+      const row = (await client.query(`SELECT p.*, EXISTS (
+        SELECT 1 FROM m1.intents s WHERE s.plan_id=p.plan_id AND s.kind='START'
+        AND s.state='SKIPPED' AND s.attempts=0 AND s.workflow_run_id IS NULL
+      ) AS start_never_dispatched FROM m1.plans p WHERE p.plan_id=$1`,[intent.plan_id])).rows[0]!;
+      return {intent_id:intent.intent_id,plan_id:intent.plan_id,kind:intent.kind,lease_token:token,attempts:intent.attempts,plan_status:row.status,deadline_at:iso(row.deadline_at),start_never_dispatched:row.start_never_dispatched,
         input:{schema_version:CONTRACT_VERSION,plan_id:row.plan_id,workspace_id:row.workspace_id,execution_epoch:row.execution_epoch,input_hash:row.input_hash,workflow_id:row.workflow_id}};
     });
   }

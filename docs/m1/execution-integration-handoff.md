@@ -6,7 +6,7 @@
 
 G0 已发布（`ca3973f43d4ee3bc355cb0cc3ab1a373f5292a92`），后端与控制台已继续集成。接口仍为 `m1.v1`；同步主线本文件所在的具体提交后，从根目录运行 `npm ci`、`npm run typecheck`、`npm run test:contracts`。主线已有 Control/Ingest、持久 START/CANCEL 意图、固定输入、回执查询、心跳/错误接口和测试资源，执行开发无须再等待 G0。
 
-截至本轮同步前核对，执行分支 HEAD 为 `4615e9e`，`apps/execution-worker` 与 `packages/execution-client` 已出现未提交实现；主线未复制这些工作中代码。旧准备报告中“G0 尚未发布”的信息已经过时。
+2026-09-24 正式交付 `e07e955`，基于主线 `fe7d02b` / 合并点 `adf6492`；执行工作区干净，模块和正式报告已合入主线。根锁文件已登记两个 workspace，干净 `npm ci` 通过。此前未提交阶段的只读核对结论已被本次交付取代。
 
 ## 需要交付的实际模块
 
@@ -38,6 +38,8 @@ G0 已发布（`ca3973f43d4ee3bc355cb0cc3ab1a373f5292a92`），后端与控制�
 - 浏览器显示的 Plan、Worker、领域回执与 Temporal Workflow ID 一一对应；保存实际历史和数据库证据。
 
 上述最终集成由主 Agent负责。启动派发器依赖真实 execution-client，模块缺失时明确报错；不提供假执行器来替代验收。
+
+主线补充了 `M1_VERIFY_DISPATCH_RECOVERY` 联合验收模式，覆盖原交付脚本未覆盖的真实启动确认丢失和持久 CANCEL 重启派发。主线还修复“从未派发便取消/过期/失败”的意图收口；曾经领取 START 的情况仍保留取消义务，不能把 Temporal NOT_FOUND 无条件算作取消成功。具体责任见[五步推进清单](main-next-steps.md)，实际结果见主 Agent 报告。
 
 ## 本轮可使用的运行与追踪基础
 

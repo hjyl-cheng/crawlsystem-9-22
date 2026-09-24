@@ -1,0 +1,99 @@
+{
+  "scope": "Main branch serial checks; sampled resources are not a capacity guarantee",
+  "memory_high_mib": 768,
+  "memory_max_mib": 1024,
+  "swap_max_mib": 256,
+  "checks": [
+    {
+      "check": "build-console-67206",
+      "samples": 19,
+      "sampled_peak_mib": 537.3,
+      "minimum_host_available_mib": 3588.4,
+      "result": "PASSED"
+    },
+    {
+      "check": "execution-browser-147919",
+      "samples": 6,
+      "sampled_peak_mib": 456.7,
+      "minimum_host_available_mib": 3648.1,
+      "result": "PASSED"
+    },
+    {
+      "check": "execution-build-73889",
+      "samples": 4,
+      "sampled_peak_mib": 202.1,
+      "minimum_host_available_mib": 3971.7,
+      "result": "PASSED"
+    },
+    {
+      "check": "execution-live-77938",
+      "samples": 65,
+      "sampled_peak_mib": 576.9,
+      "minimum_host_available_mib": 3544.1,
+      "result": "PASSED"
+    },
+    {
+      "check": "install-72041",
+      "samples": 19,
+      "sampled_peak_mib": 767.9,
+      "minimum_host_available_mib": 3329.5,
+      "result": "PASSED"
+    },
+    {
+      "check": "integration-63768",
+      "samples": 21,
+      "sampled_peak_mib": 121.4,
+      "minimum_host_available_mib": 4172.1,
+      "result": "FAILED: database forwarding unavailable"
+    },
+    {
+      "check": "integration-64951",
+      "samples": 12,
+      "sampled_peak_mib": 126.1,
+      "minimum_host_available_mib": 4028.2,
+      "result": "PASSED"
+    },
+    {
+      "check": "lockfile-70778",
+      "samples": 1,
+      "sampled_peak_mib": 0.2,
+      "minimum_host_available_mib": 4201.0,
+      "result": "PASSED"
+    },
+    {
+      "check": "typecheck-2",
+      "samples": 1,
+      "sampled_peak_mib": null,
+      "minimum_host_available_mib": 4121.2,
+      "result": "FAILED: sandbox systemd bus unavailable"
+    },
+    {
+      "check": "typecheck-62943",
+      "samples": 20,
+      "sampled_peak_mib": 647.8,
+      "minimum_host_available_mib": 3477.1,
+      "result": "FAILED: V8 512 MiB heap limit"
+    },
+    {
+      "check": "typecheck-65697",
+      "samples": 23,
+      "sampled_peak_mib": 723.9,
+      "minimum_host_available_mib": 3422.3,
+      "result": "PASSED"
+    },
+    {
+      "check": "typecheck-74662",
+      "samples": 25,
+      "sampled_peak_mib": 746.0,
+      "minimum_host_available_mib": 3467.7,
+      "result": "PASSED"
+    },
+    {
+      "check": "unit-77365",
+      "samples": 9,
+      "sampled_peak_mib": 113.6,
+      "minimum_host_available_mib": 4082.1,
+      "result": "PASSED"
+    }
+  ]
+}

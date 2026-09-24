@@ -1,0 +1,795 @@
+{
+  "contract": "m1.v1",
+  "namespace": "crawlsystem-m1-main",
+  "task_queue": "execution-live-7f0b72a9-46fd-437f-bf45-10446c337966",
+  "workspace_id": "main-joint-c0381ba8-e771-4f50-9ea7-d8429dee4924",
+  "scope": "real Temporal mTLS + Control/Ingest + PostgreSQL through controlled APIs",
+  "checks": [
+    "real Temporal start committed before dispatcher crash; expired lease recovered the original run",
+    "lost APPLIED response reconciled with original receipt",
+    "SIGKILL + replacement process resumed original Plan/input/deadline",
+    "transient Ingest 503 recovered with identical Submission",
+    "duplicate live and closed Workflow dispatch retained original run",
+    "wrong frozen input rejected",
+    "persisted START intent dispatched; dispatcher stopped without losing execution",
+    "actual recovered Workflow history replayed",
+    "CANCEL intent persisted while dispatcher stopped; replacement dispatcher delivered cancellation",
+    "missing AGENT persisted WAITING; cancellation interrupted durable timer",
+    "late new write after cancellation rejected by real Store; original APPLIED receipt remains readable and replayable",
+    "current video/comment facts remain unique after retries and multiple fixture Plans",
+    "actual Worker identity/version/heartbeat observed; SIGTERM drained within bound; no PG environment in Worker"
+  ],
+  "worker_environment_keys": [
+    "BUILD_VERSION",
+    "CONTROL_API_URL",
+    "HOME",
+    "INGEST_API_URL",
+    "NODE_OPTIONS",
+    "PATH",
+    "SERVER_ID",
+    "TEMPORAL_ADDRESS",
+    "TEMPORAL_NAMESPACE",
+    "TEMPORAL_TASK_QUEUE",
+    "TEMPORAL_TLS_CA_FILE",
+    "TEMPORAL_TLS_CERT_FILE",
+    "TEMPORAL_TLS_KEY_FILE",
+    "TEMPORAL_TLS_SERVER_NAME",
+    "WORKER_CAPACITY",
+    "WORKER_DRAIN_MS",
+    "WORKER_HEARTBEAT_MS",
+    "WORKER_ID",
+    "WORKER_TOKEN_FILE"
+  ],
+  "current_facts": {
+    "channel_id": "fixture:channel:basic",
+    "video_count": 1,
+    "comment_count": 1
+  },
+  "result": "PASSED",
+  "plans": {
+    "recovered": {
+      "plan": {
+        "plan_id": "54e66e61-9084-4f3f-85be-66eea468fbad",
+        "run_id": "656e9622-f2fc-4f6d-9eb8-0c6b85a39e09",
+        "workspace_id": "main-joint-c0381ba8-e771-4f50-9ea7-d8429dee4924",
+        "channel_id": "fixture:channel:basic",
+        "source_revision": 289,
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO"
+        ],
+        "status": "COMPLETED",
+        "version": 4,
+        "execution_epoch": 1,
+        "input_hash": "sha256:6622afc097d5a269188d8dbf37a78af0b746283c678342a671aef27e5c5d76c0",
+        "workflow_id": "m1/main-joint-c0381ba8-e771-4f50-9ea7-d8429dee4924/54e66e61-9084-4f3f-85be-66eea468fbad",
+        "created_at": "2026-09-24T03:46:06.360Z",
+        "updated_at": "2026-09-24T03:46:47.409Z",
+        "finished_at": "2026-09-24T03:46:47.409Z",
+        "deadline_at": "2026-09-24T04:16:06.346Z",
+        "publication_status": "NOT_ENABLED"
+      },
+      "input": {
+        "schema_version": "m1.v1",
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "channel_id": "fixture:channel:basic",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO"
+        ],
+        "target_video_ids": [
+          "fixture:video:basic"
+        ],
+        "reference_time": "2026-09-23T00:00:00.000Z",
+        "deadline_at": "2026-09-24T04:16:06.346Z",
+        "max_attempts": 3,
+        "sample": {
+          "about": {
+            "channel_id": "fixture:channel:basic",
+            "channel_url": "https://example.invalid/channel/basic",
+            "title": "M1 \u56fa\u5b9a\u6837\u672c\u9891\u9053",
+            "handle": "@m1-fixture",
+            "avatar_url": null,
+            "summary": "\u4ec5\u7528\u4e8e\u9694\u79bb\u5f00\u53d1\u9a8c\u8bc1",
+            "about_description": "\u56fa\u5b9a\u6837\u672c\uff0c\u4e0d\u662f\u771f\u5b9e\u91c7\u96c6\u6570\u636e\u3002",
+            "country": null,
+            "country_code": null,
+            "country_source": null,
+            "joined_at": null,
+            "joined_date_text": null,
+            "joined_at_precision": "unknown",
+            "keywords": [
+              "fixture"
+            ],
+            "available_tabs": [
+              "videos"
+            ],
+            "external_links": [],
+            "subscriber_count": {
+              "value": 100,
+              "status": "exact",
+              "source": "fixture:channel-basic-v1",
+              "observed_at": "2026-09-23T00:00:00.000Z"
+            },
+            "total_view_count": {
+              "value": 500,
+              "status": "exact",
+              "source": "fixture:channel-basic-v1",
+              "observed_at": "2026-09-23T00:00:00.000Z"
+            },
+            "total_video_count": {
+              "value": 1,
+              "status": "exact",
+              "source": "fixture:channel-basic-v1",
+              "observed_at": "2026-09-23T00:00:00.000Z"
+            },
+            "is_verified": null,
+            "is_family_safe": null,
+            "youtube_business_email_available": null,
+            "observed_at": "2026-09-23T00:00:00.000Z",
+            "source": "fixture:channel-basic-v1"
+          },
+          "videos": [
+            {
+              "channel_id": "fixture:channel:basic",
+              "source_content_id": "fixture:video:basic",
+              "content_type": "video",
+              "content_type_source": "fixture",
+              "url": "https://example.invalid/watch/basic",
+              "title": "M1 \u56fa\u5b9a\u6837\u672c\u89c6\u9891",
+              "description": "\u6d4b\u8bd5\u89c6\u9891\u5143\u6570\u636e",
+              "thumbnail_url": null,
+              "keywords": [],
+              "hashtags": [],
+              "published_at": "2026-09-23T00:00:00.000Z",
+              "published_text_raw": "2026-09-23T00:00:00.000Z",
+              "published_at_status": "exact",
+              "published_at_precision": "second",
+              "published_at_source": "fixture",
+              "duration_seconds": {
+                "value": 60,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "view_count": {
+                "value": 500,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "like_count": {
+                "value": 10,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "comment_count": {
+                "value": 1,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "comments_disabled": false,
+              "comments_first_page": {
+                "version": 1,
+                "collected_at": "2026-09-23T00:00:00.000Z",
+                "sort": "TOP_COMMENTS",
+                "total_count": 1,
+                "returned_count": 1,
+                "comments": [
+                  {
+                    "comment_id": "fixture:comment:basic",
+                    "position": 1,
+                    "text": "\u56fa\u5b9a\u6837\u672c\u8bc4\u8bba",
+                    "author_name": "Fixture Author",
+                    "author_channel_id": null,
+                    "author_url": null,
+                    "author_avatar_url": null,
+                    "published_at_utc": "2026-09-23T00:00:00.000Z",
+                    "published_text_raw": "2026-09-23T00:00:00.000Z",
+                    "published_at_status": "exact",
+                    "is_edited": false,
+                    "like_count": 0,
+                    "reply_count": 0,
+                    "is_pinned": false,
+                    "is_channel_owner": false,
+                    "is_verified": null,
+                    "is_hearted": false
+                  }
+                ]
+              },
+              "access_status": "public",
+              "access_status_source": "fixture",
+              "is_members_only": false,
+              "live_scheduled_at": null,
+              "live_started_at": null,
+              "live_ended_at": null,
+              "observed_at": "2026-09-23T00:00:00.000Z",
+              "extractor_version": "m1.v1"
+            }
+          ]
+        }
+      },
+      "domains": [
+        {
+          "domain": "ABOUT",
+          "state": "APPLIED",
+          "completed_at": "2026-09-24T03:46:40.491Z"
+        },
+        {
+          "domain": "VIDEO",
+          "state": "APPLIED",
+          "completed_at": "2026-09-24T03:46:47.403Z"
+        }
+      ],
+      "receipts": [
+        {
+          "schema_version": "m1.v1",
+          "submission_id": "9f426b4f-ff8c-8d4a-b620-688317f61459",
+          "plan_id": "54e66e61-9084-4f3f-85be-66eea468fbad",
+          "logical_batch_key": "about:all:v1",
+          "domain": "ABOUT",
+          "payload_hash": "sha256:429d39a2f7660e242c1e15306666667e9624d2253113a8fb9239d9f77ea2cdc3",
+          "state": "APPLIED",
+          "applied_at": "2026-09-24T03:46:40.492Z"
+        },
+        {
+          "schema_version": "m1.v1",
+          "submission_id": "a9800f79-3162-878b-b798-41146abdc290",
+          "plan_id": "54e66e61-9084-4f3f-85be-66eea468fbad",
+          "logical_batch_key": "video:all:v1",
+          "domain": "VIDEO",
+          "payload_hash": "sha256:f797b3108033da2019778562035b6ac3df460dcbb3d865f5adf5878648047669",
+          "state": "APPLIED",
+          "applied_at": "2026-09-24T03:46:47.404Z"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "3f272dfc-0072-4994-9efe-7834244f50d8",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "VIDEO",
+          "kind": "PROGRESS",
+          "domain": "VIDEO",
+          "message": "APPLIED receipt=a9800f79-3162-878b-b798-41146abdc290",
+          "plan_id": "54e66e61-9084-4f3f-85be-66eea468fbad",
+          "created_at": "2026-09-24T03:46:47.434Z"
+        },
+        {
+          "event_id": "8016a3f1-7cb3-44e4-a388-3fecef5d3c47",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "ABOUT",
+          "kind": "PROGRESS",
+          "domain": "ABOUT",
+          "message": "APPLIED receipt=9f426b4f-ff8c-8d4a-b620-688317f61459",
+          "plan_id": "54e66e61-9084-4f3f-85be-66eea468fbad",
+          "created_at": "2026-09-24T03:46:47.334Z"
+        },
+        {
+          "event_id": "2c07bb78-8308-4991-847e-bc9a265a4777",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "FIXTURE",
+          "kind": "STARTED",
+          "domain": null,
+          "message": "Reading frozen test sample; no real collection or proxy",
+          "plan_id": "54e66e61-9084-4f3f-85be-66eea468fbad",
+          "created_at": "2026-09-24T03:46:47.309Z"
+        },
+        {
+          "event_id": "8418744c-d7c5-4561-aca2-77732b4f6349",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "ABOUT",
+          "kind": "PROGRESS",
+          "domain": "ABOUT",
+          "message": "APPLIED receipt=9f426b4f-ff8c-8d4a-b620-688317f61459",
+          "plan_id": "54e66e61-9084-4f3f-85be-66eea468fbad",
+          "created_at": "2026-09-24T03:46:40.538Z"
+        },
+        {
+          "event_id": "bb4a8cca-aeb1-483c-a53f-949d2c2b265e",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "FIXTURE",
+          "kind": "STARTED",
+          "domain": null,
+          "message": "Reading frozen test sample; no real collection or proxy",
+          "plan_id": "54e66e61-9084-4f3f-85be-66eea468fbad",
+          "created_at": "2026-09-24T03:46:40.399Z"
+        }
+      ]
+    },
+    "waiting": {
+      "plan": {
+        "plan_id": "792e18a6-9d2d-4acc-8506-5cf7a7055f87",
+        "run_id": "fd233e6e-9030-45bf-951f-84a173c7c2a2",
+        "workspace_id": "main-joint-c0381ba8-e771-4f50-9ea7-d8429dee4924",
+        "channel_id": "fixture:channel:basic",
+        "source_revision": 290,
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO",
+          "AGENT"
+        ],
+        "status": "CANCELLED",
+        "version": 5,
+        "execution_epoch": 2,
+        "input_hash": "sha256:cf12c1d03b8da675e32408ca1801295700aba4150d3a40082a88aa86d5722e02",
+        "workflow_id": "m1/main-joint-c0381ba8-e771-4f50-9ea7-d8429dee4924/792e18a6-9d2d-4acc-8506-5cf7a7055f87",
+        "created_at": "2026-09-24T03:46:58.956Z",
+        "updated_at": "2026-09-24T03:47:02.734Z",
+        "finished_at": "2026-09-24T03:47:02.734Z",
+        "deadline_at": "2026-09-24T04:16:58.933Z",
+        "publication_status": "NOT_ENABLED"
+      },
+      "input": {
+        "schema_version": "m1.v1",
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "channel_id": "fixture:channel:basic",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO",
+          "AGENT"
+        ],
+        "target_video_ids": [
+          "fixture:video:basic"
+        ],
+        "reference_time": "2026-09-23T00:00:00.000Z",
+        "deadline_at": "2026-09-24T04:16:58.933Z",
+        "max_attempts": 3,
+        "sample": {
+          "about": {
+            "channel_id": "fixture:channel:basic",
+            "channel_url": "https://example.invalid/channel/basic",
+            "title": "M1 \u56fa\u5b9a\u6837\u672c\u9891\u9053",
+            "handle": "@m1-fixture",
+            "avatar_url": null,
+            "summary": "\u4ec5\u7528\u4e8e\u9694\u79bb\u5f00\u53d1\u9a8c\u8bc1",
+            "about_description": "\u56fa\u5b9a\u6837\u672c\uff0c\u4e0d\u662f\u771f\u5b9e\u91c7\u96c6\u6570\u636e\u3002",
+            "country": null,
+            "country_code": null,
+            "country_source": null,
+            "joined_at": null,
+            "joined_date_text": null,
+            "joined_at_precision": "unknown",
+            "keywords": [
+              "fixture"
+            ],
+            "available_tabs": [
+              "videos"
+            ],
+            "external_links": [],
+            "subscriber_count": {
+              "value": 100,
+              "status": "exact",
+              "source": "fixture:channel-basic-v1",
+              "observed_at": "2026-09-23T00:00:00.000Z"
+            },
+            "total_view_count": {
+              "value": 500,
+              "status": "exact",
+              "source": "fixture:channel-basic-v1",
+              "observed_at": "2026-09-23T00:00:00.000Z"
+            },
+            "total_video_count": {
+              "value": 1,
+              "status": "exact",
+              "source": "fixture:channel-basic-v1",
+              "observed_at": "2026-09-23T00:00:00.000Z"
+            },
+            "is_verified": null,
+            "is_family_safe": null,
+            "youtube_business_email_available": null,
+            "observed_at": "2026-09-23T00:00:00.000Z",
+            "source": "fixture:channel-basic-v1"
+          },
+          "videos": [
+            {
+              "channel_id": "fixture:channel:basic",
+              "source_content_id": "fixture:video:basic",
+              "content_type": "video",
+              "content_type_source": "fixture",
+              "url": "https://example.invalid/watch/basic",
+              "title": "M1 \u56fa\u5b9a\u6837\u672c\u89c6\u9891",
+              "description": "\u6d4b\u8bd5\u89c6\u9891\u5143\u6570\u636e",
+              "thumbnail_url": null,
+              "keywords": [],
+              "hashtags": [],
+              "published_at": "2026-09-23T00:00:00.000Z",
+              "published_text_raw": "2026-09-23T00:00:00.000Z",
+              "published_at_status": "exact",
+              "published_at_precision": "second",
+              "published_at_source": "fixture",
+              "duration_seconds": {
+                "value": 60,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "view_count": {
+                "value": 500,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "like_count": {
+                "value": 10,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "comment_count": {
+                "value": 1,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "comments_disabled": false,
+              "comments_first_page": {
+                "version": 1,
+                "collected_at": "2026-09-23T00:00:00.000Z",
+                "sort": "TOP_COMMENTS",
+                "total_count": 1,
+                "returned_count": 1,
+                "comments": [
+                  {
+                    "comment_id": "fixture:comment:basic",
+                    "position": 1,
+                    "text": "\u56fa\u5b9a\u6837\u672c\u8bc4\u8bba",
+                    "author_name": "Fixture Author",
+                    "author_channel_id": null,
+                    "author_url": null,
+                    "author_avatar_url": null,
+                    "published_at_utc": "2026-09-23T00:00:00.000Z",
+                    "published_text_raw": "2026-09-23T00:00:00.000Z",
+                    "published_at_status": "exact",
+                    "is_edited": false,
+                    "like_count": 0,
+                    "reply_count": 0,
+                    "is_pinned": false,
+                    "is_channel_owner": false,
+                    "is_verified": null,
+                    "is_hearted": false
+                  }
+                ]
+              },
+              "access_status": "public",
+              "access_status_source": "fixture",
+              "is_members_only": false,
+              "live_scheduled_at": null,
+              "live_started_at": null,
+              "live_ended_at": null,
+              "observed_at": "2026-09-23T00:00:00.000Z",
+              "extractor_version": "m1.v1"
+            }
+          ]
+        }
+      },
+      "domains": [
+        {
+          "domain": "ABOUT",
+          "state": "APPLIED",
+          "completed_at": "2026-09-24T03:47:00.484Z"
+        },
+        {
+          "domain": "AGENT",
+          "state": "PENDING",
+          "completed_at": null
+        },
+        {
+          "domain": "VIDEO",
+          "state": "APPLIED",
+          "completed_at": "2026-09-24T03:47:00.569Z"
+        }
+      ],
+      "receipts": [
+        {
+          "schema_version": "m1.v1",
+          "submission_id": "34eeccd4-9a7f-8ac8-af44-87190fd7464f",
+          "plan_id": "792e18a6-9d2d-4acc-8506-5cf7a7055f87",
+          "logical_batch_key": "about:all:v1",
+          "domain": "ABOUT",
+          "payload_hash": "sha256:595c486f83e036b71a479b31c80e2d67c1dcf6d06ca4ba177335434508029239",
+          "state": "APPLIED",
+          "applied_at": "2026-09-24T03:47:00.485Z"
+        },
+        {
+          "schema_version": "m1.v1",
+          "submission_id": "27a039fb-4b90-8dcf-8124-880c64b965f3",
+          "plan_id": "792e18a6-9d2d-4acc-8506-5cf7a7055f87",
+          "logical_batch_key": "video:all:v1",
+          "domain": "VIDEO",
+          "payload_hash": "sha256:83219432a26827a76a6b75feb2da2fbf9e7350d2b462e7715754bdc24238944c",
+          "state": "APPLIED",
+          "applied_at": "2026-09-24T03:47:00.570Z"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "a4ac7651-40a6-4393-840c-8b1c33e6a856",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "DEPENDENCY",
+          "kind": "WAITING",
+          "domain": null,
+          "message": "Required domain is pending; real Agent/API is not implemented in M1",
+          "error_code": "DEPENDENCY_NOT_IMPLEMENTED",
+          "plan_id": "792e18a6-9d2d-4acc-8506-5cf7a7055f87",
+          "created_at": "2026-09-24T03:47:00.656Z"
+        },
+        {
+          "event_id": "55b26e01-baa5-4728-a8a2-e19a6b8a9f37",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "VIDEO",
+          "kind": "PROGRESS",
+          "domain": "VIDEO",
+          "message": "APPLIED receipt=27a039fb-4b90-8dcf-8124-880c64b965f3",
+          "plan_id": "792e18a6-9d2d-4acc-8506-5cf7a7055f87",
+          "created_at": "2026-09-24T03:47:00.602Z"
+        },
+        {
+          "event_id": "6d093170-da02-456b-b1fd-563eb98ace3c",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "ABOUT",
+          "kind": "PROGRESS",
+          "domain": "ABOUT",
+          "message": "APPLIED receipt=34eeccd4-9a7f-8ac8-af44-87190fd7464f",
+          "plan_id": "792e18a6-9d2d-4acc-8506-5cf7a7055f87",
+          "created_at": "2026-09-24T03:47:00.515Z"
+        },
+        {
+          "event_id": "8ee833d0-c696-4dbe-be78-f6db9ce22b8e",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "FIXTURE",
+          "kind": "STARTED",
+          "domain": null,
+          "message": "Reading frozen test sample; no real collection or proxy",
+          "plan_id": "792e18a6-9d2d-4acc-8506-5cf7a7055f87",
+          "created_at": "2026-09-24T03:47:00.414Z"
+        }
+      ]
+    },
+    "cancelled": {
+      "plan": {
+        "plan_id": "0e7873a0-1e93-4b6c-88cc-7ddfcf7d7623",
+        "run_id": "57b92aee-ee9d-427a-97e7-f4c92eef7c41",
+        "workspace_id": "main-joint-c0381ba8-e771-4f50-9ea7-d8429dee4924",
+        "channel_id": "fixture:channel:basic",
+        "source_revision": 291,
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO"
+        ],
+        "status": "CANCELLED",
+        "version": 4,
+        "execution_epoch": 2,
+        "input_hash": "sha256:d2154d561056d819670b7c4bbdbd3e66e285761caf20883f9accf83e660a3c51",
+        "workflow_id": "m1/main-joint-c0381ba8-e771-4f50-9ea7-d8429dee4924/0e7873a0-1e93-4b6c-88cc-7ddfcf7d7623",
+        "created_at": "2026-09-24T03:47:04.112Z",
+        "updated_at": "2026-09-24T03:47:04.577Z",
+        "finished_at": "2026-09-24T03:47:04.577Z",
+        "deadline_at": "2026-09-24T04:17:04.105Z",
+        "publication_status": "NOT_ENABLED"
+      },
+      "input": {
+        "schema_version": "m1.v1",
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "channel_id": "fixture:channel:basic",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO"
+        ],
+        "target_video_ids": [
+          "fixture:video:basic"
+        ],
+        "reference_time": "2026-09-23T00:00:00.000Z",
+        "deadline_at": "2026-09-24T04:17:04.105Z",
+        "max_attempts": 3,
+        "sample": {
+          "about": {
+            "channel_id": "fixture:channel:basic",
+            "channel_url": "https://example.invalid/channel/basic",
+            "title": "M1 \u56fa\u5b9a\u6837\u672c\u9891\u9053",
+            "handle": "@m1-fixture",
+            "avatar_url": null,
+            "summary": "\u4ec5\u7528\u4e8e\u9694\u79bb\u5f00\u53d1\u9a8c\u8bc1",
+            "about_description": "\u56fa\u5b9a\u6837\u672c\uff0c\u4e0d\u662f\u771f\u5b9e\u91c7\u96c6\u6570\u636e\u3002",
+            "country": null,
+            "country_code": null,
+            "country_source": null,
+            "joined_at": null,
+            "joined_date_text": null,
+            "joined_at_precision": "unknown",
+            "keywords": [
+              "fixture"
+            ],
+            "available_tabs": [
+              "videos"
+            ],
+            "external_links": [],
+            "subscriber_count": {
+              "value": 100,
+              "status": "exact",
+              "source": "fixture:channel-basic-v1",
+              "observed_at": "2026-09-23T00:00:00.000Z"
+            },
+            "total_view_count": {
+              "value": 500,
+              "status": "exact",
+              "source": "fixture:channel-basic-v1",
+              "observed_at": "2026-09-23T00:00:00.000Z"
+            },
+            "total_video_count": {
+              "value": 1,
+              "status": "exact",
+              "source": "fixture:channel-basic-v1",
+              "observed_at": "2026-09-23T00:00:00.000Z"
+            },
+            "is_verified": null,
+            "is_family_safe": null,
+            "youtube_business_email_available": null,
+            "observed_at": "2026-09-23T00:00:00.000Z",
+            "source": "fixture:channel-basic-v1"
+          },
+          "videos": [
+            {
+              "channel_id": "fixture:channel:basic",
+              "source_content_id": "fixture:video:basic",
+              "content_type": "video",
+              "content_type_source": "fixture",
+              "url": "https://example.invalid/watch/basic",
+              "title": "M1 \u56fa\u5b9a\u6837\u672c\u89c6\u9891",
+              "description": "\u6d4b\u8bd5\u89c6\u9891\u5143\u6570\u636e",
+              "thumbnail_url": null,
+              "keywords": [],
+              "hashtags": [],
+              "published_at": "2026-09-23T00:00:00.000Z",
+              "published_text_raw": "2026-09-23T00:00:00.000Z",
+              "published_at_status": "exact",
+              "published_at_precision": "second",
+              "published_at_source": "fixture",
+              "duration_seconds": {
+                "value": 60,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "view_count": {
+                "value": 500,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "like_count": {
+                "value": 10,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "comment_count": {
+                "value": 1,
+                "status": "exact",
+                "source": "fixture:channel-basic-v1",
+                "observed_at": "2026-09-23T00:00:00.000Z"
+              },
+              "comments_disabled": false,
+              "comments_first_page": {
+                "version": 1,
+                "collected_at": "2026-09-23T00:00:00.000Z",
+                "sort": "TOP_COMMENTS",
+                "total_count": 1,
+                "returned_count": 1,
+                "comments": [
+                  {
+                    "comment_id": "fixture:comment:basic",
+                    "position": 1,
+                    "text": "\u56fa\u5b9a\u6837\u672c\u8bc4\u8bba",
+                    "author_name": "Fixture Author",
+                    "author_channel_id": null,
+                    "author_url": null,
+                    "author_avatar_url": null,
+                    "published_at_utc": "2026-09-23T00:00:00.000Z",
+                    "published_text_raw": "2026-09-23T00:00:00.000Z",
+                    "published_at_status": "exact",
+                    "is_edited": false,
+                    "like_count": 0,
+                    "reply_count": 0,
+                    "is_pinned": false,
+                    "is_channel_owner": false,
+                    "is_verified": null,
+                    "is_hearted": false
+                  }
+                ]
+              },
+              "access_status": "public",
+              "access_status_source": "fixture",
+              "is_members_only": false,
+              "live_scheduled_at": null,
+              "live_started_at": null,
+              "live_ended_at": null,
+              "observed_at": "2026-09-23T00:00:00.000Z",
+              "extractor_version": "m1.v1"
+            }
+          ]
+        }
+      },
+      "domains": [
+        {
+          "domain": "ABOUT",
+          "state": "APPLIED",
+          "completed_at": "2026-09-24T03:47:04.431Z"
+        },
+        {
+          "domain": "VIDEO",
+          "state": "PENDING",
+          "completed_at": null
+        }
+      ],
+      "receipts": [
+        {
+          "schema_version": "m1.v1",
+          "submission_id": "3ec4a9c2-4e64-878b-a7c5-97a5cc21bceb",
+          "plan_id": "0e7873a0-1e93-4b6c-88cc-7ddfcf7d7623",
+          "logical_batch_key": "about:all:v1",
+          "domain": "ABOUT",
+          "payload_hash": "sha256:607c6329dbc76adab7516fb2ecc7079155309a52f7ecb39fd63ee2db5b766817",
+          "state": "APPLIED",
+          "applied_at": "2026-09-24T03:47:04.433Z"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "6d60718c-ba7a-498e-a3ce-48307e486d5e",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "ABOUT",
+          "kind": "PROGRESS",
+          "domain": "ABOUT",
+          "message": "APPLIED receipt=3ec4a9c2-4e64-878b-a7c5-97a5cc21bceb",
+          "plan_id": "0e7873a0-1e93-4b6c-88cc-7ddfcf7d7623",
+          "created_at": "2026-09-24T03:47:04.476Z"
+        },
+        {
+          "event_id": "b72352e0-4466-4e4e-becd-26872630cbac",
+          "execution_epoch": 1,
+          "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+          "phase": "FIXTURE",
+          "kind": "STARTED",
+          "domain": null,
+          "message": "Reading frozen test sample; no real collection or proxy",
+          "plan_id": "0e7873a0-1e93-4b6c-88cc-7ddfcf7d7623",
+          "created_at": "2026-09-24T03:47:04.376Z"
+        }
+      ]
+    }
+  },
+  "workflow_run_id": "01a0d185-465a-7b7d-9f88-4741c6d61b8b",
+  "worker": {
+    "capacity": 2,
+    "server_id": "main-integration",
+    "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+    "build_version": "main-joint-2026-09-24T03:39:08.970Z",
+    "accepting_work": true,
+    "running_plan_ids": [],
+    "last_heartbeat_at": "2026-09-24T03:47:04.100Z",
+    "stale": false,
+    "proxy_status": "NOT_CONFIGURED"
+  },
+  "finished_at": "2026-09-24T03:47:04.973Z"
+}

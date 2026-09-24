@@ -120,17 +120,46 @@ async function startWorker() {
   return processChild;
 }
 async function startPlan(plan: Plan) { return starter.start(ref(plan)); }
+const backendEnv = process.env.EXECUTION_BACKEND_ENV_FILE;
+const verifyDispatchRecovery = process.env.M1_VERIFY_DISPATCH_RECOVERY === 'true';
+if (verifyDispatchRecovery && !backendEnv) throw new Error('Dispatcher recovery requires the private backend environment');
+function startDispatcher(dropStartAck = false) {
+  assert.ok(backendEnv);
+  const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: process.env.HOME, NODE_OPTIONS: '--max-old-space-size=128', M1_WORKSPACE_ID: session.workspace_id, TEMPORAL_TASK_QUEUE: temporal.taskQueue, PG_POOL_MAX: '1' };
+  for (const key of Object.keys(workerEnv)) if (key.startsWith('TEMPORAL_')) env[key] = workerEnv[key];
+  if (dropStartAck) env.M1_TEST_DROP_START_ACK = '1';
+  return child(verifyDispatchRecovery ? 'scripts/dev/verify-dispatch-process.ts' : 'apps/control-api/src/dispatch-main.ts', env, backendEnv);
+}
+async function waitAcknowledged(processChild: ChildProcess, plan: Plan, kind: 'START'|'CANCEL') {
+  await waitFor(async () => {
+    if (processChild.exitCode !== null || processChild.signalCode !== null) throw new Error('Dispatcher exited before acknowledgement');
+    return logs.get(processChild)!.join('').split('\n').some(line => {
+      try { const event = JSON.parse(line); return event.event === 'intent_finished' && event.plan_id === plan.plan_id && event.kind === kind && event.state === 'DONE'; }
+      catch { return false; }
+    });
+  }, `durable ${kind} acknowledged`);
+}
 let dispatcher: ChildProcess | undefined;
 try {
   const initial = await create(); blocked.add(initial.plan_id); lost.add(initial.plan_id);
-  // Leave the durable intent unhandled until both creation and worker startup finish.
+  if (verifyDispatchRecovery) {
+    dispatcher = startDispatcher(true);
+    await waitFor(async () => dispatcher!.exitCode !== null, 'crash after actual Temporal start');
+    assert.equal(dispatcher.exitCode, 86);
+    const lostAck = logs.get(dispatcher)!.join('').split('\n').map(line => { try { return JSON.parse(line); } catch { return null; } }).find(value => value?.event === 'start_ack_lost');
+    assert.ok(lostAck?.run_id);
+    dispatcher = startDispatcher();
+    // No Worker polls until the original 30s lease is recovered, so fault injection
+    // does not burn the submission Activity's bounded retry budget while waiting.
+    await waitAcknowledged(dispatcher, initial, 'START');
+    assert.equal((await startPlan(initial)).run_id, lostAck.run_id);
+    checks.push('real Temporal start committed before dispatcher crash; expired lease recovered the original run');
+  }
   let worker = await startWorker();
-  const backendEnv = process.env.EXECUTION_BACKEND_ENV_FILE;
-  if (backendEnv) {
-    const dispatcherEnv: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: process.env.HOME, NODE_OPTIONS: '--max-old-space-size=128', M1_WORKSPACE_ID: session.workspace_id, TEMPORAL_TASK_QUEUE: temporal.taskQueue, PG_POOL_MAX: '1' };
-    for (const key of Object.keys(workerEnv)) if (key.startsWith('TEMPORAL_')) dispatcherEnv[key] = workerEnv[key];
-    dispatcher = child('apps/control-api/src/dispatch-main.ts', dispatcherEnv, backendEnv);
-  } else await startPlan(initial);
+  if (!verifyDispatchRecovery) {
+    if (backendEnv) dispatcher = startDispatcher();
+    else await startPlan(initial);
+  }
   await waitFor(async () => seen.has(initial.plan_id), 'VIDEO paused after ABOUT receipt');
   const before = await detail(initial.plan_id); assert.equal(before.receipts.length, 1);
   const first = await startPlan(initial);
@@ -152,23 +181,34 @@ try {
   await assert.rejects(starter.start({ ...ref(initial), input_hash: `sha256:${'f'.repeat(64)}` }));
   checks.push('lost APPLIED response reconciled with original receipt', 'SIGKILL + replacement process resumed original Plan/input/deadline',
     'transient Ingest 503 recovered with identical Submission', 'duplicate live and closed Workflow dispatch retained original run', 'wrong frozen input rejected');
-  if (backendEnv) checks.push('persisted START intent dispatched after worker startup; dispatcher stopped without losing execution');
+  if (backendEnv) checks.push('persisted START intent dispatched; dispatcher stopped without losing execution');
   const history = await handle.fetchHistory();
   await writeFile(resolve(output, 'recovered-history.json'), JSON.stringify(history));
   const workflowBundle = { code: await readFile(resolve(root, 'apps/execution-worker/dist/workflow-bundle.cjs'), 'utf8') };
   await Worker.runReplayHistory({ workflowBundle }, history, initial.workflow_id);
   checks.push('actual recovered Workflow history replayed');
 
-  const waiting = await create(['ABOUT','VIDEO','AGENT']); await startPlan(waiting);
+  const waiting = await create(['ABOUT','VIDEO','AGENT']);
+  if (verifyDispatchRecovery) { dispatcher = startDispatcher(); await waitAcknowledged(dispatcher, waiting, 'START'); }
+  else await startPlan(waiting);
   const waitingDetail = await waitFor(async () => { const value = await detail(waiting.plan_id); return value.plan.status === 'WAITING' ? value : false; }, 'AGENT waiting');
   assert.equal(waitingDetail.receipts.length, 2); assert.equal(waitingDetail.domains.find(d => d.domain === 'AGENT')?.state, 'PENDING');
   assert.equal((await client.workflow.getHandle(waiting.workflow_id).describe()).status.name, 'RUNNING');
+  if (verifyDispatchRecovery) { await stop(dispatcher!); dispatcher = undefined; }
   await operator(`/v1/plans/${waiting.plan_id}/cancel`, { command_id: randomUUID(), expected_version: waitingDetail.plan.version });
-  await starter.cancel(waiting.workflow_id); await assert.rejects(client.workflow.getHandle(waiting.workflow_id).result());
+  if (verifyDispatchRecovery) {
+    assert.equal((await client.workflow.getHandle(waiting.workflow_id).describe()).status.name, 'RUNNING');
+    dispatcher = startDispatcher(); await waitAcknowledged(dispatcher, waiting, 'CANCEL');
+    checks.push('CANCEL intent persisted while dispatcher stopped; replacement dispatcher delivered cancellation');
+  } else await starter.cancel(waiting.workflow_id);
+  await assert.rejects(client.workflow.getHandle(waiting.workflow_id).result());
+  assert.equal((await client.workflow.getHandle(waiting.workflow_id).describe()).status.name, 'CANCELLED');
   assert.equal((await detail(waiting.plan_id)).plan.status, 'CANCELLED');
   checks.push('missing AGENT persisted WAITING; cancellation interrupted durable timer');
 
-  const cancelled = await create(); blocked.add(cancelled.plan_id); await startPlan(cancelled);
+  const cancelled = await create(); blocked.add(cancelled.plan_id);
+  if (verifyDispatchRecovery) await waitAcknowledged(dispatcher!, cancelled, 'START');
+  else await startPlan(cancelled);
   await waitFor(async () => seen.has(cancelled.plan_id), 'late submission held');
   const frozen = await api.input(cancelled.plan_id), cancelDetail = await detail(cancelled.plan_id);
   await operator(`/v1/plans/${cancelled.plan_id}/cancel`, { command_id: randomUUID(), expected_version: cancelDetail.plan.version });

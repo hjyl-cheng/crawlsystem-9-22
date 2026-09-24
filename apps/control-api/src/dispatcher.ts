@@ -16,6 +16,9 @@ export class IntentDispatcher {
         if(result.workflow_id!==intent.input.workflow_id) throw new Error('Workflow identity mismatch');
         await this.store.finishIntent(intent,'DONE',result.run_id);
       } else {
+        if(intent.start_never_dispatched) {
+          await this.store.finishIntent(intent,'SKIPPED');return true;
+        }
         await withTimeout(this.starter.cancel(intent.input.workflow_id),10_000);
         await this.store.finishIntent(intent,'DONE');
       }

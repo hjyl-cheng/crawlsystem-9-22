@@ -1,10 +1,33 @@
 # 主 Agent 当前交付状态
 
-更新：2026-09-23 21:10（Asia/Shanghai）。**已完成本轮后端发布、双副本验收、权限核验及 HTTP 观测接入；M1 完整业务链仍未验收。**
+更新：2026-09-24（Asia/Shanghai）。**执行与控制台已合入主线，固定样本的真实执行、恢复、持久取消和页面联合验收通过；常驻执行部署、跨 Temporal 追踪和生产验收仍未完成。**
 
-实际部署源码：`653a09601e8188c6643cfae840ad0f60cdf8e3ea`。镜像：`docker.io/crawlsystem/control-api:main-653a09601e81-52eabbc4`，基础镜像固定 Node 22.22.1-alpine digest。该提交合入控制台至 `2aea207`，保留既有页面和显式设计示例开关。当前后续提交只更新审计脚本、测试证据输出位置及交付文档；以镜像内 healthz.build_version 为部署版本依据。
+最近已验收的预览部署源码：`653a09601e8188c6643cfae840ad0f60cdf8e3ea`。镜像：`docker.io/crawlsystem/control-api:main-653a09601e81-52eabbc4`，基础镜像固定 Node 22.22.1-alpine digest。本轮后端修复和执行集成尚未发布到该预览部署；以镜像内 healthz.build_version 为部署版本依据。
 
-## 本轮完成
+## 2026-09-24 主线联合验收
+
+- 控制台合入 `f6e3c8a`（包含 `67a1774`），执行模块合入 `e07e955`，合并点 `d544be5`。其他 worktree 的未提交文件未被复制或提交。
+- 根锁文件登记执行客户端/Worker，干净 `npm ci` 成功；新增执行构建、模块与 SDK 测试到 CI。远端 CI 本轮未触发，不能把本机结果当作 GitHub 运行结果。
+- 修复未派发计划取消/截止/失败导致 CANCEL 无限重试：只有 START 已 SKIPPED 且 attempts=0 才省略远端取消；任何曾派发且结果不确定的 START 保留取消义务，无迁移改动。
+- 真正调用 Temporal start 成功后让测试派发器退出，30 秒租约过期后新进程恢复同一 run；取消先入库，新派发器恢复 CANCEL 并使 Workflow 进入取消终态。测试使用生产 IntentDispatcher/Store/执行适配器，故障注入入口只允许独立 `main-joint-*` workspace。
+- Worker 强杀重启、APPLIED 响应丢失、503、重复启动、旧代次迟到提交和实际历史重放共 **13 项真实链路检查通过**；频道视频和首屏评论由 Worker 经 Ingest 提交。
+- 浏览器实际读取这次运行的数据库结果，核对同一 Plan/Workflow/Worker/APPLIED，以及缺 AGENT 的取消计划；没有用测试驱动代替 Worker 提交数据。
+
+| 本轮验证 | 结果与证据 |
+| --- | --- |
+| 根锁文件、干净安装、合并后全仓类型检查 | 通过；新增依赖均使用原固定版本 |
+| 公共/HTTP/认证/前端请求/执行模块 | **34/34**，[TAP](main-joint-unit.tap) |
+| 真实 TLS PgBouncer → PG | **30/30**，含 2 个新增派发取消回归，[TAP](main-cancellation-integration.tap) |
+| 控制台生产构建、Workflow 构建 | 通过；实际浏览器使用本次生产产物 |
+| 真实 mTLS Temporal + Control/Ingest/PG | **13 项通过**，[结果](main-joint-execution.json)、[实际恢复历史](main-joint-history.json) |
+| 实际页面关联核对 | 通过、pageerror=0，[结果](main-execution-browser.json)、[截图](main-execution-browser.png) |
+| 资源边界 | 全部重检查串行且使用临时 1 GiB scope；真实联调采样峰值约 577 MiB，[记录](main-joint-resources.json) |
+
+恢复 Plan：`54e66e61-9084-4f3f-85be-66eea468fbad`，workspace：`main-joint-c0381ba8-e771-4f50-9ea7-d8429dee4924`。回执与页面证据保留同一身份。本轮测试结束后已退出自己创建的 API/派发器/Worker，不能据此宣称已经常驻运行。
+
+首次数据库测试因主机重启后本机转发未恢复而初始化失败；恢复现有 15432/15433 转发后 30 项通过。首次全仓类型检查在 V8 512 MiB 堆限制内退出；整组 1 GiB 限额不变，将 V8 堆调为 640 MiB 后通过，合并执行模块后再次通过。上述失败不计为通过，也未修改全用户限额或 swap。
+
+## 2026-09-23 已完成发布
 
 1. 审查控制台新增的公共契约/Store/API；频道列表补充真实国家、订阅数、已存视频数及最近计划状态。将采集统计改为单条 SQL 的一致快照，修复任务并发变化时总数/状态/领域分项可能不一致的问题，并补 schema 约束与真实 PG 测试。
 2. 发布主线后端到既有 control/control-api-preview，两个副本分布在 A1/S2。每副本事实池 1、账号池 1，滚动 maxSurge=0；镜像先导入六台节点。readyz 同时核对账号表与共享登录预算依赖，healthz 返回源码提交。没有新建外围系统。
@@ -31,13 +54,12 @@
 
 本机开发 PG 转发会在连接 reset 后短暂重连；这轮有一次测试初始化等待重连。套件只在初始化对 ECONNREFUSED/ECONNRESET 等待，最多 5 次；断言、事务故障注入和业务重试预算不自动重置。当前部署 API 通过集群 Service 接入数据库，不使用此开发转发。
 
-公共样本仍是独立测试数据。页面联调用受控程序提交 ABOUT/VIDEO，经真实 Ingest/PG 入库；它没有经过 fixturePlanWorkflow。已有 Temporal readiness Workflow 只验证 SDK/mTLS/Activity 可用。数据库 START/CANCEL 恢复测试仍使用启动适配器测试替身，不能据此宣称真实执行链恢复已通过。
+本节旧页面证据使用受控程序提交 ABOUT/VIDEO，旧 Temporal readiness 仅验证基础接入；这些证据边界仍保持。2026-09-24 新增的联合验收已使用实际 fixturePlanWorkflow、Worker、持久派发器和同一业务页面，结果在上节单独记录。固定样本依然不等于真实外部采集。
 
 ## 未完成及责任
 
-- **执行模块集成（MAIN-02/04/05）**：执行分支已开始编写 execution-client 和 execution-worker，当前仍是未提交工作，没有可集成的交付 SHA 或执行验收结果。主 Agent 仍负责审查合并、共享依赖/CI、运行配置和最终集成。
-- **真实执行恢复（MAIN-03/04/05）**：启动确认丢失、重复派发、实际取消传播、Worker 强杀重启、重复 Activity、有限预算、历史重放及同一业务回执联合验证尚未完成。
-- **完整链路追踪和页面验收**：HTTP 基础与现有日志/指标已接通；Temporal/Worker 的上下文传播、业务因果链及页面对应的同一 Workflow/Worker/Receipt 尚需执行模块交付。
+- **常驻运行与发布**：本轮是受控联合验收；执行 Worker、派发器的持久部署、短期令牌轮换和运行资源限额仍需接入。预览后端仍为上节已部署版本，尚未包含本轮修复。
+- **完整链路追踪**：页面已核对实际同一 Workflow/Worker/Receipt；HTTP 日志/指标已接通，但 Temporal/Activity 的 W3C 上下文传播仍未接入，不能宣称端到端 trace 已完整。
 - **Temporal namespace 授权**：已核验并确认缺口，当前证书不是限定到 M1 namespace 的身份。部署新的 namespace authorizer 必须统筹现有客户端，当前仅内部固定样本联调，不宣称生产租户隔离达标。
 - **生产验收**：容量/伸缩/背压压测、正式账号审计、业务级恢复演练尚未完成。真实采集、代理、API/Agent、分发和历史迁移属后续里程碑。
 

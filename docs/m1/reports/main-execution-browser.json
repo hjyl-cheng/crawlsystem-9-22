@@ -1,0 +1,21 @@
+{
+  "verified_at": "2026-09-24T05:30:35.472Z",
+  "scope": "Browser + real Control/PG reads of Temporal-produced facts; no driver-submitted fixtures",
+  "workspace_id": "main-joint-c0381ba8-e771-4f50-9ea7-d8429dee4924",
+  "completed_plan_id": "54e66e61-9084-4f3f-85be-66eea468fbad",
+  "cancelled_plan_id": "792e18a6-9d2d-4acc-8506-5cf7a7055f87",
+  "workflow_id": "m1/main-joint-c0381ba8-e771-4f50-9ea7-d8429dee4924/54e66e61-9084-4f3f-85be-66eea468fbad",
+  "worker_id": "main-worker-146cc71c-d86e-41ee-b660-4df2c3cbaca4",
+  "receipt_ids": [
+    "9f426b4f-ff8c-8d4a-b620-688317f61459",
+    "a9800f79-3162-878b-b798-41146abdc290"
+  ],
+  "checks": [
+    "real completed Plan",
+    "same Workflow identity",
+    "same Worker events",
+    "same APPLIED receipts",
+    "cancelled Plan with AGENT pending"
+  ],
+  "browser_errors": 0
+}

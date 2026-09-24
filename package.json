@@ -12,12 +12,17 @@
     "apps/*"
   ],
   "scripts": {
+    "check:safe": "bash scripts/dev/check-safe.sh",
     "typecheck": "tsc --noEmit",
     "test:contracts": "tsx --test packages/contracts/test/*.test.ts",
     "test:auth": "tsx --test apps/control-api/test/*.test.ts",
     "test:console": "npm run test --workspace @crawlsystem/console",
     "test:browser": "npm run test:browser --workspace @crawlsystem/console -- --workers=1",
     "build:console": "npm run build --workspace @crawlsystem/console",
+    "build:execution": "node --import tsx apps/execution-worker/scripts/build.ts",
+    "test:execution": "node --import tsx --test --test-concurrency=1 packages/execution-client/test/*.test.ts apps/execution-worker/test/*.test.ts",
+    "test:temporal": "node --import tsx --test --test-concurrency=1 apps/execution-worker/test/temporal.integration.ts",
+    "dev:worker": "node --import tsx apps/execution-worker/src/main.ts",
     "test:integration": "tsx --test --test-concurrency=1 tests/integration/*.test.ts",
     "migrate": "tsx scripts/dev/migrate.ts",
     "dev:control": "tsx apps/control-api/src/main.ts",

@@ -4,7 +4,7 @@
 
 ## 安装、构建和检查
 
-新 workspace 的根锁文件由主 Agent 集成时统一更新。当前执行分支可用 `npm install --package-lock=false --no-save` 建立本地依赖，不修改公共锁文件；主线锁文件纳入两个 workspace 后使用 `npm ci`。
+主线根锁文件已登记执行客户端和 Worker，使用 `npm ci` 安装固定版本；共享主机使用 `npm run check:safe -- install` 在临时资源限额内完成安装。模块分支同步主线锁文件后沿用同一安装方式。
 
 在仓库根目录依次运行，等待上一个命令退出：
 

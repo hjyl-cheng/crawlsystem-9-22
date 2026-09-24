@@ -1,6 +1,6 @@
 # M1 公共代码与集成基线
 
-接口版本：`m1.v1`。事实库迁移：`database/migrations/001_m1.sql`、`002_console_sessions_and_indexes.sql`；独立账号库：`database/console/001_console.sql`。已应用的迁移不可修改，迁移程序核对历史 SHA-256。当前已集成控制台与账号后端；Temporal SDK 接入通过，业务执行模块尚未交付，M1 尚未整体验收。具体提交和证据见 [主 Agent 报告](reports/main.md)。
+接口版本：`m1.v1`。事实库迁移：`database/migrations/001_m1.sql`、`002_console_sessions_and_indexes.sql`；独立账号库：`database/console/001_console.sql`。已应用的迁移不可修改，迁移程序核对历史 SHA-256。执行模块 `e07e955` 与控制台 `f6e3c8a` 已合入，真实固定样本恢复与页面联合验收通过；常驻执行部署、完整跨执行链追踪与生产验收仍待完成。具体证据见 [主 Agent 报告](reports/main.md)。
 
 ## 工程与职责
 
@@ -128,6 +128,26 @@ node --env-file=.runtime/main.env --import tsx scripts/dev/temporal-readiness.ts
 ```
 
 接入测试使用独立 readiness Workflow 和 task queue，仅核对 SDK/mTLS/Workflow/Activity。执行 Agent 当前可直接按已发布的 `WorkflowStarter`、`WorkflowInput`、API 与样本契约实施；不存在“尚未发布 G0”的前置阻碍。模块具体交接与未通过场景见 [执行集成交接](execution-integration-handoff.md)。
+
+## 2026-09-24 真实固定样本联合验收
+
+根锁文件已登记两个执行 workspace。共享基础设施宿主机使用以下有界命令，等前一项结束再运行；普通 CI 命令使用独立 runner。临时 scope 限额与故障记录见[五步推进清单](main-next-steps.md)。
+
+```bash
+npm run check:safe -- install
+npm run check:safe -- typecheck
+npm run check:safe -- unit
+npm run check:safe -- integration
+npm run check:safe -- execution-build
+npm run check:safe -- build-console
+node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-main-acceptance-env.ts
+npm run check:safe -- execution-live
+npm run check:safe -- execution-browser
+```
+
+环境生成器创建独立 `main-joint-*` workspace 身份和 1 小时令牌，私有 `.runtime/main-joint.env` 只供测试 supervisor，Worker 获得单独 allowlist；后端凭据不注入 Worker。测试缺少转发/API 时在临时 scope 内启动它们，退出时只关闭自身进程。保留真实测试事实、原回执和 Workflow 历史。故障派发器仅服务测试，生产仍使用 `dev:dispatcher`。
+
+`execution-live` 实际覆盖 start 成功但确认未入库时进程退出、原租约恢复、持久 CANCEL 重启传播、Worker 强杀/恢复及历史重放；`execution-browser` 使用刚生成的真实结果查询页面，不再由浏览器测试程序提交固定结果。常驻运行仍需配置执行进程资源上限、令牌轮换与发布方式。
 
 ## 2026-09-23 主线后续集成
 

@@ -15,6 +15,9 @@ jobs:
       - run: npm run test:auth
       - run: npm run test:http
       - run: npm run test:console
+      - run: npm run test:execution
+      - run: npm run build:execution
+      - run: npm run test:temporal
       - run: npm run build:console
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser

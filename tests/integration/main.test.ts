@@ -229,3 +229,30 @@ test('cancel during a claimed start waits for startup resolution and retries can
   await new IntentDispatcher(store,starter,t.worker.workspace_id).tick();assert.equal(cancels,2);
   assert.equal((await pool.query("SELECT state FROM m1.intents WHERE plan_id=$1 AND kind='CANCEL'",[t.plan.plan_id])).rows[0].state,'DONE');
 });
+test('cancel, expiry and failure before first dispatch settle without cancelling a nonexistent Workflow',async()=>{
+  for (const reason of ['cancel','expiry','failure'] as const) {
+    const t=await setup();let rpcCalls=0;
+    const starter:WorkflowStarter={start:async()=>{rpcCalls++;throw new Error('unexpected start');},cancel:async()=>{rpcCalls++;throw new Error('Workflow does not exist');}};
+    if(reason==='cancel')await store.cancel(t.operator,t.plan.plan_id,{command_id:randomUUID(),expected_version:1});
+    if(reason==='expiry')await pool.query("UPDATE m1.plans SET deadline_at=clock_timestamp()-interval '1 second' WHERE plan_id=$1",[t.plan.plan_id]);
+    if(reason==='failure')await store.event(t.worker,t.plan.plan_id,{event_id:randomUUID(),execution_epoch:1,worker_id:'worker',phase:'INPUT',kind:'FAILED',domain:null,message:'Input unavailable',error_code:'INPUT_MISMATCH'});
+    const dispatcher=new IntentDispatcher(store,starter,t.worker.workspace_id);
+    assert.equal(await dispatcher.tick(),true,reason);
+    assert.equal(await dispatcher.tick(),false,reason);
+    assert.equal(rpcCalls,0,reason);
+    const intents=(await pool.query('SELECT kind,state FROM m1.intents WHERE plan_id=$1 ORDER BY kind',[t.plan.plan_id])).rows;
+    assert.deepEqual(intents,[{kind:'CANCEL',state:'SKIPPED'},{kind:'START',state:'SKIPPED'}],reason);
+    assert.equal((await store.getInput(t.worker,t.plan.plan_id)).plan.status,reason==='cancel'?'CANCELLED':'FAILED');
+    await rejectsCode(()=>store.apply(t.worker,t.about),'STALE_EXECUTION');
+  }
+});
+test('an unacknowledged START must still be cancelled after its pending retry is skipped',async()=>{
+  const t=await setup();let starts=0,cancels=0;
+  const starter:WorkflowStarter={start:async()=>{starts++;throw new Error('start committed but acknowledgement lost');},cancel:async id=>{assert.equal(id,t.plan.workflow_id);cancels++;}};
+  const dispatcher=new IntentDispatcher(store,starter,t.worker.workspace_id);
+  await dispatcher.tick();
+  await store.cancel(t.operator,t.plan.plan_id,{command_id:randomUUID(),expected_version:1});
+  await dispatcher.tick();
+  assert.equal(starts,1);assert.equal(cancels,1);
+  assert.equal((await pool.query("SELECT state FROM m1.intents WHERE plan_id=$1 AND kind='CANCEL'",[t.plan.plan_id])).rows[0].state,'DONE');
+});
