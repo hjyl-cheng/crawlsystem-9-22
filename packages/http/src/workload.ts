@@ -13,7 +13,9 @@ export interface ReviewedWorkload { username:string; pod:string; node:string; }
 export type TokenReviewer=(token:string,audience:string)=>Promise<ReviewedWorkload|undefined>;
 export interface WorkloadIdentityOptions { reviewer:TokenReviewer; audience:string; serviceAccount:string; workspaceId:string; signingKey:Uint8Array; lifetimeSeconds?:number;
   /** Temporal namespace tokens: ServiceAccount → exact permissions it may receive. */
-  temporal?:{issuer:TemporalTokenIssuer; permissions:Record<string,string[]>}; }
+  temporal?:{issuer:TemporalTokenIssuer; permissions:Record<string,string[]>};
+  /** Proxy Manager DaemonSet: receives a `node` credential naming the server (TokenReview node). */
+  nodeServiceAccount?:string; }
 const ServiceAccountName=/^system:serviceaccount:[a-z0-9-]+:[a-z0-9-]+$/;
 
 const ServiceAccountToken=/^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/;
@@ -21,6 +23,7 @@ export class WorkloadIdentity {
   private active=0;
   readonly lifetime:number;
   constructor(private options:WorkloadIdentityOptions) {
+    if(options.nodeServiceAccount!==undefined&&(!ServiceAccountName.test(options.nodeServiceAccount)||options.nodeServiceAccount===options.serviceAccount)) throw new Error('Node service account must be a distinct system:serviceaccount:<namespace>:<name>');
     if(!ServiceAccountName.test(options.serviceAccount)) throw new Error('Workload service account must be system:serviceaccount:<namespace>:<name>');
     if(!/^[a-z0-9.-]{3,80}$/.test(options.audience)) throw new Error('Invalid workload token audience');
     IdSchema.parse(options.workspaceId);
@@ -44,8 +47,9 @@ export class WorkloadIdentity {
   }
   async exchange(header:string|undefined):Promise<{token:string;principal:Principal;server_id:string;expires_in:number}> {
     const reviewed=await this.review(header);
-    if(reviewed.username!==this.options.serviceAccount) throw new StoreError('FORBIDDEN','Workload is not an execution Worker',403);
-    const principal:Principal={subject:IdSchema.parse(reviewed.pod),workspace_id:this.options.workspaceId,role:'worker'};
+    const role=reviewed.username===this.options.serviceAccount?'worker':this.options.nodeServiceAccount&&reviewed.username===this.options.nodeServiceAccount?'node':undefined;
+    if(!role) throw new StoreError('FORBIDDEN','Workload is not an execution Worker or Proxy Manager',403);
+    const principal:Principal={subject:IdSchema.parse(reviewed.pod),workspace_id:this.options.workspaceId,role,server_id:IdSchema.parse(reviewed.node)};
     return {token:await issueToken(principal,this.options.signingKey,this.lifetime),principal,server_id:IdSchema.parse(reviewed.node),expires_in:this.lifetime};
   }
   /** Temporal token for a mapped ServiceAccount; subject records ServiceAccount and Pod for Temporal audit. */

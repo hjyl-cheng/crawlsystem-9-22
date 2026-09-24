@@ -15,9 +15,10 @@ export const YoutubeChannelIdSchema = z.string().regex(/^UC[A-Za-z0-9_-]{22}$/);
 export const YoutubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
 export const PlanStatusSchema = z.enum(['QUEUED', 'RUNNING', 'WAITING', 'COMPLETED', 'CANCELLED', 'FAILED']);
 export type PlanStatus = z.infer<typeof PlanStatusSchema>;
-export const RoleSchema = z.enum(['reader', 'operator', 'worker']);
+// node: a per-server Proxy Manager (DaemonSet); its credential names the server it runs on.
+export const RoleSchema = z.enum(['reader', 'operator', 'worker', 'node']);
 export type Role = z.infer<typeof RoleSchema>;
-export interface Principal { subject: string; workspace_id: string; role: Role; }
+export interface Principal { subject: string; workspace_id: string; role: Role; server_id?: string; }
 export const LoginSchema = z.strictObject({ username: z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_.-]+$/), password: z.string().min(1).max(256) });
 export type Login = z.infer<typeof LoginSchema>;
 export const LogoutSchema = z.strictObject({ ok: z.literal(true) });
@@ -219,7 +220,7 @@ export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSch
 // Kubernetes ServiceAccount token exchange: subject is the Pod, server_id the node reported by TokenReview.
 // Temporal namespace token for the gRPC Authorization header; permissions name one namespace and role.
 export const TemporalTokenSchema = z.strictObject({ token: z.string().min(20).max(4096), permissions: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}:(read|write|worker)$/)).min(1).max(4), expires_in: z.number().int().min(60).max(3600) });
-export const WorkloadTokenSchema = z.strictObject({ token: z.string().min(20).max(4096), subject: IdSchema, workspace_id: IdSchema, role: z.literal('worker'), server_id: IdSchema, expires_in: z.number().int().min(60).max(3600) });
+export const WorkloadTokenSchema = z.strictObject({ token: z.string().min(20).max(4096), subject: IdSchema, workspace_id: IdSchema, role: z.enum(['worker', 'node']), server_id: IdSchema, expires_in: z.number().int().min(60).max(3600) });
 export const ApiErrorSchema: z.ZodType<ApiError> = z.strictObject({ error: z.strictObject({ code: ErrorCodeSchema, message: z.string(), retryable: z.boolean(), correlation_id: z.string() }) });
 export const WorkflowInputSchema: z.ZodType<WorkflowInput> = z.strictObject({ schema_version: z.literal(CONTRACT_VERSION), plan_id: z.uuid(), workspace_id: IdSchema, execution_epoch: z.number().int().positive(), input_hash: Hash, workflow_id: z.string() });
 const Count = z.number().int().nonnegative();
@@ -256,7 +257,8 @@ export const ConsoleAccountListSchema: z.ZodType<ConsoleAccountList> = z.strictO
 export const pageSchema = <T extends z.ZodType>(item: T) => z.strictObject({ items: z.array(item).max(100), next_cursor: z.string().nullable() });
 export const ApiRoutes = {
   session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', consoleAccounts: '/v1/console/accounts', workers: '/v1/workers', errors: '/v1/errors',
-  heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', workloadToken: '/v1/workload/token', temporalToken: '/v1/workload/temporal-token',
+  heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', proxies: '/v1/proxies', proxyImport: '/v1/proxies/import', proxySync: '/v1/proxy-manager/sync',
+  proxy: (id: string) => `/v1/proxies/${encodeURIComponent(id)}`, workloadToken: '/v1/workload/token', temporalToken: '/v1/workload/temporal-token',
   plan: (id: string) => `/v1/plans/${encodeURIComponent(id)}`,
   input: (id: string) => `/v1/plans/${encodeURIComponent(id)}/input`,
   agentInput: (id: string) => `/v1/plans/${encodeURIComponent(id)}/agent-input`,
@@ -265,3 +267,64 @@ export const ApiRoutes = {
   receipt: (id: string) => `/v1/receipts/${encodeURIComponent(id)}`,
   channel: (id: string) => `/v1/channels/${encodeURIComponent(id)}`,
 } as const;
+
+// ---- Proxy Control (M2 step 2): central inventory and coarse assignment; the
+// node-local Proxy Manager does per-request selection, concurrency and cooldown.
+export const ProxyStateSchema = z.enum(['healthy', 'degraded', 'cooldown', 'failed', 'disabled', 'unassigned', 'unknown']);
+export type ProxyState = z.infer<typeof ProxyStateSchema>;
+const Host = z.string().min(1).max(253).regex(/^[A-Za-z0-9.:\[\]-]+$/);
+const GroupName = z.string().trim().min(1).max(80);
+/** Operator import row. Credentials are write-only: accepted here, never returned to the console. */
+export const ProxyImportEntrySchema = z.strictObject({
+  protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: z.number().int().min(1).max(65535),
+  username: z.string().min(1).max(256).nullable().default(null), password: z.string().min(1).max(512).nullable().default(null),
+  provider: GroupName, group: GroupName, country_code: z.string().regex(/^[A-Z]{2}$/).nullable().default(null),
+  kind: z.enum(['static', 'rotating']).default('static'), max_concurrency: z.number().int().min(1).max(64).default(2),
+});
+export const ProxyImportSchema = z.strictObject({ entries: z.array(ProxyImportEntrySchema).min(1).max(500) });
+export type ProxyImport = z.infer<typeof ProxyImportSchema>;
+export interface ProxyView {
+  proxy_id: string; protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; has_password: boolean;
+  provider: string; group: string; country_code: string | null; kind: 'static' | 'rotating'; max_concurrency: number; enabled: boolean; version: number;
+  server_id: string | null; state: ProxyState; cooldown_until: string | null; last_success_at: string | null; last_failure_at: string | null; last_error: string | null;
+  requests_today: number; failures_today: number; latency_ms: number | null; observed_at: string | null; created_at: string; updated_at: string;
+}
+export interface ProxyOverview {
+  observed_at: string; items: ProxyView[];
+  by_state: Record<ProxyState, number>; providers: { name: string; count: number; requests_today: number; failures_today: number }[];
+  groups: { name: string; count: number }[]; requests_today: number; failures_today: number;
+  availability_7d: { day: string; requests: number; failures: number }[];
+}
+const NullableTime = Timestamp.nullable();
+export const ProxyViewSchema: z.ZodType<ProxyView> = z.strictObject({
+  proxy_id: z.uuid(), protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: z.number().int(), username: z.string().nullable(), has_password: z.boolean(),
+  provider: z.string(), group: z.string(), country_code: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int(), enabled: z.boolean(), version: z.number().int().positive(),
+  server_id: IdSchema.nullable(), state: ProxyStateSchema, cooldown_until: NullableTime, last_success_at: NullableTime, last_failure_at: NullableTime, last_error: z.string().max(120).nullable(),
+  requests_today: z.number().int().nonnegative(), failures_today: z.number().int().nonnegative(), latency_ms: z.number().int().nonnegative().nullable(), observed_at: NullableTime, created_at: Timestamp, updated_at: Timestamp,
+});
+const Tally = z.number().int().nonnegative();
+export const ProxyOverviewSchema: z.ZodType<ProxyOverview> = z.strictObject({
+  observed_at: Timestamp, items: z.array(ProxyViewSchema).max(2000),
+  by_state: z.record(ProxyStateSchema, Tally) as z.ZodType<Record<ProxyState, number>>,
+  providers: z.array(z.strictObject({ name: z.string(), count: Tally, requests_today: Tally, failures_today: Tally })).max(200),
+  groups: z.array(z.strictObject({ name: z.string(), count: Tally })).max(200), requests_today: Tally, failures_today: Tally,
+  availability_7d: z.array(z.strictObject({ day: z.iso.date(), requests: Tally, failures: Tally })).max(7),
+});
+export const ProxyUpdateSchema = z.strictObject({ expected_version: z.number().int().positive(), enabled: z.boolean().optional(), server_id: IdSchema.nullable().optional() })
+  .refine(u => u.enabled !== undefined || u.server_id !== undefined, 'nothing to update');
+/** Proxy Manager sync: report observed state, receive this server's assignments (with credentials) and renewed leases. */
+export const ProxyObservationSchema = z.strictObject({
+  proxy_id: z.uuid(), generation: z.number().int().nonnegative(), state: z.enum(['healthy', 'degraded', 'cooldown', 'failed']),
+  cooldown_until: NullableTime, last_success_at: NullableTime, last_failure_at: NullableTime, last_error: z.string().max(120).nullable(),
+  requests_total: Tally, failures_total: Tally, latency_ms: z.number().int().nonnegative().max(600_000).nullable(),
+});
+export const ProxySyncRequestSchema = z.strictObject({
+  node_boot_id: z.string().regex(/^[A-Za-z0-9-]{8,64}$/), report_sequence: z.number().int().nonnegative(),
+  observed_at: Timestamp, observations: z.array(ProxyObservationSchema).max(500),
+});
+export type ProxySyncRequest = z.infer<typeof ProxySyncRequestSchema>;
+export interface ProxyAssignment { proxy_id: string; generation: number; protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null; kind: 'static' | 'rotating'; max_concurrency: number; }
+export interface ProxySyncResponse { server_id: string; lease_expires_at: string; assignments: ProxyAssignment[]; }
+export const ProxySyncResponseSchema: z.ZodType<ProxySyncResponse> = z.strictObject({ server_id: IdSchema, lease_expires_at: Timestamp, assignments: z.array(z.strictObject({
+  proxy_id: z.uuid(), generation: z.number().int().nonnegative(), protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: z.number().int(), username: z.string().nullable(),
+  password: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int() })).max(500) });

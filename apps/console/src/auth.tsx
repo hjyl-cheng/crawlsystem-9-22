@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       api = client(tokenMode ? token.trim() : '');
       const session = tokenMode ? await api.session(controller.signal) : await api.login({ username: username.trim(), password }, controller.signal);
-      if (session.role === 'worker') throw new ApiFailure('执行身份不能登录管理控制台，请使用只读或操作身份。', 403, 'FORBIDDEN');
+      if (session.role === 'worker' || session.role === 'node') throw new ApiFailure('执行或节点身份不能登录管理控制台，请使用只读或操作身份。', 403, 'FORBIDDEN');
       setToken(''); setPassword(''); setActive({ api, session });
     } catch (cause) {
       api?.dispose();

@@ -18,7 +18,7 @@ test('a reviewed Worker Pod receives a short worker token whose subject is the P
   const seen: string[] = [];
   const result = await identity(pod, seen).exchange(`Bearer ${saToken}`);
   assert.deepEqual(seen, [`crawlsystem-control:${saToken}`]);
-  assert.deepEqual(result.principal, { subject: 'execution-worker-0', workspace_id: 'm1-test', role: 'worker' });
+  assert.deepEqual(result.principal, { subject: 'execution-worker-0', workspace_id: 'm1-test', role: 'worker', server_id: 'a2' });
   assert.equal(result.server_id, 'a2'); assert.equal(result.expires_in, 600);
   assert.deepEqual(await authenticate(`Bearer ${result.token}`, key), result.principal);
 });
@@ -66,4 +66,15 @@ test('TokenReview accepts only authenticated, audience-bound Pod tokens', async 
     { authenticated: true, audiences: ['crawlsystem-control'], user: { username: serviceAccount } }])
     assert.equal(await reply(201, { status })('sa', 'crawlsystem-control'), undefined, 'legacy or wrong-audience tokens are not Worker identities');
   await assert.rejects(reply(403, {})('sa', 'crawlsystem-control'));
+});
+test('the Proxy Manager ServiceAccount gets a node credential naming its server; others are refused', async () => {
+  const nodeAccount = 'system:serviceaccount:crawler:proxy-manager';
+  const make = (username: string) => new WorkloadIdentity({ serviceAccount, nodeServiceAccount: nodeAccount, audience: 'crawlsystem-control', workspaceId: 'm1-test', signingKey: key,
+    reviewer: async () => ({ username, pod: 'proxy-manager-x7k2p', node: 's2' }) });
+  const node = await make(nodeAccount).exchange(`Bearer ${saToken}`);
+  assert.deepEqual(node.principal, { subject: 'proxy-manager-x7k2p', workspace_id: 'm1-test', role: 'node', server_id: 's2' });
+  assert.deepEqual(await authenticate(`Bearer ${node.token}`, key), node.principal, 'server_id survives the JWT round trip');
+  assert.equal((await make(serviceAccount).exchange(`Bearer ${saToken}`)).principal.role, 'worker');
+  await assert.rejects(make('system:serviceaccount:crawler:other').exchange(`Bearer ${saToken}`), { status: 403 });
+  assert.throws(() => new WorkloadIdentity({ serviceAccount, nodeServiceAccount: serviceAccount, audience: 'crawlsystem-control', workspaceId: 'w', signingKey: key, reviewer: async () => undefined }));
 });

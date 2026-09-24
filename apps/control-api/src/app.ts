@@ -4,10 +4,12 @@ import { requireRole, StoreError } from '@crawlsystem/store';
 import { createServer, pagination, planId, type ServerOptions } from '@crawlsystem/http';
 import { authenticate } from '@crawlsystem/http/auth';
 import type { WorkloadIdentity } from '@crawlsystem/http/workload';
+import type { ProxyStore } from '@crawlsystem/store/proxies';
 import { ConsoleAuth } from './console-auth.ts';
 
-export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; workloadIdentity?:WorkloadIdentity }) {
+export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore }) {
   const auth=options.consoleAuth,workload=options.workloadIdentity;
+  const proxies=()=>{if(!options.proxies) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Proxy Control is not configured',503);return options.proxies;};
   const app=createServer('control',{...options,authenticateRequest:async request=>{
     const path=request.url.split('?')[0];
     const publicAuth=request.method==='POST' && (path===ApiRoutes.login || path===ApiRoutes.logout);
@@ -60,6 +62,10 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.get(ApiRoutes.completeness,async request=>store.completeness(request.principal));
   app.get('/v1/channels/:id',async request=>store.getChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id));
   app.post('/v1/workers/heartbeat',async request=>store.heartbeat(request.principal,HeartbeatSchema.parse(request.body)));
+  app.get(ApiRoutes.proxies,async request=>proxies().overview(request.principal));
+  app.post(ApiRoutes.proxyImport,{bodyLimit:262144},async request=>proxies().importProxies(request.principal,request.body));
+  app.post('/v1/proxies/:id',async request=>proxies().update(request.principal,planId(request),request.body));
+  app.post(ApiRoutes.proxySync,{bodyLimit:262144},async request=>proxies().sync(request.principal,request.body));
   app.get('/v1/workers',async request=>{const q=pagination(request.query);return store.listWorkers(request.principal,q.limit,q.offset);});
   app.get('/v1/errors',async request=>{const q=pagination(request.query);return store.listErrors(request.principal,q.limit,q.offset);});
   return app;

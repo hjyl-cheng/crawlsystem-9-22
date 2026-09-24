@@ -11,7 +11,7 @@ export const errorCodeLabels: Record<ErrorCode, string> = {
   DOMAIN_INCOMPLETE: '领域未完整', DOMAIN_NOT_REQUIRED: '非必需领域', DEPENDENCY_NOT_IMPLEMENTED: '能力未接入',
   BUDGET_EXHAUSTED: '预算耗尽', UNAVAILABLE: '依赖不可用', INTERNAL_ERROR: '内部错误',
 };
-export const roleLabels: Record<Role, string> = { reader: '只读用户', operator: '操作员', worker: '执行身份' };
+export const roleLabels: Record<Role, string> = { reader: '只读用户', operator: '操作员', worker: '执行身份', node: '节点代理身份' };
 export const isTerminal = (plan: Plan) => ['COMPLETED', 'CANCELLED', 'FAILED'].includes(plan.status);
 export const time = (value?: string | number | null): string => value == null ? '尚未提供' : new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium', hour12: false }).format(new Date(value));
 export const number = (value?: number | null): string => value == null ? '未知' : new Intl.NumberFormat('zh-CN').format(value);
