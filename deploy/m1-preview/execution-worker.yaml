@@ -63,6 +63,9 @@ spec:
             - { name: WORKLOAD_IDENTITY_TOKEN_FILE, value: /var/run/secrets/crawlsystem/control-token }
             # Same projected token also yields the Temporal token (crawlsystem-m1-main:write).
             - { name: TEMPORAL_API_KEY_MODE, value: workload }
+            # Real YouTube collection: node-local proxy leases and the Data API key.
+            - { name: PROXY_MANAGER_URL, value: "http://proxy-manager.crawler.svc.cluster.local:18110" }
+            - { name: YOUTUBE_DATA_API_KEY_FILE, value: /youtube/key }
             - { name: TEMPORAL_ADDRESS, value: "temporal-frontend.temporal.svc.cluster.local:7233" }
             - { name: TEMPORAL_NAMESPACE, value: crawlsystem-m1-main }
             - { name: TEMPORAL_TASK_QUEUE, value: crawlsystem-m1-main }
@@ -74,6 +77,7 @@ spec:
             - { name: control-token, mountPath: /var/run/secrets/crawlsystem, readOnly: true }
             - { name: temporal, mountPath: /temporal, readOnly: true }
             - { name: tmp, mountPath: /tmp }
+            - { name: youtube, mountPath: /youtube, readOnly: true }
           resources:
             requests: { cpu: 50m, memory: 192Mi }
             limits: { cpu: "1", memory: 512Mi }
@@ -90,3 +94,5 @@ spec:
           secret: { secretName: temporal-client-worker, defaultMode: 0440 }
         - name: tmp
           emptyDir: { sizeLimit: 64Mi }
+        - name: youtube
+          secret: { secretName: youtube-data-api, defaultMode: 0440, items: [{ key: key, path: key }] }

@@ -18,6 +18,26 @@ export async function channelPlanWorkflow(ref: WorkflowInput): Promise<PlanWorkf
     if (['COMPLETED','CANCELLED','FAILED'].includes(descriptor.status)) return { plan_id: ref.plan_id, status: descriptor.status };
     const remaining = descriptor.deadlineAt - Date.now();
     if (remaining <= 0) return await cleanup.settleExecution(ref, 'BUDGET_EXHAUSTED');
+    if (descriptor.sourceMode === 'youtube') {
+      // Real collection: upstream and proxy trouble is common and transient, so retries back off
+      // for longer; every step re-reads its receipts, so a retry only redoes unfinished work.
+      const collector = proxyActivities<Activities>({
+        startToCloseTimeout: Math.min(10 * 60_000, remaining), scheduleToCloseTimeout: remaining, heartbeatTimeout: '30 seconds',
+        retry: { maximumAttempts: Math.max(descriptor.maxAttempts, 5), initialInterval: '5 seconds', backoffCoefficient: 2, maximumInterval: '2 minutes' },
+        cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+      });
+      const settled = (status: string) => ['COMPLETED', 'CANCELLED', 'FAILED'].includes(status);
+      let status = (await collector.collectAbout(ref, descriptor)).status;
+      if (!settled(status)) {
+        const targets = await collector.listTargets(ref, descriptor);
+        status = targets.status;
+        for (let index = 0; index < targets.batches && !settled(status); index++) status = (await collector.collectVideoBatch(ref, descriptor, index)).status;
+      }
+      if (settled(status) || !descriptor.requiresAgent) return { plan_id: ref.plan_id, status: status as PlanWorkflowResult['status'] };
+      await collector.awaitAgent(ref, descriptor);
+      await sleep(Math.max(1, descriptor.deadlineAt - Date.now()));
+      return await cleanup.settleExecution(ref, 'BUDGET_EXHAUSTED');
+    }
     const execution = proxyActivities<Activities>({
       startToCloseTimeout: Math.min(60_000, remaining), scheduleToCloseTimeout: remaining, heartbeatTimeout: '5 seconds',
       retry: { maximumAttempts: descriptor.maxAttempts, initialInterval: '1 second', maximumInterval: '5 seconds' },

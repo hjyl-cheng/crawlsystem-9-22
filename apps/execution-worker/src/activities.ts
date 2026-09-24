@@ -1,16 +1,31 @@
 import { randomUUID } from 'node:crypto';
 import { Context, heartbeat, CancelledFailure, ApplicationFailure } from '@temporalio/activity';
-import { contentHash, fixtureSubmission } from '@crawlsystem/contracts/hash';
+import { contentHash, fixtureSubmission, stableSubmissionId, submissionHash } from '@crawlsystem/contracts/hash';
 import { ExecutionApi, ExecutionApiError, checkReceipt } from '@crawlsystem/execution-client/http';
 import type { RequestTracing } from '@crawlsystem/http/tracing';
-import { type Domain, type ErrorCode, type ExecutionEvent, type PlanWorkflowResult, type PlanInput, type PlanStatus, type WorkflowInput } from '@crawlsystem/contracts';
+import { CONTRACT_VERSION, type Domain, type ErrorCode, type ExecutionEvent, type PlanWorkflowResult, type PlanInput, type PlanStatus, type Submission, type VideoItem, type WorkflowInput, type YoutubeFrozenInput } from '@crawlsystem/contracts';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { DataApi, DataApiError } from './youtube/data-api.ts';
+import { aboutPage, ScrapeError, session, shortsIds, topComments } from './youtube/scrape.ts';
+import { toChannelFacts, toVideoFacts, unavailableVideo } from './youtube/map.ts';
+import { LeaseClient, ProxyUnavailable, proxiedFetch, type Outcome } from './youtube/transport.ts';
 
-export interface ExecutionDescriptor { deadlineAt: number; maxAttempts: number; status: PlanStatus; }
+export interface ExecutionDescriptor { deadlineAt: number; maxAttempts: number; status: PlanStatus; sourceMode?: 'fixture' | 'youtube'; videoBatches?: number | null; requiresAgent?: boolean; }
+export const VIDEO_BATCH = 10;
 export interface ActivityOptions {
   api: ExecutionApi; workerId: string; workspaceId: string;
   enter: (planId: string) => () => void;
   log: (record: Record<string, unknown>) => void;
   tracing?: RequestTracing;
+  /** Real collection: Data API (direct, keyed) and this node's Proxy Manager (or 'direct' for local development only). */
+  youtube?: { dataApi: DataApi; proxies: LeaseClient | 'direct' };
+}
+/** Collector failures as execution errors: transient upstream/proxy trouble retries; missing targets and quota do not. */
+function collectorError(error: unknown): ExecutionApiError {
+  if (error instanceof ExecutionApiError) return error;
+  if (error instanceof DataApiError) return new ExecutionApiError(error.kind === 'quota' ? 'BUDGET_EXHAUSTED' : error.kind === 'not_found' ? 'NOT_FOUND' : error.kind === 'forbidden' ? 'FORBIDDEN' : error.kind === 'invalid' ? 'INVALID_REQUEST' : 'UNAVAILABLE', error.retryable);
+  if (error instanceof ScrapeError) return new ExecutionApiError(error.kind === 'not_found' ? 'NOT_FOUND' : 'UNAVAILABLE', error.kind !== 'not_found');
+  return new ExecutionApiError('INTERNAL_ERROR', false);
 }
 /** Per-Activity trace: opened once the plan's stored context is read, then sent on every call. */
 interface TraceScope { traceparent?: string; end?: (failed: boolean) => void; }
@@ -63,11 +78,119 @@ export function createActivities(options: ActivityOptions) {
     } finally { clearInterval(timer); scope.end?.(failed); leave(); }
   }
 
+  const submissionOf = (ref: WorkflowInput, domain: Domain, key: string, payload: unknown, domain_complete: boolean): Submission => {
+    const body = { schema_version: CONTRACT_VERSION, submission_id: stableSubmissionId(ref.plan_id, ref.execution_epoch, domain, key), plan_id: ref.plan_id,
+      execution_epoch: ref.execution_epoch, input_hash: ref.input_hash, logical_batch_key: key, domain_complete, domain, payload };
+    return { ...body, payload_hash: submissionHash(body as never) } as Submission;
+  };
+  const youtube = () => { if (!options.youtube) throw new ExecutionApiError('DEPENDENCY_NOT_IMPLEMENTED', false); return options.youtube; };
+  const youtubeInput = (value: PlanInput): YoutubeFrozenInput => { if (value.input.source_mode !== 'youtube') throw new ExecutionApiError('INPUT_MISMATCH', false); return value.input; };
+  /** Run scraping work through a leased proxy, waiting (visibly, within the deadline) while this node has none free. */
+  async function withProxy<T>(ref: WorkflowInput, scope: TraceScope, deadline: number, work: (fetcher: typeof fetch) => Promise<T>): Promise<T> {
+    const proxies = youtube().proxies;
+    if (proxies === 'direct') return work(fetch);
+    let announced = false;
+    for (;;) {
+      Context.current().cancellationSignal.throwIfAborted();
+      let lease;
+      try { lease = await proxies.acquire(); }
+      catch (error) {
+        if (!(error instanceof ProxyUnavailable)) throw error;
+        if (Date.now() + error.waitMs >= deadline) throw new ExecutionApiError('BUDGET_EXHAUSTED', false);
+        if (!announced) { announced = true; await event(ref, scope, 'WAITING', 'PROXY', `Waiting for a proxy on this node (${error.reason})`).catch(() => {}); }
+        await sleep(Math.min(error.waitMs, 30_000), undefined, { signal: Context.current().cancellationSignal });
+        continue;
+      }
+      const transport = proxiedFetch(lease.proxy_url), started = Date.now();
+      let outcome: Outcome = 'success', errorClass: string | undefined;
+      try { return await work(transport.fetch); }
+      catch (error) {
+        if (error instanceof ScrapeError && (error.kind === 'blocked' || error.kind === 'network')) { outcome = error.kind === 'blocked' ? 'blocked' : 'failure'; errorClass = `scrape_${error.kind}`; }
+        throw error;
+      } finally { await transport.close().catch(() => {}); await proxies.release(lease, outcome, Date.now() - started, errorClass); }
+    }
+  }
+  async function collect<T>(ref: WorkflowInput, phase: string, work: (scope: TraceScope) => Promise<T>): Promise<T> {
+    return activity(ref, phase, async scope => { try { return await work(scope); } catch (error) { throw collectorError(error); } });
+  }
+  const submitOnce = async (ref: WorkflowInput, value: PlanInput, submission: Submission, deadline: number) =>
+    value.receipts.some(r => r.submission_id === submission.submission_id) ? undefined : api.submit(submission, { deadline, signal: Context.current().cancellationSignal });
+
   return {
+    /** YouTube ABOUT: About page through a proxy plus exact counts from the Data API. */
+    async collectAbout(ref: WorkflowInput, descriptor: ExecutionDescriptor): Promise<PlanWorkflowResult> {
+      return collect(ref, 'ABOUT', async scope => {
+        const value = await read(ref, scope, descriptor.deadlineAt), input = youtubeInput(value);
+        const done = () => ({ plan_id: ref.plan_id, status: value.plan.status });
+        if (terminal(value.plan.status) || !input.required_domains.includes('ABOUT') || value.domains.find(d => d.domain === 'ABOUT')?.state === 'APPLIED') return done();
+        await event(ref, scope, 'STARTED', 'ABOUT', `Collecting channel ${input.channel_id}`, 'ABOUT');
+        const channel = await youtube().dataApi.channel(input.channel_id);
+        if (!channel) throw new ExecutionApiError('NOT_FOUND', false);
+        const about = await withProxy(ref, scope, descriptor.deadlineAt, async fetcher => aboutPage(await session(fetcher), input.channel_id));
+        const receipt = await submitOnce(ref, value, submissionOf(ref, 'ABOUT', 'about:channel', toChannelFacts(channel, about, new Date().toISOString()), true), descriptor.deadlineAt);
+        await event(ref, scope, 'PROGRESS', 'ABOUT', `APPLIED receipt=${receipt?.submission_id ?? 'existing'}`, 'ABOUT');
+        return { plan_id: ref.plan_id, status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
+      });
+    },
+    /** Freeze VIDEO targets once: newest uploads inside the frozen window and limit (Data API, exact publish times). */
+    async listTargets(ref: WorkflowInput, descriptor: ExecutionDescriptor): Promise<{ batches: number; status: PlanStatus }> {
+      return collect(ref, 'TARGETS', async scope => {
+        let value = await read(ref, scope, descriptor.deadlineAt);
+        const input = youtubeInput(value);
+        if (!input.required_domains.includes('VIDEO') || terminal(value.plan.status)) return { batches: 0, status: value.plan.status };
+        if (!value.video_targets) {
+          const windowStart = new Date(Date.parse(input.reference_time) - input.scope.max_age_days * 86_400_000).toISOString();
+          const listed = await youtube().dataApi.recentUploads(`UU${input.channel_id.slice(2)}`, windowStart, input.scope.video_limit);
+          const manifest = { kind: 'targets', channel_id: input.channel_id, video_ids: listed.ids, listed_at: new Date().toISOString(), window_start: windowStart, exhausted: listed.exhausted, source: 'data_api:playlistItems' };
+          await submitOnce(ref, value, submissionOf(ref, 'VIDEO', 'video:targets', manifest, listed.ids.length === 0), descriptor.deadlineAt);
+          await event(ref, scope, 'PROGRESS', 'TARGETS', `Frozen ${listed.ids.length} video targets since ${windowStart.slice(0, 10)}${listed.exhausted ? '' : ' (limit reached)'}`, 'VIDEO');
+          value = await read(ref, scope, descriptor.deadlineAt);
+        }
+        return { batches: Math.ceil((value.video_targets ?? []).length / VIDEO_BATCH), status: value.plan.status };
+      });
+    },
+    /** One batch of up to ten frozen targets: Data API facts, Shorts tab and Top comments through a proxy. */
+    async collectVideoBatch(ref: WorkflowInput, descriptor: ExecutionDescriptor, index: number): Promise<{ status: PlanStatus }> {
+      return collect(ref, 'VIDEO', async scope => {
+        const value = await read(ref, scope, descriptor.deadlineAt), input = youtubeInput(value);
+        const targets = value.video_targets ?? [], batch = targets.slice(index * VIDEO_BATCH, (index + 1) * VIDEO_BATCH);
+        const key = `video:batch:${index}`, last = (index + 1) * VIDEO_BATCH >= targets.length;
+        if (terminal(value.plan.status) || !batch.length || value.receipts.some(r => r.logical_batch_key === key)) return { status: value.plan.status };
+        const observed = new Date().toISOString();
+        const facts = await youtube().dataApi.videos(batch);
+        const byId = new Map(facts.map(v => [v.id, v]));
+        const items: VideoItem[] = await withProxy(ref, scope, descriptor.deadlineAt, async fetcher => {
+          const yt = await session(fetcher);
+          const shorts = await shortsIds(yt, input.channel_id).catch(() => null);
+          const out: VideoItem[] = [];
+          for (const id of batch) {
+            const api = byId.get(id);
+            if (!api || api.snippet.channelId !== input.channel_id) { out.push(unavailableVideo(input.channel_id, id, observed)); continue; }
+            const comments = input.scope.comments_per_video === 0 ? { kind: 'skipped' as const } : await topComments(yt, id, api.statistics?.commentCount === undefined);
+            out.push(toVideoFacts(api, shorts ? shorts.has(id) : null, comments, input.scope.comments_per_video, observed));
+            heartbeat({ plan_id: ref.plan_id, phase: 'VIDEO', done: out.length, of: batch.length });
+          }
+          return out;
+        });
+        const receipt = await submitOnce(ref, value, submissionOf(ref, 'VIDEO', key, { kind: 'videos', items }, last), descriptor.deadlineAt);
+        const missing = items.filter(i => 'unavailable' in i).length;
+        await event(ref, scope, 'PROGRESS', 'VIDEO', `Batch ${index + 1}/${Math.ceil(targets.length / VIDEO_BATCH)}: ${items.length - missing} videos${missing ? `, ${missing} unavailable` : ''}; receipt=${receipt?.submission_id ?? 'existing'}`, 'VIDEO');
+        return { status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
+      });
+    },
+    /** Until the Agent producer ships (M2 step 5), a plan requiring AGENT waits visibly. */
+    async awaitAgent(ref: WorkflowInput, descriptor: ExecutionDescriptor): Promise<PlanWorkflowResult> {
+      return activity(ref, 'AGENT', async scope => {
+        const value = await read(ref, scope, descriptor.deadlineAt);
+        if (!terminal(value.plan.status)) await event(ref, scope, 'WAITING', 'AGENT', 'Agent profiling is not deployed yet', 'AGENT', 'DEPENDENCY_NOT_IMPLEMENTED');
+        return { plan_id: ref.plan_id, status: value.plan.status };
+      });
+    },
     async loadExecution(ref: WorkflowInput): Promise<ExecutionDescriptor> {
       return activity(ref, 'INPUT', async scope => {
         const value = await read(ref, scope);
-        return { deadlineAt: Date.parse(value.input.deadline_at), maxAttempts: value.input.max_attempts, status: value.plan.status };
+        return { deadlineAt: Date.parse(value.input.deadline_at), maxAttempts: value.input.max_attempts, status: value.plan.status, sourceMode: value.input.source_mode,
+          requiresAgent: value.input.required_domains.includes('AGENT') };
       });
     },
     async executeFixture(ref: WorkflowInput, descriptor: ExecutionDescriptor): Promise<PlanWorkflowResult> {

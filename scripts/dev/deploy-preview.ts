@@ -64,6 +64,8 @@ putSecret('control','temporal-jwt-signing',{'signing.pem':Buffer.from(signing).t
 kubectl(['apply','-f','-'],JSON.stringify({apiVersion:'v1',kind:'ConfigMap',metadata:{name:'temporal-jwks',namespace:'temporal'},data:{'jwks.json':JSON.stringify(await temporalJwks(published))}}));
 // Proxy credential sealing key: generated once and kept; losing it makes stored proxy passwords unreadable.
 if(!existsSync('.runtime/proxy-credential.key'))writeFileSync('.runtime/proxy-credential.key',randomBytes(32).toString('base64')+'\n',{mode:0o600});
+if(!existsSync('.runtime/youtube-data-api-key'))throw new Error('.runtime/youtube-data-api-key is required for the collector');
+putSecret('crawler','youtube-data-api',{key:Buffer.from(readFileSync('.runtime/youtube-data-api-key','utf8').trim()).toString('base64')});
 putSecret('control','proxy-credential-key',{key:Buffer.from(readFileSync('.runtime/proxy-credential.key','utf8')).toString('base64')});
 step(`secrets ready: control/temporal-client-dispatcher, control/proxy-credential-key, crawler/temporal-client-worker, ingest/ingest-preview, Temporal signing key ${temporalKeyId(signing)}`);
 

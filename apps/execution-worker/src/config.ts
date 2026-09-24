@@ -22,5 +22,8 @@ export function workerConfig(env: NodeJS.ProcessEnv = process.env) {
     tokenFile, identityTokenFile, workerId: IdSchema.parse(required('WORKER_ID')), serverId: IdSchema.parse(required('SERVER_ID')),
     buildVersion, capacity: integer('WORKER_CAPACITY', 2, 1, 20), heartbeatMs: integer('WORKER_HEARTBEAT_MS', 20_000, 1000, 30_000),
     httpTimeoutMs: integer('WORKER_HTTP_TIMEOUT_MS', 5000, 100, 10_000), drainMs: integer('WORKER_DRAIN_MS', 15_000, 1000, 60_000),
+    // Real collection (optional): Data API key file, and the node-local Proxy Manager or explicit direct mode (development only).
+    youtubeKeyFile: env.YOUTUBE_DATA_API_KEY_FILE || undefined,
+    proxyManagerUrl: env.COLLECTOR_PROXY === 'direct' ? 'direct' as const : env.PROXY_MANAGER_URL ? validateApiUrl(env.PROXY_MANAGER_URL) : undefined,
   };
 }

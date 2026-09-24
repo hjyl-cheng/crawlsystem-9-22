@@ -12,6 +12,8 @@ import { fixtureContext } from './support.ts';
 import type { Activities } from '../src/activities.ts';
 
 Runtime.install({ logger: new DefaultLogger('ERROR') });
+const unexpected = () => { throw new Error('not used by fixture plans'); };
+const unusedCollector = { collectAbout: unexpected, listTargets: unexpected, collectVideoBatch: unexpected, awaitAgent: unexpected };
 test('Temporal SDK workflow coordination, waiting, retries, cancellation and history replay', { timeout: 180_000 }, async t => {
   const existing = process.env.EXECUTION_TEMPORAL_EXISTING === 'true';
   const options = existing ? temporalOptions() : undefined;
@@ -34,6 +36,7 @@ test('Temporal SDK workflow coordination, waiting, retries, cancellation and his
             return { plan_id: ref.plan_id, status: behavior === 'success' ? 'COMPLETED' : 'WAITING' };
           },
           settleExecution: async (_ref, failure) => { state.settlements++; return { plan_id: ref.plan_id, status: failure ? 'FAILED' : 'CANCELLED' }; },
+          ...unusedCollector,
         };
         const worker = await Worker.create({ connection: env.nativeConnection, namespace: env.namespace, taskQueue: queue, workflowBundle, activities,
           maxConcurrentActivityTaskExecutions: 2, maxConcurrentWorkflowTaskExecutions: 2, maxCachedWorkflows: 5,
@@ -72,5 +75,30 @@ test('Temporal SDK workflow coordination, waiting, retries, cancellation and his
     await scenario('unimplemented dependency waits until original deadline', async (_a, state) => { assert.equal(state.executions, 1); assert.equal(state.settlements, 1); }, 'waiting');
     await scenario('retryable Activity failure exhausts exactly three attempts', async (_a, state) => { assert.equal(state.executions, 3); assert.equal(state.settlements, 1); }, 'retry');
     await scenario('cancellation interrupts durable dependency wait', async (_a, state) => { assert.equal(state.executions, 1); assert.equal(state.settlements, 1); }, 'cancel');
+    await t.test('YouTube plan: About, frozen targets, each batch once with a retried failure, then completion', async () => {
+      const queue = `execution-sdk-${randomUUID()}`, { ref } = fixtureContext();
+      const calls: string[] = []; let failedOnce = false;
+      const deadline = await env.currentTimeMs() + 600_000;
+      const activities: Activities = {
+        loadExecution: async () => ({ deadlineAt: deadline, maxAttempts: 3, status: 'QUEUED', sourceMode: 'youtube', requiresAgent: false }),
+        executeFixture: unexpected, settleExecution: unexpected, awaitAgent: unexpected,
+        collectAbout: async () => { calls.push('about'); return { plan_id: ref.plan_id, status: 'RUNNING' }; },
+        listTargets: async () => { calls.push('targets'); return { batches: 3, status: 'RUNNING' }; },
+        collectVideoBatch: async (_ref, _d, index) => {
+          calls.push(`batch${index}`);
+          if (index === 1 && !failedOnce) { failedOnce = true; throw ApplicationFailure.create({ message: 'proxy failure', type: 'UNAVAILABLE' }); }
+          return { status: index === 2 ? 'COMPLETED' : 'RUNNING' };
+        },
+      };
+      const worker = await Worker.create({ connection: env.nativeConnection, namespace: env.namespace, taskQueue: queue, workflowBundle, activities,
+        maxConcurrentActivityTaskExecutions: 2, maxCachedWorkflows: 5, shutdownGraceTime: '1 second' });
+      await worker.runUntil(async () => {
+        await workflowStarter(env.client, queue).start(ref);
+        const handle = env.client.workflow.getHandle(ref.workflow_id);
+        assert.equal((await handle.result() as { status: string }).status, 'COMPLETED');
+        assert.deepEqual(calls, ['about', 'targets', 'batch0', 'batch1', 'batch1', 'batch2']);
+        await Worker.runReplayHistory({ workflowBundle }, await handle.fetchHistory());
+      });
+    });
   } finally { await env.teardown(); }
 });

@@ -13,8 +13,17 @@
     "test:live-local": "bash scripts/check-safe.sh live-local"
   },
   "dependencies": {
-    "@crawlsystem/contracts": "0.1.0", "@crawlsystem/execution-client": "0.1.0",
-    "@temporalio/activity": "1.24.0", "@temporalio/common": "1.24.0", "@temporalio/worker": "1.24.0", "@temporalio/workflow": "1.24.0"
+    "@crawlsystem/contracts": "0.1.0",
+    "@crawlsystem/execution-client": "0.1.0",
+    "@temporalio/activity": "1.24.0",
+    "@temporalio/common": "1.24.0",
+    "@temporalio/worker": "1.24.0",
+    "@temporalio/workflow": "1.24.0",
+    "undici": "8.11.2",
+    "youtubei.js": "18.1.0"
   },
-  "devDependencies": { "@temporalio/testing": "1.24.0", "@temporalio/client": "1.24.0" }
+  "devDependencies": {
+    "@temporalio/client": "1.24.0",
+    "@temporalio/testing": "1.24.0"
+  }
 }

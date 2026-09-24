@@ -5,6 +5,8 @@ import { NativeConnection, Worker, Runtime, DefaultLogger } from '@temporalio/wo
 import { ExecutionApi, workloadTokenSource } from '@crawlsystem/execution-client/http';
 import { RequestTracing } from '@crawlsystem/http/tracing';
 import { createActivities } from './activities.ts';
+import { DataApi } from './youtube/data-api.ts';
+import { LeaseClient } from './youtube/transport.ts';
 import { workerConfig } from './config.ts';
 import { refreshTemporalApiKey, watchTlsFiles } from '@crawlsystem/execution-client/config';
 
@@ -45,6 +47,7 @@ try {
     // Prebuild once; each replacement process loads the same bundle without webpack.
     workflowBundle: { codePath: fileURLToPath(new URL('../dist/workflow-bundle.cjs', import.meta.url)) },
     activities: createActivities({ api, workerId: config.workerId, workspaceId: session.workspace_id, log, tracing,
+      youtube: config.youtubeKeyFile && config.proxyManagerUrl ? { dataApi: new DataApi((await readFile(config.youtubeKeyFile, 'utf8')).trim()), proxies: config.proxyManagerUrl === 'direct' ? 'direct' : new LeaseClient(config.proxyManagerUrl) } : undefined,
       enter(planId) { running.set(planId, (running.get(planId) ?? 0) + 1); return () => { const count = running.get(planId)! - 1; if (count) running.set(planId, count); else running.delete(planId); }; },
     }),
     maxConcurrentActivityTaskExecutions: config.capacity, maxConcurrentWorkflowTaskExecutions: config.capacity + 2,
