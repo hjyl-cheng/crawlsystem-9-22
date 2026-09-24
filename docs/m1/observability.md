@@ -19,4 +19,19 @@ python3 scripts/dev/configure-preview-monitoring.py --apply
 
 脚本保留其他 scrape job，以 resourceVersion 拒绝并发覆盖；先用现有 promtool 验证，再等待配置投影并向现有 Prometheus 发送 SIGHUP。实际 targets 和 Loki 查询结果必须另外留档，配置语法通过不能替代采集成功。
 
-待执行模块交付后，需要把 Trace Context 经 Temporal 客户端/Workflow/Activity 传递到执行 HTTP 调用，并验收同一业务链；当前只有 HTTP 层的规范接入和日志输出，不等于完整分布式追踪。Worker 可使用公共 `@crawlsystem/http/tracing`，禁止在 Workflow 确定性代码内直接调用 Node SDK。
+## 跨 Temporal 的业务链追踪（2026-09-24）
+
+`POST /v1/plans` 把本次 Control 服务端 span 的 `traceparent` 写入 `m1.plans.trace_context`（迁移 003，格式受 CHECK 约束；无效值不写入，也不影响创建）。之后的链路都从数据库读取这个上下文，而不是经过 Temporal header，因此不改动冻结的 Workflow 输入，派发器或 Worker 重启后也能接上同一条链：
+
+```text
+Control POST /v1/plans (server span)
+  ├─ intent-dispatcher: "temporal start" / "temporal cancel"（intent 上带 trace_context）
+  └─ execution-worker: "activity <类型>"（Activity 首次读取输入后开启）
+       └─ Control / Ingest server spans（Worker 请求携带 traceparent）
+```
+
+- 每个 Activity 的第一次输入读取发生在拿到上下文之前，这一次请求不在链上；其后的输入、事件、回执查询和提交请求全部带 Activity span 的 `traceparent`。
+- 采样沿用父上下文标志：创建请求被采样时整条链都输出；未采样时下游也不输出（`TRACE_SAMPLE_RATIO` 仅决定无父上下文时的根采样）。
+- 派发器和 Worker 的 span 同样以 `event=trace_span` 写入 stdout，由现有 Alloy → Loki 收集；查询方式与 HTTP 相同，按 `trace_id` 过滤即可看到 Control、派发器、Worker、Ingest 四个服务的记录。
+- span 只含 plan_id、Activity 类型、重试次数和 Worker ID；不记录输入内容、回执正文、令牌或错误原文。
+- Workflow 确定性代码内不创建 span；Temporal 服务端自身的调度耗时不在链上，需要时从 Temporal 历史查看。

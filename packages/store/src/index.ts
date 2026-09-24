@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
-import { CONTRACT_VERSION, WORKER_STALE_SECONDS, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
+import { CONTRACT_VERSION, WORKER_STALE_SECONDS, TraceparentSchema, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
   type Principal, type Role, type ErrorCode, type Plan, type PlanInput, type PlanDetail, type Domain, type DomainResult, type FrozenInput, type CreatePlan, type Submission, type Receipt,
   type Page, type Completeness, type PlansSummary, type PlanStatus, type ChannelSummary, type ChannelListItem, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput } from '@crawlsystem/contracts';
 import { contentHash, submissionHash } from '@crawlsystem/contracts/hash';
@@ -21,7 +21,7 @@ export function toPlan(row: QueryResultRow): Plan {
 }
 function page<T>(rows: T[], limit: number, offset: number): Page<T> { return { items: rows.slice(0, limit), next_cursor: rows.length > limit ? String(offset + limit) : null }; }
 const terminal = (status: string) => ['COMPLETED','CANCELLED','FAILED'].includes(status);
-export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; }
+export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; trace_context?: string; }
 
 export class Store {
   constructor(public readonly pool: Pool) {}
@@ -52,17 +52,18 @@ export class Store {
     if (!result.rowCount) throw new StoreError('NOT_FOUND', 'Plan not found', 404);
     return result.rows[0]!;
   }
-  async createPlan(principal: Principal, raw: CreatePlan): Promise<Plan> {
+  async createPlan(principal: Principal, raw: CreatePlan, traceContext?: string): Promise<Plan> {
     requireRole(principal, 'operator');
     const input = CreatePlanSchema.parse(raw);
+    const trace = TraceparentSchema.safeParse(traceContext).success ? traceContext! : null;
     const requestHash = contentHash(input);
     const planId = randomUUID();
     const deadline = new Date(Date.now() + 30 * 60_000).toISOString();
     const frozen = createFrozenFixture(input.required_domains, deadline);
     return this.tx(async client => {
-      const inserted = await client.query(`INSERT INTO m1.plans(plan_id,run_id,workspace_id,request_id,request_hash,channel_id,source_mode,fixture_id,required_domains,status,frozen_input,input_hash,workflow_id,deadline_at)
-        VALUES($1,$2,$3,$4,$5,$6,'fixture',$7,$8,'QUEUED',$9,$10,$11,$12) ON CONFLICT(workspace_id,request_id) DO NOTHING RETURNING *`,
-        [planId, randomUUID(), principal.workspace_id, input.request_id, requestHash, frozen.channel_id, input.fixture_id, input.required_domains, frozen, contentHash(frozen), `m1/${principal.workspace_id}/${planId}`, deadline]);
+      const inserted = await client.query(`INSERT INTO m1.plans(plan_id,run_id,workspace_id,request_id,request_hash,channel_id,source_mode,fixture_id,required_domains,status,frozen_input,input_hash,workflow_id,deadline_at,trace_context)
+        VALUES($1,$2,$3,$4,$5,$6,'fixture',$7,$8,'QUEUED',$9,$10,$11,$12,$13) ON CONFLICT(workspace_id,request_id) DO NOTHING RETURNING *`,
+        [planId, randomUUID(), principal.workspace_id, input.request_id, requestHash, frozen.channel_id, input.fixture_id, input.required_domains, frozen, contentHash(frozen), `m1/${principal.workspace_id}/${planId}`, deadline, trace]);
       if (!inserted.rowCount) {
         const old = (await client.query('SELECT * FROM m1.plans WHERE workspace_id=$1 AND request_id=$2', [principal.workspace_id, input.request_id])).rows[0]!;
         if (old.request_hash !== requestHash) throw new StoreError('CONFLICT', 'Creation identity has different input');
@@ -88,7 +89,7 @@ export class Store {
       const domains = await client.query('SELECT domain,state,completed_at FROM m1.domains WHERE plan_id=$1 ORDER BY domain', [id]);
       const receipts = await client.query('SELECT receipt FROM m1.receipts WHERE plan_id=$1 ORDER BY applied_at LIMIT 300', [id]);
       await client.query('COMMIT');
-      return {plan:toPlan(row), input:row.frozen_input as FrozenInput, domains:domains.rows.map(r => ({domain:r.domain,state:r.state,completed_at:r.completed_at ? iso(r.completed_at) : null} as DomainResult)), receipts:receipts.rows.map(r => r.receipt as Receipt)};
+      return {plan:toPlan(row), input:row.frozen_input as FrozenInput, domains:domains.rows.map(r => ({domain:r.domain,state:r.state,completed_at:r.completed_at ? iso(r.completed_at) : null} as DomainResult)), receipts:receipts.rows.map(r => r.receipt as Receipt),...(row.trace_context ? {trace_context:row.trace_context as string} : {})};
     } catch(error) {
       discard = /connection|timeout/i.test((error as Error).message) || /^08/.test((error as {code?:string}).code ?? '');
       if (!discard) await client.query('ROLLBACK').catch(() => {discard=true;});
@@ -273,7 +274,7 @@ export class Store {
         SELECT 1 FROM m1.intents s WHERE s.plan_id=p.plan_id AND s.kind='START'
         AND s.state='SKIPPED' AND s.attempts=0 AND s.workflow_run_id IS NULL
       ) AS start_never_dispatched FROM m1.plans p WHERE p.plan_id=$1`,[intent.plan_id])).rows[0]!;
-      return {intent_id:intent.intent_id,plan_id:intent.plan_id,kind:intent.kind,lease_token:token,attempts:intent.attempts,plan_status:row.status,deadline_at:iso(row.deadline_at),start_never_dispatched:row.start_never_dispatched,
+      return {intent_id:intent.intent_id,plan_id:intent.plan_id,kind:intent.kind,lease_token:token,attempts:intent.attempts,plan_status:row.status,deadline_at:iso(row.deadline_at),start_never_dispatched:row.start_never_dispatched,...(row.trace_context ? {trace_context:row.trace_context as string} : {}),
         input:{schema_version:CONTRACT_VERSION,plan_id:row.plan_id,workspace_id:row.workspace_id,execution_epoch:row.execution_epoch,input_hash:row.input_hash,workflow_id:row.workflow_id}};
     });
   }

@@ -53,3 +53,26 @@ test('transient Ingest failure is classified and correlated without resetting in
   assert.equal((await run(new MockActivityEnvironment({ attempt: 2 }), () => f.activities.executeFixture(f.ref, descriptor))).status, 'COMPLETED');
   assert.deepEqual(f.backend.submissions[0], f.backend.submissions[2]);
 });
+test('Activity continues the stored plan trace on every Control/Ingest call after reading input', async () => {
+  const { InMemorySpanExporter } = await import('@opentelemetry/sdk-trace-base');
+  const { RequestTracing } = await import('@crawlsystem/http/tracing');
+  const { value, ref } = fixtureContext(), backend = fixtureApi(value), traceId = '4bf92f3577b34da6a3ce929d0e0e4736';
+  value.trace_context = `00-${traceId}-00f067aa0ba902b7-01`;
+  const headers: (string | null)[] = [];
+  const fetcher: typeof fetch = async (url, init) => { headers.push(new Headers(init?.headers).get('traceparent')); return backend.fetcher(url, init); };
+  const exporter = new InMemorySpanExporter(), tracing = new RequestTracing('worker-test', () => {}, 0, exporter);
+  const api = new ExecutionApi({ controlUrl: 'http://localhost:1', ingestUrl: 'http://localhost:2', token: async () => 'test', fetch: fetcher });
+  const activities = createActivities({ api, workerId: 'worker-test', workspaceId: ref.workspace_id, enter: () => () => {}, log: () => {}, tracing });
+  const env = new MockActivityEnvironment({ activityType: 'executeFixture' } as never);
+  const descriptor = await run(env, () => activities.loadExecution(ref));
+  assert.equal((await run(env, () => activities.executeFixture(ref, descriptor))).status, 'COMPLETED');
+  await tracing.flush();
+  const spans = exporter.getFinishedSpans();
+  assert.equal(spans.length, 2, 'one span per Activity execution');
+  for (const span of spans) { assert.equal(span.spanContext().traceId, traceId); assert.equal(span.parentSpanContext?.spanId, '00f067aa0ba902b7'); }
+  // Each Activity's first input read precedes the known context; every later call carries its span.
+  const traced = headers.filter(header => header !== null);
+  assert.equal(headers.length - traced.length, 2);
+  assert.ok(traced.length > 3 && traced.every(header => header.startsWith(`00-${traceId}-`)));
+  await tracing.close();
+});

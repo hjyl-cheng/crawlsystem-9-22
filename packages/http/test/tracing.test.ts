@@ -35,3 +35,12 @@ test('invalid parents are replaced and simultaneous requests keep independent tr
     for(const span of exporter.getFinishedSpans())assert.equal(span.parentSpanContext,undefined);
   } finally {await app.close();}
 });
+test('child spans continue a stored context and start a fresh trace without one',async()=>{
+  const exporter=new InMemorySpanExporter(),tracing=new RequestTracing('test',()=>{},1,exporter);
+  const continued=tracing.child(`00-${traceId}-${parentId}-01`,'activity executeFixture',{'business.plan_id':'p'});
+  assert.match(continued.traceparent,new RegExp(`^00-${traceId}-[a-f0-9]{16}-01$`));continued.end();
+  const fresh=tracing.child(undefined,'temporal start');assert.doesNotMatch(fresh.traceparent,new RegExp(traceId));fresh.end(true);
+  await tracing.flush();const [a,b]=exporter.getFinishedSpans();
+  assert.equal(a!.parentSpanContext?.spanId,parentId);assert.equal(b!.parentSpanContext,undefined);assert.equal(b!.status.code,2);
+  await tracing.close();
+});

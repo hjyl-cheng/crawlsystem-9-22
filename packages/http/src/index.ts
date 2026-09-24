@@ -7,7 +7,7 @@ import { Store, StoreError } from '@crawlsystem/store';
 import { authenticate } from './auth.ts';
 import { RequestTracing } from './tracing.ts';
 
-declare module 'fastify' { interface FastifyRequest { principal:Principal; } }
+declare module 'fastify' { interface FastifyRequest { principal:Principal; traceparent?:string; } }
 export interface ServerOptions { store:Store; signingKey:Uint8Array; logger?:boolean; allowedOrigin?:string; maxInFlight?:number; metricsWorkspace?:string; tracing?:RequestTracing; readiness?:()=>Promise<void>; authenticateRequest?:(request:FastifyRequest)=>Promise<Principal|undefined>; }
 export function pagination(query:unknown): {limit:number;offset:number;status?:string} {
   const q=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(20),cursor:z.string().regex(/^\d{1,6}$/).default('0'),status:PlanStatusSchema.optional()}).parse(query);
@@ -19,6 +19,7 @@ export function createServer(service:'control'|'ingest',options:ServerOptions):F
   const app=Fastify({bodyLimit:MAX_BODY_BYTES,requestTimeout:15000,connectionTimeout:15000,keepAliveTimeout:5000,routerOptions:{maxParamLength:200},
     genReqId:()=>randomUUID(),logController:new LogController({disableRequestLogging:true}),logger:options.logger ?? false});
   app.decorateRequest('principal');
+  app.decorateRequest('traceparent');
   const tracing=options.tracing??new RequestTracing(service,record=>app.log.info(record,'trace span'),Number(process.env.TRACE_SAMPLE_RATIO??'0.1'));
   const traces=new WeakMap<FastifyRequest,ReturnType<RequestTracing['start']>>();
   const ended=new WeakSet<FastifyRequest>();
@@ -32,7 +33,7 @@ export function createServer(service:'control'|'ingest',options:ServerOptions):F
     starts.set(request,performance.now());
     const route=request.routeOptions.url??'unmatched';
     const current=tracing.start(request.headers,request.routeOptions.method?.toString()??'UNKNOWN',route,request.id);traces.set(request,current);
-    reply.header('traceparent',current.traceparent);
+    reply.header('traceparent',current.traceparent);request.traceparent=current.traceparent;
     reply.raw.once('close',()=>endTrace(request,reply.raw.writableFinished?reply.statusCode:499));
     reply.header('x-request-id',request.id).header('cache-control','no-store').header('x-content-type-options','nosniff');
     const origin=request.headers.origin;

@@ -36,6 +36,15 @@ export class RequestTracing {
     propagator.inject(trace.setSpan(ROOT_CONTEXT,span),outgoing,{set:(carrier,key,value)=>{carrier[key]=value;}});
     return {span,traceparent:outgoing.traceparent!};
   }
+  /** Internal/client span continuing a stored W3C context (dispatcher, Worker Activity).
+   * Its traceparent is sent on outgoing HTTP calls so server spans join the same trace. */
+  child(parent:string|undefined,name:string,attributes:Record<string,string|number>={},kind:SpanKind=SpanKind.INTERNAL){
+    const context=parent?propagator.extract(ROOT_CONTEXT,{traceparent:parent},getter):ROOT_CONTEXT;
+    const span=this.tracer.startSpan(name,{kind,attributes},context);
+    const outgoing:Record<string,string>={};
+    propagator.inject(trace.setSpan(ROOT_CONTEXT,span),outgoing,{set:(carrier,key,value)=>{carrier[key]=value;}});
+    return {span,traceparent:outgoing.traceparent!,end:(failed=false)=>{if(failed)span.setStatus({code:SpanStatusCode.ERROR});span.end();}};
+  }
   finish(span:Span,status:number){span.setAttribute('http.response.status_code',status);if(status>=500)span.setStatus({code:SpanStatusCode.ERROR});span.end();}
   async flush(){await this.provider.forceFlush();}
   async close(){await this.provider.shutdown();}

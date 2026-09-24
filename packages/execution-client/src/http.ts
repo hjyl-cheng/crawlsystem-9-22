@@ -9,7 +9,7 @@ export class ExecutionApiError extends Error {
     super(`Execution API: ${code}`); this.name = 'ExecutionApiError';
   }
 }
-export interface RequestBudget { signal?: AbortSignal; deadline?: number; attempts?: 1 | 2; }
+export interface RequestBudget { signal?: AbortSignal; deadline?: number; attempts?: 1 | 2; traceparent?: string; }
 export interface ApiOptions { controlUrl: string; ingestUrl: string; token: () => Promise<string>; timeoutMs?: number; fetch?: typeof fetch; }
 export function validateApiUrl(raw: string): string {
   const url = new URL(raw);
@@ -79,7 +79,7 @@ export class ExecutionApi {
         const token = (await this.options.token()).trim();
         if (!token || /\s/.test(token)) throw new ExecutionApiError('UNAUTHENTICATED', false);
         const response = await this.fetcher(new URL(path, base), { method: serialized === undefined ? 'GET' : 'POST', redirect: 'error',
-          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: serialized, signal });
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(budget.traceparent && /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/.test(budget.traceparent) ? { traceparent: budget.traceparent } : {}) }, body: serialized, signal });
         let size = 0;
         const chunks: Uint8Array[] = [];
         if (response.body) {

@@ -3,11 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { NativeConnection, Worker, Runtime, DefaultLogger } from '@temporalio/worker';
 import { ExecutionApi, workloadTokenSource } from '@crawlsystem/execution-client/http';
+import { RequestTracing } from '@crawlsystem/http/tracing';
 import { createActivities } from './activities.ts';
 import { workerConfig } from './config.ts';
 import { watchTlsFiles } from '@crawlsystem/execution-client/config';
 
 const config = workerConfig();
+const tracing = new RequestTracing('execution-worker', record => log(record), Number(process.env.TRACE_SAMPLE_RATIO ?? '0.1'));
 const log = (record: Record<string, unknown>) => process.stdout.write(`${JSON.stringify({ time: new Date().toISOString(), ...record })}\n`);
 // SDK messages may contain endpoints or user payloads. Emit only a bounded category.
 Runtime.install({ logger: new DefaultLogger('WARN', entry => log({ source: 'temporal', level: entry.level, message: 'Temporal SDK diagnostic; inspect secured service logs' })) });
@@ -39,7 +41,7 @@ try {
     identity: config.workerId, buildId: config.buildVersion,
     // Prebuild once; each replacement process loads the same bundle without webpack.
     workflowBundle: { codePath: fileURLToPath(new URL('../dist/workflow-bundle.cjs', import.meta.url)) },
-    activities: createActivities({ api, workerId: config.workerId, workspaceId: session.workspace_id, log,
+    activities: createActivities({ api, workerId: config.workerId, workspaceId: session.workspace_id, log, tracing,
       enter(planId) { running.set(planId, (running.get(planId) ?? 0) + 1); return () => { const count = running.get(planId)! - 1; if (count) running.set(planId, count); else running.delete(planId); }; },
     }),
     maxConcurrentActivityTaskExecutions: config.capacity, maxConcurrentWorkflowTaskExecutions: config.capacity + 2,
@@ -64,6 +66,7 @@ try {
   heartbeatStop.abort();
   await heartbeatLoop;
   await report().catch(() => {});
+  await tracing.close();
   await connection.close();
   unwatch();
   process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop);

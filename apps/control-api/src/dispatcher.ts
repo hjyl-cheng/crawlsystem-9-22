@@ -1,12 +1,16 @@
 import type { WorkflowStarter } from '@crawlsystem/contracts';
 import { Store } from '@crawlsystem/store';
+import type { RequestTracing } from '@crawlsystem/http/tracing';
 
 export class IntentDispatcher {
-  constructor(private store:Store,private starter:WorkflowStarter,private workspaceId:string) {}
+  constructor(private store:Store,private starter:WorkflowStarter,private workspaceId:string,private tracing?:RequestTracing) {}
   async tick():Promise<boolean> {
     await this.store.expirePlans(20,this.workspaceId);
     const intent=await this.store.claimIntent(30,this.workspaceId);
     if(!intent) return false;
+    // Continues the trace of the request that created the plan (diagnostic only).
+    const span=this.tracing?.child(intent.trace_context,`temporal ${intent.kind.toLowerCase()}`,{'business.plan_id':intent.plan_id,'intent.attempt':intent.attempts});
+    let failed=false;
     try {
       if(intent.kind==='START') {
         if(['COMPLETED','FAILED','CANCELLED'].includes(intent.plan_status)||Date.parse(intent.deadline_at)<=Date.now()) {
@@ -23,9 +27,10 @@ export class IntentDispatcher {
         await this.store.finishIntent(intent,'DONE');
       }
     } catch {
+      failed=true;
       // Do not retain arbitrary SDK errors, which can contain endpoints or credentials.
       await this.store.retryIntent(intent,'Temporal operation not acknowledged; retry stable workflow identity');
-    }
+    } finally {span?.end(failed);}
     return true;
   }
 }

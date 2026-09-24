@@ -256,3 +256,24 @@ test('an unacknowledged START must still be cancelled after its pending retry is
   assert.equal(starts,1);assert.equal(cancels,1);
   assert.equal((await pool.query("SELECT state FROM m1.intents WHERE plan_id=$1 AND kind='CANCEL'",[t.plan.plan_id])).rows[0].state,'DONE');
 });
+test('the creating request trace continues through the durable intent, dispatch span and Worker input',async()=>{
+  const {InMemorySpanExporter}=await import('@opentelemetry/sdk-trace-base');
+  const {RequestTracing}=await import('@crawlsystem/http/tracing');
+  const people=identities(),traceId='0af7651916cd43dd8448eb211c80319c';
+  const created=await control.inject({method:'POST',url:'/v1/plans',headers:{...await auth(people.operator),traceparent:`00-${traceId}-b7ad6b7169203331-01`},payload:{request_id:randomUUID(),fixture_id:'channel-basic-v1'}});
+  assert.equal(created.statusCode,200);const plan=PlanSchema.parse(created.json());
+  const stored=(await store.getInput(people.worker,plan.plan_id)).trace_context!;
+  assert.equal(stored,created.headers.traceparent,'the Control server span is the parent of later execution work');
+  assert.match(stored,new RegExp(`^00-${traceId}-`));
+  const exporter=new InMemorySpanExporter(),tracing=new RequestTracing('dispatcher-test',()=>{},0,exporter);
+  const starter:WorkflowStarter={start:async input=>({workflow_id:input.workflow_id,run_id:randomUUID()}),cancel:async()=>{}};
+  assert.equal(await new IntentDispatcher(store,starter,people.worker.workspace_id,tracing).tick(),true);
+  await tracing.flush();
+  const [span]=exporter.getFinishedSpans();
+  assert.equal(span?.name,'temporal start');assert.equal(span?.spanContext().traceId,traceId,'sampled by the parent even at root ratio 0');
+  assert.equal(span?.parentSpanContext?.spanId,stored.split('-')[2]);
+  // Invalid client context is not stored and never blocks creation.
+  const other=await store.createPlan(people.operator,{request_id:randomUUID(),fixture_id:'channel-basic-v1',required_domains:['ABOUT']},'not-a-traceparent');
+  assert.equal((await store.getInput(people.worker,other.plan_id)).trace_context,undefined);
+  await tracing.close();
+});
