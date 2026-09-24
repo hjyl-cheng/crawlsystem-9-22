@@ -10,7 +10,7 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Connection } from '@temporalio/client';
 import { TemporalTokenIssuer } from '@crawlsystem/http/temporal-token';
@@ -50,6 +50,7 @@ else if (action === 'enable') {
     const env = kubectl('-n', namespace!, 'get', kind!, name!, '-o', 'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="TEMPORAL_API_KEY_MODE")].value}');
     assert.equal(env, 'workload', `${name} must send Temporal tokens before authorization is enabled`);
   }
+  mkdirSync('.runtime/temporal-chart', { recursive: true });
   if (!existsSync(chart)) run('helm', ['pull', 'temporal', '--repo', 'https://go.temporal.io/helm-charts', '--version', '1.7.0', '-d', '.runtime/temporal-chart']);
   const history = JSON.parse(run('helm', ['-n', 'temporal', 'history', 'temporal', '-o', 'json'])) as { revision: number; status: string }[];
   const previous = history.filter(h => h.status === 'deployed').at(-1)!.revision;
