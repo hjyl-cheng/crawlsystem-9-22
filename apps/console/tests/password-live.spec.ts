@@ -21,7 +21,7 @@ test('public password login, refresh recovery, reader permission and revocable l
   await page.reload();
   await expect(page.getByRole('heading', { name: '采集链路总览', exact: true })).toBeVisible();
   await expect(page.getByLabel('密码', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: '创建样本计划' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '创建计划' })).toHaveCount(0);
   const browserSecrets = await page.evaluate(() => JSON.stringify({ cookie: document.cookie, local: { ...localStorage }, session: { ...sessionStorage } }));
   expect(browserSecrets.includes(credentials.password) || browserSecrets.includes(sessionCookie!.value)).toBe(false);
   const writeStatus = await page.evaluate(async () => (await fetch('/api/v1/plans', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Console-Request': '1' }, body: JSON.stringify({ request_id: crypto.randomUUID(), fixture_id: 'channel-basic-v1', required_domains: ['ABOUT', 'VIDEO'] }) })).status);

@@ -33,7 +33,7 @@ async function login(page: Page, credential: string, path = '/') {
   await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible();
 }
 async function createFromUi(page: Page, requireAgent = false) {
-  await page.getByRole('link', { name: '创建样本计划' }).click();
+  await page.getByRole('link', { name: '创建计划' }).click(); await page.getByRole('radio', { name: /固定样本/ }).check();
   if (requireAgent) await page.getByRole('checkbox', { name: /Agent 分析/ }).check();
   const response = page.waitForResponse(r => new URL(r.url()).pathname.endsWith(ApiRoutes.plans) && r.request().method() === 'POST');
   await page.getByRole('button', { name: '创建并查看计划' }).click();
@@ -106,7 +106,7 @@ test('complete sample and channel comments match the actual API; reader writes a
   await page.getByRole('button', { name: '退出登录' }).click(); await page.getByLabel('访问令牌', { exact: true }).fill(reader); await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('navigation', { name: '主导航' }).getByText('任务管理', { exact: true }).click();
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '全量采集' }).click();
-  await expect(page.getByRole('link', { name: '创建样本计划' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '创建计划' })).toHaveCount(0);
   const body: CreatePlan = { request_id: randomUUID(), fixture_id: 'channel-basic-v1', required_domains: ['ABOUT', 'VIDEO'] };
   const response = await fetch(control + ApiRoutes.plans, { method: 'POST', headers: { Authorization: `Bearer ${reader}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   expect(response.status).toBe(403); expect(ApiErrorSchema.parse(await response.json()).error.code).toBe('FORBIDDEN');

@@ -129,7 +129,7 @@ export default function Plans() {
       </div>
       <div className="dashboard-period">
         <label className="sample-switch" htmlFor="plans-sample"><input id="plans-sample" type="checkbox" checked={sampleOn} onChange={event => setSampleOn(event.target.checked)}/>预览示例数据</label>
-        {session.role === 'operator' && <Link className="button small primary" to="/plans/new"><Plus size={14}/>创建样本计划</Link>}
+        {session.role === 'operator' && <Link className="button small primary" to="/plans/new"><Plus size={14}/>创建计划</Link>}
       </div>
     </header>
     {sample && <div className="sample-banner" role="note"><TriangleAlert size={14}/>以下为设计示例数据（频道均为虚构），用于预览生产规模下的页面效果，不是真实统计。关闭开关即显示真实计划数据。</div>}

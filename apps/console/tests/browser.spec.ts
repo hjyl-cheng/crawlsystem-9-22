@@ -69,7 +69,7 @@ test('empty overview is explicit; read-only users cannot create even through a d
   await mock(page, undefined, 'reader'); await login(page);
   await expect(page.getByText('尚无登记的 Worker')).toBeVisible();
   await expect(page.getByText('尚无频道记录')).toBeVisible();
-  await expect(page.getByRole('link', { name: '创建样本计划' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '创建计划' })).toHaveCount(0);
   await page.goto('/plans/new'); // The authenticated session survives a full page reload.
   await expect(page.getByRole('alert')).toContainText('没有创建计划的权限');
   await expect(page.getByRole('button', { name: '创建并查看计划' })).toHaveCount(0);
@@ -93,15 +93,15 @@ test('completed sample keeps Agent and delivery boundaries visible', async ({ pa
   await expect(page.locator('dd').filter({ hasText: /^未启用$/ })).toBeVisible();
 });
 test('rapid create clicks produce one request and one logical plan', async ({ page }) => {
-  const state = await mock(page); await login(page, '/plans/new');
+  const state = await mock(page); await login(page, '/plans/new'); await page.getByRole('radio', { name: /固定样本/ }).check();
   await page.getByRole('button', { name: '创建并查看计划' }).evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
   await expect(page.getByRole('heading', { name: '采集任务详情', exact: true })).toBeVisible(); expect(state.creates).toHaveLength(1);
   expect(state.creates[0]?.request_id).toMatch(/^[0-9a-f-]{36}$/);
 });
 test('lost creation response retries the original identity across navigation', async ({ page }) => {
-  const state = await mock(page); state.loseCreate = true; await login(page, '/plans/new');
+  const state = await mock(page); state.loseCreate = true; await login(page, '/plans/new'); await page.getByRole('radio', { name: /固定样本/ }).check();
   await page.getByRole('button', { name: '创建并查看计划' }).click(); await expect(page.getByRole('alert')).toContainText('无法连接服务');
-  await page.getByRole('link', { name: '返回计划列表' }).click(); await page.getByRole('link', { name: '创建样本计划' }).click();
+  await page.getByRole('link', { name: '返回计划列表' }).click(); await page.getByRole('link', { name: '创建计划' }).click();
   await page.getByRole('button', { name: '核对并重试本次创建' }).click(); await expect(page.getByRole('heading', { name: '采集任务详情', exact: true })).toBeVisible();
   expect(state.creates).toHaveLength(2); expect(state.creates[1]).toEqual(state.creates[0]);
 });
@@ -387,4 +387,18 @@ test('read-only users do not see user management, even through a direct URL', as
   await expect(page.getByRole('alert')).toContainText('没有查看账号列表的权限');
   await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '用户管理' })).toHaveCount(0);
   await expect(page.locator('.user-list')).toHaveCount(0);
+});
+test('a real YouTube plan freezes a canonical channel ID and the chosen scope', async ({ page }) => {
+  const state = await mock(page); await login(page, '/plans/new');
+  await expect(page.getByRole('radio', { name: /真实 YouTube 频道/ })).toBeChecked();
+  await page.getByLabel('频道 ID 或链接').fill('@somehandle');
+  await expect(page.getByText('@handle 暂不支持直接解析', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: '创建并查看计划' }).click();
+  await expect(page.getByRole('alert')).toContainText('请填写有效的频道 ID'); expect(state.creates).toHaveLength(0);
+  await page.getByLabel('频道 ID 或链接').fill('https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw/videos');
+  await page.getByLabel('最近视频数').fill('10');
+  await page.getByRole('button', { name: '创建并查看计划' }).click();
+  await expect(page.getByRole('heading', { name: '采集任务详情', exact: true })).toBeVisible();
+  expect(state.creates).toHaveLength(1);
+  expect(state.creates[0]).toMatchObject({ source_mode: 'youtube', channel_id: 'UC_x5XG1OV2P6uZZ5FSM9Ttw', scope: { video_limit: 10, max_age_days: 90, comments_per_video: 20, comment_sort: 'TOP_COMMENTS' } });
 });
