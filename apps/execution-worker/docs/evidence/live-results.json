@@ -1,0 +1,412 @@
+{
+  "contract": "m1.v1",
+  "namespace": "crawlsystem-m1-main",
+  "task_queue": "execution-live-3fa0d1fd-50c5-4120-9566-a36a53ecfd52",
+  "workspace_id": "m1-execution-20260924",
+  "scope": "real Temporal mTLS + Control/Ingest + PostgreSQL through controlled APIs",
+  "checks": [
+    "lost APPLIED response reconciled with original receipt",
+    "SIGKILL + replacement process resumed original Plan/input/deadline",
+    "transient Ingest 503 recovered with identical Submission",
+    "duplicate live and closed Workflow dispatch retained original run",
+    "wrong frozen input rejected",
+    "persisted START intent dispatched after worker startup; dispatcher stopped without losing execution",
+    "actual recovered Workflow history replayed",
+    "missing AGENT persisted WAITING; cancellation interrupted durable timer",
+    "late new write after cancellation rejected by real Store; original APPLIED receipt remains readable and replayable",
+    "current video/comment facts remain unique after retries and multiple fixture Plans",
+    "actual Worker identity/version/heartbeat observed; SIGTERM drained within bound; no PG environment in Worker"
+  ],
+  "worker_environment_keys": [
+    "BUILD_VERSION",
+    "CONTROL_API_URL",
+    "HOME",
+    "INGEST_API_URL",
+    "NODE_OPTIONS",
+    "PATH",
+    "SERVER_ID",
+    "TEMPORAL_ADDRESS",
+    "TEMPORAL_NAMESPACE",
+    "TEMPORAL_TASK_QUEUE",
+    "TEMPORAL_TLS_CA_FILE",
+    "TEMPORAL_TLS_CERT_FILE",
+    "TEMPORAL_TLS_KEY_FILE",
+    "TEMPORAL_TLS_SERVER_NAME",
+    "WORKER_CAPACITY",
+    "WORKER_DRAIN_MS",
+    "WORKER_HEARTBEAT_MS",
+    "WORKER_ID",
+    "WORKER_TOKEN_FILE"
+  ],
+  "current_facts": {
+    "channel_id": "fixture:channel:basic",
+    "video_count": 1,
+    "comment_count": 1
+  },
+  "result": "PASSED",
+  "plans": {
+    "recovered": {
+      "plan": {
+        "plan_id": "0d4e8f7b-2cff-44f9-af63-b0af90538ad9",
+        "run_id": "fb4a2b1e-0db2-4bd2-86e6-08461292db1e",
+        "workspace_id": "m1-execution-20260924",
+        "channel_id": "fixture:channel:basic",
+        "source_revision": 242,
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO"
+        ],
+        "status": "COMPLETED",
+        "version": 4,
+        "execution_epoch": 1,
+        "input_hash": "sha256:9d24fe77d980feed72a5fd2a40dbfd8b17cb2333eae32d70ff8e943c7e365eb0",
+        "workflow_id": "m1/m1-execution-20260924/0d4e8f7b-2cff-44f9-af63-b0af90538ad9",
+        "created_at": "2026-09-24T03:24:55.620Z",
+        "updated_at": "2026-09-24T03:25:06.286Z",
+        "finished_at": "2026-09-24T03:25:06.286Z",
+        "deadline_at": "2026-09-24T03:54:55.608Z",
+        "publication_status": "NOT_ENABLED"
+      },
+      "input": {
+        "schema_version": "m1.v1",
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "channel_id": "fixture:channel:basic",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO"
+        ],
+        "target_video_ids": [
+          "fixture:video:basic"
+        ],
+        "reference_time": "2026-09-23T00:00:00.000Z",
+        "deadline_at": "2026-09-24T03:54:55.608Z",
+        "max_attempts": 3
+      },
+      "domains": [
+        {
+          "domain": "ABOUT",
+          "state": "APPLIED",
+          "completed_at": "2026-09-24T03:24:59.314Z"
+        },
+        {
+          "domain": "VIDEO",
+          "state": "APPLIED",
+          "completed_at": "2026-09-24T03:25:06.279Z"
+        }
+      ],
+      "receipts": [
+        {
+          "schema_version": "m1.v1",
+          "submission_id": "2fc02c34-afd6-8def-92e9-efdba7266d5e",
+          "plan_id": "0d4e8f7b-2cff-44f9-af63-b0af90538ad9",
+          "logical_batch_key": "about:all:v1",
+          "domain": "ABOUT",
+          "payload_hash": "sha256:0b657787044a0dad9a724958d1b8a62395cdbd6c3084d6dfa0c23f1109f7a2da",
+          "state": "APPLIED",
+          "applied_at": "2026-09-24T03:24:59.316Z"
+        },
+        {
+          "schema_version": "m1.v1",
+          "submission_id": "7855d5a7-608a-8dea-830c-d802625df61a",
+          "plan_id": "0d4e8f7b-2cff-44f9-af63-b0af90538ad9",
+          "logical_batch_key": "video:all:v1",
+          "domain": "VIDEO",
+          "payload_hash": "sha256:9790be81f31ef6759596628dd3ce03bef2a3031f556a90a2c32aac7170d4563e",
+          "state": "APPLIED",
+          "applied_at": "2026-09-24T03:25:06.281Z"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "75008df2-8d76-4338-b01a-63a531a3b075",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "VIDEO",
+          "kind": "PROGRESS",
+          "domain": "VIDEO",
+          "message": "APPLIED receipt=7855d5a7-608a-8dea-830c-d802625df61a",
+          "plan_id": "0d4e8f7b-2cff-44f9-af63-b0af90538ad9",
+          "created_at": "2026-09-24T03:25:06.312Z"
+        },
+        {
+          "event_id": "f409de5a-1be6-482d-9b7b-35b5523b85be",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "ABOUT",
+          "kind": "PROGRESS",
+          "domain": "ABOUT",
+          "message": "APPLIED receipt=2fc02c34-afd6-8def-92e9-efdba7266d5e",
+          "plan_id": "0d4e8f7b-2cff-44f9-af63-b0af90538ad9",
+          "created_at": "2026-09-24T03:25:06.186Z"
+        },
+        {
+          "event_id": "ab3b1e90-7e97-4be3-868e-2207d4dbd2f2",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "FIXTURE",
+          "kind": "STARTED",
+          "domain": null,
+          "message": "Reading frozen test sample; no real collection or proxy",
+          "plan_id": "0d4e8f7b-2cff-44f9-af63-b0af90538ad9",
+          "created_at": "2026-09-24T03:25:06.163Z"
+        },
+        {
+          "event_id": "345d0f92-fdf1-416f-8b4a-383f81f2f817",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "ABOUT",
+          "kind": "PROGRESS",
+          "domain": "ABOUT",
+          "message": "APPLIED receipt=2fc02c34-afd6-8def-92e9-efdba7266d5e",
+          "plan_id": "0d4e8f7b-2cff-44f9-af63-b0af90538ad9",
+          "created_at": "2026-09-24T03:24:59.360Z"
+        },
+        {
+          "event_id": "6fb7d3e8-094d-4e74-ad4a-e6f80f7a51cc",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "FIXTURE",
+          "kind": "STARTED",
+          "domain": null,
+          "message": "Reading frozen test sample; no real collection or proxy",
+          "plan_id": "0d4e8f7b-2cff-44f9-af63-b0af90538ad9",
+          "created_at": "2026-09-24T03:24:59.239Z"
+        }
+      ]
+    },
+    "waiting": {
+      "plan": {
+        "plan_id": "f8f3e3f0-753e-429a-8115-c9f22ef5cc75",
+        "run_id": "abd847b5-f2db-4e47-bdd7-68ef16624d7d",
+        "workspace_id": "m1-execution-20260924",
+        "channel_id": "fixture:channel:basic",
+        "source_revision": 243,
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO",
+          "AGENT"
+        ],
+        "status": "CANCELLED",
+        "version": 5,
+        "execution_epoch": 2,
+        "input_hash": "sha256:b8a31f0e410d52e7876a8de46c6e8060f651c99880dac7d45c85b1c95b3edd71",
+        "workflow_id": "m1/m1-execution-20260924/f8f3e3f0-753e-429a-8115-c9f22ef5cc75",
+        "created_at": "2026-09-24T03:25:17.798Z",
+        "updated_at": "2026-09-24T03:25:18.318Z",
+        "finished_at": "2026-09-24T03:25:18.318Z",
+        "deadline_at": "2026-09-24T03:55:17.775Z",
+        "publication_status": "NOT_ENABLED"
+      },
+      "input": {
+        "schema_version": "m1.v1",
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "channel_id": "fixture:channel:basic",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO",
+          "AGENT"
+        ],
+        "target_video_ids": [
+          "fixture:video:basic"
+        ],
+        "reference_time": "2026-09-23T00:00:00.000Z",
+        "deadline_at": "2026-09-24T03:55:17.775Z",
+        "max_attempts": 3
+      },
+      "domains": [
+        {
+          "domain": "ABOUT",
+          "state": "APPLIED",
+          "completed_at": "2026-09-24T03:25:18.083Z"
+        },
+        {
+          "domain": "AGENT",
+          "state": "PENDING",
+          "completed_at": null
+        },
+        {
+          "domain": "VIDEO",
+          "state": "APPLIED",
+          "completed_at": "2026-09-24T03:25:18.162Z"
+        }
+      ],
+      "receipts": [
+        {
+          "schema_version": "m1.v1",
+          "submission_id": "1e6525dd-5a64-86fe-8ecb-ef93bab34dc6",
+          "plan_id": "f8f3e3f0-753e-429a-8115-c9f22ef5cc75",
+          "logical_batch_key": "about:all:v1",
+          "domain": "ABOUT",
+          "payload_hash": "sha256:cdaab0dde63020483138a0c7c6c4c1434f2184e2a18c50d7b8aa71f993e99397",
+          "state": "APPLIED",
+          "applied_at": "2026-09-24T03:25:18.084Z"
+        },
+        {
+          "schema_version": "m1.v1",
+          "submission_id": "41b7413a-10a0-8307-9ac7-07427724b71c",
+          "plan_id": "f8f3e3f0-753e-429a-8115-c9f22ef5cc75",
+          "logical_batch_key": "video:all:v1",
+          "domain": "VIDEO",
+          "payload_hash": "sha256:9398f498230d553e0af721cf7bc92125e787200d0591c671d67b254f6aa94b04",
+          "state": "APPLIED",
+          "applied_at": "2026-09-24T03:25:18.163Z"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "109b685a-bb6e-4204-ad1f-f094ea03aa86",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "DEPENDENCY",
+          "kind": "WAITING",
+          "domain": null,
+          "message": "Required domain is pending; real Agent/API is not implemented in M1",
+          "error_code": "DEPENDENCY_NOT_IMPLEMENTED",
+          "plan_id": "f8f3e3f0-753e-429a-8115-c9f22ef5cc75",
+          "created_at": "2026-09-24T03:25:18.237Z"
+        },
+        {
+          "event_id": "7b879b8f-a0c0-4ff8-9d80-4e2d782f0201",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "VIDEO",
+          "kind": "PROGRESS",
+          "domain": "VIDEO",
+          "message": "APPLIED receipt=41b7413a-10a0-8307-9ac7-07427724b71c",
+          "plan_id": "f8f3e3f0-753e-429a-8115-c9f22ef5cc75",
+          "created_at": "2026-09-24T03:25:18.189Z"
+        },
+        {
+          "event_id": "1574b48b-4599-48b6-a544-cf49820476e7",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "ABOUT",
+          "kind": "PROGRESS",
+          "domain": "ABOUT",
+          "message": "APPLIED receipt=1e6525dd-5a64-86fe-8ecb-ef93bab34dc6",
+          "plan_id": "f8f3e3f0-753e-429a-8115-c9f22ef5cc75",
+          "created_at": "2026-09-24T03:25:18.110Z"
+        },
+        {
+          "event_id": "15d30c87-e8c7-4c92-886d-fd6d2a33a41c",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "FIXTURE",
+          "kind": "STARTED",
+          "domain": null,
+          "message": "Reading frozen test sample; no real collection or proxy",
+          "plan_id": "f8f3e3f0-753e-429a-8115-c9f22ef5cc75",
+          "created_at": "2026-09-24T03:25:18.024Z"
+        }
+      ]
+    },
+    "cancelled": {
+      "plan": {
+        "plan_id": "684a389c-50e8-4b5d-9d7e-3c2ea091a486",
+        "run_id": "307cab58-e341-495c-9367-eb4a7b9c11e4",
+        "workspace_id": "m1-execution-20260924",
+        "channel_id": "fixture:channel:basic",
+        "source_revision": 244,
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO"
+        ],
+        "status": "CANCELLED",
+        "version": 4,
+        "execution_epoch": 2,
+        "input_hash": "sha256:e1a0d112834f210f053ee0420d88c3baed5e59b0b019af359fcb43f2e50038b6",
+        "workflow_id": "m1/m1-execution-20260924/684a389c-50e8-4b5d-9d7e-3c2ea091a486",
+        "created_at": "2026-09-24T03:25:18.526Z",
+        "updated_at": "2026-09-24T03:25:18.996Z",
+        "finished_at": "2026-09-24T03:25:18.996Z",
+        "deadline_at": "2026-09-24T03:55:18.519Z",
+        "publication_status": "NOT_ENABLED"
+      },
+      "input": {
+        "schema_version": "m1.v1",
+        "source_mode": "fixture",
+        "fixture_id": "channel-basic-v1",
+        "channel_id": "fixture:channel:basic",
+        "required_domains": [
+          "ABOUT",
+          "VIDEO"
+        ],
+        "target_video_ids": [
+          "fixture:video:basic"
+        ],
+        "reference_time": "2026-09-23T00:00:00.000Z",
+        "deadline_at": "2026-09-24T03:55:18.519Z",
+        "max_attempts": 3
+      },
+      "domains": [
+        {
+          "domain": "ABOUT",
+          "state": "APPLIED",
+          "completed_at": "2026-09-24T03:25:18.765Z"
+        },
+        {
+          "domain": "VIDEO",
+          "state": "PENDING",
+          "completed_at": null
+        }
+      ],
+      "receipts": [
+        {
+          "schema_version": "m1.v1",
+          "submission_id": "04048a02-287d-86dc-ac4d-cab631e9f23f",
+          "plan_id": "684a389c-50e8-4b5d-9d7e-3c2ea091a486",
+          "logical_batch_key": "about:all:v1",
+          "domain": "ABOUT",
+          "payload_hash": "sha256:70e6158fcbaa851fa6f4eab7cd5aacab5b97fb2f8e087f5da0a4daaf1b2c9fba",
+          "state": "APPLIED",
+          "applied_at": "2026-09-24T03:25:18.766Z"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "ae266e6e-c764-439d-bf18-d95dbcb12a55",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "ABOUT",
+          "kind": "PROGRESS",
+          "domain": "ABOUT",
+          "message": "APPLIED receipt=04048a02-287d-86dc-ac4d-cab631e9f23f",
+          "plan_id": "684a389c-50e8-4b5d-9d7e-3c2ea091a486",
+          "created_at": "2026-09-24T03:25:18.791Z"
+        },
+        {
+          "event_id": "eba21e30-079d-4737-aae8-5acc75095687",
+          "execution_epoch": 1,
+          "worker_id": "m1-execution-test",
+          "phase": "FIXTURE",
+          "kind": "STARTED",
+          "domain": null,
+          "message": "Reading frozen test sample; no real collection or proxy",
+          "plan_id": "684a389c-50e8-4b5d-9d7e-3c2ea091a486",
+          "created_at": "2026-09-24T03:25:18.731Z"
+        }
+      ]
+    }
+  },
+  "workflow_run_id": "01a0d171-ea63-713f-8099-f067507ebb42",
+  "worker": {
+    "capacity": 2,
+    "server_id": "execution-development",
+    "worker_id": "m1-execution-test",
+    "build_version": "m1-execution-development",
+    "accepting_work": true,
+    "running_plan_ids": [],
+    "last_heartbeat_at": "2026-09-24T03:25:18.347Z",
+    "stale": false,
+    "proxy_status": "NOT_CONFIGURED"
+  },
+  "finished_at": "2026-09-24T03:25:19.370Z"
+}

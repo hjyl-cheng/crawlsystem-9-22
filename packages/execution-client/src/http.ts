@@ -1,0 +1,109 @@
+import { setTimeout as delay } from 'node:timers/promises';
+import { z } from 'zod';
+import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
+  ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
+
+export class ExecutionApiError extends Error {
+  constructor(readonly code: ErrorCode, readonly retryable: boolean, readonly correlationId?: string) {
+    // Deliberately omit remote messages, response bodies, URLs, and native error causes.
+    super(`Execution API: ${code}`); this.name = 'ExecutionApiError';
+  }
+}
+export interface RequestBudget { signal?: AbortSignal; deadline?: number; attempts?: 1 | 2; }
+export interface ApiOptions { controlUrl: string; ingestUrl: string; token: () => Promise<string>; timeoutMs?: number; fetch?: typeof fetch; }
+export function validateApiUrl(raw: string): string {
+  const url = new URL(raw);
+  if (url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error('API URL must be an origin without credentials');
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname))) throw new Error('HTTPS is required outside loopback');
+  return url.origin;
+}
+
+export class ExecutionApi {
+  private control: string;
+  private ingest: string;
+  private fetcher: typeof fetch;
+  private timeout: number;
+  constructor(private options: ApiOptions) {
+    this.control = validateApiUrl(options.controlUrl); this.ingest = validateApiUrl(options.ingestUrl);
+    this.fetcher = options.fetch ?? fetch; this.timeout = options.timeoutMs ?? 5000;
+    if (!Number.isInteger(this.timeout) || this.timeout < 10 || this.timeout > 10_000) throw new Error('HTTP timeout must be 10..10000 ms');
+  }
+  private async request<T>(base: string, path: string, schema: z.ZodType<T>, body: unknown, budget: RequestBudget = {}): Promise<T> {
+    const serialized = body === undefined ? undefined : JSON.stringify(body);
+    if (serialized && Buffer.byteLength(serialized) > MAX_BODY_BYTES) throw new ExecutionApiError('INVALID_REQUEST', false);
+    const attempts = budget.attempts ?? 2;
+    for (let attempt = 1; ; attempt++) {
+      budget.signal?.throwIfAborted();
+      const remaining = (budget.deadline ?? Infinity) - Date.now();
+      if (remaining <= 0) throw new ExecutionApiError('BUDGET_EXHAUSTED', false);
+      const timeoutSignal = AbortSignal.timeout(Math.max(1, Math.min(this.timeout, remaining)));
+      const signal = budget.signal ? AbortSignal.any([budget.signal, timeoutSignal]) : timeoutSignal;
+      try {
+        const token = (await this.options.token()).trim();
+        if (!token || /\s/.test(token)) throw new ExecutionApiError('UNAUTHENTICATED', false);
+        const response = await this.fetcher(new URL(path, base), { method: serialized === undefined ? 'GET' : 'POST', redirect: 'error',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: serialized, signal });
+        let size = 0;
+        const chunks: Uint8Array[] = [];
+        if (response.body) {
+          const reader = response.body.getReader();
+          try {
+            for (;;) { const next = await reader.read(); if (next.done) break; size += next.value.length;
+              if (size > MAX_BODY_BYTES * 2) { await reader.cancel(); throw new ExecutionApiError('INVALID_REQUEST', false); }
+              chunks.push(next.value);
+            }
+          } finally { reader.releaseLock(); }
+        }
+        let data: unknown;
+        try { data = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+        catch { throw new ExecutionApiError('INVALID_REQUEST', false); }
+        if (!response.ok) {
+          const parsed = ApiErrorSchema.safeParse(data);
+          if (!parsed.success) throw new ExecutionApiError('INVALID_REQUEST', false);
+          throw new ExecutionApiError(parsed.data.error.code, parsed.data.error.retryable, parsed.data.error.correlation_id);
+        }
+        const parsed = schema.safeParse(data);
+        if (!parsed.success) throw new ExecutionApiError('INVALID_REQUEST', false);
+        return parsed.data;
+      } catch (cause) {
+        budget.signal?.throwIfAborted();
+        const error = cause instanceof ExecutionApiError ? cause : new ExecutionApiError('UNAVAILABLE', true);
+        if (!error.retryable || attempt >= attempts) throw error;
+        const wait = Math.min(200 * attempt, (budget.deadline ?? Infinity) - Date.now());
+        if (wait <= 0) throw new ExecutionApiError('BUDGET_EXHAUSTED', false);
+        await delay(wait, undefined, { signal: budget.signal });
+      }
+    }
+  }
+  session(budget?: RequestBudget) { return this.request(this.control, ApiRoutes.session, SessionSchema, undefined, budget); }
+  input(id: string, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.input(id), PlanInputSchema, undefined, budget); }
+  async receipt(id: string, budget?: RequestBudget): Promise<Receipt | null> {
+    try { return await this.request(this.control, ApiRoutes.receipt(id), ReceiptSchema, undefined, budget); }
+    catch (error) { if (error instanceof ExecutionApiError && error.code === 'NOT_FOUND') return null; throw error; }
+  }
+  event(id: string, event: ExecutionEvent, budget?: RequestBudget) {
+    return this.request(this.control, ApiRoutes.events(id), z.strictObject({ accepted: z.literal(true) }), ExecutionEventSchema.parse(event), budget);
+  }
+  heartbeat(value: Heartbeat, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.heartbeat, WorkerSchema, HeartbeatSchema.parse(value), budget); }
+  async submit(raw: Submission, budget: RequestBudget = {}): Promise<Receipt> {
+    const submission = SubmissionSchema.parse(raw);
+    // Read-before-write also handles a previous Activity dying after the Store commit.
+    const existing = await this.receipt(submission.submission_id, budget);
+    if (existing) return checkReceipt(submission, existing);
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return checkReceipt(submission, await this.request(this.ingest, ApiRoutes.submissions, ReceiptSchema, submission, { ...budget, attempts: 1 }));
+      } catch (error) {
+        if (!(error instanceof ExecutionApiError) || !error.retryable) throw error;
+        // An unavailable receipt query must throw; it is never interpreted as absence.
+        const receipt = await this.receipt(submission.submission_id, budget);
+        if (receipt) return checkReceipt(submission, receipt);
+        if (attempt >= (budget.attempts ?? 2)) throw error;
+      }
+    }
+  }
+}
+export function checkReceipt(submission: Submission, receipt: Receipt): Receipt {
+  if (receipt.submission_id !== submission.submission_id || receipt.plan_id !== submission.plan_id || receipt.domain !== submission.domain || receipt.logical_batch_key !== submission.logical_batch_key || receipt.payload_hash !== submission.payload_hash) throw new ExecutionApiError('CONFLICT', false);
+  return receipt;
+}
