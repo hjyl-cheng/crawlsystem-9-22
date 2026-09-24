@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, AgentInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
-  ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, TemporalTokenSchema, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
+  ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, TemporalTokenSchema, ProxySyncRequestSchema, ProxySyncResponseSchema, type ProxySyncRequest, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
 
 export class ExecutionApiError extends Error {
   constructor(readonly code: ErrorCode, readonly retryable: boolean, readonly correlationId?: string) {
@@ -132,6 +132,8 @@ export class ExecutionApi {
   event(id: string, event: ExecutionEvent, budget?: RequestBudget) {
     return this.request(this.control, ApiRoutes.events(id), z.strictObject({ accepted: z.literal(true) }), ExecutionEventSchema.parse(event), budget);
   }
+  /** Proxy Manager: report observations, receive this server's assignments and renewed lease. */
+  proxySync(report: ProxySyncRequest, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.proxySync, ProxySyncResponseSchema, ProxySyncRequestSchema.parse(report), budget); }
   heartbeat(value: Heartbeat, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.heartbeat, WorkerSchema, HeartbeatSchema.parse(value), budget); }
   async submit(raw: Submission, budget: RequestBudget = {}): Promise<Receipt> {
     const submission = SubmissionSchema.parse(raw);

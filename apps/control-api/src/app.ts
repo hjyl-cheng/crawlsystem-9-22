@@ -65,6 +65,7 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.get(ApiRoutes.proxies,async request=>proxies().overview(request.principal));
   app.post(ApiRoutes.proxyImport,{bodyLimit:262144},async request=>proxies().importProxies(request.principal,request.body));
   app.post('/v1/proxies/:id',async request=>proxies().update(request.principal,planId(request),request.body));
+  app.post('/v1/proxies/:id/delete',async request=>{await proxies().remove(request.principal,planId(request),z.strictObject({expected_version:z.number().int().positive()}).parse(request.body).expected_version);return {deleted:true};});
   app.get(ApiRoutes.proxySources,async request=>({items:await proxies().listSources(request.principal)}));
   app.post(ApiRoutes.proxySources,{bodyLimit:8192},async request=>proxies().createSource(request.principal,request.body));
   app.post('/v1/proxy-sources/:id',async request=>proxies().updateSource(request.principal,planId(request),request.body));

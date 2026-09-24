@@ -1,0 +1,96 @@
+# Node-local Proxy Manager (24.8 §10.2): one per server, shared by every Worker on it.
+# Identity: its ServiceAccount token is exchanged at Control for a `node` credential
+# naming this server; it receives only this server's proxies. Workers reach it through
+# a Service with internalTrafficPolicy: Local, so a lease always comes from their node.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: proxy-manager
+  namespace: crawler
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: proxy-manager
+  namespace: crawler
+  labels: { app.kubernetes.io/name: proxy-manager }
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: proxy-manager }
+  updateStrategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 1 } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: proxy-manager }
+    spec:
+      serviceAccountName: proxy-manager
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: proxy-manager
+          image: docker.io/crawlsystem/control-api:IMAGE_TAG
+          imagePullPolicy: Never
+          command: ["node", "/app/proxy-manager.mjs"]
+          ports: [{ name: lease, containerPort: 18110 }]
+          env:
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - { name: CONTROL_API_URL, value: "http://control-api-preview.control.svc.cluster.local:18100" }
+            - { name: WORKLOAD_IDENTITY_TOKEN_FILE, value: /var/run/secrets/crawlsystem/control-token }
+            - { name: PORT, value: "18110" }
+            - { name: NODE_OPTIONS, value: "--max-old-space-size=96" }
+          readinessProbe:
+            httpGet: { path: /healthz, port: lease }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: lease }
+            periodSeconds: 20
+            failureThreshold: 3
+          volumeMounts:
+            - { name: control-token, mountPath: /var/run/secrets/crawlsystem, readOnly: true }
+          resources:
+            requests: { cpu: 20m, memory: 48Mi }
+            limits: { cpu: 300m, memory: 160Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      volumes:
+        - name: control-token
+          projected:
+            sources:
+              - serviceAccountToken: { audience: crawlsystem-control, expirationSeconds: 3600, path: control-token }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: proxy-manager
+  namespace: crawler
+spec:
+  selector: { app.kubernetes.io/name: proxy-manager }
+  internalTrafficPolicy: Local
+  ports: [{ name: lease, port: 18110, targetPort: lease }]
+---
+# Only execution Workers may lease proxies (the lease carries proxy credentials).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: proxy-manager-from-workers
+  namespace: crawler
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: proxy-manager }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: execution-worker }
+      ports: [{ port: 18110 }]

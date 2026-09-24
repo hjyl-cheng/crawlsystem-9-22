@@ -101,5 +101,6 @@ export class ControlApi {
   proxySources = (signal?: AbortSignal) => this.request(ApiRoutes.proxySources, z.strictObject({ items: z.array(ProxySourceViewSchema).max(50) }), signal);
   createProxySource = (body: ProxySourceCreate, signal?: AbortSignal) => this.request(ApiRoutes.proxySources, ProxySourceViewSchema, signal, ProxySourceCreateSchema.parse(body));
   updateProxySource = (id: string, body: z.input<typeof ProxySourceUpdateSchema>, signal?: AbortSignal) => this.request(ApiRoutes.proxySource(id), ProxySourceViewSchema, signal, ProxySourceUpdateSchema.parse(body));
+  deleteProxy = (id: string, expected_version: number, signal?: AbortSignal) => this.request(ApiRoutes.proxyDelete(id), z.strictObject({ deleted: z.literal(true) }), signal, { expected_version });
   updateProxy = (id: string, body: z.input<typeof ProxyUpdateSchema>, signal?: AbortSignal) => this.request(ApiRoutes.proxy(id), ProxyViewSchema, signal, ProxyUpdateSchema.parse(body));
 }

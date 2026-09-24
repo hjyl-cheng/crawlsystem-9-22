@@ -1,0 +1,61 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer, connect, type AddressInfo, type Server, type Socket } from 'node:net';
+import { connectViaProxy, ProxyConnectError } from '@crawlsystem/execution-client/proxy-connect';
+
+// Servers are unref'd so lingering tunnels never keep the test process alive.
+const listen = (server: Server) => new Promise<number>(resolve => server.listen(0, '127.0.0.1', () => { server.unref(); resolve((server.address() as AddressInfo).port); }));
+const echoServer = () => createServer(socket => socket.pipe(socket));
+// Minimal SOCKS5 server (RFC 1928/1929) that only tunnels to 127.0.0.1.
+function socksServer(user?: string, pass?: string) {
+  return createServer(client => {
+    client.once('data', greet => {
+      const wantsAuth = !!user; client.write(Buffer.from([5, wantsAuth ? 2 : 0]));
+      const request = (data: Buffer) => { const len = data[4]!; const port = data.readUInt16BE(5 + len); const upstream = connect(port, '127.0.0.1', () => { client.write(Buffer.from([5, 0, 0, 1, 127, 0, 0, 1, 0, 0])); client.pipe(upstream).pipe(client); }); upstream.on('error', () => client.end(Buffer.from([5, 5, 0, 1, 0, 0, 0, 0, 0, 0]))); };
+      if (!wantsAuth) return void client.once('data', request);
+      client.once('data', auth => { const u = auth.subarray(2, 2 + auth[1]!).toString(), p = auth.subarray(3 + auth[1]!, 3 + auth[1]! + auth[2 + auth[1]!]!).toString();
+        const ok = u === user && p === pass; client.write(Buffer.from([1, ok ? 0 : 1])); if (ok) client.once('data', request); else client.end(); });
+      void greet;
+    });
+  });
+}
+function httpProxy(auth?: string) {
+  return createServer(client => {
+    let head = '';
+    const onData = (chunk: Buffer) => {
+      head += chunk.toString('latin1'); if (!head.includes('\r\n\r\n')) return;
+      client.off('data', onData);
+      if (auth && !head.includes(`Proxy-Authorization: Basic ${Buffer.from(auth).toString('base64')}`)) return void client.end('HTTP/1.1 407 Proxy Authentication Required\r\n\r\n');
+      const port = Number(/^CONNECT [^:]+:(\d+)/.exec(head)?.[1]);
+      const upstream = connect(port, '127.0.0.1', () => { client.write('HTTP/1.1 200 Connection established\r\n\r\n'); client.pipe(upstream).pipe(client); });
+    };
+    client.on('data', onData);
+  });
+}
+async function roundTrip(socket: Socket) { socket.write('ping'); const [data] = await Promise.race([new Promise<Buffer[]>(r => socket.once('data', d => r([d]))), new Promise<never>((_, j) => setTimeout(() => j(new Error('no echo')), 2000))]); socket.destroy(); return data!.toString(); }
+
+test('tunnels through SOCKS5 with and without credentials, and reports bad credentials', async () => {
+  const echo = echoServer(), target = await listen(echo), open = socksServer(), authed = socksServer('alice', 's3cret');
+  const [p1, p2] = [await listen(open), await listen(authed)];
+  try {
+    assert.equal(await roundTrip(await connectViaProxy(`socks5://127.0.0.1:${p1}`, 'localhost', target, AbortSignal.timeout(3000))), 'ping');
+    assert.equal(await roundTrip(await connectViaProxy(`socks5://alice:s3cret@127.0.0.1:${p2}`, 'localhost', target, AbortSignal.timeout(3000))), 'ping');
+    await assert.rejects(connectViaProxy(`socks5://alice:wrong@127.0.0.1:${p2}`, 'localhost', target, AbortSignal.timeout(3000)), (e: unknown) => e instanceof ProxyConnectError && e.kind === 'proxy_auth');
+  } finally { open.close(); authed.close(); echo.close(); }
+});
+test('tunnels through HTTP CONNECT; 407 is an auth error and an unreachable proxy is classified', async () => {
+  const echo = echoServer(), target = await listen(echo), proxy = httpProxy('bob:pw'), port = await listen(proxy);
+  try {
+    assert.equal(await roundTrip(await connectViaProxy(`http://bob:pw@127.0.0.1:${port}`, 'localhost', target, AbortSignal.timeout(3000))), 'ping');
+    await assert.rejects(connectViaProxy(`http://127.0.0.1:${port}`, 'localhost', target, AbortSignal.timeout(3000)), (e: unknown) => e instanceof ProxyConnectError && e.kind === 'proxy_auth');
+    await assert.rejects(connectViaProxy('http://127.0.0.1:1', 'localhost', target, AbortSignal.timeout(3000)), (e: unknown) => e instanceof ProxyConnectError && e.kind === 'proxy_unreachable');
+  } finally { proxy.close(); echo.close(); }
+});
+test('a proxy that accepts but never answers is abandoned at the deadline instead of hanging', async () => {
+  const silent = createServer(() => { /* accept, never reply */ }), port = await listen(silent);
+  try {
+    const started = Date.now();
+    for (const scheme of ['socks5', 'http']) await assert.rejects(connectViaProxy(`${scheme}://127.0.0.1:${port}`, 'localhost', 9, AbortSignal.timeout(300)), (e: unknown) => e instanceof ProxyConnectError);
+    assert.ok(Date.now() - started < 2000);
+  } finally { silent.close(); }
+});

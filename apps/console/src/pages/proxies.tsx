@@ -139,6 +139,12 @@ function SourcesTable({ sources, operator, onDone }: { sources: ProxySourceView[
 function RowActions({ ip, servers, onDone }: { ip: ProxiesView['ips'][number]; servers: string[]; onDone: () => void }) {
   const { api } = useAuth();
   const [busy, setBusy] = useState(false), [error, setError] = useState<string>();
+  async function remove() {
+    setBusy(true); setError(undefined);
+    try { await api.deleteProxy(ip.id, ip.version); onDone(); }
+    catch (cause) { setError(cause instanceof ApiFailure ? cause.message : '删除失败'); }
+    finally { setBusy(false); }
+  }
   async function update(change: { enabled?: boolean; server_id?: string | null }) {
     setBusy(true); setError(undefined);
     try { await api.updateProxy(ip.id, { expected_version: ip.version, ...change }); onDone(); }
@@ -147,7 +153,8 @@ function RowActions({ ip, servers, onDone }: { ip: ProxiesView['ips'][number]; s
   }
   return <span className="proxy-actions"><select aria-label={`绑定服务器 ${ip.ip}:${ip.port}`} value={ip.server ?? ''} disabled={busy} onChange={e => void update({ server_id: e.target.value || null })}>
       <option value="">未绑定</option>{[...new Set([...servers, ...(ip.server ? [ip.server] : [])])].sort().map(s => <option key={s} value={s}>{s}</option>)}</select>
-    <button className="text-button" disabled={busy} onClick={() => void update({ enabled: !ip.enabled })}>{ip.enabled ? '停用' : '启用'}</button>{error && <small className="text-red" role="alert">{error}</small>}</span>;
+    <button className="text-button" disabled={busy} onClick={() => void update({ enabled: !ip.enabled })}>{ip.enabled ? '停用' : '启用'}</button>
+    {!ip.enabled && <button className="text-button text-red" disabled={busy} onClick={() => void remove()}>删除</button>}{error && <small className="text-red" role="alert">{error}</small>}</span>;
 }
 const tabs = [['ips', 'IP 列表'], ['sources', '订阅来源'], ['groups', 'IP 分组'], ['providers', '服务商']] as const;
 type Tab = typeof tabs[number][0];

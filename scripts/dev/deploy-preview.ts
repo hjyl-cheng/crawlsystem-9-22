@@ -69,7 +69,7 @@ step(`secrets ready: control/temporal-client-dispatcher, control/proxy-credentia
 
 // 6. Roll out in dependency order: Control (token exchange) and Ingest before Workers.
 const rollouts:[string,string,string][]=[['control-api','control','deployment/control-api-preview'],['ingest','ingest','deployment/ingest-preview'],
-  ['dispatcher','control','deployment/intent-dispatcher'],['execution-worker','crawler','statefulset/execution-worker']];
+  ['dispatcher','control','deployment/intent-dispatcher'],['proxy-manager','crawler','daemonset/proxy-manager'],['execution-worker','crawler','statefulset/execution-worker']];
 for(const [file,namespace,resource] of rollouts){
   apply(`deploy/m1-preview/${file}.yaml`);
   kubectl(['-n',namespace,'rollout','status',resource,'--timeout=240s']);step(`${resource} rolled out`);

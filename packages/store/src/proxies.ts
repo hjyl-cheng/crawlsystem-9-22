@@ -108,6 +108,15 @@ export class ProxyStore {
       return this.view(updated);
     });
   }
+  /** Remove a disabled endpoint (and its observations/counters). Enabled ones must be disabled first. */
+  async remove(principal: Principal, proxyId: string, expectedVersion: number): Promise<void> {
+    requireRole(principal, 'operator');
+    const result = await this.pool.query('DELETE FROM m1.proxies WHERE workspace_id=$1 AND proxy_id=$2 AND version=$3 AND NOT enabled', [principal.workspace_id, proxyId, expectedVersion]);
+    if (result.rowCount) return;
+    const row = (await this.pool.query('SELECT enabled FROM m1.proxies WHERE workspace_id=$1 AND proxy_id=$2', [principal.workspace_id, proxyId])).rows[0];
+    if (!row) throw new StoreError('NOT_FOUND', 'Proxy not found', 404);
+    throw new StoreError('CONFLICT', row.enabled ? 'Disable the proxy before deleting it' : 'Proxy changed; refresh before deleting');
+  }
   /** One round trip per interval from a server's Proxy Manager: report, renew leases, receive assignments. */
   async sync(principal: Principal, raw: unknown): Promise<ProxySyncResponse> {
     requireRole(principal, 'node');

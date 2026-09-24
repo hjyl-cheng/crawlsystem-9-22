@@ -117,3 +117,14 @@ test('a subscription source adds, spreads, retires after N misses, restores, and
   // Test sources share the preview database: leave them disabled so nothing ever fetches them.
   await store.updateSource(p.operator, source.source_id, { expected_version: failed.version, enabled: false });
 });
+test('only disabled proxies can be deleted, with a version check', async () => {
+  const p = people();
+  await store.importProxies(p.operator, { entries: [entry('203.0.113.77')] });
+  const proxy = (await store.overview(p.operator)).items[0]!;
+  await rejects(() => store.remove(p.operator, proxy.proxy_id, proxy.version), 'CONFLICT');
+  const disabled = await store.update(p.operator, proxy.proxy_id, { expected_version: proxy.version, enabled: false });
+  await rejects(() => store.remove(p.reader, proxy.proxy_id, disabled.version), 'FORBIDDEN');
+  await rejects(() => store.remove(p.operator, proxy.proxy_id, proxy.version), 'CONFLICT');
+  await store.remove(p.operator, proxy.proxy_id, disabled.version);
+  assert.equal((await store.overview(p.reader)).items_total, 0);
+});

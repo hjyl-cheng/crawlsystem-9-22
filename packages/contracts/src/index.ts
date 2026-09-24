@@ -260,7 +260,7 @@ export const ApiRoutes = {
   session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', consoleAccounts: '/v1/console/accounts', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', proxies: '/v1/proxies', proxyImport: '/v1/proxies/import', proxySync: '/v1/proxy-manager/sync', proxySources: '/v1/proxy-sources',
   proxySource: (id: string) => `/v1/proxy-sources/${encodeURIComponent(id)}`,
-  proxy: (id: string) => `/v1/proxies/${encodeURIComponent(id)}`, workloadToken: '/v1/workload/token', temporalToken: '/v1/workload/temporal-token',
+  proxy: (id: string) => `/v1/proxies/${encodeURIComponent(id)}`, proxyDelete: (id: string) => `/v1/proxies/${encodeURIComponent(id)}/delete`, workloadToken: '/v1/workload/token', temporalToken: '/v1/workload/temporal-token',
   plan: (id: string) => `/v1/plans/${encodeURIComponent(id)}`,
   input: (id: string) => `/v1/plans/${encodeURIComponent(id)}/input`,
   agentInput: (id: string) => `/v1/plans/${encodeURIComponent(id)}/agent-input`,

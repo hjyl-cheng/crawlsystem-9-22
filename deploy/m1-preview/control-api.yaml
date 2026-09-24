@@ -203,6 +203,10 @@ spec:
             matchLabels: { kubernetes.io/metadata.name: crawler }
           podSelector:
             matchLabels: { app.kubernetes.io/name: execution-worker }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: crawler }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: proxy-manager }
       ports: [{ port: 18100 }]
 ---
 # The dispatcher exchanges its ServiceAccount token here for a Temporal token.
