@@ -63,3 +63,21 @@ test('parallel database account logins cannot exceed the global session cap',asy
     assert.equal(Number((await pool.query('SELECT count(*) FROM console.sessions WHERE expires_at>clock_timestamp()')).rows[0].count),200);
   } finally {await pool.query('DELETE FROM console.sessions WHERE username=$1',[a.username]);}
 });
+test('account listing stays inside the workspace, reports disabled accounts and counts only live sessions',async()=>{
+  const a=await account(),other=await account(),repository=store(),auth=new ConsoleAuth(repository);
+  const second=`test-${randomUUID()}`,record=await passwordRecord(password);
+  await pool.query('INSERT INTO console.accounts(username,subject,workspace_id,role,password_salt,password_hash,disabled_at) VALUES($1,$1,$2,$3,$4,$5,clock_timestamp())',[second,a.workspace_id,'operator',record.salt,record.password_hash]);
+  const cookie=(await auth.login(a.username,password)).cookie.split(';')[0]!;
+  await pool.query(`INSERT INTO console.sessions(token_hash,username,created_at,expires_at) VALUES(repeat(md5($1),2),$1,clock_timestamp()-interval '2 hours',clock_timestamp()-interval '1 hour')`,[a.username]);
+  try {
+    const listed=await auth.listAccounts({subject:a.subject,workspace_id:a.workspace_id,role:'reader'});
+    assert.equal(listed.source,'DATABASE');
+    assert.deepEqual(listed.items.map(i=>i.username).sort(),[a.username,second].sort());
+    assert.ok(!listed.items.some(i=>i.username===other.username));
+    const mine=listed.items.find(i=>i.username===a.username)!,disabled=listed.items.find(i=>i.username===second)!;
+    assert.equal(mine.active_sessions,1);assert.equal(mine.status,'ACTIVE');assert.ok(mine.latest_session_at&&mine.created_at);
+    assert.equal(disabled.status,'DISABLED');assert.equal(disabled.role,'operator');assert.equal(disabled.active_sessions,0);assert.equal(disabled.latest_session_at,null);
+    assert.doesNotMatch(JSON.stringify(listed),new RegExp(`${a.salt}|${a.password_hash}`));
+    await assert.rejects(()=>auth.listAccounts({subject:'w',workspace_id:a.workspace_id,role:'worker'}),e=>e instanceof StoreError&&e.code==='FORBIDDEN');
+  } finally {await auth.revoke(cookie);await pool.query('DELETE FROM console.sessions WHERE username=$1',[a.username]);}
+});

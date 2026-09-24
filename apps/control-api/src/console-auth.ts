@@ -2,7 +2,7 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
-import { IdSchema, type Principal } from '@crawlsystem/contracts';
+import { IdSchema, type ConsoleAccount, type ConsoleAccountList, type Principal } from '@crawlsystem/contracts';
 import { StoreError } from '@crawlsystem/store';
 import type { ConsoleSessionRepository } from '@crawlsystem/store/console-sessions';
 import { contentHash } from '@crawlsystem/contracts/hash';
@@ -33,7 +33,10 @@ export interface AccountStore {
   sessionPrincipal(tokenHash: string, now: Date): Promise<Principal | undefined>;
   revokeSession(tokenHash: string, now: Date): Promise<void>;
   consumeAttempt?(usernameHash:string):Promise<boolean>;
+  /** Accounts of one workspace without password material, for the user management page. */
+  listAccounts?(workspaceId:string,now:Date):Promise<Omit<ConsoleAccountList,'observed_at'>>;
 }
+const MAX_LISTED_ACCOUNTS=500;
 
 /** In-process store for tests and local development without a database. */
 export class MemoryAccountStore implements AccountStore {
@@ -54,6 +57,13 @@ export class MemoryAccountStore implements AccountStore {
     return account && { subject: account.subject, workspace_id: account.workspace_id, role: account.role };
   }
   async revokeSession(tokenHash: string) { this.sessions.delete(tokenHash); }
+  async listAccounts(workspaceId: string, now: Date) {
+    const live = [...this.sessions.values()].filter(s => s.expires > now.getTime());
+    return { source: 'MEMORY' as const, items: this.accounts.filter(a => a.workspace_id === workspaceId).slice(0, MAX_LISTED_ACCOUNTS).map((a): ConsoleAccount => ({
+      username: a.username, subject: a.subject, role: a.role, status: 'ACTIVE', created_at: null, updated_at: null,
+      active_sessions: live.filter(s => s.username === a.username).length, latest_session_at: null,
+    })) };
+  }
 }
 
 /** File accounts remain supported for isolated M1 runs, using shared PG state. */
@@ -69,6 +79,11 @@ class FixedAccounts implements AccountStore {
   async sessionPrincipal(hash:string){return this.repository.find(this.authority,hash);}
   async revokeSession(hash:string){await this.repository.revoke(this.authority,hash);}
   async consumeAttempt(hash:string){return this.repository.consumeAttempt(this.authority,hash);}
+  // Sessions are keyed by token only, so per-account session figures are unknown here.
+  async listAccounts(workspaceId:string){
+    return {source:'FILE' as const,items:this.accounts.filter(a=>a.workspace_id===workspaceId).slice(0,MAX_LISTED_ACCOUNTS).map((a):ConsoleAccount=>({
+      username:a.username,subject:a.subject,role:a.role,status:'ACTIVE',created_at:null,updated_at:null,active_sessions:null,latest_session_at:null}))};
+  }
 }
 
 /** Production stores share session and login-budget state through PostgreSQL. */
@@ -127,6 +142,13 @@ export class ConsoleAuth {
   async revoke(header?: string) {
     const value = this.cookieValue(header);
     if (value) await this.store.revokeSession(digest(value), new Date(this.now()));
+  }
+  /** Lists the caller's own workspace only; Worker identities never see console accounts. */
+  async listAccounts(principal: Principal): Promise<ConsoleAccountList> {
+    if (principal.role !== 'reader' && principal.role !== 'operator') throw new StoreError('FORBIDDEN', 'This role cannot perform the operation', 403);
+    if (!this.store.listAccounts) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED', 'Account listing is not available for this account source', 503);
+    const now = new Date(this.now());
+    return { observed_at: now.toISOString(), ...await this.store.listAccounts(principal.workspace_id, now) };
   }
   private cookie(value: string, seconds: number) {
     return `${this.cookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${seconds}${this.secure ? '; Secure' : ''}`;

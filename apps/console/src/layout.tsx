@@ -41,7 +41,7 @@ export function Layout() {
         <NavLink className="nav-primary" to="/proxies"><Network size={16}/><span>IP 资源管理</span></NavLink>
         <NavLink className="nav-primary" to="/workers"><Server size={16}/><span>Worker 管理</span></NavLink>
         <NavGroup icon={<FileChartColumn size={16}/>} label="数据与分析"><Pending>采集统计</Pending><Pending>质量分析</Pending><Link to="/#trends">趋势分析</Link></NavGroup>
-        <NavGroup icon={<Settings size={16}/>} label="系统管理"><Pending>用户管理</Pending><Pending>配置管理</Pending><NavLink to="/errors" aria-label="错误与追踪">错误与日志</NavLink></NavGroup>
+        <NavGroup icon={<Settings size={16}/>} label="系统管理"><NavLink to="/users">用户管理</NavLink><NavLink to="/config">配置管理</NavLink><NavLink to="/errors" aria-label="错误与追踪">错误与日志</NavLink></NavGroup>
       </nav>
       <div className="sidebar-version">M1 · 固定样本联调 <span title="灰色菜单表示尚未接入的功能"><CircleHelp size={12}/></span></div>
     </aside>
@@ -50,7 +50,7 @@ export function Layout() {
         <form className="quick-search" onSubmit={lookup}><Search size={15}/><input aria-label="按 Plan ID 定位" placeholder="搜索 Plan ID，定位计划与执行结果…" value={search} onChange={e => { setSearch(e.target.value); setSearchError(false); }}/>{searchError && <span role="alert">请输入完整 Plan UUID</span>}</form>
         <div className="topbar-right"><Link className="icon-button" to="/errors" aria-label="查看错误事件" title="查看错误事件"><Bell size={19}/></Link><div className="identity"><span className="avatar">{session.subject.slice(0, 1).toUpperCase()}</span><div><strong title={`${session.subject} · ${session.workspace_id}`}>{session.subject === 'console-preview-reader' ? 'preview' : session.subject}</strong><small>{roleLabels[session.role]}</small></div><button className="icon-button" aria-label="退出登录" title="退出登录" onClick={logout}><LogOut size={15}/></button></div></div>
       </header>
-      <main id="main-content" className={`main-content ${location.pathname === '/' || location.pathname === '/plans' || location.pathname === '/update' || location.pathname === '/agent' || location.pathname === '/data-api' || location.pathname === '/delivery' || location.pathname === '/channels' || location.pathname === '/proxies' || location.pathname === '/workers' || location.pathname.startsWith('/discover/') ? 'overview-content' : 'page-content'}`} key={`${session.workspace_id}:${session.subject}`}><Outlet/></main>
+      <main id="main-content" className={`main-content ${location.pathname === '/' || location.pathname === '/plans' || location.pathname === '/update' || location.pathname === '/agent' || location.pathname === '/data-api' || location.pathname === '/delivery' || location.pathname === '/channels' || location.pathname === '/proxies' || location.pathname === '/workers' || location.pathname === '/config' || location.pathname === '/users' || location.pathname.startsWith('/discover/') ? 'overview-content' : 'page-content'}`} key={`${session.workspace_id}:${session.subject}`}><Outlet/></main>
     </div>
   </div>;
 }

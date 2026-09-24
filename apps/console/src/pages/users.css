@@ -1,0 +1,34 @@
+/* User management. Discover chrome on the 4-column grid: the account list (3) with
+   a detail panel (1); login trend (2) and account events (2) below. */
+.users-page .users-main { flex: 1.6 1 0; min-height: 300px; }
+.users-page .users-lower { flex: 1 1 0; min-height: 170px; }
+.dashboard.users-page .user-list { grid-column: span 3; min-height: 0; }
+.dashboard.users-page .user-detail { min-height: 0; }
+.dashboard.users-page .login-trend, .dashboard.users-page .user-events { grid-column: span 2; min-height: 0; }
+.users-page td { vertical-align: middle; }
+.user-list .panel-heading { align-items: center; }
+.user-list .table-scroll, .user-events .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
+.user-list tbody tr { cursor: pointer; }
+.user-list tbody tr.selected { background: #eef5ff; }
+.list-count { margin-left: 8px; font-size: var(--fs-meta); font-weight: 400; color: #7a8ca8; }
+.user-filters { flex-wrap: nowrap; }
+.user-filters .list-search input { width: 160px; }
+.no-match { text-align: center; color: #8797b0; cursor: default; }
+.link-button { padding: 0; border: 0; background: none; color: #277cf7; font-size: var(--fs-text); cursor: pointer; }
+.self-tag { margin-left: 6px; padding: 0 5px; border-radius: 3px; background: #eaf2ff; color: #2562cf; font-size: var(--fs-micro); font-style: normal; font-weight: 500; vertical-align: 1px; }
+.role-chip { padding: 1px 6px; border-radius: 4px; font-size: var(--fs-meta); }
+.role-chip.operator { background: #fff4dc; color: #95600a; }
+.role-chip.reader { background: #eaf2ff; color: #2562cf; }
+.user-detail .detail-head { padding-top: 0; }
+.user-detail .detail-head>.status-chip { margin-left: auto; flex-shrink: 0; }
+.user-detail .detail-head small { display: block; overflow-wrap: anywhere; }
+.scope-list { margin: 0 0 10px; padding: 0; list-style: none; display: grid; gap: 4px; font-size: var(--fs-text); color: #253f6a; }
+.scope-list li::before { content: '✓'; margin-right: 6px; color: #0b8a63; }
+.scope-list li.deny { color: #7a8ca8; }
+.scope-list li.deny::before { content: '×'; color: #c2413a; }
+.login-trend .chart-legend { padding-top: 2px; }
+@media (max-width: 1040px), (max-height: 600px) {
+  .users-page .users-main, .users-page .users-lower { flex: none; }
+  .dashboard.users-page .user-list, .dashboard.users-page .user-detail, .dashboard.users-page .login-trend, .dashboard.users-page .user-events { grid-column: 1 / -1; min-height: 300px; }
+  .user-list .panel-heading, .user-filters { flex-wrap: wrap; }
+}

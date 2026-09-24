@@ -58,6 +58,18 @@ export class PgAccountStore implements AccountStore {
         WHERE s.token_hash = $1 AND s.expires_at > clock_timestamp() AND a.disabled_at IS NULL`, [tokenHash]);
     return rows[0];
   }
+  async listAccounts(workspaceId: string) {
+    const { rows } = await this.pool.query(
+      `SELECT a.username, a.subject, a.role, CASE WHEN a.disabled_at IS NULL THEN 'ACTIVE' ELSE 'DISABLED' END AS status,
+              a.created_at, a.updated_at,
+              count(s.token_hash) FILTER (WHERE s.expires_at > clock_timestamp())::int AS active_sessions,
+              max(s.created_at) AS latest_session_at
+         FROM console.accounts a LEFT JOIN console.sessions s USING (username)
+        WHERE a.workspace_id = $1
+        GROUP BY a.username ORDER BY a.username LIMIT 500`, [workspaceId]);
+    const iso = (value: Date | null) => value && value.toISOString();
+    return { source: 'DATABASE' as const, items: rows.map(r => ({ ...r, created_at: iso(r.created_at), updated_at: iso(r.updated_at), latest_session_at: iso(r.latest_session_at) })) };
+  }
   async revokeSession(tokenHash: string) {
     await this.pool.query('DELETE FROM console.sessions WHERE token_hash = $1', [tokenHash]);
   }
