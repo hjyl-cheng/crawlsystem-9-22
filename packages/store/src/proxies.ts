@@ -180,10 +180,10 @@ export class ProxyStore {
     return (await this.listSources(principal)).find(v => v.source_id === sourceId)!;
   }
   /** Background refresher: lease one due source so parallel refreshers never fetch the same one. */
-  async claimDueSource(leaseSeconds = 120): Promise<SourceClaim | null> {
+  async claimDueSource(leaseSeconds = 120, workspaceId?: string): Promise<SourceClaim | null> {
     const row = (await this.pool.query(`UPDATE m1.proxy_sources SET lease_until=clock_timestamp()+($1*interval '1 second')
       WHERE (workspace_id, source_id) = (SELECT workspace_id, source_id FROM m1.proxy_sources WHERE enabled AND next_fetch_at<=clock_timestamp() AND (lease_until IS NULL OR lease_until<clock_timestamp())
-        ORDER BY next_fetch_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING workspace_id, source_id, url, etag, lease_until`, [leaseSeconds])).rows[0];
+        AND ($2::text IS NULL OR workspace_id=$2) ORDER BY next_fetch_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING workspace_id, source_id, url, etag, lease_until`, [leaseSeconds, workspaceId ?? null])).rows[0];
     return row ? { workspace_id: row.workspace_id, source_id: row.source_id, url: row.url, etag: row.etag, lease_until: iso(row.lease_until)! } : null;
   }
   /** Apply one fetch result. Adds new endpoints, retires ones missing N times in a row, restores reappearing ones and spreads unassigned ones over the source's servers. */

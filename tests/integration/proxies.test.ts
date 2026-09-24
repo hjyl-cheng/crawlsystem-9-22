@@ -86,8 +86,7 @@ test('a subscription source adds, spreads, retires after N misses, restores, and
   const source = await store.createSource(p.operator, { name: 'free socks', url: `https://lists.example.test/${randomUUID()}.txt`, protocol: 'socks5', provider: 'Public', group: 'Public SOCKS5', retire_after_misses: 2, server_ids: ['a1', 'a2'] });
   await rejects(() => store.createSource(p.operator, { name: 'dup', url: source.url, protocol: 'socks5', provider: 'P', group: 'G' }), 'CONFLICT');
   await rejects(() => store.createSource(p.reader, { name: 'x', url: `https://lists.example.test/${randomUUID()}`, protocol: 'socks5', provider: 'P', group: 'G' }), 'FORBIDDEN');
-  // Other workspaces' due sources may be claimed first; drain until ours comes up.
-  const claimOurs = async () => { for (let i = 0; i < 50; i++) { const c = await store.claimDueSource(); if (!c) return null; if (c.source_id === source.source_id) return c; await store.applySourceFetch(c, { status: 'not_modified' }); } return null; };
+  const claimOurs = () => store.claimDueSource(120, p.operator.workspace_id);
   const refresh = async (body: string) => { await pool.query('UPDATE m1.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]); const c = await claimOurs(); assert.ok(c); return store.applySourceFetch(c, { status: 'ok', body, etag: '"v"' }); };
   assert.deepEqual(await refresh('192.0.2.1:1080\n192.0.2.2:1080\n192.0.2.3:1080\n192.0.2.4:1080'), { added: 4, retired: 0, restored: 0, assigned: 4, count: 4 });
   let items = (await store.overview(p.reader)).items;
@@ -110,9 +109,11 @@ test('a subscription source adds, spreads, retires after N misses, restores, and
   // A failing fetch keeps the inventory and retries within 10 minutes.
   await pool.query('UPDATE m1.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]);
   const c = await claimOurs(); assert.ok(c);
-  assert.equal(await store.claimDueSource().then(x => x?.source_id === source.source_id), false, 'a leased source is not claimed twice');
+  assert.equal(await store.claimDueSource(120, p.operator.workspace_id), null, 'a leased source is not claimed twice');
   await store.applySourceFetch(c, { status: 'error', error: 'HTTP 503' });
   const failed = (await store.listSources(p.reader))[0]!;
   assert.equal(failed.last_status, 'error'); assert.equal(failed.active_proxies, 3);
   assert.ok(Date.parse(failed.next_fetch_at) <= Date.now() + 10 * 60_000 + 5000);
+  // Test sources share the preview database: leave them disabled so nothing ever fetches them.
+  await store.updateSource(p.operator, source.source_id, { expected_version: failed.version, enabled: false });
 });

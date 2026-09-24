@@ -27,7 +27,7 @@ async function refreshSources(){
   if(Date.now()<nextSourceCheck)return;
   nextSourceCheck=Date.now()+30_000;
   for(let i=0;i<3&&!stopping;i++){
-    const claim=await proxies.claimDueSource();
+    const claim=await proxies.claimDueSource(120,required('M1_WORKSPACE_ID'));
     if(!claim)return;
     const result=await fetchProxySource(claim.url,claim.etag);
     const applied=await proxies.applySourceFetch(claim,result);
