@@ -187,12 +187,17 @@ spec:
       port: 7235
     - protocol: TCP
       port: 7239
+    # internal-frontend bypasses namespace authorization: temporal namespace only.
+    - protocol: TCP
+      port: 7236
     - protocol: TCP
       port: 6933
     - protocol: TCP
       port: 6934
     - protocol: TCP
       port: 6935
+    - protocol: TCP
+      port: 6936
     - protocol: TCP
       port: 6939
   - from:

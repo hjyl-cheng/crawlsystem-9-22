@@ -12,6 +12,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { Client, Connection } from '@temporalio/client';
 import { PlanDetailSchema, PlanSchema, WorkerSchema, pageSchema, type PlanDetail } from '@crawlsystem/contracts';
 import { issueToken, loadSigningKey } from '@crawlsystem/http/auth';
+import { TemporalTokenIssuer } from '@crawlsystem/http/temporal-token';
 import { createPool } from '@crawlsystem/store/config';
 
 const kubectl = (...args: string[]) => execFileSync('kubectl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -100,8 +101,10 @@ try {
   }
   const start = intents.find(i => i.kind === 'START'), cancel = intents.find(i => i.kind === 'CANCEL');
   assert.equal(start?.state, 'DONE'); assert.equal(cancel?.state, 'DONE', 'deployed dispatcher delivered the CANCEL intent');
+  // Read-only namespace token (ignored by Temporal until namespace authorization is enabled).
+  const temporalKey = await (await TemporalTokenIssuer.fromPem(readFileSync('.runtime/temporal-jwt/signing.pem', 'utf8'), 600)).issue('preview-acceptance', ['crawlsystem-m1-main:read']);
   const tls = { serverRootCACertificate: readFileSync(process.env.TEMPORAL_TLS_CA_FILE!), clientCertPair: { crt: readFileSync(process.env.TEMPORAL_TLS_CERT_FILE!), key: readFileSync(process.env.TEMPORAL_TLS_KEY_FILE!) }, serverNameOverride: process.env.TEMPORAL_TLS_SERVER_NAME! };
-  for (let attempt = 0; !connection; attempt++) { try { connection = await Connection.connect({ address: '127.0.0.1:17233', tls, connectTimeout: '5 seconds' }); } catch (e) { if (attempt > 5) throw e; await delay(1000); } }
+  for (let attempt = 0; !connection; attempt++) { try { connection = await Connection.connect({ address: '127.0.0.1:17233', tls, connectTimeout: '5 seconds', apiKey: temporalKey }); } catch (e) { if (attempt > 5) throw e; await delay(1000); } }
   const client = new Client({ connection, namespace: 'crawlsystem-m1-main' });
   let status = '';
   for (const end = Date.now() + 60_000; Date.now() < end && status !== 'CANCELLED'; await delay(1000)) status = (await client.workflow.getHandle(waitingPlan.workflow_id).describe()).status.name;

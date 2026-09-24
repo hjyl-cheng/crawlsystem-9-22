@@ -38,3 +38,21 @@ test('a renewed mTLS file triggers one graceful restart signal', async () => {
     await new Promise(resolve => setTimeout(resolve, 60)); assert.equal(changes, 1);
   } finally { stop(); }
 });
+test('Temporal API key comes from exactly one source and is refreshed only when it changes', async () => {
+  const { temporalOptions, refreshTemporalApiKey } = await import('@crawlsystem/execution-client/config');
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const base = { TEMPORAL_ADDRESS: '127.0.0.1:7233', TEMPORAL_NAMESPACE: 'crawlsystem-m1-test', TEMPORAL_ALLOW_INSECURE_LOOPBACK: 'true' };
+  assert.equal(temporalOptions(base).apiKey, undefined);
+  const file = `${mkdtempSync('/tmp/crawlsystem-temporal-key-')}/token`; writeFileSync(file, 'jwt-1\n');
+  assert.equal(await temporalOptions({ ...base, TEMPORAL_API_KEY_FILE: file }).apiKey!(), 'jwt-1');
+  assert.ok(temporalOptions({ ...base, TEMPORAL_API_KEY_MODE: 'workload', CONTROL_API_URL: 'http://127.0.0.1:1', WORKLOAD_IDENTITY_TOKEN_FILE: file }).apiKey);
+  assert.throws(() => temporalOptions({ ...base, TEMPORAL_API_KEY_MODE: 'workload' }));
+  assert.throws(() => temporalOptions({ ...base, TEMPORAL_API_KEY_MODE: 'workload', TEMPORAL_API_KEY_FILE: file, CONTROL_API_URL: 'http://127.0.0.1:1', WORKLOAD_IDENTITY_TOKEN_FILE: file }));
+  assert.throws(() => temporalOptions({ ...base, TEMPORAL_API_KEY_MODE: 'static' }));
+  let token = 'a'; const applied: string[] = []; let errors = 0;
+  const stop = refreshTemporalApiKey(async () => { if (token === 'fail') throw new Error('down'); return token; }, t => { applied.push(t); }, () => { errors++; }, 15);
+  try {
+    await new Promise(r => setTimeout(r, 50)); token = 'b'; await new Promise(r => setTimeout(r, 50)); token = 'fail'; await new Promise(r => setTimeout(r, 40));
+    assert.deepEqual(applied, ['a', 'b']); assert.ok(errors > 0);
+  } finally { stop(); }
+});

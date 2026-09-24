@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
-  ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
+  ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, TemporalTokenSchema, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
 
 export class ExecutionApiError extends Error {
   constructor(readonly code: ErrorCode, readonly retryable: boolean, readonly correlationId?: string) {
@@ -20,16 +20,18 @@ export function validateApiUrl(raw: string): string {
   return url.origin;
 }
 export interface WorkloadTokenOptions { controlUrl: string; identityToken: () => Promise<string>; workerId: string; timeoutMs?: number; fetch?: typeof fetch; now?: () => number; }
-// Exchanges the kubelet-rotated ServiceAccount token for a short API token and
+interface ExchangeOptions<T extends { token: string; expires_in: number }> { controlUrl: string; route: string; schema: z.ZodType<T>; identityToken: () => Promise<string>;
+  accept?: (value: T) => void; timeoutMs?: number; fetch?: typeof fetch; now?: () => number; }
+// Exchanges the kubelet-rotated ServiceAccount token at Control for a short token and
 // renews it at half-life; concurrent callers share one exchange.
-export function workloadTokenSource(options: WorkloadTokenOptions): () => Promise<string> {
+function exchangeTokenSource<T extends { token: string; expires_in: number }>(options: ExchangeOptions<T>): () => Promise<string> {
   const control = validateApiUrl(options.controlUrl), fetcher = options.fetch ?? fetch, now = options.now ?? Date.now;
   let cached: { token: string; renewAt: number; expiresAt: number } | undefined, pending: Promise<string> | undefined;
   const exchange = async () => {
     const identity = (await options.identityToken()).trim();
     if (!identity || /\s/.test(identity)) throw new ExecutionApiError('UNAUTHENTICATED', false);
     let response: Response;
-    try { response = await fetcher(new URL(ApiRoutes.workloadToken, control), { method: 'POST', redirect: 'error', headers: { authorization: `Bearer ${identity}` }, signal: AbortSignal.timeout(options.timeoutMs ?? 5000) }); }
+    try { response = await fetcher(new URL(options.route, control), { method: 'POST', redirect: 'error', headers: { authorization: `Bearer ${identity}` }, signal: AbortSignal.timeout(options.timeoutMs ?? 5000) }); }
     catch { throw new ExecutionApiError('UNAVAILABLE', true); }
     let data: unknown;
     try { data = await response.json(); } catch { throw new ExecutionApiError('INVALID_REQUEST', false); }
@@ -37,10 +39,9 @@ export function workloadTokenSource(options: WorkloadTokenOptions): () => Promis
       const parsed = ApiErrorSchema.safeParse(data);
       throw parsed.success ? new ExecutionApiError(parsed.data.error.code, parsed.data.error.retryable, parsed.data.error.correlation_id) : new ExecutionApiError('INVALID_REQUEST', false);
     }
-    const parsed = WorkloadTokenSchema.safeParse(data);
+    const parsed = options.schema.safeParse(data);
     if (!parsed.success) throw new ExecutionApiError('INVALID_REQUEST', false);
-    // The Pod name is the Worker identity; a mismatch means a wrong mount or ServiceAccount.
-    if (parsed.data.subject !== options.workerId) throw new ExecutionApiError('FORBIDDEN', false);
+    options.accept?.(parsed.data);
     const issued = now();
     cached = { token: parsed.data.token, renewAt: issued + parsed.data.expires_in * 500, expiresAt: issued + parsed.data.expires_in * 1000 - 5000 };
     return parsed.data.token;
@@ -53,6 +54,15 @@ export function workloadTokenSource(options: WorkloadTokenOptions): () => Promis
     // During a control-plane blip keep using a still-valid token instead of failing work.
     catch (error) { if (current && time < current.expiresAt) return current.token; throw error; }
   };
+}
+export function workloadTokenSource(options: WorkloadTokenOptions): () => Promise<string> {
+  // The Pod name is the Worker identity; a mismatch means a wrong mount or ServiceAccount.
+  return exchangeTokenSource({ ...options, route: ApiRoutes.workloadToken, schema: WorkloadTokenSchema,
+    accept: value => { if (value.subject !== options.workerId) throw new ExecutionApiError('FORBIDDEN', false); } });
+}
+/** Temporal namespace token (gRPC Authorization) for the calling ServiceAccount. */
+export function temporalTokenSource(options: Omit<WorkloadTokenOptions, 'workerId'>): () => Promise<string> {
+  return exchangeTokenSource({ ...options, route: ApiRoutes.temporalToken, schema: TemporalTokenSchema });
 }
 
 export class ExecutionApi {

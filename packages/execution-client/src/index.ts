@@ -2,7 +2,7 @@ import { Client, Connection, WorkflowExecutionAlreadyStartedError, WorkflowNotFo
 import { defaultPayloadConverter, WorkflowIdReusePolicy } from '@temporalio/common';
 import { z } from 'zod';
 import { IdSchema, WORKFLOW_TYPE, WorkflowInputSchema, type WorkflowInput, type WorkflowStarter } from '@crawlsystem/contracts';
-import { validateTemporalOptions, type TemporalOptions } from './config.ts';
+import { refreshTemporalApiKey, validateTemporalOptions, type TemporalOptions } from './config.ts';
 
 export class WorkflowIdentityConflict extends Error {
   constructor() { super('Existing Workflow does not match the frozen execution identity'); this.name = 'WorkflowIdentityConflict'; }
@@ -76,11 +76,14 @@ export function workflowStarter(client: Client, taskQueue: string): WorkflowStar
 
 export async function createWorkflowStarter(options: TemporalOptions): Promise<WorkflowStarter & { close(): Promise<void> }> {
   validateTemporalOptions(options);
-  const connection = await Connection.connect({ address: options.address, tls: options.tls, connectTimeout: '10 seconds' });
+  const apiKey = options.apiKey ? await options.apiKey() : undefined;
+  // With an API key the SDK defaults to TLS; keep the insecure-loopback (test) mode plaintext.
+  const connection = await Connection.connect({ address: options.address, tls: options.tls ?? (apiKey ? false : undefined), connectTimeout: '10 seconds', ...(apiKey ? { apiKey } : {}) });
+  const stopRefresh = refreshTemporalApiKey(options.apiKey, token => connection.setApiKey(token), () => process.stderr.write('Temporal token refresh failed; current token kept until expiry\n'));
   const starter = workflowStarter(new Client({ connection, namespace: options.namespace }), options.taskQueue);
   return {
     start: input => connection.withDeadline(Date.now() + 9000, () => starter.start(input)),
     cancel: id => connection.withDeadline(Date.now() + 9000, () => starter.cancel(id)),
-    close: () => connection.close(),
+    close: () => { stopRefresh(); return connection.close(); },
   };
 }

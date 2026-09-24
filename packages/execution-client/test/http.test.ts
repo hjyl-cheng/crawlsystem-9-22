@@ -78,3 +78,13 @@ test('a token for another Pod identity is refused', async () => {
   const token = workloadTokenSource({ controlUrl: 'http://localhost:1', workerId: 'worker-0', identityToken: async () => 'sa', fetch: server.fetcher });
   await assert.rejects(token(), (e: unknown) => e instanceof ExecutionApiError && e.code === 'FORBIDDEN');
 });
+test('Temporal token source exchanges at the Temporal route and validates the response', async () => {
+  const { temporalTokenSource } = await import('../src/http.ts');
+  const paths: string[] = [];
+  const fetcher = (async (url: URL) => { paths.push(url.pathname); return Response.json({ token: 'temporal-jwt-padding-padding', permissions: ['crawlsystem-m1-main:write'], expires_in: 600 }); }) as typeof fetch;
+  const token = temporalTokenSource({ controlUrl: 'http://localhost:1', identityToken: async () => 'sa', fetch: fetcher });
+  assert.equal(await token(), 'temporal-jwt-padding-padding'); assert.equal(await token(), 'temporal-jwt-padding-padding');
+  assert.deepEqual(paths, ['/v1/workload/temporal-token']);
+  const bad = temporalTokenSource({ controlUrl: 'http://localhost:1', identityToken: async () => 'sa', fetch: (async () => Response.json({ token: 'x', permissions: ['system:admin'], expires_in: 600 })) as unknown as typeof fetch });
+  await assert.rejects(bad(), (e: unknown) => e instanceof ExecutionApiError && e.code === 'INVALID_REQUEST');
+});

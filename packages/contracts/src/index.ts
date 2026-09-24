@@ -166,6 +166,8 @@ export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject(
 export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.literal('NOT_CONFIGURED') });
 export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, contract_version: z.literal(CONTRACT_VERSION) });
 // Kubernetes ServiceAccount token exchange: subject is the Pod, server_id the node reported by TokenReview.
+// Temporal namespace token for the gRPC Authorization header; permissions name one namespace and role.
+export const TemporalTokenSchema = z.strictObject({ token: z.string().min(20).max(4096), permissions: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}:(read|write|worker)$/)).min(1).max(4), expires_in: z.number().int().min(60).max(3600) });
 export const WorkloadTokenSchema = z.strictObject({ token: z.string().min(20).max(4096), subject: IdSchema, workspace_id: IdSchema, role: z.literal('worker'), server_id: IdSchema, expires_in: z.number().int().min(60).max(3600) });
 export const ApiErrorSchema: z.ZodType<ApiError> = z.strictObject({ error: z.strictObject({ code: ErrorCodeSchema, message: z.string(), retryable: z.boolean(), correlation_id: z.string() }) });
 export const WorkflowInputSchema: z.ZodType<WorkflowInput> = z.strictObject({ schema_version: z.literal(CONTRACT_VERSION), plan_id: z.uuid(), workspace_id: IdSchema, execution_epoch: z.number().int().positive(), input_hash: Hash, workflow_id: z.string() });
@@ -187,7 +189,7 @@ export const PlansSummarySchema: z.ZodType<PlansSummary> = z.strictObject({
 export const pageSchema = <T extends z.ZodType>(item: T) => z.strictObject({ items: z.array(item).max(100), next_cursor: z.string().nullable() });
 export const ApiRoutes = {
   session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', workers: '/v1/workers', errors: '/v1/errors',
-  heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', workloadToken: '/v1/workload/token',
+  heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', workloadToken: '/v1/workload/token', temporalToken: '/v1/workload/temporal-token',
   plan: (id: string) => `/v1/plans/${encodeURIComponent(id)}`,
   input: (id: string) => `/v1/plans/${encodeURIComponent(id)}/input`,
   cancel: (id: string) => `/v1/plans/${encodeURIComponent(id)}/cancel`,

@@ -1,5 +1,7 @@
 import {execFileSync,spawn,spawnSync} from 'node:child_process';
-import {createReadStream,readFileSync,writeFileSync} from 'node:fs';
+import {createReadStream,existsSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {generateKeyPairSync} from 'node:crypto';
+import {temporalJwks,temporalKeyId} from '@crawlsystem/http/temporal-token';
 
 // Deploys the M1 preview stack from the images built by build-images.ts:
 // Control (2), Ingest (2), intent dispatcher (1), execution Worker (1) and the
@@ -52,9 +54,17 @@ putSecret('control','temporal-client-dispatcher',pick(secretData('temporal','cra
 putSecret('crawler','temporal-client-worker',pick(secretData('temporal','crawlsystem-m1-worker-tls'),tlsKeys));
 // 4. Ingest uses the same facts database and verification key as Control.
 putSecret('ingest','ingest-preview',pick(secretData('control','control-api-preview'),['database-url','pg-ca.crt','jwt-secret']));
-step('secrets ready: control/temporal-client-dispatcher, crawler/temporal-client-worker, ingest/ingest-preview');
+// 5. Temporal namespace tokens: ES256 private key only in Control; public JWKS for the frontend.
+// previous.pem (if present) stays in the JWKS during a key rotation so live tokens keep working.
+mkdirSync('.runtime/temporal-jwt',{recursive:true,mode:0o700});
+if(!existsSync('.runtime/temporal-jwt/signing.pem'))writeFileSync('.runtime/temporal-jwt/signing.pem',generateKeyPairSync('ec',{namedCurve:'P-256'}).privateKey.export({type:'pkcs8',format:'pem'}),{mode:0o600});
+const signing=readFileSync('.runtime/temporal-jwt/signing.pem','utf8');
+const published=[signing,...(existsSync('.runtime/temporal-jwt/previous.pem')?[readFileSync('.runtime/temporal-jwt/previous.pem','utf8')]:[])];
+putSecret('control','temporal-jwt-signing',{'signing.pem':Buffer.from(signing).toString('base64')});
+kubectl(['apply','-f','-'],JSON.stringify({apiVersion:'v1',kind:'ConfigMap',metadata:{name:'temporal-jwks',namespace:'temporal'},data:{'jwks.json':JSON.stringify(await temporalJwks(published))}}));
+step(`secrets ready: control/temporal-client-dispatcher, crawler/temporal-client-worker, ingest/ingest-preview, Temporal signing key ${temporalKeyId(signing)}`);
 
-// 5. Roll out in dependency order: Control (token exchange) and Ingest before Workers.
+// 6. Roll out in dependency order: Control (token exchange) and Ingest before Workers.
 const rollouts:[string,string,string][]=[['control-api','control','deployment/control-api-preview'],['ingest','ingest','deployment/ingest-preview'],
   ['dispatcher','control','deployment/intent-dispatcher'],['execution-worker','crawler','statefulset/execution-worker']];
 for(const [file,namespace,resource] of rollouts){

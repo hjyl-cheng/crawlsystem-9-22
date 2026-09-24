@@ -18,9 +18,16 @@ server:
   - name: pg-ca
     configMap:
       name: pg-ca
+  # Public JWKS for namespace authorization; only Control holds the private key.
+  - name: temporal-jwks
+    configMap:
+      name: temporal-jwks
   additionalVolumeMounts: &id002
   - name: pg-ca
     mountPath: /etc/pg-ca
+    readOnly: true
+  - name: temporal-jwks
+    mountPath: /etc/temporal/jwks
     readOnly: true
   tls:
     internode:
@@ -35,6 +42,18 @@ server:
       serverName: temporal-frontend.temporal.svc.cluster.local
   config:
     logLevel: info
+    # Namespace authorization (2026-09-24): clients on the public frontend must present
+    # a JWT whose `permissions` claim names the namespace, e.g. crawlsystem-m1-main:write.
+    # Server components, admin tools and the UI use the internal-frontend, reachable
+    # only from the temporal namespace (NetworkPolicy temporal-internal).
+    authorization:
+      jwtKeyProvider:
+        keySourceURIs:
+        - file:///etc/temporal/jwks/jwks.json
+        refreshInterval: 1m
+      permissionsClaimName: permissions
+      authorizer: default
+      claimMapper: default
     persistence:
       defaultStore: default
       visibilityStore: visibility
@@ -85,6 +104,8 @@ server:
       namespace:
       - name: crawlsystem
         retention: 7d
+  internal-frontend:
+    enabled: true
 admintools:
   enabled: true
   image:
@@ -118,10 +139,12 @@ web:
   service:
     type: ClusterIP
     port: 8080
+  # The UI has no per-user JWT, so it reads through the internal-frontend (cluster-only).
+  temporalAddress: temporal-internal-frontend.temporal.svc:7236
   tls:
     enabled: true
     secretName: temporal-ui-client-tls
-    serverName: temporal-frontend.temporal.svc.cluster.local
+    serverName: temporal-internode.temporal.svc
     enableHostVerification: true
 schema:
   useHelmHooks: true

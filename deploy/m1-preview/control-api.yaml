@@ -81,6 +81,11 @@ spec:
             - { name: WORKLOAD_SERVICE_ACCOUNT, value: "system:serviceaccount:crawler:execution-worker" }
             - { name: WORKLOAD_TOKEN_AUDIENCE, value: crawlsystem-control }
             - { name: WORKLOAD_TOKEN_SECONDS, value: "900" }
+            # Temporal namespace tokens (ES256). Temporal trusts only the public JWKS ConfigMap.
+            - { name: TEMPORAL_JWT_KEY_FILE, value: /temporal-jwt/signing.pem }
+            - { name: TEMPORAL_TOKEN_SECONDS, value: "900" }
+            - name: TEMPORAL_WORKLOAD_PERMISSIONS
+              value: '{"system:serviceaccount:crawler:execution-worker":["crawlsystem-m1-main:read","crawlsystem-m1-main:worker"],"system:serviceaccount:control:intent-dispatcher":["crawlsystem-m1-main:write"]}'
             - { name: PG_CA_FILE, value: /secrets/pg-ca.crt }
             - { name: PG_TLS_SERVERNAME, value: crawler-pg-pool.db.svc.cluster.local }
             - { name: M1_JWT_SECRET_FILE, value: /secrets/jwt-secret }
@@ -93,6 +98,7 @@ spec:
               valueFrom: { secretKeyRef: { name: control-api-preview, key: console-database-url } }
           volumeMounts:
             - { name: secrets, mountPath: /secrets, readOnly: true }
+            - { name: temporal-jwt, mountPath: /temporal-jwt, readOnly: true }
           readinessProbe:
             httpGet: { path: /readyz, port: http }
             periodSeconds: 10
@@ -118,6 +124,11 @@ spec:
             items:
               - { key: pg-ca.crt, path: pg-ca.crt }
               - { key: jwt-secret, path: jwt-secret }
+        - name: temporal-jwt
+          secret:
+            secretName: temporal-jwt-signing
+            defaultMode: 0440
+            items: [{ key: signing.pem, path: signing.pem }]
 ---
 apiVersion: v1
 kind: Service
@@ -183,4 +194,20 @@ spec:
             matchLabels: { kubernetes.io/metadata.name: crawler }
           podSelector:
             matchLabels: { app.kubernetes.io/name: execution-worker }
+      ports: [{ port: 18100 }]
+---
+# The dispatcher exchanges its ServiceAccount token here for a Temporal token.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: control-api-preview-from-dispatcher
+  namespace: control
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: control-api-preview }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: intent-dispatcher }
       ports: [{ port: 18100 }]

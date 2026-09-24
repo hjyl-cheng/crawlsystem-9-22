@@ -1,10 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { DEFAULT_TASK_QUEUE } from '@crawlsystem/contracts';
+import { temporalTokenSource } from './http.ts';
 
 export interface TemporalOptions {
   address: string; namespace: string; taskQueue: string;
   tls?: { serverRootCACertificate: Buffer; clientCertPair: { crt: Buffer; key: Buffer }; serverNameOverride: string };
+  /** Temporal namespace token (JWT) source; called before connect and on each refresh. */
+  apiKey?: () => Promise<string>;
 }
 export function validateTemporalOptions(options: TemporalOptions): void {
   if (!options.address || /[\s/@]/.test(options.address)) throw new Error('Invalid TEMPORAL_ADDRESS');
@@ -21,8 +25,23 @@ export function temporalOptions(env: NodeJS.ProcessEnv = process.env): TemporalO
     clientCertPair: { crt: readFileSync(required('TEMPORAL_TLS_CERT_FILE')), key: readFileSync(required('TEMPORAL_TLS_KEY_FILE')) },
     serverNameOverride: required('TEMPORAL_TLS_SERVER_NAME'),
   };
+  // Namespace authorization: a file for local tools, or a ServiceAccount exchange at Control in-cluster.
+  if (env.TEMPORAL_API_KEY_FILE && env.TEMPORAL_API_KEY_MODE === 'workload') throw new Error('Set TEMPORAL_API_KEY_FILE or TEMPORAL_API_KEY_MODE=workload, not both');
+  if (env.TEMPORAL_API_KEY_FILE) { const file = env.TEMPORAL_API_KEY_FILE; options.apiKey = async () => (await readFile(file, 'utf8')).trim(); }
+  else if (env.TEMPORAL_API_KEY_MODE === 'workload') {
+    const identityFile = required('WORKLOAD_IDENTITY_TOKEN_FILE');
+    options.apiKey = temporalTokenSource({ controlUrl: required('CONTROL_API_URL'), identityToken: () => readFile(identityFile, 'utf8') });
+  } else if (env.TEMPORAL_API_KEY_MODE) throw new Error('TEMPORAL_API_KEY_MODE must be workload');
   validateTemporalOptions(options);
   return options;
+}
+/** Refresh the connection's Temporal token; the source renews at half-life, so polling is cheap. */
+export function refreshTemporalApiKey(apiKey: (() => Promise<string>) | undefined, apply: (token: string) => unknown, onError: () => void, intervalMs = 60_000): () => void {
+  if (!apiKey) return () => {};
+  let last = '';
+  const timer = setInterval(() => { void apiKey().then(async token => { if (token !== last) { await apply(token); last = token; } }).catch(onError); }, intervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
 }
 // Temporal clients read mTLS material once at connect. When cert-manager renews
 // the mounted files, stop gracefully so Kubernetes restarts us with the new pair.

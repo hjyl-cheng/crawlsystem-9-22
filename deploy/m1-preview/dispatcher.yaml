@@ -1,5 +1,14 @@
 # Durable START/CANCEL intent dispatcher. Intents are leased in PostgreSQL, so a
 # restart (or a second replica) resumes safely; Recreate keeps one in normal use.
+# Temporal access: its ServiceAccount token is exchanged at Control for a
+# 15-minute namespace token (crawlsystem-m1-main:write).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: intent-dispatcher
+  namespace: control
+automountServiceAccountToken: false
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,6 +24,7 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: intent-dispatcher }
     spec:
+      serviceAccountName: intent-dispatcher
       automountServiceAccountToken: false
       enableServiceLinks: false
       terminationGracePeriodSeconds: 20
@@ -44,6 +54,9 @@ spec:
             - { name: TEMPORAL_TLS_CERT_FILE, value: /temporal/tls.crt }
             - { name: TEMPORAL_TLS_KEY_FILE, value: /temporal/tls.key }
             - { name: DISPATCHER_ALIVE_FILE, value: /tmp/alive }
+            - { name: TEMPORAL_API_KEY_MODE, value: workload }
+            - { name: CONTROL_API_URL, value: "http://control-api-preview.control.svc.cluster.local:18100" }
+            - { name: WORKLOAD_IDENTITY_TOKEN_FILE, value: /var/run/secrets/crawlsystem/control-token }
           livenessProbe:
             exec: { command: ["sh", "-c", "test $(( $(date +%s) - $(stat -c %Y /tmp/alive) )) -lt 60"] }
             initialDelaySeconds: 30
@@ -53,6 +66,7 @@ spec:
             - { name: secrets, mountPath: /secrets, readOnly: true }
             - { name: temporal, mountPath: /temporal, readOnly: true }
             - { name: tmp, mountPath: /tmp }
+            - { name: control-token, mountPath: /var/run/secrets/crawlsystem, readOnly: true }
           resources:
             requests: { cpu: 20m, memory: 64Mi }
             limits: { cpu: 300m, memory: 192Mi }
@@ -70,3 +84,7 @@ spec:
           secret: { secretName: temporal-client-dispatcher, defaultMode: 0440 }
         - name: tmp
           emptyDir: { sizeLimit: 1Mi }
+        - name: control-token
+          projected:
+            sources:
+              - serviceAccountToken: { audience: crawlsystem-control, expirationSeconds: 3600, path: control-token }

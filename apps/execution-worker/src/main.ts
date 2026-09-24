@@ -6,7 +6,7 @@ import { ExecutionApi, workloadTokenSource } from '@crawlsystem/execution-client
 import { RequestTracing } from '@crawlsystem/http/tracing';
 import { createActivities } from './activities.ts';
 import { workerConfig } from './config.ts';
-import { watchTlsFiles } from '@crawlsystem/execution-client/config';
+import { refreshTemporalApiKey, watchTlsFiles } from '@crawlsystem/execution-client/config';
 
 const config = workerConfig();
 const tracing = new RequestTracing('execution-worker', record => log(record), Number(process.env.TRACE_SAMPLE_RATIO ?? '0.1'));
@@ -24,7 +24,10 @@ let accepting = false, stopping = false;
 const heartbeatStop = new AbortController();
 const report = () => api.heartbeat({ worker_id: config.workerId, server_id: config.serverId, build_version: config.buildVersion,
   accepting_work: accepting, capacity: config.capacity, running_plan_ids: [...running.keys()] }, { attempts: 1 });
-const connection = await NativeConnection.connect({ address: config.temporal.address, tls: config.temporal.tls });
+const temporalApiKey = config.temporal.apiKey ? await config.temporal.apiKey() : undefined;
+const connection = await NativeConnection.connect({ address: config.temporal.address, tls: config.temporal.tls ?? (temporalApiKey ? false : undefined), ...(temporalApiKey ? { apiKey: temporalApiKey } : {}) });
+const stopTemporalRefresh = refreshTemporalApiKey(config.temporal.apiKey, token => connection.setApiKey(token),
+  () => log({ worker_id: config.workerId, phase: 'TEMPORAL_TOKEN', error_code: 'UNAVAILABLE', retryable: true }));
 let worker: Worker | undefined;
 let heartbeatLoop: Promise<void> | undefined;
 const stop = () => {
@@ -68,6 +71,6 @@ try {
   await report().catch(() => {});
   await tracing.close();
   await connection.close();
-  unwatch();
+  unwatch(); stopTemporalRefresh();
   process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop);
 }

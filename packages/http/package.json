@@ -9,7 +9,8 @@
     "./runtime": "./src/runtime.ts",
     "./tracing": "./src/tracing.ts",
     "./workload": "./src/workload.ts",
-    "./kubernetes": "./src/kubernetes.ts"
+    "./kubernetes": "./src/kubernetes.ts",
+    "./temporal-token": "./src/temporal-token.ts"
   },
   "dependencies": {
     "@crawlsystem/contracts": "0.1.0",

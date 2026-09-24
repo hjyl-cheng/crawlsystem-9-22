@@ -61,6 +61,8 @@ spec:
             - { name: CONTROL_API_URL, value: "http://control-api-preview.control.svc.cluster.local:18100" }
             - { name: INGEST_API_URL, value: "http://ingest-preview.ingest.svc.cluster.local:18101" }
             - { name: WORKLOAD_IDENTITY_TOKEN_FILE, value: /var/run/secrets/crawlsystem/control-token }
+            # Same projected token also yields the Temporal token (crawlsystem-m1-main:read+worker).
+            - { name: TEMPORAL_API_KEY_MODE, value: workload }
             - { name: TEMPORAL_ADDRESS, value: "temporal-frontend.temporal.svc.cluster.local:7233" }
             - { name: TEMPORAL_NAMESPACE, value: crawlsystem-m1-main }
             - { name: TEMPORAL_TASK_QUEUE, value: crawlsystem-m1-main }

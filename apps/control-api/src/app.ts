@@ -16,7 +16,7 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     }
     if(publicAuth) return undefined;
     // The bearer here is a Kubernetes ServiceAccount token, verified by TokenReview in the route.
-    if(request.method==='POST' && path===ApiRoutes.workloadToken) return undefined;
+    if(request.method==='POST' && (path===ApiRoutes.workloadToken || path===ApiRoutes.temporalToken)) return undefined;
     if(request.headers.authorization) return authenticate(request.headers.authorization,options.signingKey);
     if(auth) return auth.authenticate(request.headers.cookie);
     return authenticate(undefined,options.signingKey);
@@ -36,6 +36,10 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     if(!workload) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Workload identity is not configured',503);
     const result=await workload.exchange(request.headers.authorization);
     return {token:result.token,...result.principal,server_id:result.server_id,expires_in:result.expires_in};
+  });
+  app.post(ApiRoutes.temporalToken,{bodyLimit:1024},async request=>{
+    if(!workload) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Workload identity is not configured',503);
+    return workload.exchangeTemporal(request.headers.authorization);
   });
   app.get('/v1/session',async request=>({...request.principal,contract_version:CONTRACT_VERSION}));
   // The creating request's trace context is stored so dispatch and execution continue that trace.
