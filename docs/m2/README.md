@@ -29,3 +29,14 @@
 **状态。** 真实计划在全部必需领域完成前为 RUNNING；WAITING 只用于固定样本中 Agent 未接入的情况。缺字段按 `exact / estimated / empty / unavailable / unresolved / disabled` 表达，不填零冒充成功。
 
 **Workflow。** 统一为 `channelPlanWorkflow`，按冻结输入的 `source_mode` 选择固定样本或真实采集路径；业务身份（plan_id、代次、input_hash、workflow_id）不变。
+
+## 进度（2026-09-24）
+
+| 步骤 | 状态 | 提交 |
+| --- | --- | --- |
+| 1 契约 | 完成：真实计划、范围冻结、目标清单、不可用标记、Agent 输入快照；控制台可创建真实计划 | `a33c5e0`、`eac953f` |
+| 2 IP 管理 | 完成：库存（凭据 AES-GCM 加密）、服务器绑定与代次、节点同步；IP 页面导入/绑定/启停/删除；订阅来源（定时拉取、退役与恢复、SSRF 防护） | `761004e`…`1389781`、`f3da3b2` |
+| 3 节点代理 | 完成：每节点 Proxy Manager（DaemonSet），租约、并发、冷却退避、主动探测；仅 Worker 可访问 | `840fffc` |
+| 4 采集器 | 进行中 | |
+
+第 3 步集群验收：6 个节点均同步成功；导入 2 个公开 SOCKS5 绑定到 s2 后约 40 秒显示正常（含延迟）；Worker Pod 经本机 Service 申请/归还租约成功，单 IP 并发上限生效；同命名空间非 Worker Pod 被 NetworkPolicy 拒绝。验收用 IP 已删除。探测实现与 curl 对同一批公开代理结果一致。
