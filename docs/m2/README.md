@@ -48,10 +48,14 @@
 | 2 IP 管理 | 完成：库存（凭据 AES-GCM 加密）、服务器绑定与代次、节点同步；IP 页面导入/绑定/启停/删除；订阅来源（定时拉取、退役与恢复、SSRF 防护） | `761004e`…`1389781`、`f3da3b2` |
 | 3 节点代理 | 完成：每节点 Proxy Manager（DaemonSet），租约、并发、冷却退避、主动探测；仅 Worker 可访问 | `840fffc` |
 | 4 采集器 | 完成：About 页经代理抓取 + Data API 精确计数；Data API 列表冻结目标、视频详情分批；Shorts 标签与首屏 Top 评论经代理抓取；每批回执、重试只补未完成部分 | `39fae29` |
-| 5 Agent | 下一步 | |
+| 5 Agent | 完成：旧系统 4 个本地模型作为常驻推理服务 profile-agent；VIDEO 完成后 Worker 读取输入快照、生成十项画像、按快照 Hash 提交 AGENT；页面展示置信度与估计说明 | `888d3e1` |
+| 6 验收 | 下一步 | |
 
 第 3 步集群验收：6 个节点均同步成功；导入 2 个公开 SOCKS5 绑定到 s2 后约 40 秒显示正常（含延迟）；Worker Pod 经本机 Service 申请/归还租约成功，单 IP 并发上限生效；同命名空间非 Worker Pod 被 NetworkPolicy 拒绝。验收用 IP 已删除。探测实现与 curl 对同一批公开代理结果一致。
 
 第 4 步集群验收（2026-09-24）：真实频道 Google for Developers（`UC_x5XG1OV2P6uZZ5FSM9Ttw`），范围最近 5 个视频 / 90 天 / 每视频 10 条评论。计划创建到 COMPLETED 约 6 秒：ABOUT、VIDEO 均 APPLIED，冻结 5 个目标，识别出 2 个 Shorts，评论 3～10 条，3 份回执；采集请求经 2 个临时公开 SOCKS5 代理，节点代理管理记为成功。验收用代理已删除；该频道的真实数据保留在 `m1-main`。
 
 采集来源的取舍：YouTube 对数据中心客户端的播放器接口直接要求"证明不是机器人"，因此视频详情以 Data API 为准（精确发布时间、时长、播放/点赞/评论数，约 3 配额单位/频道），About 页、Shorts 标签和评论仍经代理抓取。评论发布时间为相对时间换算，标记为 `estimated_relative`；订阅数按 API 三位有效数字取整，标记为 `estimated`。
+
+第 5 步集群验收（2026-09-24）：profile-agent 部署在 s1，模型校验加载 5.1 秒，常驻内存约 330 MiB；常驻验收 6/6 通过。真实频道 Google for Developers 新计划（ABOUT、VIDEO、AGENT 均必需，最近 5 个视频 / 90 天 / 每视频 10 条评论）从创建到 COMPLETED 约 9 秒：三个领域均 APPLIED，4 份回执；Agent 推理 98 毫秒，十项画像通过契约校验并入库（国家 United States、创作者语言 English 为高置信；分类 Tech / Mobile Tech、Tech News 与受众分布为低置信估计）。采集经 4 个临时公开 SOCKS5（绑定 s2），验收后已删除。
+
