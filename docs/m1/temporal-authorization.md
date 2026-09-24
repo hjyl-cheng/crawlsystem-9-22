@@ -10,7 +10,7 @@
 
 | ServiceAccount | 权限 | 用途 |
 | --- | --- | --- |
-| `crawler/execution-worker` | `crawlsystem-m1-main:read`、`:worker` | 轮询与完成任务；不能启动或取消 Workflow |
+| `crawler/execution-worker` | `crawlsystem-m1-main:write` | 轮询与完成任务。Temporal 默认 authorizer 要求完成任务等 Worker 接口具备 write，`read`/`worker` 不足（集群实测 PermissionDenied），因此 Worker 在本 namespace 内也能启动/取消 Workflow；隔离边界是 namespace |
 | `control/intent-dispatcher` | `crawlsystem-m1-main:write` | 启动、核对历史、取消 |
 
   Control 不会签发 `system:*` 或 `admin` 权限；权限格式不符的令牌在签发端和契约中都会被拒绝。
@@ -21,7 +21,7 @@
 
 - 无令牌返回 `PERMISSION_DENIED`；`m1:write` 令牌可以在 m1 中 describe、启动、取消，但 describe 或启动 `crawlsystem`、列出全部 namespace 均被拒绝。
 - 过期令牌在连接阶段即被拒绝；`setApiKey` 换成其他 namespace 的令牌后立即按新权限生效。
-- 只有 `worker` 权限的 Worker 无法通过启动时的 namespace 检查；`read`+`worker` 能正常轮询。`createWorkflowStarter` 的幂等启动与取消在 `write` 令牌下通过。
+- 只有 `worker` 权限的 Worker 无法通过启动时的 namespace 检查。本地 `read`+`worker` 只验证到开始长轮询（无任务时轮询不返回）；集群里处理真实任务时被拒（PermissionDenied），已改为 `write`。`createWorkflowStarter` 的幂等启动与取消在 `write` 令牌下通过。
 - JWKS 变更后必须配置 `refreshInterval` 新密钥才会生效（集群配置为 1 分钟）。
 
 ## 集群验证
