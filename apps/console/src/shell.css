@@ -25,9 +25,12 @@
 .nav-group>summary::-webkit-details-marker { display: none; }
 .nav-group>summary>svg:last-child { margin-left: auto; transform: rotate(-90deg); }
 .nav-group[open]>summary>svg:last-child { transform: rotate(180deg); }
-.nav-children { margin: 0 0 7px 28px; border-left: 1px solid #39516b; }
+.nav-children { margin: 0 0 7px 28px; }
 .prototype-layout .nav-children>a, .prototype-layout .nav-children>.nav-pending { position: relative; display: flex; align-items: center; padding: 5px 10px 5px 18px; line-height: 20px; min-height: 30px; font-size: var(--fs-text); color: #a9b8cf; }
 .nav-children>a::before, .nav-children>.nav-pending::before { content: ''; position: absolute; left: 0; top: 13px; width: 9px; height: 1px; background: #39516b; }
+/* Tree trunk drawn per item so it stops at the last branch instead of running past it. */
+.nav-children>a::after, .nav-children>.nav-pending::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: #39516b; }
+.nav-children>:last-child::after { bottom: auto; height: 14px; }
 .prototype-layout .nav-children>a.active { color: #73b8ff; background: #1b2a3d; }
 .nav-pending { cursor: default; }
 .nav-pending>small { margin-left: auto; padding: 0 4px; border: 1px solid #34465c; border-radius: 3px; font-size: var(--fs-micro); line-height: 15px; color: #7d8ea6; }
