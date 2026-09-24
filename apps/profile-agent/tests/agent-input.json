@@ -1,0 +1,427 @@
+{
+  "plan_id": "00000000-0000-4000-8000-000000000001",
+  "channel_id": "UCtestprofileagent0000001",
+  "about": {
+    "channel_id": "UCtestprofileagent0000001",
+    "channel_url": "https://www.youtube.com/channel/UCtestprofileagent0000001",
+    "title": "Weekend Bread Lab",
+    "handle": "@weekendbreadlab",
+    "avatar_url": null,
+    "summary": null,
+    "about_description": "Sourdough, baguettes and weekday baking experiments from a small home kitchen. New recipes every Saturday.",
+    "country": "Canada",
+    "country_code": "CA",
+    "country_source": "data_api:snippet.country",
+    "joined_at": "2019-03-02",
+    "joined_date_text": "Joined Mar 2, 2019",
+    "joined_at_precision": "date_only",
+    "keywords": [
+      "sourdough",
+      "bread baking",
+      "home baking",
+      "recipes"
+    ],
+    "available_tabs": [
+      "Home",
+      "Videos",
+      "Shorts"
+    ],
+    "external_links": [
+      {
+        "title": "Recipes",
+        "url": "https://example.com/recipes"
+      }
+    ],
+    "subscriber_count": {
+      "value": 48200,
+      "status": "estimated",
+      "source": "data_api:channels",
+      "observed_at": "2026-09-20T08:00:00.000Z"
+    },
+    "total_view_count": {
+      "value": 3210000,
+      "status": "exact",
+      "source": "data_api:channels",
+      "observed_at": "2026-09-20T08:00:00.000Z"
+    },
+    "total_video_count": {
+      "value": 142,
+      "status": "exact",
+      "source": "data_api:channels",
+      "observed_at": "2026-09-20T08:00:00.000Z"
+    },
+    "is_verified": null,
+    "is_family_safe": true,
+    "youtube_business_email_available": false,
+    "observed_at": "2026-09-20T08:00:00.000Z",
+    "source": "data_api+youtubei"
+  },
+  "videos": [
+    {
+      "channel_id": "UCtestprofileagent0000001",
+      "source_content_id": "testvideo00",
+      "content_type": "video",
+      "content_type_source": "youtubei:shorts_tab",
+      "url": "https://www.youtube.com/watch?v=testvideo00",
+      "title": "Open crumb sourdough in 24 hours",
+      "description": "Step by step sourdough with a stiff levain. #sourdough #baking",
+      "thumbnail_url": null,
+      "keywords": [
+        "sourdough",
+        "bread"
+      ],
+      "hashtags": [
+        "#sourdough",
+        "#baking"
+      ],
+      "published_at": "2026-09-01T15:00:00Z",
+      "published_text_raw": "2026-09-01T15:00:00Z",
+      "published_at_status": "exact",
+      "published_at_precision": "second",
+      "published_at_source": "data_api:videos",
+      "duration_seconds": {
+        "value": 1260,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "view_count": {
+        "value": 20000,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "like_count": {
+        "value": 900,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "comment_count": {
+        "value": 40,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "comments_disabled": false,
+      "comments_first_page": {
+        "version": 1,
+        "collected_at": "2026-09-20T08:00:00.000Z",
+        "sort": "TOP_COMMENTS",
+        "total_count": 40,
+        "returned_count": 3,
+        "comments": [
+          {
+            "comment_id": "Ugtestvideo001xxxxxxxxxxxx",
+            "position": 1,
+            "text": "This finally fixed my flat loaves, thank you!",
+            "author_name": "Viewer 1",
+            "author_channel_id": null,
+            "author_url": null,
+            "author_avatar_url": null,
+            "published_at_utc": "2026-09-18T08:00:00.000Z",
+            "published_text_raw": "2 days ago",
+            "published_at_status": "estimated_relative",
+            "is_edited": false,
+            "like_count": 9,
+            "reply_count": 0,
+            "is_pinned": false,
+            "is_channel_owner": false,
+            "is_verified": false,
+            "is_hearted": null
+          },
+          {
+            "comment_id": "Ugtestvideo002xxxxxxxxxxxx",
+            "position": 2,
+            "text": "What hydration do you use for whole wheat?",
+            "author_name": "Viewer 2",
+            "author_channel_id": null,
+            "author_url": null,
+            "author_avatar_url": null,
+            "published_at_utc": "2026-09-18T08:00:00.000Z",
+            "published_text_raw": "2 days ago",
+            "published_at_status": "estimated_relative",
+            "is_edited": false,
+            "like_count": 8,
+            "reply_count": 0,
+            "is_pinned": false,
+            "is_channel_owner": false,
+            "is_verified": false,
+            "is_hearted": null
+          },
+          {
+            "comment_id": "Ugtestvideo003xxxxxxxxxxxx",
+            "position": 3,
+            "text": "Tried it this weekend, the crust was amazing.",
+            "author_name": "Viewer 3",
+            "author_channel_id": null,
+            "author_url": null,
+            "author_avatar_url": null,
+            "published_at_utc": "2026-09-18T08:00:00.000Z",
+            "published_text_raw": "2 days ago",
+            "published_at_status": "estimated_relative",
+            "is_edited": false,
+            "like_count": 7,
+            "reply_count": 0,
+            "is_pinned": false,
+            "is_channel_owner": false,
+            "is_verified": false,
+            "is_hearted": null
+          }
+        ]
+      },
+      "access_status": "public",
+      "access_status_source": "data_api:status.privacyStatus",
+      "is_members_only": false,
+      "live_scheduled_at": null,
+      "live_started_at": null,
+      "live_ended_at": null,
+      "observed_at": "2026-09-20T08:00:00.000Z",
+      "extractor_version": "fixture"
+    },
+    {
+      "channel_id": "UCtestprofileagent0000001",
+      "source_content_id": "testvideo01",
+      "content_type": "video",
+      "content_type_source": "youtubei:shorts_tab",
+      "url": "https://www.youtube.com/watch?v=testvideo01",
+      "title": "Why my baguettes stopped tearing",
+      "description": "Scoring angle, steam and oven spring explained. #bread",
+      "thumbnail_url": null,
+      "keywords": [
+        "sourdough",
+        "bread"
+      ],
+      "hashtags": [
+        "#bread"
+      ],
+      "published_at": "2026-09-02T15:00:00Z",
+      "published_text_raw": "2026-09-02T15:00:00Z",
+      "published_at_status": "exact",
+      "published_at_precision": "second",
+      "published_at_source": "data_api:videos",
+      "duration_seconds": {
+        "value": 845,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "view_count": {
+        "value": 25000,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "like_count": {
+        "value": 1000,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "comment_count": {
+        "value": 41,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "comments_disabled": false,
+      "comments_first_page": {
+        "version": 1,
+        "collected_at": "2026-09-20T08:00:00.000Z",
+        "sort": "TOP_COMMENTS",
+        "total_count": 41,
+        "returned_count": 3,
+        "comments": [
+          {
+            "comment_id": "Ugtestvideo011xxxxxxxxxxxx",
+            "position": 1,
+            "text": "This finally fixed my flat loaves, thank you!",
+            "author_name": "Viewer 1",
+            "author_channel_id": null,
+            "author_url": null,
+            "author_avatar_url": null,
+            "published_at_utc": "2026-09-18T08:00:00.000Z",
+            "published_text_raw": "2 days ago",
+            "published_at_status": "estimated_relative",
+            "is_edited": false,
+            "like_count": 9,
+            "reply_count": 0,
+            "is_pinned": false,
+            "is_channel_owner": false,
+            "is_verified": false,
+            "is_hearted": null
+          },
+          {
+            "comment_id": "Ugtestvideo012xxxxxxxxxxxx",
+            "position": 2,
+            "text": "What hydration do you use for whole wheat?",
+            "author_name": "Viewer 2",
+            "author_channel_id": null,
+            "author_url": null,
+            "author_avatar_url": null,
+            "published_at_utc": "2026-09-18T08:00:00.000Z",
+            "published_text_raw": "2 days ago",
+            "published_at_status": "estimated_relative",
+            "is_edited": false,
+            "like_count": 8,
+            "reply_count": 0,
+            "is_pinned": false,
+            "is_channel_owner": false,
+            "is_verified": false,
+            "is_hearted": null
+          },
+          {
+            "comment_id": "Ugtestvideo013xxxxxxxxxxxx",
+            "position": 3,
+            "text": "Tried it this weekend, the crust was amazing.",
+            "author_name": "Viewer 3",
+            "author_channel_id": null,
+            "author_url": null,
+            "author_avatar_url": null,
+            "published_at_utc": "2026-09-18T08:00:00.000Z",
+            "published_text_raw": "2 days ago",
+            "published_at_status": "estimated_relative",
+            "is_edited": false,
+            "like_count": 7,
+            "reply_count": 0,
+            "is_pinned": false,
+            "is_channel_owner": false,
+            "is_verified": false,
+            "is_hearted": null
+          }
+        ]
+      },
+      "access_status": "public",
+      "access_status_source": "data_api:status.privacyStatus",
+      "is_members_only": false,
+      "live_scheduled_at": null,
+      "live_started_at": null,
+      "live_ended_at": null,
+      "observed_at": "2026-09-20T08:00:00.000Z",
+      "extractor_version": "fixture"
+    },
+    {
+      "channel_id": "UCtestprofileagent0000001",
+      "source_content_id": "testvideo02",
+      "content_type": "short",
+      "content_type_source": "youtubei:shorts_tab",
+      "url": "https://www.youtube.com/shorts/testvideo02",
+      "title": "Rye starter in 20 seconds",
+      "description": "#shorts #sourdough",
+      "thumbnail_url": null,
+      "keywords": [
+        "sourdough",
+        "bread"
+      ],
+      "hashtags": [
+        "#shorts",
+        "#sourdough"
+      ],
+      "published_at": "2026-09-03T15:00:00Z",
+      "published_text_raw": "2026-09-03T15:00:00Z",
+      "published_at_status": "exact",
+      "published_at_precision": "second",
+      "published_at_source": "data_api:videos",
+      "duration_seconds": {
+        "value": 21,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "view_count": {
+        "value": 30000,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "like_count": {
+        "value": 1100,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "comment_count": {
+        "value": 42,
+        "status": "exact",
+        "source": "data_api:videos",
+        "observed_at": "2026-09-20T08:00:00.000Z"
+      },
+      "comments_disabled": false,
+      "comments_first_page": {
+        "version": 1,
+        "collected_at": "2026-09-20T08:00:00.000Z",
+        "sort": "TOP_COMMENTS",
+        "total_count": 42,
+        "returned_count": 3,
+        "comments": [
+          {
+            "comment_id": "Ugtestvideo021xxxxxxxxxxxx",
+            "position": 1,
+            "text": "This finally fixed my flat loaves, thank you!",
+            "author_name": "Viewer 1",
+            "author_channel_id": null,
+            "author_url": null,
+            "author_avatar_url": null,
+            "published_at_utc": "2026-09-18T08:00:00.000Z",
+            "published_text_raw": "2 days ago",
+            "published_at_status": "estimated_relative",
+            "is_edited": false,
+            "like_count": 9,
+            "reply_count": 0,
+            "is_pinned": false,
+            "is_channel_owner": false,
+            "is_verified": false,
+            "is_hearted": null
+          },
+          {
+            "comment_id": "Ugtestvideo022xxxxxxxxxxxx",
+            "position": 2,
+            "text": "What hydration do you use for whole wheat?",
+            "author_name": "Viewer 2",
+            "author_channel_id": null,
+            "author_url": null,
+            "author_avatar_url": null,
+            "published_at_utc": "2026-09-18T08:00:00.000Z",
+            "published_text_raw": "2 days ago",
+            "published_at_status": "estimated_relative",
+            "is_edited": false,
+            "like_count": 8,
+            "reply_count": 0,
+            "is_pinned": false,
+            "is_channel_owner": false,
+            "is_verified": false,
+            "is_hearted": null
+          },
+          {
+            "comment_id": "Ugtestvideo023xxxxxxxxxxxx",
+            "position": 3,
+            "text": "Tried it this weekend, the crust was amazing.",
+            "author_name": "Viewer 3",
+            "author_channel_id": null,
+            "author_url": null,
+            "author_avatar_url": null,
+            "published_at_utc": "2026-09-18T08:00:00.000Z",
+            "published_text_raw": "2 days ago",
+            "published_at_status": "estimated_relative",
+            "is_edited": false,
+            "like_count": 7,
+            "reply_count": 0,
+            "is_pinned": false,
+            "is_channel_owner": false,
+            "is_verified": false,
+            "is_hearted": null
+          }
+        ]
+      },
+      "access_status": "public",
+      "access_status_source": "data_api:status.privacyStatus",
+      "is_members_only": false,
+      "live_scheduled_at": null,
+      "live_started_at": null,
+      "live_ended_at": null,
+      "observed_at": "2026-09-20T08:00:00.000Z",
+      "extractor_version": "fixture"
+    }
+  ],
+  "input_hash": "sha256:cfb119f983a13e3219092921feb56d22b70b5d8245dd359d5359417d5de3f59c"
+}

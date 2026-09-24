@@ -1,0 +1,92 @@
+# Profile Agent (M2 step 5): local-model inference for the AGENT domain.
+# Stateless and read-only — no database, no credentials, no Kubernetes API token.
+# Workers send the Store's Agent input snapshot and receive the ten profile facts;
+# the Worker, not this service, binds the result to the plan and submits it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: profile-agent
+  namespace: crawler
+  labels: { app.kubernetes.io/name: profile-agent }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: profile-agent }
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: profile-agent }
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: profile-agent
+          image: docker.io/crawlsystem/profile-agent:PROFILE_TAG
+          imagePullPolicy: Never
+          command: ["python3", "-W", "ignore::UserWarning", "-m", "profile_agent"]
+          workingDir: /app
+          ports: [{ name: http, containerPort: 18120 }]
+          env:
+            - { name: PYTHONPATH, value: /app/src:/app/site }
+            - { name: PYTHONDONTWRITEBYTECODE, value: "1" }
+            - { name: PYTHONUNBUFFERED, value: "1" }
+            - { name: PROFILE_MODEL_MANIFEST, value: /app/models/manifest.json }
+            - { name: PORT, value: "18120" }
+            # Inference is single-request; keep BLAS/OpenMP to the CPU limit.
+            - { name: OMP_NUM_THREADS, value: "1" }
+            - { name: OPENBLAS_NUM_THREADS, value: "1" }
+          # Model verification and loading take about 6 s; the port opens only after both.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 50m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: profile-agent
+  namespace: crawler
+spec:
+  selector: { app.kubernetes.io/name: profile-agent }
+  ports: [{ name: http, port: 18120, targetPort: http }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: profile-agent-from-workers
+  namespace: crawler
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: profile-agent }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: execution-worker }
+      ports: [{ port: 18120 }]

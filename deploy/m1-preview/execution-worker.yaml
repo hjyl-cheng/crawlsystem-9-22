@@ -66,6 +66,8 @@ spec:
             # Real YouTube collection: node-local proxy leases and the Data API key.
             - { name: PROXY_MANAGER_URL, value: "http://proxy-manager.crawler.svc.cluster.local:18110" }
             - { name: YOUTUBE_DATA_API_KEY_FILE, value: /youtube/key }
+            # AGENT domain: local-model profiling of the collected facts.
+            - { name: PROFILE_AGENT_URL, value: "http://profile-agent.crawler.svc.cluster.local:18120" }
             - { name: TEMPORAL_ADDRESS, value: "temporal-frontend.temporal.svc.cluster.local:7233" }
             - { name: TEMPORAL_NAMESPACE, value: crawlsystem-m1-main }
             - { name: TEMPORAL_TASK_QUEUE, value: crawlsystem-m1-main }

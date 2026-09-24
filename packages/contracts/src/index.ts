@@ -105,6 +105,9 @@ export const AgentFactsSchema = z.strictObject({
 });
 export const AgentResultSchema = z.strictObject({ channel_id: IdSchema, input_hash: Hash, model_version: IdSchema, taxonomy_version: IdSchema, observed_at: Timestamp, facts: AgentFactsSchema });
 export type AgentResult = z.infer<typeof AgentResultSchema>;
+/** Profile Agent response (apps/profile-agent): the profile before it is bound to one plan's input. */
+export const AgentProfileSchema = z.strictObject({ model_version: IdSchema, taxonomy_version: IdSchema, observed_at: Timestamp, facts: AgentFactsSchema, diagnostics: z.array(z.string().max(120)).max(50) });
+export type AgentProfile = z.infer<typeof AgentProfileSchema>;
 
 /** Frozen collection scope. Defaults follow the previous system: 30 recent uploads within
  * 90 days of reference_time, first page of Top comments (at most 20) per video. */

@@ -24,6 +24,16 @@ function Video({ video }: { video: VideoFacts }) {
     </details>
   </article>;
 }
+const confidenceLabels = { high: '高', medium: '中', low: '低' } as const;
+/** Why a value is only an estimate: the model bundle's own status for that field. */
+const estimateReasons: Record<string, string> = {
+  pretrained_public_model: '公开预训练模型（语言识别）',
+  trained_weak_supervision: '弱监督训练的模型，尚未经人工测试集验证',
+  uncalibrated_public_estimate: '依据公开信号与先验的估计，未经后台受众数据校准',
+  uncalibrated_public_proxy: '公开信号推算的代理指标，未经后台数据校准',
+  fallback_only_candidate_model_below_gate: '模型未达上线门槛，使用规则与先验估计',
+  fallback_only_candidate_models_below_gate: '模型未达上线门槛，使用规则与先验估计',
+};
 const agentLabels: Record<keyof AgentResult['facts'], string> = { country: '国家 / 地区', creator_gender: '创作者性别 / 团队类型', creator_age_range: '创作者年龄', creator_language: '创作者语言', audience_region: '受众地区分布', audience_language: '受众语言分布', audience_age_gender: '受众年龄 / 性别', active_subscriber_ratio: '活跃订阅者比例', channel_tags: '频道标签', channel_categories: '频道分类' };
 function Content({ channel }: { channel: ChannelDetail }) {
   const { about, agent } = channel;
@@ -33,7 +43,7 @@ function Content({ channel }: { channel: ChannelDetail }) {
       ['频道身份', about.channel_id], ['简介', about.about_description ?? about.summary ?? '尚未提供'], ['国家 / 地区', about.country ?? '尚未提供'], ['国家来源', about.country_source ?? '尚未提供'], ['注册日期', about.joined_at ?? about.joined_date_text ?? '尚未提供'], ['关键词', about.keywords.join('、') || '已返回空列表'], ['已认证', nullableBoolean(about.is_verified)], ['商务邮箱入口', nullableBoolean(about.youtube_business_email_available)], ['数据来源', about.source], ['采集时间', time(about.observed_at)], ['外部链接', about.external_links.length ? about.external_links.map(link => <div key={link.url}><SafeLink href={link.url}>{link.title || link.url}</SafeLink></div>) : '已返回空列表'],
     ]}/></> : <Empty title="基础资料尚未入库">创建计划不代表数据已经可用。</Empty>}</Panel>
     <Panel title="视频与评论" extra={<span className="muted">已返回 {channel.videos.length} 条 · 最多 100 条</span>}>{channel.videos.length ? channel.videos.map(video => isVideoUnavailable(video) ? <UnavailableVideo key={video.source_content_id} video={video}/> : <Video key={video.source_content_id} video={video}/>) : <Empty title="当前没有已入库的视频">本轮是否已完成，请查看 Plan 领域结果。</Empty>}</Panel>
-    <Panel title="Agent 分析结果">{agent ? <><div className="notice">以下为模型分析结果，请结合来源与证据理解，不作为平台后台实测统计。</div><Fields rows={[["输入版本", <code>{agent.input_hash}</code>], ['模型版本', agent.model_version], ['分类版本', agent.taxonomy_version], ['分析时间', time(agent.observed_at)]]}/><div className="agent-facts">{(Object.keys(agentLabels) as (keyof AgentResult['facts'])[]).map(key => { const fact = agent.facts[key]; return <details key={key}><summary>{agentLabels[key]} · {fact.confidence}</summary><pre>{JSON.stringify(fact.value, null, 2)}</pre><p>来源：{fact.source}</p>{fact.evidence.map((e, i) => <p key={i}>{e}</p>)}{fact.reason && <p>{fact.reason}</p>}{fact.source_urls.map(url => <p key={url}><SafeLink href={url}>{url}</SafeLink></p>)}</details>; })}</div></> : <Empty title="Agent 尚未执行">M1 尚未接入真实分析，本频道没有已入库的分析结果。</Empty>}</Panel>
+    <Panel title="Agent 分析结果">{agent ? <><div className="notice">以下为模型分析结果，请结合来源与证据理解，不作为平台后台实测统计。</div><Fields rows={[["输入版本", <code>{agent.input_hash}</code>], ['模型版本', agent.model_version], ['分类版本', agent.taxonomy_version], ['分析时间', time(agent.observed_at)]]}/><div className="agent-facts">{(Object.keys(agentLabels) as (keyof AgentResult['facts'])[]).map(key => { const fact = agent.facts[key]; return <details key={key}><summary>{agentLabels[key]} · 置信度{confidenceLabels[fact.confidence]}</summary><pre>{JSON.stringify(fact.value, null, 2)}</pre><p>来源：{fact.source}</p>{fact.evidence.map((e, i) => <p key={i}>{e}</p>)}{fact.reason && <p>说明：{estimateReasons[fact.reason] ?? fact.reason}</p>}{fact.source_urls.map(url => <p key={url}><SafeLink href={url}>{url}</SafeLink></p>)}</details>; })}</div></> : <Empty title="Agent 尚未执行">本频道还没有已入库的画像。真实频道计划在资料与视频入库后自动用本地模型分析。</Empty>}</Panel>
     <Panel title="发布交付"><div className="notice">未启用。已有采集数据不代表已完成对外交付。</div></Panel>
   </>;
 }

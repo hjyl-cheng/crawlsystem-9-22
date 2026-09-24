@@ -3,12 +3,13 @@ import { Context, heartbeat, CancelledFailure, ApplicationFailure } from '@tempo
 import { contentHash, fixtureSubmission, stableSubmissionId, submissionHash } from '@crawlsystem/contracts/hash';
 import { ExecutionApi, ExecutionApiError, checkReceipt } from '@crawlsystem/execution-client/http';
 import type { RequestTracing } from '@crawlsystem/http/tracing';
-import { CONTRACT_VERSION, type Domain, type ErrorCode, type ExecutionEvent, type PlanWorkflowResult, type PlanInput, type PlanStatus, type Submission, type VideoItem, type WorkflowInput, type YoutubeFrozenInput } from '@crawlsystem/contracts';
+import { CONTRACT_VERSION, type AgentResult, type Domain, type ErrorCode, type ExecutionEvent, type PlanWorkflowResult, type PlanInput, type PlanStatus, type Submission, type VideoItem, type WorkflowInput, type YoutubeFrozenInput } from '@crawlsystem/contracts';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { DataApi, DataApiError } from './youtube/data-api.ts';
 import { aboutPage, ScrapeError, session, shortsIds, topComments } from './youtube/scrape.ts';
 import { toChannelFacts, toVideoFacts, unavailableVideo } from './youtube/map.ts';
 import { LeaseClient, ProxyUnavailable, proxiedFetch, type Outcome } from './youtube/transport.ts';
+import type { ProfileClient } from './profile-client.ts';
 
 export interface ExecutionDescriptor { deadlineAt: number; maxAttempts: number; status: PlanStatus; sourceMode?: 'fixture' | 'youtube'; videoBatches?: number | null; requiresAgent?: boolean; }
 export const VIDEO_BATCH = 10;
@@ -19,6 +20,8 @@ export interface ActivityOptions {
   tracing?: RequestTracing;
   /** Real collection: Data API (direct, keyed) and this node's Proxy Manager (or 'direct' for local development only). */
   youtube?: { dataApi: DataApi; proxies: LeaseClient | 'direct' };
+  /** Profile Agent (local models) producing the AGENT domain from the Store's input snapshot. */
+  profiler?: ProfileClient;
 }
 /** Collector failures as execution errors: transient upstream/proxy trouble retries; missing targets and quota do not. */
 function collectorError(error: unknown): ExecutionApiError {
@@ -178,7 +181,33 @@ export function createActivities(options: ActivityOptions) {
         return { status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
       });
     },
-    /** Until the Agent producer ships (M2 step 5), a plan requiring AGENT waits visibly. */
+    /** AGENT: profile the Store's snapshot of this plan's facts with the local models and submit it bound to that snapshot's hash. */
+    async collectAgent(ref: WorkflowInput, descriptor: ExecutionDescriptor): Promise<{ status: PlanStatus }> {
+      return activity(ref, 'AGENT', async scope => {
+        const value = await read(ref, scope, descriptor.deadlineAt);
+        if (terminal(value.plan.status) || !value.input.required_domains.includes('AGENT') || value.domains.find(d => d.domain === 'AGENT')?.state === 'APPLIED') return { status: value.plan.status };
+        if (!options.profiler) throw new ExecutionApiError('DEPENDENCY_NOT_IMPLEMENTED', false);
+        const budget = { deadline: descriptor.deadlineAt, signal: Context.current().cancellationSignal, traceparent: scope.traceparent };
+        await event(ref, scope, 'STARTED', 'AGENT', 'Profiling the collected channel facts with the local models', 'AGENT');
+        // The facts can be rewritten by another plan of the same channel between reading and
+        // submitting; the Store then rejects the stale hash and the profile is computed again.
+        for (let attempt = 1; ; attempt++) {
+          const input = await api.agentInput(ref.plan_id, budget);
+          const profile = await options.profiler.profile(input, budget);
+          const payload: AgentResult = { channel_id: input.channel_id, input_hash: input.input_hash, model_version: profile.model_version,
+            taxonomy_version: profile.taxonomy_version, observed_at: profile.observed_at, facts: profile.facts };
+          try {
+            const receipt = await submitOnce(ref, value, submissionOf(ref, 'AGENT', `agent:profile:${input.input_hash.slice(7, 23)}`, payload, true), descriptor.deadlineAt);
+            await event(ref, scope, 'PROGRESS', 'AGENT', `APPLIED ${input.videos.length} videos profiled by ${profile.model_version.slice(0, 200)}; receipt=${receipt?.submission_id ?? 'existing'}`, 'AGENT');
+            break;
+          } catch (error) {
+            if (!(error instanceof ExecutionApiError) || error.code !== 'INPUT_MISMATCH' || attempt >= 3) throw error;
+          }
+        }
+        return { status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
+      });
+    },
+    /** Replaced by collectAgent; kept only so workflows started before M2 step 5 can finish their recorded path. */
     async awaitAgent(ref: WorkflowInput, descriptor: ExecutionDescriptor): Promise<PlanWorkflowResult> {
       return activity(ref, 'AGENT', async scope => {
         const value = await read(ref, scope, descriptor.deadlineAt);

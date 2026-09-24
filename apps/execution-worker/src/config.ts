@@ -25,5 +25,7 @@ export function workerConfig(env: NodeJS.ProcessEnv = process.env) {
     // Real collection (optional): Data API key file, and the node-local Proxy Manager or explicit direct mode (development only).
     youtubeKeyFile: env.YOUTUBE_DATA_API_KEY_FILE || undefined,
     proxyManagerUrl: env.COLLECTOR_PROXY === 'direct' ? 'direct' as const : env.PROXY_MANAGER_URL ? validateApiUrl(env.PROXY_MANAGER_URL) : undefined,
+    // Profile Agent (local-model inference) for the AGENT domain.
+    profileAgentUrl: env.PROFILE_AGENT_URL ? validateApiUrl(env.PROFILE_AGENT_URL) : undefined,
   };
 }

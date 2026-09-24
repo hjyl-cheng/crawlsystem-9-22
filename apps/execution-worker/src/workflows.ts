@@ -1,4 +1,4 @@
-import { proxyActivities, sleep, CancellationScope, isCancellation, ApplicationFailure, ActivityFailure, ActivityCancellationType } from '@temporalio/workflow';
+import { proxyActivities, patched, sleep, CancellationScope, isCancellation, ApplicationFailure, ActivityFailure, ActivityCancellationType } from '@temporalio/workflow';
 import type { PlanWorkflowResult, WorkflowInput, ErrorCode } from '@crawlsystem/contracts';
 import type { Activities } from './activities.ts';
 
@@ -34,6 +34,12 @@ export async function channelPlanWorkflow(ref: WorkflowInput): Promise<PlanWorkf
         for (let index = 0; index < targets.batches && !settled(status); index++) status = (await collector.collectVideoBatch(ref, descriptor, index)).status;
       }
       if (settled(status) || !descriptor.requiresAgent) return { plan_id: ref.plan_id, status: status as PlanWorkflowResult['status'] };
+      if (patched('m2-agent-profile')) {
+        status = (await collector.collectAgent(ref, descriptor)).status;
+        // Every required domain is sealed once AGENT applies; anything else is a Store-side gap, never a silent success.
+        return settled(status) ? { plan_id: ref.plan_id, status: status as PlanWorkflowResult['status'] } : await cleanup.settleExecution(ref, 'DOMAIN_INCOMPLETE');
+      }
+      // Recorded before M2 step 5: the plan waited for an Agent that did not exist yet.
       await collector.awaitAgent(ref, descriptor);
       await sleep(Math.max(1, descriptor.deadlineAt - Date.now()));
       return await cleanup.settleExecution(ref, 'BUDGET_EXHAUSTED');

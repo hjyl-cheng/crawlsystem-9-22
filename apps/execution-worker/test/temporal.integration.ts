@@ -13,7 +13,7 @@ import type { Activities } from '../src/activities.ts';
 
 Runtime.install({ logger: new DefaultLogger('ERROR') });
 const unexpected = () => { throw new Error('not used by fixture plans'); };
-const unusedCollector = { collectAbout: unexpected, listTargets: unexpected, collectVideoBatch: unexpected, awaitAgent: unexpected };
+const unusedCollector = { collectAbout: unexpected, listTargets: unexpected, collectVideoBatch: unexpected, collectAgent: unexpected, awaitAgent: unexpected };
 test('Temporal SDK workflow coordination, waiting, retries, cancellation and history replay', { timeout: 180_000 }, async t => {
   const existing = process.env.EXECUTION_TEMPORAL_EXISTING === 'true';
   const options = existing ? temporalOptions() : undefined;
@@ -81,7 +81,7 @@ test('Temporal SDK workflow coordination, waiting, retries, cancellation and his
       const deadline = await env.currentTimeMs() + 600_000;
       const activities: Activities = {
         loadExecution: async () => ({ deadlineAt: deadline, maxAttempts: 3, status: 'QUEUED', sourceMode: 'youtube', requiresAgent: false }),
-        executeFixture: unexpected, settleExecution: unexpected, awaitAgent: unexpected,
+        executeFixture: unexpected, settleExecution: unexpected, collectAgent: unexpected, awaitAgent: unexpected,
         collectAbout: async () => { calls.push('about'); return { plan_id: ref.plan_id, status: 'RUNNING' }; },
         listTargets: async () => { calls.push('targets'); return { batches: 3, status: 'RUNNING' }; },
         collectVideoBatch: async (_ref, _d, index) => {
@@ -97,6 +97,32 @@ test('Temporal SDK workflow coordination, waiting, retries, cancellation and his
         const handle = env.client.workflow.getHandle(ref.workflow_id);
         assert.equal((await handle.result() as { status: string }).status, 'COMPLETED');
         assert.deepEqual(calls, ['about', 'targets', 'batch0', 'batch1', 'batch1', 'batch2']);
+        await Worker.runReplayHistory({ workflowBundle }, await handle.fetchHistory());
+      });
+    });
+    await t.test('YouTube plan requiring AGENT: profile after the last batch, retried once, then completion', async () => {
+      const queue = `execution-sdk-${randomUUID()}`, { ref } = fixtureContext();
+      const calls: string[] = []; let failedOnce = false;
+      const deadline = await env.currentTimeMs() + 600_000;
+      const activities: Activities = {
+        loadExecution: async () => ({ deadlineAt: deadline, maxAttempts: 3, status: 'QUEUED', sourceMode: 'youtube', requiresAgent: true }),
+        executeFixture: unexpected, settleExecution: unexpected, awaitAgent: unexpected,
+        collectAbout: async () => { calls.push('about'); return { plan_id: ref.plan_id, status: 'RUNNING' }; },
+        listTargets: async () => { calls.push('targets'); return { batches: 1, status: 'RUNNING' }; },
+        collectVideoBatch: async () => { calls.push('batch0'); return { status: 'RUNNING' }; },
+        collectAgent: async () => {
+          calls.push('agent');
+          if (!failedOnce) { failedOnce = true; throw ApplicationFailure.create({ message: 'profile agent unavailable', type: 'UNAVAILABLE' }); }
+          return { status: 'COMPLETED' };
+        },
+      };
+      const worker = await Worker.create({ connection: env.nativeConnection, namespace: env.namespace, taskQueue: queue, workflowBundle, activities,
+        maxConcurrentActivityTaskExecutions: 2, maxCachedWorkflows: 5, shutdownGraceTime: '1 second' });
+      await worker.runUntil(async () => {
+        await workflowStarter(env.client, queue).start(ref);
+        const handle = env.client.workflow.getHandle(ref.workflow_id);
+        assert.equal((await handle.result() as { status: string }).status, 'COMPLETED');
+        assert.deepEqual(calls, ['about', 'targets', 'batch0', 'agent', 'agent']);
         await Worker.runReplayHistory({ workflowBundle }, await handle.fetchHistory());
       });
     });

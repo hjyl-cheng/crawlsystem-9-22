@@ -30,6 +30,16 @@
 
 **Workflow。** 统一为 `channelPlanWorkflow`，按冻结输入的 `source_mode` 选择固定样本或真实采集路径；业务身份（plan_id、代次、input_hash、workflow_id）不变。
 
+## 第 5 步：Agent 决定
+
+**运行位置。** 旧系统的本地画像模块（`qy_channel_profile`，4 个模型：fastText 语言识别、一级/二级分类、频道标签）原样搬入 `apps/profile-agent`，作为独立的常驻推理服务 `profile-agent`（crawler 命名空间，1 副本，Python 3.12）。模型启动时校验 SHA-256 并一次性加载（约 6 秒、约 400 MB 内存），单次推理约 0.1 秒。它无数据库、无凭据、无集群令牌，只接受 Worker 的访问（NetworkPolicy）。模型文件约 215 MB，不进本仓库，构建时从旧系统 Git LFS 检出复制并按固定 manifest 校验；镜像按内容寻址，模型和依赖不变时不重新构建、不重新导入节点。
+
+**流程。** VIDEO 最后一批入库后，Worker 执行 `collectAgent`：从 Control 读取 Agent 输入快照（本计划的频道资料与目标视频、首屏评论及其 Hash）→ 发给 profile-agent → 把十项画像连同 `input_hash` 提交为 AGENT。Store 重新计算 Hash，事实已被其他计划更新时拒绝（`INPUT_MISMATCH`），Worker 重新读取并重算，最多 3 次。推理是输入的纯函数（分析时点取输入里最晚的观测时间，不取当前时间），重试得到同一份结果和同一个幂等提交。无法得出完整画像的输入返回 422，不重试；服务不可用则按退避重试。
+
+**Workflow 兼容。** 旧的"等待 Agent 直到截止"路径用 Temporal patch（`m2-agent-profile`）保留，已记录旧路径的 Workflow 回放不变，新 Workflow 走 `collectAgent`。
+
+**质量边界。** 这套模型在旧系统里就标记为 `production_eligible: false`：受众分布和活跃订阅比例是未经后台数据校准的公开估计；分类和标签模型是弱监督训练、未经人工测试集验证；创作者性别/年龄/国家的候选模型未达门槛，使用规则与先验。每项结果带置信度和这一状态说明，页面如实展示。
+
 ## 进度（2026-09-24）
 
 | 步骤 | 状态 | 提交 |

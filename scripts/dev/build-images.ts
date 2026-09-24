@@ -1,14 +1,16 @@
 import {execFileSync} from 'node:child_process';
-import {cpSync,existsSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {cpSync,existsSync,mkdirSync,readdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {dirname,join,relative,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
+import {ensureProfileRuntime,PYTHON_BASE} from './profile-agent-runtime.ts';
 import {build} from 'esbuild';
 import {bundleWorkflowCode} from '@temporalio/worker';
 
-// Builds both deployable images from a clean, committed revision:
+// Builds the deployable images from a clean, committed revision:
 // - control: Control API, Ingest and the intent dispatcher as single esbuild bundles on Alpine.
 // - worker: the Temporal Worker on glibc (the Temporal core bridge only ships gnu binaries),
 //   with @temporalio/* kept as real node_modules so the SDK sees one module instance.
+// - profile-agent: the Python local-model inference service (built only when its content changes).
 // Images are written as tarballs for per-node import; there is no registry yet.
 const git=(...args:string[])=>execFileSync('git',args,{encoding:'utf8'}).trim();
 if(git('status','--porcelain')&&process.env.ALLOW_DIRTY_BUILD!=='true')throw new Error('Commit and review source before building a deployable image');
@@ -70,7 +72,27 @@ writeFileSync(app+'/package.json',JSON.stringify({name:'crawlsystem-execution-wo
 const lock=createHash('sha256').update(readFileSync('package-lock.json')).update(copied.join('\n')).digest('hex');
 const worker=image('worker',workerRoot,createHash('sha256').update(sha(app+'/src/main.mjs',app+'/dist/workflow-bundle.cjs')).update(lock).digest('hex'));
 
-const metadata={revision,built_at:new Date().toISOString(),control,worker,worker_packages:copied.length};
+// Profile Agent image: pinned CPython base + locked wheels + verified model bundle + inference source.
+// Tagged by content only, so an unchanged Agent is neither rebuilt nor re-imported on later deploys.
+const runtime=await ensureProfileRuntime(m=>console.log(`profile-agent: ${m}`));
+const profileSources=(dir:string):string[]=>readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.name==='__pycache__'?[]:e.isDirectory()?profileSources(join(dir,e.name)):[join(dir,e.name)]).sort();
+const profileFiles=[...profileSources('apps/profile-agent/qy_channel_profile'),...profileSources('apps/profile-agent/profile_agent'),'apps/profile-agent/requirements.lock','apps/profile-agent/model-manifest.json'];
+const profileHash=createHash('sha256').update(PYTHON_BASE).update(profileFiles.join('\n')).update(sha(...profileFiles)).digest('hex');
+const profileTag=`docker.io/crawlsystem/profile-agent:${profileHash.slice(0,16)}`,profileTar=resolve('.runtime/profile-agent/images',`${profileHash.slice(0,16)}.tar`);
+if(!existsSync(profileTar)){
+  const stage=join(out,'profile'),layer=join(out,'profile-layer.tar');
+  mkdirSync(stage+'/app/src',{recursive:true});
+  // Hard links: the wheels and models are hundreds of MB and never modified in place.
+  execFileSync('cp',['-al',runtime.site,stage+'/app/site']);execFileSync('cp',['-al',runtime.models,stage+'/app/models']);
+  for(const dir of ['qy_channel_profile','profile_agent'])cpSync(`apps/profile-agent/${dir}`,`${stage}/app/src/${dir}`,{recursive:true,filter:src=>!src.includes('__pycache__')});
+  execFileSync('tar',['--sort=name','--mtime=@0','--owner=0','--group=0','--numeric-owner','--exclude=.prepared','-C',stage,'-cf',layer,'app'],{stdio:'inherit'});
+  mkdirSync(dirname(profileTar),{recursive:true});
+  execFileSync('crane',['append','--platform','linux/amd64','--base',PYTHON_BASE,'--new_layer',layer,'--new_tag',profileTag,'--output',profileTar+'.partial'],{stdio:'inherit',timeout:280000});
+  execFileSync('mv',[profileTar+'.partial',profileTar]);rmSync(layer);rmSync(stage,{recursive:true,force:true});
+}
+const profile={image:profileTag,tarball:profileTar,content_sha256:profileHash,base:PYTHON_BASE};
+
+const metadata={revision,built_at:new Date().toISOString(),control,worker,profile,worker_packages:copied.length};
 writeFileSync(join(out,'build.json'),JSON.stringify(metadata,null,2)+'\n');
 writeFileSync('.runtime/latest-images.json',JSON.stringify(metadata,null,2)+'\n');
 console.log(JSON.stringify(metadata,null,2));

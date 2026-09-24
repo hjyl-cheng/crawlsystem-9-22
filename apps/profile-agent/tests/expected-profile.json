@@ -1,0 +1,251 @@
+{
+  "model_version": "qy-channel-profile:agent-free-v0.7-identity-evidence:agent-free-20260813-v0.5-field-routing-deployment:bootstrap-shadow-v2.3-grok-audience-shape",
+  "taxonomy_version": "qy-taxonomy-v1",
+  "observed_at": "2026-09-20T08:00:00Z",
+  "facts": {
+    "country": {
+      "value": "Canada",
+      "source": "local_profile:observed",
+      "confidence": "high",
+      "evidence": [
+        "crawler.channels.country"
+      ],
+      "source_urls": [
+        "https://www.youtube.com/channel/UCtestprofileagent0000001"
+      ],
+      "reason": null
+    },
+    "creator_gender": {
+      "value": "brand_team",
+      "source": "local_profile:public_prior_estimate",
+      "confidence": "low",
+      "evidence": [
+        "compatibility_unknown_proxy:brand_team"
+      ],
+      "source_urls": [
+        "https://www.youtube.com/channel/UCtestprofileagent0000001"
+      ],
+      "reason": "fallback_only_candidate_models_below_gate"
+    },
+    "creator_age_range": {
+      "value": 34,
+      "source": "local_profile:public_prior_estimate",
+      "confidence": "low",
+      "evidence": [
+        "prior_catalog:bootstrap-shadow-v2.3-grok-audience-shape:creator_age_intervals:Music"
+      ],
+      "source_urls": [
+        "https://www.youtube.com/channel/UCtestprofileagent0000001"
+      ],
+      "reason": "fallback_only_candidate_model_below_gate"
+    },
+    "creator_language": {
+      "value": "English",
+      "source": "local_profile:public_signal_model",
+      "confidence": "low",
+      "evidence": [
+        "language_text_units:13"
+      ],
+      "source_urls": [
+        "https://www.youtube.com/channel/UCtestprofileagent0000001"
+      ],
+      "reason": "pretrained_public_model"
+    },
+    "audience_region": {
+      "value": [
+        {
+          "region": "Canada",
+          "percentage": 29
+        },
+        {
+          "region": "United States",
+          "percentage": 25
+        },
+        {
+          "region": "United Kingdom",
+          "percentage": 7
+        },
+        {
+          "region": "India",
+          "percentage": 4
+        },
+        {
+          "region": "Australia",
+          "percentage": 4
+        },
+        {
+          "region": "Other",
+          "percentage": 31
+        }
+      ],
+      "source": "local_profile:public_prior_estimate",
+      "confidence": "low",
+      "evidence": [
+        "prior_catalog:bootstrap-shadow-v2.3-grok-audience-shape:language_markets",
+        "prior_catalog:bootstrap-shadow-v2.3-grok-audience-shape:audience_market_model",
+        "comment_evidence:comment-fusion-bootstrap-v1"
+      ],
+      "source_urls": [
+        "https://www.youtube.com/channel/UCtestprofileagent0000001"
+      ],
+      "reason": "uncalibrated_public_estimate"
+    },
+    "audience_age_gender": {
+      "value": [
+        {
+          "age_range": "18-24",
+          "male": 11,
+          "female": 10
+        },
+        {
+          "age_range": "25-34",
+          "male": 15,
+          "female": 15
+        },
+        {
+          "age_range": "35-44",
+          "male": 12,
+          "female": 12
+        },
+        {
+          "age_range": "45-54",
+          "male": 8,
+          "female": 7
+        },
+        {
+          "age_range": "55-64",
+          "male": 4,
+          "female": 3
+        },
+        {
+          "age_range": "65+",
+          "male": 2,
+          "female": 1
+        }
+      ],
+      "source": "local_profile:public_prior_estimate",
+      "confidence": "low",
+      "evidence": [
+        "prior_catalog:bootstrap-shadow-v2.3-grok-audience-shape:age_gender:Music",
+        "prior_catalog:bootstrap-shadow-v2.3-grok-audience-shape:age_gender_adjustments"
+      ],
+      "source_urls": [
+        "https://www.youtube.com/channel/UCtestprofileagent0000001"
+      ],
+      "reason": "uncalibrated_public_estimate"
+    },
+    "audience_language": {
+      "value": [
+        {
+          "language": "English",
+          "percentage": 94
+        },
+        {
+          "language": "Spanish",
+          "percentage": 3
+        },
+        {
+          "language": "Other",
+          "percentage": 3
+        }
+      ],
+      "source": "local_profile:public_prior_estimate",
+      "confidence": "low",
+      "evidence": [
+        "prior_catalog:bootstrap-shadow-v2.3-grok-audience-shape:language_markets",
+        "prior_catalog:bootstrap-shadow-v2.3-grok-audience-shape:audience_market_model",
+        "comment_evidence:comment-fusion-bootstrap-v1"
+      ],
+      "source_urls": [
+        "https://www.youtube.com/channel/UCtestprofileagent0000001"
+      ],
+      "reason": "uncalibrated_public_estimate"
+    },
+    "active_subscriber_ratio": {
+      "value": 25,
+      "source": "local_profile:public_proxy",
+      "confidence": "low",
+      "evidence": [
+        "recent_content_with_views:3",
+        "prior_catalog:bootstrap-shadow-v2.3-grok-audience-shape:active_audience"
+      ],
+      "source_urls": [
+        "https://www.youtube.com/channel/UCtestprofileagent0000001"
+      ],
+      "reason": "uncalibrated_public_proxy"
+    },
+    "channel_tags": {
+      "value": {
+        "tags": [
+          "Long-form Video",
+          "Short-form Video",
+          "Educational Content",
+          "Traditional Instruments",
+          "Music",
+          "How-to Content",
+          "Digital Culture",
+          "Channel Series",
+          "Video Commentary",
+          "Community Discussions"
+        ],
+        "top_5_distribution": [
+          {
+            "tag": "Long-form Video",
+            "percentage": 23
+          },
+          {
+            "tag": "Short-form Video",
+            "percentage": 23
+          },
+          {
+            "tag": "Educational Content",
+            "percentage": 10
+          },
+          {
+            "tag": "Traditional Instruments",
+            "percentage": 4
+          },
+          {
+            "tag": "Music",
+            "percentage": 1
+          },
+          {
+            "tag": "Other",
+            "percentage": 39
+          }
+        ]
+      },
+      "source": "local_profile:public_signal_model",
+      "confidence": "medium",
+      "evidence": [
+        "model_bundle:agent-free-20260813-v0.5-field-routing-deployment:channel_tags.multilabel"
+      ],
+      "source_urls": [
+        "https://www.youtube.com/channel/UCtestprofileagent0000001"
+      ],
+      "reason": "trained_weak_supervision"
+    },
+    "channel_categories": {
+      "value": {
+        "level_1": "Music",
+        "level_2": [
+          "Traditional Instruments"
+        ]
+      },
+      "source": "local_profile:public_signal_model",
+      "confidence": "low",
+      "evidence": [
+        "model_bundle:agent-free-20260813-v0.5-field-routing-deployment:categories.level1+categories.level2"
+      ],
+      "source_urls": [
+        "https://www.youtube.com/channel/UCtestprofileagent0000001"
+      ],
+      "reason": "trained_weak_supervision"
+    }
+  },
+  "diagnostics": [
+    "UNVALIDATED_BOOTSTRAP_PRIOR",
+    "MODEL_BUNDLE_NOT_PRODUCTION_ELIGIBLE",
+    "TOP_COMMENTS_SAMPLE_USED"
+  ]
+}

@@ -27,10 +27,16 @@ case "${1:-}" in
   execution-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-execution-console.ts) ;;
   build-console) heap_mib=512; command=(npm run build:console) ;;
   browser) command=(npm run test:browser) ;;
+  # Python Profile Agent with the pinned interpreter, wheels and verified model bundle (prepared on first use).
+  profile-agent)
+    command=(bash -c 'node --import tsx scripts/dev/profile-agent-runtime.ts >/dev/null && p=.runtime/profile-agent &&
+      LD_LIBRARY_PATH="$p/python/usr/local/lib" PYTHONPATH="apps/profile-agent:$p/site" PYTHONDONTWRITEBYTECODE=1 PROFILE_MODEL_MANIFEST="$p/models/manifest.json" \
+      "$p/python/usr/local/bin/python3.12" -W "ignore:\`load_model\`" -m unittest discover -s apps/profile-agent/tests "$@"' profile-agent "${@:2}")
+    ;;
   integration)
     command=(node "--env-file=${M1_CHECK_ENV_FILE:-.runtime/main.env}" --import tsx --test --test-concurrency=1 tests/integration/*.test.ts)
     ;;
-  *) echo 'Usage: bash scripts/dev/check-safe.sh lockfile|install|typecheck|unit|build-console|browser|integration|execution-build|images|execution-temporal|execution-live|execution-browser' >&2; exit 64 ;;
+  *) echo 'Usage: bash scripts/dev/check-safe.sh lockfile|install|typecheck|unit|build-console|browser|integration|profile-agent|execution-build|images|execution-temporal|execution-live|execution-browser' >&2; exit 64 ;;
 esac
 
 unit="crawlsystem-main-check-$$"
