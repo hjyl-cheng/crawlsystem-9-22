@@ -51,6 +51,7 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.get('/v1/plans',async request=>{const q=pagination(request.query);return store.listPlans(request.principal,q.limit,q.offset,q.status);});
   app.get('/v1/plans/:id',async request=>store.getPlan(request.principal,planId(request)));
   app.get('/v1/plans/:id/input',async request=>{requireRole(request.principal,'worker');return store.getInput(request.principal,planId(request));});
+  app.get('/v1/plans/:id/agent-input',async request=>store.agentInput(request.principal,planId(request)));
   app.post('/v1/plans/:id/cancel',async request=>store.cancel(request.principal,planId(request),CancelPlanSchema.parse(request.body)));
   app.post('/v1/plans/:id/events',async request=>store.event(request.principal,planId(request),ExecutionEventSchema.parse(request.body)));
   app.get('/v1/receipts/:id',async request=>store.getReceipt(request.principal,planId(request)));

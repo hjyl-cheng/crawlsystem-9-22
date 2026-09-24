@@ -40,7 +40,7 @@ test('cancelled late write is non-retryable and cannot override Store cancellati
   assert.equal(f.running(), 0);
 });
 test('frozen payload changes and active stale epoch fail verification', () => {
-  const f = setup(); f.value.input.sample.about.title = 'changed'; assert.throws(() => verifyContext(f.ref, f.value, f.ref.workspace_id));
+  const f = setup(); if (f.value.input.source_mode === 'fixture') f.value.input.sample.about.title = 'changed'; assert.throws(() => verifyContext(f.ref, f.value, f.ref.workspace_id));
   const next = setup(); next.value.plan.execution_epoch++; assert.throws(() => verifyContext(next.ref, next.value, next.ref.workspace_id));
 });
 test('transient Ingest failure is classified and correlated without resetting input', async () => {

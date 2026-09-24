@@ -1,5 +1,5 @@
 import { proxyActivities, sleep, CancellationScope, isCancellation, ApplicationFailure, ActivityFailure, ActivityCancellationType } from '@temporalio/workflow';
-import type { FixtureWorkflowResult, WorkflowInput, ErrorCode } from '@crawlsystem/contracts';
+import type { PlanWorkflowResult, WorkflowInput, ErrorCode } from '@crawlsystem/contracts';
 import type { Activities } from './activities.ts';
 
 const bootstrap = proxyActivities<Activities>({
@@ -12,7 +12,7 @@ const cleanup = proxyActivities<Activities>({
   retry: { maximumAttempts: 2, initialInterval: '1 second' },
 });
 
-export async function fixturePlanWorkflow(ref: WorkflowInput): Promise<FixtureWorkflowResult> {
+export async function channelPlanWorkflow(ref: WorkflowInput): Promise<PlanWorkflowResult> {
   try {
     const descriptor = await bootstrap.loadExecution(ref);
     if (['COMPLETED','CANCELLED','FAILED'].includes(descriptor.status)) return { plan_id: ref.plan_id, status: descriptor.status };

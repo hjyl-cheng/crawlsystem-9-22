@@ -9,7 +9,7 @@ import { createPool } from '@crawlsystem/store/config';
 import { migrate } from '@crawlsystem/store/migrate';
 import {prepareDatabase} from './database-ready.ts';
 import { fixtureSubmission, submissionHash } from '@crawlsystem/contracts/hash';
-import { ApiErrorSchema, ChannelDetailSchema, PlanDetailSchema, PlanSchema, ReceiptSchema, SessionSchema, WorkerSchema, type Domain, type Principal, type Submission, type WorkflowStarter } from '@crawlsystem/contracts';
+import { isVideoUnavailable, ApiErrorSchema, ChannelDetailSchema, PlanDetailSchema, PlanSchema, ReceiptSchema, SessionSchema, WorkerSchema, type Domain, type Principal, type Submission, type WorkflowStarter } from '@crawlsystem/contracts';
 import { issueToken } from '@crawlsystem/http/auth';
 import { createControlApi } from '../../apps/control-api/src/app.ts';
 import { createIngestApi } from '../../apps/ingest/src/app.ts';
@@ -60,7 +60,7 @@ test('concurrent final domains close once; missing Agent remains pending and can
   assert.equal((await store.getPlan(t.reader,t.plan.plan_id)).plan.status,'COMPLETED');
   assert.equal(await count('obligations',t.plan.plan_id),1);assert.equal(await count('receipts',t.plan.plan_id),2);
   const channel=ChannelDetailSchema.parse(await store.getChannel(t.reader,t.plan.channel_id));
-  assert.equal(channel.videos[0]?.comments_first_page?.comments.length,1);assert.equal(channel.agent,null);
+  const first=channel.videos[0];assert.ok(first&&!isVideoUnavailable(first));assert.equal(first.comments_first_page?.comments.length,1);assert.equal(channel.agent,null);
   const waiting=await setup(['ABOUT','VIDEO','AGENT']);await Promise.all([store.apply(waiting.worker,waiting.about),store.apply(waiting.worker,waiting.video)]);
   const context=await store.getInput(waiting.worker,waiting.plan.plan_id);
   assert.equal(context.plan.status,'WAITING');assert.equal(context.plan.publication_status,'NOT_ENABLED');
@@ -68,7 +68,7 @@ test('concurrent final domains close once; missing Agent remains pending and can
 });
 test('frozen target coverage and identity are enforced before sealing a domain',async()=>{
   const t=await setup();assert.equal(t.video.domain,'VIDEO');
-  await rejectsCode(()=>store.apply(t.worker,rehash({...t.video,domain:'VIDEO',payload:[]})),'DOMAIN_INCOMPLETE');
+  await rejectsCode(()=>store.apply(t.worker,rehash({...t.video,domain:'VIDEO',payload:{kind:'videos',items:[]}})),'DOMAIN_INCOMPLETE');
   assert.equal(await count('receipts',t.plan.plan_id),0);
   await rejectsCode(()=>store.apply(t.worker,rehash({...t.about,input_hash:'sha256:'+'a'.repeat(64)})),'INPUT_MISMATCH');
   if(t.about.domain!=='ABOUT')throw new Error('fixture');

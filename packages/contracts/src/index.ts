@@ -1,12 +1,18 @@
 import { z } from 'zod';
 
 export const CONTRACT_VERSION = 'm1.v1' as const;
-export const WORKFLOW_TYPE = 'fixturePlanWorkflow' as const;
+// One Workflow for every plan; it branches on the frozen input's source_mode.
+export const WORKFLOW_TYPE = 'channelPlanWorkflow' as const;
 export const DEFAULT_TASK_QUEUE = 'crawlsystem-m1-main';
 export const MAX_BODY_BYTES = 1_048_576;
 export const WORKER_STALE_SECONDS = 90;
 export const DomainSchema = z.enum(['ABOUT', 'VIDEO', 'AGENT']);
 export type Domain = z.infer<typeof DomainSchema>;
+export const SourceModeSchema = z.enum(['fixture', 'youtube']);
+export type SourceMode = z.infer<typeof SourceModeSchema>;
+/** Canonical YouTube channel ID; handles and vanity URLs are resolved before planning. */
+export const YoutubeChannelIdSchema = z.string().regex(/^UC[A-Za-z0-9_-]{22}$/);
+export const YoutubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
 export const PlanStatusSchema = z.enum(['QUEUED', 'RUNNING', 'WAITING', 'COMPLETED', 'CANCELLED', 'FAILED']);
 export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 export const RoleSchema = z.enum(['reader', 'operator', 'worker']);
@@ -71,6 +77,17 @@ export const VideoFactsSchema = z.strictObject({
   observed_at: Timestamp, extractor_version: z.string().min(1).max(120),
 }).refine(v => v.comments_disabled !== true || (v.comment_count.value === 0 && v.comment_count.status === 'disabled' && (v.comments_first_page?.returned_count ?? 0) === 0), 'disabled comments require zero/disabled and no comments');
 export type VideoFacts = z.infer<typeof VideoFactsSchema>;
+/** A frozen target that exists in the listing but whose details cannot be collected.
+ * It settles the target explicitly; it is never counted as collected video data. */
+export const VideoUnavailableSchema = z.strictObject({
+  channel_id: IdSchema, source_content_id: IdSchema, unavailable: z.literal(true),
+  access_status: z.enum(['private', 'removed', 'members_only', 'login_required', 'age_restricted', 'region_blocked', 'unavailable', 'unknown']),
+  reason: z.string().min(1).max(1000), source: z.string().min(1).max(120), observed_at: Timestamp,
+});
+export type VideoUnavailable = z.infer<typeof VideoUnavailableSchema>;
+export const VideoItemSchema = z.union([VideoFactsSchema, VideoUnavailableSchema]);
+export type VideoItem = z.infer<typeof VideoItemSchema>;
+export const isVideoUnavailable = (item: VideoItem): item is VideoUnavailable => 'unavailable' in item && item.unavailable === true;
 const percent = z.number().int().min(0).max(100);
 const distribution = (label: string) => z.array(z.object({ [label]: z.string().min(1).max(100), percentage: percent })).min(1).max(20)
   .refine(a => a.reduce((sum, row) => sum + Number(row.percentage), 0) === 100, 'percentages must sum to 100');
@@ -88,26 +105,60 @@ export const AgentFactsSchema = z.strictObject({
 export const AgentResultSchema = z.strictObject({ channel_id: IdSchema, input_hash: Hash, model_version: IdSchema, taxonomy_version: IdSchema, observed_at: Timestamp, facts: AgentFactsSchema });
 export type AgentResult = z.infer<typeof AgentResultSchema>;
 
-export const CreatePlanSchema = z.strictObject({ request_id: z.uuid(), fixture_id: z.literal('channel-basic-v1'), required_domains: UniqueDomains.default(['ABOUT','VIDEO']) });
+/** Frozen collection scope. Defaults follow the previous system: 30 recent uploads within
+ * 90 days of reference_time, first page of Top comments (at most 20) per video. */
+export const CollectionScopeSchema = z.strictObject({
+  video_limit: z.number().int().min(1).max(100).default(30),
+  max_age_days: z.number().int().min(1).max(3650).default(90),
+  comments_per_video: z.number().int().min(0).max(100).default(20),
+  comment_sort: z.literal('TOP_COMMENTS').default('TOP_COMMENTS'),
+});
+export type CollectionScope = z.infer<typeof CollectionScopeSchema>;
+const FixtureCreateSchema = z.strictObject({ request_id: z.uuid(), fixture_id: z.literal('channel-basic-v1'), required_domains: UniqueDomains.default(['ABOUT','VIDEO']) });
+const YoutubeCreateSchema = z.strictObject({ request_id: z.uuid(), source_mode: z.literal('youtube'), channel_id: YoutubeChannelIdSchema,
+  required_domains: UniqueDomains.default(['ABOUT','VIDEO','AGENT']), scope: CollectionScopeSchema.default(CollectionScopeSchema.parse({})) })
+  .refine(p => !p.required_domains.includes('AGENT') || (p.required_domains.includes('ABOUT') && p.required_domains.includes('VIDEO')), 'AGENT requires ABOUT and VIDEO as its input');
+export const CreatePlanSchema = z.union([FixtureCreateSchema, YoutubeCreateSchema]);
 export type CreatePlan = z.infer<typeof CreatePlanSchema>;
-export const FrozenInputSchema = z.strictObject({
+const FixtureFrozenSchema = z.strictObject({
   schema_version: z.literal(CONTRACT_VERSION), source_mode: z.literal('fixture'), fixture_id: z.literal('channel-basic-v1'),
   channel_id: IdSchema, required_domains: UniqueDomains, target_video_ids: z.array(IdSchema).max(100),
   reference_time: Timestamp, deadline_at: Timestamp, max_attempts: z.number().int().min(1).max(10),
   sample: z.strictObject({ about: ChannelFactsSchema, videos: z.array(VideoFactsSchema).max(100) }),
 });
+const YoutubeFrozenSchema = z.strictObject({
+  schema_version: z.literal(CONTRACT_VERSION), source_mode: z.literal('youtube'), channel_id: YoutubeChannelIdSchema,
+  required_domains: UniqueDomains, scope: z.strictObject({ video_limit: z.number().int().min(1).max(100), max_age_days: z.number().int().min(1).max(3650),
+    comments_per_video: z.number().int().min(0).max(100), comment_sort: z.literal('TOP_COMMENTS') }),
+  reference_time: Timestamp, deadline_at: Timestamp, max_attempts: z.number().int().min(1).max(10),
+});
+export const FrozenInputSchema = z.discriminatedUnion('source_mode', [FixtureFrozenSchema, YoutubeFrozenSchema]);
 export type FrozenInput = z.infer<typeof FrozenInputSchema>;
+export type FixtureFrozenInput = z.infer<typeof FixtureFrozenSchema>;
+export type YoutubeFrozenInput = z.infer<typeof YoutubeFrozenSchema>;
+/** VIDEO targets listed once per plan. Store freezes the first accepted manifest; an
+ * empty list is a legal result for a channel with no uploads in the window. */
+export const VideoTargetManifestSchema = z.strictObject({
+  kind: z.literal('targets'), channel_id: IdSchema, video_ids: z.array(IdSchema).max(100), listed_at: Timestamp,
+  window_start: Timestamp, exhausted: z.boolean(), source: z.string().min(1).max(120),
+}).refine(m => new Set(m.video_ids).size === m.video_ids.length, 'duplicate video targets');
+export type VideoTargetManifest = z.infer<typeof VideoTargetManifestSchema>;
+export const VideoBatchSchema = z.strictObject({ kind: z.literal('videos'), items: z.array(VideoItemSchema).max(10) })
+  .refine(b => new Set(b.items.map(i => i.source_content_id)).size === b.items.length, 'duplicate video identities');
+/** Agent input snapshot: this plan's channel facts and available target videos, as stored now. */
+export interface AgentInput { plan_id: string; channel_id: string; about: ChannelFacts; videos: VideoFacts[]; input_hash: string; }
+export const AgentInputSchema: z.ZodType<AgentInput> = z.strictObject({ plan_id: z.uuid(), channel_id: IdSchema, about: ChannelFactsSchema, videos: z.array(VideoFactsSchema).max(100), input_hash: Hash });
 const SubmissionCommon = { schema_version: z.literal(CONTRACT_VERSION), submission_id: z.uuid(), plan_id: z.uuid(), execution_epoch: z.number().int().positive(), input_hash: Hash, logical_batch_key: IdSchema, domain_complete: z.boolean(), payload_hash: Hash };
 export const SubmissionSchema = z.discriminatedUnion('domain', [
   z.strictObject({ ...SubmissionCommon, domain: z.literal('ABOUT'), payload: ChannelFactsSchema }),
-  z.strictObject({ ...SubmissionCommon, domain: z.literal('VIDEO'), payload: z.array(VideoFactsSchema).max(100) }),
+  z.strictObject({ ...SubmissionCommon, domain: z.literal('VIDEO'), payload: z.union([VideoTargetManifestSchema, VideoBatchSchema]) }),
   z.strictObject({ ...SubmissionCommon, domain: z.literal('AGENT'), payload: AgentResultSchema }),
 ]);
 export type Submission = z.infer<typeof SubmissionSchema>;
 export interface Receipt { schema_version: typeof CONTRACT_VERSION; submission_id: string; plan_id: string; logical_batch_key: string; domain: Domain; payload_hash: string; state: 'APPLIED'; applied_at: string; }
 export interface DomainResult { domain: Domain; state: 'PENDING' | 'APPLIED'; completed_at: string | null; }
-export interface Plan { plan_id: string; run_id: string; workspace_id: string; channel_id: string; source_revision: number; source_mode: 'fixture'; fixture_id: string; required_domains: Domain[]; status: PlanStatus; version: number; execution_epoch: number; input_hash: string; workflow_id: string; created_at: string; updated_at: string; finished_at: string | null; deadline_at: string; publication_status: 'NOT_ENABLED'; }
-export interface PlanInput { plan: Plan; input: FrozenInput; domains: DomainResult[]; receipts: Receipt[]; trace_context?: string; }
+export interface Plan { plan_id: string; run_id: string; workspace_id: string; channel_id: string; source_revision: number; source_mode: SourceMode; fixture_id: string | null; required_domains: Domain[]; status: PlanStatus; version: number; execution_epoch: number; input_hash: string; workflow_id: string; created_at: string; updated_at: string; finished_at: string | null; deadline_at: string; publication_status: 'NOT_ENABLED'; }
+export interface PlanInput { plan: Plan; input: FrozenInput; domains: DomainResult[]; receipts: Receipt[]; trace_context?: string; video_targets?: string[]; }
 export const CancelPlanSchema = z.strictObject({ command_id: z.uuid(), expected_version: z.number().int().positive() });
 export const ErrorCodeSchema = z.enum(['INVALID_REQUEST','UNAUTHENTICATED','FORBIDDEN','NOT_FOUND','CONFLICT','STALE_EXECUTION','PLAN_TERMINAL','INPUT_MISMATCH','TARGET_MISMATCH','DOMAIN_INCOMPLETE','DOMAIN_NOT_REQUIRED','DEPENDENCY_NOT_IMPLEMENTED','BUDGET_EXHAUSTED','UNAVAILABLE','INTERNAL_ERROR']);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
@@ -119,10 +170,10 @@ export const HeartbeatSchema = z.strictObject({ worker_id: IdSchema, server_id: 
 export type Heartbeat = z.infer<typeof HeartbeatSchema>;
 export interface Worker extends Heartbeat { last_heartbeat_at: string; stale: boolean; proxy_status: 'NOT_CONFIGURED'; }
 export interface PlanDetail extends PlanInput { events: StoredEvent[]; }
-export interface ChannelSummary { channel_id: string; title: string | null; source_mode: 'fixture'; updated_at: string; latest_plan_id: string; }
+export interface ChannelSummary { channel_id: string; title: string | null; source_mode: SourceMode; updated_at: string; latest_plan_id: string; }
 /** A channel row for list pages: the summary plus current facts cheap to read in one query. */
 export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; }
-export interface ChannelDetail extends ChannelSummary { about: ChannelFacts | null; videos: VideoFacts[]; agent: AgentResult | null; latest_plan: Plan; }
+export interface ChannelDetail extends ChannelSummary { about: ChannelFacts | null; videos: VideoItem[]; agent: AgentResult | null; latest_plan: Plan; }
 export interface Page<T> { items: T[]; next_cursor: string | null; }
 /** Workspace-wide plan statistics for the full-collection page. Counts are over
  * all plans unless named *_24h (rolling 24 hours at the server clock). domains
@@ -148,21 +199,21 @@ export interface Completeness {
 export interface Session { subject: string; workspace_id: string; role: Role; contract_version: typeof CONTRACT_VERSION; }
 export interface WorkflowInput { schema_version: typeof CONTRACT_VERSION; plan_id: string; workspace_id: string; execution_epoch: number; input_hash: string; workflow_id: string; }
 export interface WorkflowStarter { start(input: WorkflowInput): Promise<{ workflow_id: string; run_id: string }>; cancel(workflow_id: string): Promise<void>; }
-export interface FixtureWorkflowResult { plan_id: string; status: PlanStatus; }
+export interface PlanWorkflowResult { plan_id: string; status: PlanStatus; }
 export const ReceiptSchema: z.ZodType<Receipt> = z.strictObject({ schema_version: z.literal(CONTRACT_VERSION), submission_id: z.uuid(), plan_id: z.uuid(), logical_batch_key: IdSchema, domain: DomainSchema, payload_hash: Hash, state: z.literal('APPLIED'), applied_at: Timestamp });
 export const DomainResultSchema: z.ZodType<DomainResult> = z.strictObject({ domain: DomainSchema, state: z.enum(['PENDING','APPLIED']), completed_at: Timestamp.nullable() });
 export const PlanSchema: z.ZodType<Plan> = z.strictObject({
   plan_id: z.uuid(), run_id: z.uuid(), workspace_id: IdSchema, channel_id: IdSchema, source_revision: z.number().int().positive(),
-  source_mode: z.literal('fixture'), fixture_id: z.string(), required_domains: UniqueDomains, status: PlanStatusSchema,
+  source_mode: SourceModeSchema, fixture_id: z.string().nullable(), required_domains: UniqueDomains, status: PlanStatusSchema,
   version: z.number().int().positive(), execution_epoch: z.number().int().positive(), input_hash: Hash, workflow_id: z.string(),
   created_at: Timestamp, updated_at: Timestamp, finished_at: Timestamp.nullable(), deadline_at: Timestamp, publication_status: z.literal('NOT_ENABLED'),
 });
-export const PlanInputSchema: z.ZodType<PlanInput> = z.strictObject({ plan: PlanSchema, input: FrozenInputSchema, domains: z.array(DomainResultSchema).max(3), receipts: z.array(ReceiptSchema).max(300), trace_context: TraceparentSchema.optional() });
+export const PlanInputSchema: z.ZodType<PlanInput> = z.strictObject({ plan: PlanSchema, input: FrozenInputSchema, domains: z.array(DomainResultSchema).max(3), receipts: z.array(ReceiptSchema).max(300), trace_context: TraceparentSchema.optional(), video_targets: z.array(IdSchema).max(100).optional() });
 export const StoredEventSchema: z.ZodType<StoredEvent> = ExecutionEventSchema.extend({ plan_id: z.uuid(), created_at: Timestamp });
-export const PlanDetailSchema: z.ZodType<PlanDetail> = z.strictObject({ plan: PlanSchema, input: FrozenInputSchema, domains: z.array(DomainResultSchema).max(3), receipts: z.array(ReceiptSchema).max(300), trace_context: TraceparentSchema.optional(), events: z.array(StoredEventSchema).max(100) });
-export const ChannelSummarySchema: z.ZodType<ChannelSummary> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: z.literal('fixture'), updated_at: Timestamp, latest_plan_id: z.uuid() });
-export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: z.literal('fixture'), updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoFactsSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema });
-export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: z.literal('fixture'), updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema });
+export const PlanDetailSchema: z.ZodType<PlanDetail> = z.strictObject({ plan: PlanSchema, input: FrozenInputSchema, domains: z.array(DomainResultSchema).max(3), receipts: z.array(ReceiptSchema).max(300), trace_context: TraceparentSchema.optional(), video_targets: z.array(IdSchema).max(100).optional(), events: z.array(StoredEventSchema).max(100) });
+export const ChannelSummarySchema: z.ZodType<ChannelSummary> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid() });
+export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoItemSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema });
+export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema });
 export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.literal('NOT_CONFIGURED') });
 export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, contract_version: z.literal(CONTRACT_VERSION) });
 // Kubernetes ServiceAccount token exchange: subject is the Pod, server_id the node reported by TokenReview.
@@ -208,6 +259,7 @@ export const ApiRoutes = {
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', workloadToken: '/v1/workload/token', temporalToken: '/v1/workload/temporal-token',
   plan: (id: string) => `/v1/plans/${encodeURIComponent(id)}`,
   input: (id: string) => `/v1/plans/${encodeURIComponent(id)}/input`,
+  agentInput: (id: string) => `/v1/plans/${encodeURIComponent(id)}/agent-input`,
   cancel: (id: string) => `/v1/plans/${encodeURIComponent(id)}/cancel`,
   events: (id: string) => `/v1/plans/${encodeURIComponent(id)}/events`,
   receipt: (id: string) => `/v1/receipts/${encodeURIComponent(id)}`,

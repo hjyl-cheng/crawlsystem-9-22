@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
-import { CONTRACT_VERSION, WORKER_STALE_SECONDS, TraceparentSchema, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
+import { CONTRACT_VERSION, WORKER_STALE_SECONDS, TraceparentSchema, FrozenInputSchema, YoutubeVideoIdSchema, isVideoUnavailable, type AgentInput, type VideoItem, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
   type Principal, type Role, type ErrorCode, type Plan, type PlanInput, type PlanDetail, type Domain, type DomainResult, type FrozenInput, type CreatePlan, type Submission, type Receipt,
   type Page, type Completeness, type PlansSummary, type PlanStatus, type ChannelSummary, type ChannelListItem, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput } from '@crawlsystem/contracts';
-import { contentHash, submissionHash } from '@crawlsystem/contracts/hash';
+import { agentInputHash, contentHash, submissionHash } from '@crawlsystem/contracts/hash';
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
 
 export class StoreError extends Error {
@@ -15,7 +15,7 @@ export function requireRole(principal: Principal, ...roles: Role[]): void {
 const iso = (value: Date | string): string => new Date(value).toISOString();
 export function toPlan(row: QueryResultRow): Plan {
   return { plan_id: row.plan_id, run_id: row.run_id, workspace_id: row.workspace_id, channel_id: row.channel_id, source_revision: Number(row.source_revision),
-    source_mode: 'fixture', fixture_id: row.fixture_id, required_domains: row.required_domains, status: row.status, version: row.version, execution_epoch: row.execution_epoch,
+    source_mode: row.source_mode, fixture_id: row.fixture_id ?? null, required_domains: row.required_domains, status: row.status, version: row.version, execution_epoch: row.execution_epoch,
     input_hash: row.input_hash, workflow_id: row.workflow_id, created_at: iso(row.created_at), updated_at: iso(row.updated_at), finished_at: row.finished_at ? iso(row.finished_at) : null,
     deadline_at: iso(row.deadline_at), publication_status: 'NOT_ENABLED' };
 }
@@ -57,13 +57,18 @@ export class Store {
     const input = CreatePlanSchema.parse(raw);
     const trace = TraceparentSchema.safeParse(traceContext).success ? traceContext! : null;
     const requestHash = contentHash(input);
-    const planId = randomUUID();
-    const deadline = new Date(Date.now() + 30 * 60_000).toISOString();
-    const frozen = createFrozenFixture(input.required_domains, deadline);
+    const planId = randomUUID(), now = new Date();
+    // Real collection covers listing, up to 100 videos with comments and Agent inference.
+    const deadline = new Date(now.getTime() + ('source_mode' in input ? 120 : 30) * 60_000).toISOString();
+    const frozen: FrozenInput = 'source_mode' in input
+      ? FrozenInputSchema.parse({ schema_version: CONTRACT_VERSION, source_mode: 'youtube', channel_id: input.channel_id, required_domains: input.required_domains,
+          scope: input.scope, reference_time: now.toISOString(), deadline_at: deadline, max_attempts: 3 })
+      : createFrozenFixture(input.required_domains, deadline);
+    const fixtureId = frozen.source_mode === 'fixture' ? frozen.fixture_id : null;
     return this.tx(async client => {
       const inserted = await client.query(`INSERT INTO m1.plans(plan_id,run_id,workspace_id,request_id,request_hash,channel_id,source_mode,fixture_id,required_domains,status,frozen_input,input_hash,workflow_id,deadline_at,trace_context)
-        VALUES($1,$2,$3,$4,$5,$6,'fixture',$7,$8,'QUEUED',$9,$10,$11,$12,$13) ON CONFLICT(workspace_id,request_id) DO NOTHING RETURNING *`,
-        [planId, randomUUID(), principal.workspace_id, input.request_id, requestHash, frozen.channel_id, input.fixture_id, input.required_domains, frozen, contentHash(frozen), `m1/${principal.workspace_id}/${planId}`, deadline, trace]);
+        VALUES($1,$2,$3,$4,$5,$6,$14,$7,$8,'QUEUED',$9,$10,$11,$12,$13) ON CONFLICT(workspace_id,request_id) DO NOTHING RETURNING *`,
+        [planId, randomUUID(), principal.workspace_id, input.request_id, requestHash, frozen.channel_id, fixtureId, input.required_domains, frozen, contentHash(frozen), `m1/${principal.workspace_id}/${planId}`, deadline, trace, frozen.source_mode]);
       if (!inserted.rowCount) {
         const old = (await client.query('SELECT * FROM m1.plans WHERE workspace_id=$1 AND request_id=$2', [principal.workspace_id, input.request_id])).rows[0]!;
         if (old.request_hash !== requestHash) throw new StoreError('CONFLICT', 'Creation identity has different input');
@@ -88,8 +93,9 @@ export class Store {
       const row = await this.planRow(client,principal,id);
       const domains = await client.query('SELECT domain,state,completed_at FROM m1.domains WHERE plan_id=$1 ORDER BY domain', [id]);
       const receipts = await client.query('SELECT receipt FROM m1.receipts WHERE plan_id=$1 ORDER BY applied_at LIMIT 300', [id]);
+      const targets = await this.videoTargets(client, row);
       await client.query('COMMIT');
-      return {plan:toPlan(row), input:row.frozen_input as FrozenInput, domains:domains.rows.map(r => ({domain:r.domain,state:r.state,completed_at:r.completed_at ? iso(r.completed_at) : null} as DomainResult)), receipts:receipts.rows.map(r => r.receipt as Receipt),...(row.trace_context ? {trace_context:row.trace_context as string} : {})};
+      return {plan:toPlan(row), input:row.frozen_input as FrozenInput, domains:domains.rows.map(r => ({domain:r.domain,state:r.state,completed_at:r.completed_at ? iso(r.completed_at) : null} as DomainResult)), receipts:receipts.rows.map(r => r.receipt as Receipt),...(row.trace_context ? {trace_context:row.trace_context as string} : {}),...(targets ? {video_targets:targets} : {})};
     } catch(error) {
       discard = /connection|timeout/i.test((error as Error).message) || /^08/.test((error as {code?:string}).code ?? '');
       if (!discard) await client.query('ROLLBACK').catch(() => {discard=true;});
@@ -129,30 +135,56 @@ export class Store {
       if (row.input_hash !== input.input_hash) throw new StoreError('INPUT_MISMATCH','Frozen input differs');
       if (!(row.required_domains as string[]).includes(input.domain)) throw new StoreError('DOMAIN_NOT_REQUIRED','Domain is not required by this plan');
       const frozen = row.frozen_input as FrozenInput;
-      if (input.domain === 'AGENT') throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Real Agent is not connected in M1');
+      if (input.domain === 'AGENT' && frozen.source_mode === 'fixture') throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Fixture plans have no Agent producer');
       const proof = (await client.query('SELECT state FROM m1.domains WHERE plan_id=$1 AND domain=$2',[input.plan_id,input.domain])).rows[0]!;
       if (proof.state === 'APPLIED') throw new StoreError('CONFLICT','Domain already sealed; replay the original submission');
       const receiptCount = await client.query('SELECT count(*)::int AS count FROM m1.receipts WHERE plan_id=$1',[input.plan_id]);
       if (receiptCount.rows[0]!.count >= 300) throw new StoreError('BUDGET_EXHAUSTED','Submission budget exhausted');
+      const item = (id:string) => client.query('INSERT INTO m1.plan_items(plan_id,domain,item_id,submission_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[input.plan_id,input.domain,id,input.submission_id]);
+      let expected: string[];
       if (input.domain === 'ABOUT') {
-        if (input.payload.channel_id !== row.channel_id || contentHash(input.payload) !== contentHash(frozen.sample.about)) throw new StoreError('TARGET_MISMATCH','Result does not match the frozen fixture target');
+        if (input.payload.channel_id !== row.channel_id || (frozen.source_mode === 'fixture' && contentHash(input.payload) !== contentHash(frozen.sample.about))) throw new StoreError('TARGET_MISMATCH','Result does not match the frozen channel target');
         await client.query(`UPDATE m1.channels SET about=$3,about_revision=$4,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2 AND about_revision <= $4`,[principal.workspace_id,row.channel_id,input.payload,row.source_revision]);
-        await client.query('INSERT INTO m1.plan_items(plan_id,domain,item_id,submission_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[input.plan_id,input.domain,row.channel_id,input.submission_id]);
-      } else {
-        if (new Set(input.payload.map(v => v.source_content_id)).size !== input.payload.length) throw new StoreError('TARGET_MISMATCH','Duplicate video identities');
-        for (const video of input.payload) {
-          const expected = frozen.sample.videos.find(v => v.source_content_id === video.source_content_id);
-          if (!expected || video.channel_id !== row.channel_id || !frozen.target_video_ids.includes(video.source_content_id) || contentHash(video) !== contentHash(expected)) throw new StoreError('TARGET_MISMATCH','Video is outside the frozen fixture');
-          await client.query(`INSERT INTO m1.videos(workspace_id,channel_id,video_id,source_revision,data) VALUES($1,$2,$3,$4,$5)
-            ON CONFLICT(workspace_id,channel_id,video_id) DO UPDATE SET data=EXCLUDED.data,source_revision=EXCLUDED.source_revision,updated_at=clock_timestamp()
-            WHERE m1.videos.source_revision <= EXCLUDED.source_revision`,[principal.workspace_id,row.channel_id,video.source_content_id,row.source_revision,video]);
-          await client.query('INSERT INTO m1.plan_items(plan_id,domain,item_id,submission_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[input.plan_id,input.domain,video.source_content_id,input.submission_id]);
+        await item(row.channel_id);
+        expected = [row.channel_id];
+      } else if (input.domain === 'VIDEO') {
+        const targets = await this.videoTargets(client,row);
+        if (input.payload.kind === 'targets') {
+          const manifest = input.payload;
+          if (frozen.source_mode !== 'youtube') throw new StoreError('TARGET_MISMATCH','Fixture targets are frozen at creation');
+          if (targets) throw new StoreError('CONFLICT','Video targets are already frozen for this plan');
+          const windowStart = new Date(Date.parse(frozen.reference_time) - frozen.scope.max_age_days * 86_400_000).toISOString();
+          if (manifest.channel_id !== row.channel_id || manifest.video_ids.length > frozen.scope.video_limit || manifest.window_start !== windowStart
+            || manifest.video_ids.some(id => !YoutubeVideoIdSchema.safeParse(id).success)) throw new StoreError('TARGET_MISMATCH','Target manifest is outside the frozen scope');
+          await client.query('INSERT INTO m1.plan_video_targets(plan_id,submission_id,manifest) VALUES($1,$2,$3)',[input.plan_id,input.submission_id,manifest]);
+          expected = manifest.video_ids;
+        } else {
+          if (!targets) throw new StoreError('TARGET_MISMATCH','Video targets must be frozen before video results');
+          for (const video of input.payload.items) {
+            if (video.channel_id !== row.channel_id || !targets.includes(video.source_content_id)) throw new StoreError('TARGET_MISMATCH','Video is outside the frozen targets');
+            if (frozen.source_mode === 'fixture') {
+              const sample = frozen.sample.videos.find(v => v.source_content_id === video.source_content_id);
+              if (!sample || isVideoUnavailable(video) || contentHash(video) !== contentHash(sample)) throw new StoreError('TARGET_MISMATCH','Video is outside the frozen fixture');
+            }
+            await client.query(`INSERT INTO m1.videos(workspace_id,channel_id,video_id,source_revision,data) VALUES($1,$2,$3,$4,$5)
+              ON CONFLICT(workspace_id,channel_id,video_id) DO UPDATE SET data=EXCLUDED.data,source_revision=EXCLUDED.source_revision,updated_at=clock_timestamp()
+              WHERE m1.videos.source_revision <= EXCLUDED.source_revision`,[principal.workspace_id,row.channel_id,video.source_content_id,row.source_revision,video]);
+            await item(video.source_content_id);
+          }
+          expected = targets;
         }
+      } else {
+        const pending = await client.query("SELECT domain FROM m1.domains WHERE plan_id=$1 AND domain IN ('ABOUT','VIDEO') AND state<>'APPLIED'",[input.plan_id]);
+        if (pending.rowCount) throw new StoreError('DOMAIN_INCOMPLETE','Agent input domains are not complete');
+        const snapshot = await this.agentSnapshot(client,row);
+        if (input.payload.channel_id !== row.channel_id || input.payload.input_hash !== snapshot.input_hash) throw new StoreError('INPUT_MISMATCH','Agent input changed; read the input again');
+        await client.query(`UPDATE m1.channels SET agent=$3,agent_revision=$4,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2 AND agent_revision <= $4`,[principal.workspace_id,row.channel_id,input.payload,row.source_revision]);
+        await item(row.channel_id);
+        expected = [row.channel_id];
       }
       if (input.domain_complete) {
         const items = await client.query('SELECT item_id FROM m1.plan_items WHERE plan_id=$1 AND domain=$2',[input.plan_id,input.domain]);
         const applied = new Set(items.rows.map(r => r.item_id));
-        const expected = input.domain === 'ABOUT' ? [row.channel_id as string] : frozen.target_video_ids;
         if (expected.some(id => !applied.has(id))) throw new StoreError('DOMAIN_INCOMPLETE','Required frozen targets are missing');
         await client.query("UPDATE m1.domains SET state='APPLIED',completed_at=clock_timestamp() WHERE plan_id=$1 AND domain=$2",[input.plan_id,input.domain]);
       }
@@ -161,7 +193,8 @@ export class Store {
       await client.query('INSERT INTO m1.receipts(workspace_id,submission_id,plan_id,domain,logical_batch_key,payload_hash,receipt) VALUES($1,$2,$3,$4,$5,$6,$7)',[principal.workspace_id,input.submission_id,input.plan_id,input.domain,input.logical_batch_key,input.payload_hash,receipt]);
       const remaining = await client.query("SELECT domain FROM m1.domains WHERE plan_id=$1 AND state <> 'APPLIED'",[input.plan_id]);
       const completed = remaining.rowCount === 0;
-      const waiting = remaining.rows.every(r => r.domain === 'AGENT');
+      // Only fixture plans wait on an Agent that does not exist; real plans run until settled.
+      const waiting = frozen.source_mode === 'fixture' && remaining.rows.every(r => r.domain === 'AGENT');
       await client.query('UPDATE m1.plans SET status=$2,version=version+1,updated_at=clock_timestamp(),finished_at=CASE WHEN $3 THEN clock_timestamp() ELSE NULL END WHERE plan_id=$1',[input.plan_id,completed ? 'COMPLETED' : waiting ? 'WAITING' : 'RUNNING',completed]);
       if (completed) await client.query("INSERT INTO m1.obligations(plan_id,kind) VALUES($1,'FIXTURE_PLAN_SETTLED') ON CONFLICT DO NOTHING",[input.plan_id]);
       return receipt;
@@ -240,11 +273,11 @@ export class Store {
   async listChannels(principal: Principal, limit=20, offset=0): Promise<Page<ChannelListItem>> {
     requireRole(principal,'reader','operator');
     // Country and subscribers come from the current About facts; stored_videos counts this workspace's video rows.
-    const rows = await this.pool.query(`SELECT c.*, p.status AS latest_plan_status,
+    const rows = await this.pool.query(`SELECT c.*, p.status AS latest_plan_status, p.source_mode,
         (SELECT count(*)::int FROM m1.videos v WHERE v.workspace_id=c.workspace_id AND v.channel_id=c.channel_id) AS stored_videos
       FROM m1.channels c JOIN m1.plans p ON p.plan_id=c.latest_plan_id
       WHERE c.workspace_id=$1 ORDER BY c.updated_at DESC,c.channel_id LIMIT $2 OFFSET $3`,[principal.workspace_id,limit+1,offset]);
-    return page(rows.rows.map(r => ({channel_id:r.channel_id,title:r.about?.title ?? null,source_mode:'fixture' as const,updated_at:iso(r.updated_at),latest_plan_id:r.latest_plan_id,
+    return page(rows.rows.map(r => ({channel_id:r.channel_id,title:r.about?.title ?? null,source_mode:r.source_mode,updated_at:iso(r.updated_at),latest_plan_id:r.latest_plan_id,
       country:r.about?.country ?? null, subscriber_count:typeof r.about?.subscriber_count?.value === 'number' ? r.about.subscriber_count.value : null,
       stored_videos:r.stored_videos, latest_plan_status:r.latest_plan_status})),limit,offset);
   }
@@ -254,7 +287,33 @@ export class Store {
     if (!row) throw new StoreError('NOT_FOUND','Channel not found',404);
     const videos = await this.pool.query('SELECT data FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 ORDER BY video_id LIMIT 100',[principal.workspace_id,channelId]);
     const latest = toPlan(await this.planRow(this.pool,principal,row.latest_plan_id));
-    return {channel_id:channelId,title:row.about?.title ?? null,source_mode:'fixture',updated_at:iso(row.updated_at),latest_plan_id:row.latest_plan_id,about:row.about,videos:videos.rows.map(r=>r.data),agent:null,latest_plan:latest};
+    return {channel_id:channelId,title:row.about?.title ?? null,source_mode:latest.source_mode,updated_at:iso(row.updated_at),latest_plan_id:row.latest_plan_id,about:row.about,videos:videos.rows.map(r=>r.data as VideoItem),agent:row.agent ?? null,latest_plan:latest};
+  }
+  /** Frozen VIDEO targets: fixed at creation for fixtures, the first accepted manifest for YouTube. */
+  private async videoTargets(client: PoolClient | Pool, row: QueryResultRow): Promise<string[] | null> {
+    const frozen = row.frozen_input as FrozenInput;
+    if (frozen.source_mode === 'fixture') return frozen.target_video_ids;
+    const manifest = (await client.query('SELECT manifest FROM m1.plan_video_targets WHERE plan_id=$1',[row.plan_id])).rows[0];
+    return manifest ? manifest.manifest.video_ids as string[] : null;
+  }
+  /** Current facts of this plan's channel and available target videos, in target order. */
+  private async agentSnapshot(client: PoolClient | Pool, row: QueryResultRow): Promise<AgentInput> {
+    const targets = await this.videoTargets(client,row) ?? [];
+    const channel = (await client.query('SELECT about FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2',[row.workspace_id,row.channel_id])).rows[0];
+    if (!channel?.about) throw new StoreError('DOMAIN_INCOMPLETE','Channel facts are missing');
+    const rows = await client.query('SELECT video_id,data FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND video_id=ANY($3::text[])',[row.workspace_id,row.channel_id,targets]);
+    const byId = new Map(rows.rows.map(r => [r.video_id as string, r.data as VideoItem]));
+    const videos = targets.map(id => byId.get(id)).filter((v): v is VideoItem => !!v && !isVideoUnavailable(v)) as AgentInput['videos'];
+    const body = {plan_id:row.plan_id as string,channel_id:row.channel_id as string,about:channel.about,videos};
+    return {...body,input_hash:agentInputHash(body)};
+  }
+  async agentInput(principal: Principal, planId: string): Promise<AgentInput> {
+    requireRole(principal,'worker');
+    const row = await this.planRow(this.pool,principal,planId);
+    if ((row.frozen_input as FrozenInput).source_mode !== 'youtube' || !(row.required_domains as string[]).includes('AGENT')) throw new StoreError('DOMAIN_NOT_REQUIRED','Plan has no Agent domain');
+    const pending = await this.pool.query("SELECT domain FROM m1.domains WHERE plan_id=$1 AND domain IN ('ABOUT','VIDEO') AND state<>'APPLIED'",[planId]);
+    if (pending.rowCount) throw new StoreError('DOMAIN_INCOMPLETE','Agent input domains are not complete');
+    return this.agentSnapshot(this.pool,row);
   }
   async claimIntent(leaseSeconds=30, workspaceId?:string): Promise<Intent | null> {
     return this.tx(async client => {

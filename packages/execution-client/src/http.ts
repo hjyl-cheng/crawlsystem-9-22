@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
-import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
+import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, AgentInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
   ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, TemporalTokenSchema, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
 
 export class ExecutionApiError extends Error {
@@ -124,6 +124,7 @@ export class ExecutionApi {
   }
   session(budget?: RequestBudget) { return this.request(this.control, ApiRoutes.session, SessionSchema, undefined, budget); }
   input(id: string, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.input(id), PlanInputSchema, undefined, budget); }
+  agentInput(id: string, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.agentInput(id), AgentInputSchema, undefined, budget); }
   async receipt(id: string, budget?: RequestBudget): Promise<Receipt | null> {
     try { return await this.request(this.control, ApiRoutes.receipt(id), ReceiptSchema, undefined, budget); }
     catch (error) { if (error instanceof ExecutionApiError && error.code === 'NOT_FOUND') return null; throw error; }

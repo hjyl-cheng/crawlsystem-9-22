@@ -3,7 +3,7 @@ import { Context, heartbeat, CancelledFailure, ApplicationFailure } from '@tempo
 import { contentHash, fixtureSubmission } from '@crawlsystem/contracts/hash';
 import { ExecutionApi, ExecutionApiError, checkReceipt } from '@crawlsystem/execution-client/http';
 import type { RequestTracing } from '@crawlsystem/http/tracing';
-import { type Domain, type ErrorCode, type ExecutionEvent, type FixtureWorkflowResult, type PlanInput, type PlanStatus, type WorkflowInput } from '@crawlsystem/contracts';
+import { type Domain, type ErrorCode, type ExecutionEvent, type PlanWorkflowResult, type PlanInput, type PlanStatus, type WorkflowInput } from '@crawlsystem/contracts';
 
 export interface ExecutionDescriptor { deadlineAt: number; maxAttempts: number; status: PlanStatus; }
 export interface ActivityOptions {
@@ -70,11 +70,16 @@ export function createActivities(options: ActivityOptions) {
         return { deadlineAt: Date.parse(value.input.deadline_at), maxAttempts: value.input.max_attempts, status: value.plan.status };
       });
     },
-    async executeFixture(ref: WorkflowInput, descriptor: ExecutionDescriptor): Promise<FixtureWorkflowResult> {
+    async executeFixture(ref: WorkflowInput, descriptor: ExecutionDescriptor): Promise<PlanWorkflowResult> {
       return activity(ref, 'SUBMISSION', async scope => {
         let value = await read(ref, scope, descriptor.deadlineAt);
         if (Date.parse(value.input.deadline_at) !== descriptor.deadlineAt || value.input.max_attempts !== descriptor.maxAttempts) throw new ExecutionApiError('INPUT_MISMATCH', false);
         if (terminal(value.plan.status)) return { plan_id: ref.plan_id, status: value.plan.status };
+        if (value.input.source_mode !== 'fixture') {
+          // Real collection lands in M2 step 4; until then the plan waits visibly instead of failing silently.
+          await event(ref, scope, 'WAITING', 'COLLECTOR', 'YouTube collector is not deployed yet', null, 'DEPENDENCY_NOT_IMPLEMENTED');
+          return { plan_id: ref.plan_id, status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
+        }
         await event(ref, scope, 'STARTED', 'FIXTURE', 'Reading frozen test sample; no real collection or proxy');
         for (const domain of ['ABOUT','VIDEO'] as const) {
           if (!value.input.required_domains.includes(domain)) continue;
@@ -98,7 +103,7 @@ export function createActivities(options: ActivityOptions) {
         return { plan_id: ref.plan_id, status: value.plan.status };
       });
     },
-    async settleExecution(ref: WorkflowInput, failure?: ErrorCode): Promise<FixtureWorkflowResult> {
+    async settleExecution(ref: WorkflowInput, failure?: ErrorCode): Promise<PlanWorkflowResult> {
       return activity(ref, 'SETTLE', async scope => {
         let value = await read(ref, scope);
         if (!terminal(value.plan.status) && failure) {

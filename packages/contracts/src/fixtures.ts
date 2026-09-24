@@ -1,4 +1,4 @@
-import { ChannelFactsSchema, VideoFactsSchema, FrozenInputSchema, CONTRACT_VERSION, type Domain, type FrozenInput } from './index.ts';
+import { ChannelFactsSchema, VideoFactsSchema, FrozenInputSchema, CONTRACT_VERSION, type Domain, type FixtureFrozenInput } from './index.ts';
 const time = '2026-09-23T00:00:00.000Z';
 const metric = (value: number) => ({ value, status: 'exact' as const, source: 'fixture:channel-basic-v1', observed_at: time });
 export const fixtureChannel = ChannelFactsSchema.parse({
@@ -18,8 +18,8 @@ export const fixtureVideo = VideoFactsSchema.parse({
     published_at_utc: time, published_text_raw: time, published_at_status: 'exact', is_edited: false, like_count: 0, reply_count: 0, is_pinned: false, is_channel_owner: false, is_verified: null, is_hearted: false,
   }] }, access_status: 'public', access_status_source: 'fixture', is_members_only: false, live_scheduled_at: null, live_started_at: null, live_ended_at: null, observed_at: time, extractor_version: CONTRACT_VERSION,
 });
-export function createFrozenFixture(required_domains: Domain[], deadline_at: string): FrozenInput {
+export function createFrozenFixture(required_domains: Domain[], deadline_at: string): FixtureFrozenInput {
   return FrozenInputSchema.parse({ schema_version: CONTRACT_VERSION, source_mode: 'fixture', fixture_id: 'channel-basic-v1', channel_id: fixtureChannel.channel_id,
     required_domains, target_video_ids: [fixtureVideo.source_content_id], reference_time: time, deadline_at, max_attempts: 3,
-    sample: { about: structuredClone(fixtureChannel), videos: [structuredClone(fixtureVideo)] } });
+    sample: { about: structuredClone(fixtureChannel), videos: [structuredClone(fixtureVideo)] } }) as FixtureFrozenInput;
 }

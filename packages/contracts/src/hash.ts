@@ -25,9 +25,14 @@ export function stableSubmissionId(plan_id: string, execution_epoch: number, dom
   return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
 }
 export function fixtureSubmission(context: PlanInput, domain: 'ABOUT' | 'VIDEO'): Submission {
+  if (context.input.source_mode !== 'fixture') throw new TypeError('Fixture submissions require a fixture plan');
   const logical_batch_key = `${domain.toLowerCase()}:all:v1`;
   const base = { schema_version: CONTRACT_VERSION, submission_id: stableSubmissionId(context.plan.plan_id, context.plan.execution_epoch, domain, logical_batch_key),
     plan_id: context.plan.plan_id, execution_epoch: context.plan.execution_epoch, input_hash: context.plan.input_hash, logical_batch_key, domain_complete: true };
-  const body = domain === 'ABOUT' ? { ...base, domain, payload: context.input.sample.about } : { ...base, domain, payload: context.input.sample.videos };
+  const body = domain === 'ABOUT' ? { ...base, domain, payload: context.input.sample.about } : { ...base, domain, payload: { kind: 'videos' as const, items: context.input.sample.videos } };
   return { ...body, payload_hash: submissionHash(body as Omit<Submission, 'payload_hash'>) } as Submission;
+}
+/** Hash of an Agent input snapshot; Store recomputes it when accepting the result. */
+export function agentInputHash(input: { plan_id: string; channel_id: string; about: unknown; videos: unknown[] }): string {
+  return contentHash({ plan_id: input.plan_id, channel_id: input.channel_id, about: input.about, videos: input.videos });
 }

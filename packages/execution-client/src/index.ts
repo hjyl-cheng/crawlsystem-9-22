@@ -41,7 +41,7 @@ export function workflowStarter(client: Client, taskQueue: string): WorkflowStar
           workflowId: input.workflow_id, taskQueue, args: [input],
           workflowIdReusePolicy: WorkflowIdReusePolicy.REJECT_DUPLICATE,
           // The immutable business deadline is read by Activity. This is a final safety ceiling.
-          workflowExecutionTimeout: '31 minutes', workflowTaskTimeout: '10 seconds',
+          workflowExecutionTimeout: '150 minutes', workflowTaskTimeout: '10 seconds',
         });
         return { workflow_id: input.workflow_id, run_id: handle.firstExecutionRunId };
       } catch (error) {
