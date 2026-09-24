@@ -42,6 +42,10 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     return workload.exchangeTemporal(request.headers.authorization);
   });
   app.get('/v1/session',async request=>({...request.principal,contract_version:CONTRACT_VERSION}));
+  app.get(ApiRoutes.consoleAccounts,async request=>{
+    if(!auth) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Account login is not configured',503);
+    return auth.listAccounts(request.principal);
+  });
   // The creating request's trace context is stored so dispatch and execution continue that trace.
   app.post('/v1/plans',async request=>store.createPlan(request.principal,CreatePlanSchema.parse(request.body),request.traceparent));
   app.get('/v1/plans',async request=>{const q=pagination(request.query);return store.listPlans(request.principal,q.limit,q.offset,q.status);});

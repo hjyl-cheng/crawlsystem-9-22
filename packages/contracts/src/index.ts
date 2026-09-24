@@ -186,9 +186,25 @@ export const PlansSummarySchema: z.ZodType<PlansSummary> = z.strictObject({
   waiting_reasons: z.array(z.strictObject({ reason: z.string().min(1).max(80), plans: Count })).max(6),
 }).refine(s=>Object.values(s.by_status).reduce((a,b)=>a+b,0)===s.total,'status counts must sum to total')
   .refine(s=>s.domains.every(d=>d.applied<=d.required)&&new Set(s.domains.map(d=>d.domain)).size===s.domains.length,'domain counts must be distinct and applied cannot exceed required');
+/** Console accounts of the caller's workspace, for the user management page. Never
+ * carries password material. Session figures come from sessions still stored:
+ * logout deletes a session, so `latest_session_at` is the newest retained login,
+ * not a full login history. Null means the account source cannot tell. */
+export interface ConsoleAccount {
+  username: string; subject: string; role: 'reader' | 'operator'; status: 'ACTIVE' | 'DISABLED';
+  created_at: string | null; updated_at: string | null; active_sessions: number | null; latest_session_at: string | null;
+}
+export interface ConsoleAccountList { observed_at: string; source: 'DATABASE' | 'FILE' | 'MEMORY'; items: ConsoleAccount[] }
+export const ConsoleAccountSchema: z.ZodType<ConsoleAccount> = z.strictObject({
+  username: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_.-]+$/), subject: IdSchema, role: z.enum(['reader', 'operator']), status: z.enum(['ACTIVE', 'DISABLED']),
+  created_at: Timestamp.nullable(), updated_at: Timestamp.nullable(), active_sessions: Count.nullable(), latest_session_at: Timestamp.nullable(),
+});
+export const ConsoleAccountListSchema: z.ZodType<ConsoleAccountList> = z.strictObject({
+  observed_at: Timestamp, source: z.enum(['DATABASE', 'FILE', 'MEMORY']), items: z.array(ConsoleAccountSchema).max(500),
+});
 export const pageSchema = <T extends z.ZodType>(item: T) => z.strictObject({ items: z.array(item).max(100), next_cursor: z.string().nullable() });
 export const ApiRoutes = {
-  session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', workers: '/v1/workers', errors: '/v1/errors',
+  session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', consoleAccounts: '/v1/console/accounts', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', workloadToken: '/v1/workload/token', temporalToken: '/v1/workload/temporal-token',
   plan: (id: string) => `/v1/plans/${encodeURIComponent(id)}`,
   input: (id: string) => `/v1/plans/${encodeURIComponent(id)}/input`,

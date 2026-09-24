@@ -53,6 +53,7 @@ export default function Config() {
   const [query, setQuery] = useState(''), [group, setGroup] = useState(''), [state, setState] = useState(''), [risk, setRisk] = useState('');
   // The sample module loads only when asked for, so it never ships with the default view.
   useEffect(() => {
+    setQuery(''); setGroup(''); setState(''); setRisk('');
     if (!sampleOn) { setData(undefined); setSelected(undefined); return; }
     let live = true;
     void import('./config-sample.js').then(module => { if (live) { setData(module.configSample); setSelected(module.configSample.items[1]!.key); } });

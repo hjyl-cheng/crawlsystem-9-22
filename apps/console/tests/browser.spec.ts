@@ -36,6 +36,9 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
     if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status }] : [], next_cursor: null });
     if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan));
+    if (path === '/v1/console/accounts') return json({ observed_at: '2026-09-23T08:00:00.000Z', source: 'DATABASE', items: [
+      { username: 'fixture', subject: 'browser-fixture', role: state.role === 'reader' ? 'reader' : 'operator', status: 'ACTIVE', created_at: '2026-09-20T02:00:00.000Z', updated_at: '2026-09-20T02:00:00.000Z', active_sessions: 1, latest_session_at: '2026-09-23T07:55:00.000Z' },
+      { username: 'fixture-reader', subject: 'browser-fixture-reader', role: 'reader', status: 'DISABLED', created_at: '2026-09-21T02:00:00.000Z', updated_at: '2026-09-22T02:00:00.000Z', active_sessions: 0, latest_session_at: null }] });
     if (path === '/v1/overview/plans') {
       const p = state.detail?.plan, by_status = { QUEUED: 0, RUNNING: 0, WAITING: 0, COMPLETED: 0, CANCELLED: 0, FAILED: 0 };
       if (p) by_status[p.status]++;
@@ -360,4 +363,22 @@ test('configuration management says the configuration centre is not connected an
   await page.locator('.config-list tbody tr', { hasText: 'IP 冷却时长' }).click();
   await expect(page.locator('.config-detail')).toContainText('proxy.ip.cooldown_minutes');
   await expect(page.locator('.config-detail').getByRole('button', { name: '发布配置' })).toBeDisabled();
+});
+test('user management lists the real workspace accounts without credentials and keeps account changes on the command line', async ({ page }) => {
+  await mock(page); await login(page, '/users');
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await expect(nav.getByRole('link', { name: '用户管理' })).toBeVisible();
+  await expect(page.locator('.user-list tbody tr')).toHaveCount(2);
+  await expect(page.locator('.user-detail')).toContainText('browser-fixture');
+  await expect(page.locator('.user-detail')).toContainText('当前登录');
+  await page.getByLabel('状态').selectOption('DISABLED');
+  await expect(page.locator('.user-list tbody tr')).toHaveCount(1);
+  await page.locator('.user-list tbody tr', { hasText: 'fixture-reader' }).click();
+  await page.getByRole('tab', { name: '权限范围' }).click();
+  await expect(page.locator('.user-detail')).toContainText('不能创建或取消采集计划');
+  await expect(page.locator('.user-detail').getByRole('button', { name: '启用账号' })).toBeDisabled();
+  await expect(page.getByText('登录历史尚未留存', { exact: false })).toBeVisible();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.user-list tbody tr')).toHaveCount(10);
 });

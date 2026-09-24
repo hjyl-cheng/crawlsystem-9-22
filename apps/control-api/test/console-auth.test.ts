@@ -81,3 +81,19 @@ test('existing Worker Bearer authentication still works independently of console
     assert.equal((await f.app.inject({ url: '/v1/session', headers: { authorization: 'Bearer invalid' } })).statusCode, 401);
   } finally { await f.app.close(); }
 });
+test('account listing returns the caller workspace without password material and refuses Worker tokens', async () => {
+  const f = fixture();
+  try {
+    assert.equal((await f.app.inject({ url: '/v1/console/accounts' })).statusCode, 401);
+    const cookie = String((await f.login()).headers['set-cookie']).split(';')[0]!;
+    const listed = await f.app.inject({ url: '/v1/console/accounts', headers: { cookie } });
+    assert.equal(listed.statusCode, 200);
+    const body = listed.json();
+    assert.equal(body.source, 'MEMORY');
+    assert.deepEqual(body.items.map((a: { username: string }) => a.username), [account.username]);
+    assert.equal(body.items[0].active_sessions, 1);
+    assert.doesNotMatch(listed.body, new RegExp(`${account.salt}|${account.password_hash}|password`));
+    const worker = await issueToken({ subject: 'w1', workspace_id: 'auth-test', role: 'worker' }, key);
+    assert.equal((await f.app.inject({ url: '/v1/console/accounts', headers: { authorization: `Bearer ${worker}` } })).statusCode, 403);
+  } finally { await f.app.close(); }
+});
