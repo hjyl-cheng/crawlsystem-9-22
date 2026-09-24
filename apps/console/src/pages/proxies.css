@@ -31,3 +31,7 @@
 .proxy-actions { display: inline-flex; align-items: center; gap: 6px; }
 .proxy-actions select { max-width: 110px; padding: 2px 4px; font-size: var(--fs-meta); }
 @media (max-width: 900px) { .proxy-import-fields { grid-template-columns: 1fr 1fr; } }
+.proxy-import-fields.two { grid-template-columns: 1fr 2fr; }
+.server-choice { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--fs-meta); color: #547092; }
+.server-choice legend { margin-bottom: 4px; }
+.status-tabs .tab-action { margin-left: auto; align-self: center; }

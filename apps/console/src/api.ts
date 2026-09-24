@@ -2,8 +2,8 @@ import { z } from 'zod';
 import {
   ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,
   ChannelListItemSchema, ChannelDetailSchema, CompletenessSchema, ConsoleAccountListSchema, PlansSummarySchema, WorkerSchema, StoredEventSchema,
-  ReceiptSchema, CreatePlanSchema, CancelPlanSchema, LoginSchema, LogoutSchema, pageSchema, ProxyOverviewSchema, ProxyImportSchema, ProxyUpdateSchema, ProxyViewSchema,
-  type CreatePlan, type ProxyImport, type ErrorCode, type PlanStatus, type Login,
+  ReceiptSchema, CreatePlanSchema, CancelPlanSchema, LoginSchema, LogoutSchema, pageSchema, ProxyOverviewSchema, ProxyImportSchema, ProxyUpdateSchema, ProxyViewSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySourceViewSchema,
+  type CreatePlan, type ProxyImport, type ProxySourceCreate, type ErrorCode, type PlanStatus, type Login,
 } from '@crawlsystem/contracts';
 
 const messages: Record<ErrorCode, string> = {
@@ -98,5 +98,8 @@ export class ControlApi {
   receipt = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.receipt(id), ReceiptSchema, signal);
   proxies = (signal?: AbortSignal) => this.request(ApiRoutes.proxies, ProxyOverviewSchema, signal);
   importProxies = (body: ProxyImport, signal?: AbortSignal) => this.request(ApiRoutes.proxyImport, z.strictObject({ created: z.number().int(), updated: z.number().int() }), signal, ProxyImportSchema.parse(body));
+  proxySources = (signal?: AbortSignal) => this.request(ApiRoutes.proxySources, z.strictObject({ items: z.array(ProxySourceViewSchema).max(50) }), signal);
+  createProxySource = (body: ProxySourceCreate, signal?: AbortSignal) => this.request(ApiRoutes.proxySources, ProxySourceViewSchema, signal, ProxySourceCreateSchema.parse(body));
+  updateProxySource = (id: string, body: z.input<typeof ProxySourceUpdateSchema>, signal?: AbortSignal) => this.request(ApiRoutes.proxySource(id), ProxySourceViewSchema, signal, ProxySourceUpdateSchema.parse(body));
   updateProxy = (id: string, body: z.input<typeof ProxyUpdateSchema>, signal?: AbortSignal) => this.request(ApiRoutes.proxy(id), ProxyViewSchema, signal, ProxyUpdateSchema.parse(body));
 }

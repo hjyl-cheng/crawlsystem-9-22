@@ -1,9 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
-import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView } from '@crawlsystem/contracts';
+import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView } from '@crawlsystem/contracts';
 import { detailFixture, channelFixture, workerFixture, errorFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
-  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false };
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -53,11 +53,25 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
         complete: total && applied.length === required.length ? 1 : 0, partial: total && applied.length > 0 && applied.length < required.length ? 1 : 0, missing: total && applied.length === 0 ? 1 : 0,
         missing_by_domain: { ABOUT: lacks('ABOUT'), VIDEO: lacks('VIDEO'), AGENT: lacks('AGENT') }, latest_channel_update_at: state.detail?.plan.updated_at ?? null, freshness: 'NOT_IMPLEMENTED' });
     }
+    if (path === '/v1/proxy-sources' && method === 'POST') {
+      const body = route.request().postDataJSON() as Omit<ProxySourceView, 'source_id' | 'group'> & { group: string };
+      const view = { ...body, source_id: crypto.randomUUID(), enabled: true, version: 1, next_fetch_at: '2026-09-24T08:01:00.000Z', last_fetched_at: null, last_status: null, last_error: null,
+        last_count: null, last_added: null, last_retired: null, active_proxies: 0, retired_proxies: 0 } as ProxySourceView;
+      state.sources.push(view); return json(view);
+    }
+    if (path.startsWith('/v1/proxy-sources/') && method === 'POST') {
+      const body = route.request().postDataJSON() as { expected_version: number; enabled?: boolean; refresh_now?: true }; state.sourceUpdates.push(body);
+      const source = state.sources.find(x => path.endsWith(x.source_id))!;
+      if (body.enabled !== undefined) source.enabled = body.enabled;
+      if (body.refresh_now) Object.assign(source, { last_status: 'ok', last_fetched_at: new Date().toISOString(), last_count: 380, last_added: 380, active_proxies: 380 });
+      source.version++; return json(source);
+    }
+    if (path === '/v1/proxy-sources') return json({ items: state.sources });
     if (path === '/v1/proxies/import' && method === 'POST') {
       const body = route.request().postDataJSON() as { entries: { protocol: 'http'; host: string; port: number; username: string | null; provider: string; group: string; country_code: string | null; kind: 'static'; max_concurrency: number; password: string | null }[] };
       state.imports.push(body);
       for (const e of body.entries) state.proxies.push({ proxy_id: crypto.randomUUID(), protocol: e.protocol, host: e.host, port: e.port, username: e.username, has_password: e.password !== null, provider: e.provider, group: e.group,
-        country_code: e.country_code, kind: e.kind, max_concurrency: e.max_concurrency, enabled: true, version: 1, server_id: null, state: 'unassigned', cooldown_until: null, last_success_at: null, last_failure_at: null,
+        country_code: e.country_code, kind: e.kind, max_concurrency: e.max_concurrency, enabled: true, version: 1, server_id: null, source: null, retired: false, state: 'unassigned', cooldown_until: null, last_success_at: null, last_failure_at: null,
         last_error: null, requests_today: 0, failures_today: 0, latency_ms: null, observed_at: null, created_at: '2026-09-24T08:00:00.000Z', updated_at: '2026-09-24T08:00:00.000Z' });
       return json({ created: body.entries.length, updated: 0 });
     }
@@ -73,7 +87,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       const by_state = { healthy: 0, degraded: 0, cooldown: 0, failed: 0, disabled: 0, unassigned: 0, unknown: 0 }; for (const p of state.proxies) by_state[p.state]++;
       const providers = [...new Set(state.proxies.map(p => p.provider))].map(name => ({ name, count: state.proxies.filter(p => p.provider === name).length, requests_today: 0, failures_today: 0 }));
       const groups = [...new Set(state.proxies.map(p => p.group))].map(name => ({ name, count: state.proxies.filter(p => p.group === name).length }));
-      return json({ observed_at: '2026-09-24T08:00:00.000Z', items: state.proxies, by_state, providers, groups, requests_today: 0, failures_today: 0, availability_7d: [] });
+      return json({ observed_at: '2026-09-24T08:00:00.000Z', items: state.proxies, items_total: state.proxies.length, by_state, providers, groups, requests_today: 0, failures_today: 0, availability_7d: [] });
     }
     if (path === '/v1/workers') return json({ items: state.workers, next_cursor: null });
     if (path === '/v1/errors') return json({ items: state.errors, next_cursor: null });
@@ -446,4 +460,27 @@ test('operators import proxies without the page ever showing the password, then 
 test('read-only users see the proxy inventory but cannot import or rebind', async ({ page }) => {
   await mock(page, undefined, 'reader'); await login(page, '/proxies');
   await expect(page.getByRole('button', { name: '添加 IP' })).toBeDisabled();
+});
+test('operators subscribe to a proxy list URL that refreshes automatically, and can refresh or pause it', async ({ page }) => {
+  const state = await mock(page); state.workers = [{ worker_id: 'w1', server_id: 'a1', build_version: 'v1', accepting_work: true, capacity: 1, running_plan_ids: [], last_heartbeat_at: '2026-09-23T08:00:00.000Z', stale: false, proxy_status: 'NOT_CONFIGURED' }];
+  await login(page, '/proxies');
+  await page.getByRole('tab', { name: /订阅来源/ }).click();
+  await expect(page.getByText('尚无订阅来源', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '添加来源' }).click();
+  const dialog = page.getByRole('dialog', { name: '添加订阅来源' });
+  await dialog.getByLabel('来源名称').fill('monosans socks5');
+  await dialog.getByLabel('来源地址').fill('https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt');
+  await dialog.getByLabel('来源服务商').fill('Public'); await dialog.getByLabel('来源分组').fill('公共 SOCKS5');
+  await dialog.getByRole('checkbox', { name: 'a1' }).check();
+  await dialog.getByRole('button', { name: '添加来源' }).click();
+  await expect(dialog.getByRole('status')).toContainText('已添加');
+  expect(state.sources[0]).toMatchObject({ protocol: 'socks5', interval_minutes: 60, retire_after_misses: 3, server_ids: ['a1'], group: '公共 SOCKS5' });
+  await dialog.getByRole('button', { name: '关闭对话框' }).click();
+  const row = page.locator('.ip-list tbody tr', { hasText: 'monosans socks5' });
+  await expect(row).toContainText('等待首次拉取');
+  await row.getByRole('button', { name: '立即刷新' }).click();
+  await expect(row).toContainText('正常'); await expect(row).toContainText('380');
+  await row.getByRole('button', { name: '停用' }).click();
+  await expect(row).toContainText('已停用');
+  expect(state.sourceUpdates).toEqual([{ expected_version: 1, refresh_now: true }, { expected_version: 2, enabled: false }]);
 });

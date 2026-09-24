@@ -55,6 +55,8 @@ spec:
             - { name: TEMPORAL_TLS_KEY_FILE, value: /temporal/tls.key }
             - { name: DISPATCHER_ALIVE_FILE, value: /tmp/alive }
             - { name: TEMPORAL_API_KEY_MODE, value: workload }
+            # Proxy subscription sources are refreshed by this process (outbound HTTPS to public lists only).
+            - { name: PROXY_CREDENTIAL_KEY_FILE, value: /proxy-credential/key }
             - { name: CONTROL_API_URL, value: "http://control-api-preview.control.svc.cluster.local:18100" }
             - { name: WORKLOAD_IDENTITY_TOKEN_FILE, value: /var/run/secrets/crawlsystem/control-token }
           livenessProbe:
@@ -67,6 +69,7 @@ spec:
             - { name: temporal, mountPath: /temporal, readOnly: true }
             - { name: tmp, mountPath: /tmp }
             - { name: control-token, mountPath: /var/run/secrets/crawlsystem, readOnly: true }
+            - { name: proxy-credential, mountPath: /proxy-credential, readOnly: true }
           resources:
             requests: { cpu: 20m, memory: 64Mi }
             limits: { cpu: 300m, memory: 192Mi }
@@ -84,6 +87,8 @@ spec:
           secret: { secretName: temporal-client-dispatcher, defaultMode: 0440 }
         - name: tmp
           emptyDir: { sizeLimit: 1Mi }
+        - name: proxy-credential
+          secret: { secretName: proxy-credential-key, defaultMode: 0440, items: [{ key: key, path: key }] }
         - name: control-token
           projected:
             sources:

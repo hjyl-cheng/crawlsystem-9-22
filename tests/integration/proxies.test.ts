@@ -81,3 +81,38 @@ test('reports update state; counters count deltas once and restart with a new bo
   const overview = await store.overview(p.reader);
   assert.equal(overview.availability_7d.at(-1)!.requests, 32); assert.equal(overview.providers[0]!.requests_today, 32);
 });
+test('a subscription source adds, spreads, retires after N misses, restores, and never re-enables operator decisions', async () => {
+  const p = people();
+  const source = await store.createSource(p.operator, { name: 'free socks', url: `https://lists.example.test/${randomUUID()}.txt`, protocol: 'socks5', provider: 'Public', group: 'Public SOCKS5', retire_after_misses: 2, server_ids: ['a1', 'a2'] });
+  await rejects(() => store.createSource(p.operator, { name: 'dup', url: source.url, protocol: 'socks5', provider: 'P', group: 'G' }), 'CONFLICT');
+  await rejects(() => store.createSource(p.reader, { name: 'x', url: `https://lists.example.test/${randomUUID()}`, protocol: 'socks5', provider: 'P', group: 'G' }), 'FORBIDDEN');
+  // Other workspaces' due sources may be claimed first; drain until ours comes up.
+  const claimOurs = async () => { for (let i = 0; i < 50; i++) { const c = await store.claimDueSource(); if (!c) return null; if (c.source_id === source.source_id) return c; await store.applySourceFetch(c, { status: 'not_modified' }); } return null; };
+  const refresh = async (body: string) => { await pool.query('UPDATE m1.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]); const c = await claimOurs(); assert.ok(c); return store.applySourceFetch(c, { status: 'ok', body, etag: '"v"' }); };
+  assert.deepEqual(await refresh('192.0.2.1:1080\n192.0.2.2:1080\n192.0.2.3:1080\n192.0.2.4:1080'), { added: 4, retired: 0, restored: 0, assigned: 4, count: 4 });
+  let items = (await store.overview(p.reader)).items;
+  assert.deepEqual(items.map(i => i.server_id).sort(), ['a1', 'a1', 'a2', 'a2'], 'spread evenly');
+  assert.ok(items.every(i => i.source === 'free socks' && i.protocol === 'socks5' && i.group === 'Public SOCKS5'));
+  // Operator disables .4 by hand; the source must not undo that.
+  const four = items.find(i => i.host === '192.0.2.4')!;
+  await store.update(p.operator, four.proxy_id, { expected_version: four.version, enabled: false });
+  assert.deepEqual(await refresh('192.0.2.1:1080\n192.0.2.4:1080'), { added: 0, retired: 0, restored: 0, assigned: 0, count: 2 }, 'first miss only counts');
+  assert.deepEqual(await refresh('192.0.2.1:1080\n192.0.2.4:1080'), { added: 0, retired: 2, restored: 0, assigned: 0, count: 2 });
+  items = (await store.overview(p.reader)).items;
+  const byHost = Object.fromEntries(items.map(i => [i.host, i]));
+  assert.equal(byHost['192.0.2.2']!.retired, true); assert.equal(byHost['192.0.2.2']!.state, 'disabled'); assert.equal(byHost['192.0.2.2']!.server_id, null);
+  assert.equal(byHost['192.0.2.4']!.enabled, false); assert.equal(byHost['192.0.2.4']!.retired, false);
+  assert.deepEqual(await refresh('192.0.2.1:1080\n192.0.2.2:1080\n192.0.2.4:1080'), { added: 0, retired: 0, restored: 1, assigned: 1, count: 3 });
+  items = (await store.overview(p.reader)).items;
+  assert.equal(items.find(i => i.host === '192.0.2.2')!.enabled, true); assert.equal(items.find(i => i.host === '192.0.2.4')!.enabled, false, 'operator disable persists');
+  const views = await store.listSources(p.reader);
+  assert.equal(views[0]!.last_status, 'ok'); assert.equal(views[0]!.last_count, 3); assert.equal(views[0]!.active_proxies, 3); assert.equal(views[0]!.retired_proxies, 1);
+  // A failing fetch keeps the inventory and retries within 10 minutes.
+  await pool.query('UPDATE m1.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]);
+  const c = await claimOurs(); assert.ok(c);
+  assert.equal(await store.claimDueSource().then(x => x?.source_id === source.source_id), false, 'a leased source is not claimed twice');
+  await store.applySourceFetch(c, { status: 'error', error: 'HTTP 503' });
+  const failed = (await store.listSources(p.reader))[0]!;
+  assert.equal(failed.last_status, 'error'); assert.equal(failed.active_proxies, 3);
+  assert.ok(Date.parse(failed.next_fetch_at) <= Date.now() + 10 * 60_000 + 5000);
+});

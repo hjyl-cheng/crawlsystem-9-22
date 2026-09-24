@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, Download, Globe, Layers, MoreHorizontal, Plus, Radar, Search, ShieldCheck, Snowflake, Trash2, Upload } from 'lucide-react';
-import type { ProxyImport, ProxyOverview, ProxyState } from '@crawlsystem/contracts';
+import { ArrowRight, Download, Globe, Layers, MoreHorizontal, Plus, Radar, RefreshCw, Rss, Search, ShieldCheck, Snowflake, Trash2, Upload } from 'lucide-react';
+import type { ProxyImport, ProxyOverview, ProxySourceView, ProxyState } from '@crawlsystem/contracts';
 import { ApiFailure } from '../api.js';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
@@ -34,7 +34,7 @@ const rate = (requests: number, failures: number) => requests ? `${((1 - failure
 const ago = (at: string) => { const s = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 1000)); return s < 60 ? `${s} 秒前` : s < 3600 ? `${Math.round(s / 60)} 分钟前` : `${Math.round(s / 3600)} 小时前`; };
 /** Real inventory into the page's view model. Figures are today's (UTC) node-reported counters. */
 function fromOverview(o: ProxyOverview): ProxiesView {
-  const total = o.items.length, healthy = o.by_state.healthy;
+  const total = o.items_total, healthy = o.by_state.healthy;
   return { kpis: { total, providers: o.providers.length, groups: o.groups.length, healthy, healthyRate: total ? `${(healthy / total * 100).toFixed(1)}%` : '—',
       cooldown: o.by_state.cooldown, failed: o.by_state.failed, requests: fmt(o.requests_today) },
     ips: o.items.map(p => ({ id: p.proxy_id, ip: p.host, port: p.port, region: p.country_code ?? '—', provider: p.provider, group: p.group, state: p.state,
@@ -83,6 +83,59 @@ function ImportForm({ onDone }: { onDone: () => void }) {
       {error && <ErrorBox error={error}/>}{result && <div className="notice" role="status">{result}</div>}
       <div className="dialog-actions"><button className="button primary" disabled={busy}><Upload size={14}/>{busy ? '正在导入…' : '导入'}</button></div></form>;
 }
+function SourceForm({ servers, onDone }: { servers: string[]; onDone: () => void }) {
+  const { api } = useAuth();
+  const [form, setForm] = useState({ name: '', url: '', protocol: 'socks5' as 'http' | 'https' | 'socks5', provider: '', group: '', country: '', interval: 60, misses: 3, concurrency: 2 });
+  const [chosen, setChosen] = useState<string[]>([]), [busy, setBusy] = useState(false), [error, setError] = useState<ApiFailure>(), [done, setDone] = useState<string>();
+  const set = (key: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [key]: ['interval', 'misses', 'concurrency'].includes(key) ? Number(e.target.value) : e.target.value });
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError(undefined);
+    try {
+      const source = await api.createProxySource({ name: form.name.trim(), url: form.url.trim(), protocol: form.protocol, provider: form.provider.trim(), group: form.group.trim(),
+        country_code: form.country.trim().toUpperCase() || null, interval_minutes: form.interval, retire_after_misses: form.misses, max_concurrency: form.concurrency, server_ids: chosen });
+      setDone(`已添加“${source.name}”，后台将在 1 分钟内首次拉取。`); onDone();
+    } catch (cause) { setError(cause instanceof ApiFailure ? cause : new ApiFailure('添加失败，请核对后重试')); }
+    finally { setBusy(false); }
+  }
+  return <form className="proxy-import" onSubmit={submit}>
+    <div className="proxy-import-fields two">
+      <label>名称<input aria-label="来源名称" required value={form.name} onChange={set('name')} disabled={busy}/></label>
+      <label>列表地址（HTTPS）<input aria-label="来源地址" required type="url" placeholder="https://…/socks5.txt" value={form.url} onChange={set('url')} disabled={busy}/></label>
+    </div>
+    <div className="proxy-import-fields">
+      <label>默认协议<select aria-label="默认协议" value={form.protocol} onChange={set('protocol')} disabled={busy}><option value="socks5">socks5</option><option value="http">http</option><option value="https">https</option></select></label>
+      <label>服务商<input aria-label="来源服务商" required value={form.provider} onChange={set('provider')} disabled={busy}/></label>
+      <label>分组<input aria-label="来源分组" required value={form.group} onChange={set('group')} disabled={busy}/></label>
+      <label>国家代码<input aria-label="来源国家代码" maxLength={2} value={form.country} onChange={set('country')} disabled={busy}/></label>
+      <label>单 IP 并发<input aria-label="来源单 IP 并发" type="number" min={1} max={64} value={form.concurrency} onChange={set('concurrency')} disabled={busy}/></label>
+      <label>刷新间隔（分钟）<input aria-label="刷新间隔" type="number" min={10} max={1440} value={form.interval} onChange={set('interval')} disabled={busy}/></label>
+      <label>连续缺失几次后退役<input aria-label="退役阈值" type="number" min={1} max={20} value={form.misses} onChange={set('misses')} disabled={busy}/></label>
+    </div>
+    <fieldset className="server-choice" disabled={busy}><legend>新 IP 自动平均分配到（不选则保持未绑定）</legend>
+      {servers.length ? servers.map(server => <label key={server} className="checkbox-row"><input type="checkbox" checked={chosen.includes(server)} onChange={e => setChosen(e.target.checked ? [...chosen, server] : chosen.filter(s => s !== server))}/>{server}</label>) : <small>尚无运行 Worker 的服务器</small>}</fieldset>
+    {error && <ErrorBox error={error}/>}{done && <div className="notice" role="status">{done}</div>}
+    <div className="dialog-actions"><button className="button primary" disabled={busy}><Rss size={14}/>{busy ? '正在添加…' : '添加来源'}</button></div></form>;
+}
+const sourceStatus = { ok: ['green', '正常'], not_modified: ['blue', '未变化'], error: ['red', '失败'] } as const;
+function SourcesTable({ sources, operator, onDone }: { sources: ProxySourceView[]; operator: boolean; onDone: () => void }) {
+  const { api } = useAuth();
+  const [busy, setBusy] = useState<string>(), [error, setError] = useState<string>();
+  async function update(source: ProxySourceView, change: { enabled?: boolean; refresh_now?: true }) {
+    setBusy(source.source_id); setError(undefined);
+    try { await api.updateProxySource(source.source_id, { expected_version: source.version, ...change }); onDone(); }
+    catch (cause) { setError(cause instanceof ApiFailure ? cause.message : '操作失败'); }
+    finally { setBusy(undefined); }
+  }
+  if (!sources.length) return <Empty title="尚无订阅来源">{operator ? '点击“添加来源”订阅一个代理列表链接；后台按间隔自动刷新，新 IP 入库、消失的 IP 自动退役。' : '尚未配置订阅来源。'}</Empty>;
+  return <div className="table-scroll">{error && <div className="notice warning" role="alert">{error}</div>}<table><thead><tr><th>来源</th><th>协议 / 分组</th><th>刷新</th><th>最近拉取</th><th className="num">列表条数</th><th className="num">在用 / 退役</th><th>分配到</th><th>操作</th></tr></thead>
+    <tbody>{sources.map(source => { const status = source.last_status ? sourceStatus[source.last_status] : undefined; return <tr key={source.source_id}>
+      <td><b>{source.name}</b>{!source.enabled && <span className="status-chip slate"><i/>已停用</span>}<small className="cell-note mono" title={source.url}>{source.url.length > 56 ? `${source.url.slice(0, 56)}…` : source.url}</small></td>
+      <td>{source.protocol} · <span className="keyword-chip">{source.group}</span></td><td>每 {source.interval_minutes} 分钟</td>
+      <td>{status ? <span className={`status-chip ${status[0]}`} title={source.last_error ?? undefined}><i/>{status[1]}</span> : <span className="muted">等待首次拉取</span>}{source.last_fetched_at && <small className="cell-note">{ago(source.last_fetched_at)}{source.last_status === 'ok' ? ` · 新增 ${source.last_added ?? 0} · 退役 ${source.last_retired ?? 0}` : ''}{source.last_error ? ` · ${source.last_error}` : ''}</small>}</td>
+      <td className="num">{source.last_count ?? '—'}</td><td className="num">{fmt(source.active_proxies)} / {fmt(source.retired_proxies)}</td><td className="mono">{source.server_ids.join('、') || '—'}</td>
+      <td className="row-actions">{operator ? <span className="proxy-actions"><button className="text-button" disabled={busy === source.source_id || !source.enabled} onClick={() => void update(source, { refresh_now: true })}><RefreshCw size={12}/>立即刷新</button>
+        <button className="text-button" disabled={busy === source.source_id} onClick={() => void update(source, { enabled: !source.enabled })}>{source.enabled ? '停用' : '启用'}</button></span> : '—'}</td></tr>; })}</tbody></table></div>;
+}
 function RowActions({ ip, servers, onDone }: { ip: ProxiesView['ips'][number]; servers: string[]; onDone: () => void }) {
   const { api } = useAuth();
   const [busy, setBusy] = useState(false), [error, setError] = useState<string>();
@@ -96,7 +149,8 @@ function RowActions({ ip, servers, onDone }: { ip: ProxiesView['ips'][number]; s
       <option value="">未绑定</option>{[...new Set([...servers, ...(ip.server ? [ip.server] : [])])].sort().map(s => <option key={s} value={s}>{s}</option>)}</select>
     <button className="text-button" disabled={busy} onClick={() => void update({ enabled: !ip.enabled })}>{ip.enabled ? '停用' : '启用'}</button>{error && <small className="text-red" role="alert">{error}</small>}</span>;
 }
-const tabs = ['IP 列表', 'IP 分组', '服务商', '服务器绑定'] as const;
+const tabs = [['ips', 'IP 列表'], ['sources', '订阅来源'], ['groups', 'IP 分组'], ['providers', '服务商']] as const;
+type Tab = typeof tabs[number][0];
 const fmt = (n: number) => n.toLocaleString('zh-CN');
 
 function Card({ title, subtitle, extra, className = '', children }: { title: string; subtitle?: string; extra?: ReactNode; className?: string; children: ReactNode }) {
@@ -111,7 +165,8 @@ export default function Proxies() {
   const { api, session } = useAuth();
   const operator = session.role === 'operator';
   const overview = useResource('proxies', signal => api.proxies(signal), true, 15_000);
-  const [importing, setImporting] = useState(false), [query, setQuery] = useState(''), [stateFilter, setStateFilter] = useState('');
+  const [importing, setImporting] = useState(false), [addingSource, setAddingSource] = useState(false), [tab, setTab] = useState<Tab>('ips'), [query, setQuery] = useState(''), [stateFilter, setStateFilter] = useState('');
+  const sources = useResource('proxy-sources', signal => api.proxySources(signal), true, 30_000);
   // Real fact today: registered Workers report their proxy status (fixture runs use none).
   const workers = useResource('proxies-workers', signal => api.workers('0', 20, signal), true, 15_000);
   const unconfigured = workers.data?.items.filter(w => w.proxy_status === 'NOT_CONFIGURED').length;
@@ -130,6 +185,7 @@ export default function Proxies() {
       <div className="dashboard-period"><button className="button small primary" disabled={!operator} title={operator ? undefined : '只读身份不能导入'} onClick={() => setImporting(true)}><Plus size={13}/>添加 IP</button></div>
     </header>
     {overview.error && <ErrorBox error={overview.error}/>}
+    <Modal wide open={addingSource && operator} onOpenChange={setAddingSource} title="添加订阅来源" description="填写一个返回代理列表的 HTTPS 链接（每行 host:port 或 协议://[用户:密码@]host:port）。后台按间隔自动刷新；只允许公网地址。"><SourceForm servers={servers} onDone={() => { sources.refresh(); overview.refresh(); }}/></Modal>
     <Modal wide open={importing && operator} onOpenChange={setImporting} title="导入代理 IP" description="每行一个：协议://用户名:密码@地址:端口。密码只加密保存在后端，页面不会再显示；导入后绑定到服务器才会被使用。"><ImportForm onDone={overview.refresh}/></Modal>
 
     <div className="discover-kpis">
@@ -141,14 +197,16 @@ export default function Proxies() {
 
     <div className="discover-row row-ips">
       <section className="panel ip-list">
-        <div className="status-tabs" role="tablist">{tabs.map((t, i) => <button key={t} role="tab" aria-selected={i === 0} className={i === 0 ? 'on' : ''} disabled={i !== 0} title={i === 0 ? undefined : NOT_CONNECTED}>{t}</button>)}</div>
+        <div className="status-tabs" role="tablist">{tabs.map(([key, label]) => { const live = key === 'ips' || key === 'sources'; return <button key={key} role="tab" aria-selected={tab === key} className={tab === key ? 'on' : ''} disabled={!live} title={live ? undefined : NOT_CONNECTED} onClick={() => setTab(key)}>{label}{key === 'sources' && sources.data ? <span>{sources.data.items.length}</span> : null}</button>; })}
+          {tab === 'sources' && <button className="button small primary tab-action" disabled={!operator} onClick={() => setAddingSource(true)}><Rss size={13}/>添加来源</button>}</div>
+        {tab === 'sources' ? <SourcesTable sources={sources.data?.items ?? []} operator={operator} onDone={() => { sources.refresh(); overview.refresh(); }}/> : <>
         <div className="list-tools ip-filters"><label className="list-search" htmlFor="ip-search"><Search size={13}/><input id="ip-search" placeholder="搜索 IP、分组、服务商…" value={query} onChange={e => setQuery(e.target.value)} disabled={!data}/></label>
           <select aria-label="全部状态" value={stateFilter} onChange={e => setStateFilter(e.target.value)} disabled={!data}><option value="">全部状态</option>{(Object.keys(stateMeta) as IpState[]).map(s => <option key={s} value={s}>{stateMeta[s].label}</option>)}</select></div>
         {data && data.ips.length ? <div className="table-scroll"><table><thead><tr><th>IP 地址</th><th className="num">端口</th><th>地区</th><th>服务商</th><th>分组</th><th>状态</th><th className="num">成功率</th><th className="num">响应时间</th><th className="num">今日请求</th><th>绑定节点</th><th>最后检测</th><th>操作</th></tr></thead>
           <tbody>{ips!.map(ip => { const m = stateMeta[ip.state]; return <tr key={ip.id ?? `${ip.ip}:${ip.port}`}><td className="mono query-term">{ip.ip}</td><td className="num">{ip.port}</td><td>{ip.region}</td><td>{ip.provider}</td><td><span className="keyword-chip">{ip.group}</span></td>
             <td><span className={`status-chip ${m.tone}`}><i/>{m.label}</span></td><td className={`num ${ip.state === 'failed' ? 'text-red' : ''}`}>{ip.success}</td><td className="num">{ip.latency}</td><td className="num">{ip.requests ? fmt(ip.requests) : '—'}</td><td className="mono">{ip.node}</td><td>{ip.checked}</td><td className="row-actions">{operator ? <RowActions ip={ip} servers={servers} onDone={overview.refresh}/> : <><span title={NOT_CONNECTED}>检测</span><MoreHorizontal size={14}/></>}</td></tr>; })}</tbody></table></div>
           : <Empty title="尚无代理 IP">{operator ? '点击“添加 IP”导入代理。导入后绑定到服务器，由该节点的本地代理管理按并发与冷却使用。' : '尚未导入代理。'}</Empty>}
-        <footer className="pager">{data ? <span>共 {fmt(data.kpis.total)} 条{ips && ips.length !== data.ips.length ? `，筛选后 ${fmt(ips.length)} 条` : ''}</span> : <span>—</span>}</footer>
+        <footer className="pager">{data ? <span>共 {fmt(data.kpis.total)} 条{data.ips.length < data.kpis.total ? `，列表显示前 ${fmt(data.ips.length)} 条（已退役和未绑定排在最后）` : ''}{ips && ips.length !== data.ips.length ? `，筛选后 ${fmt(ips.length)} 条` : ''}</span> : <span>—</span>}</footer></>}
       </section>
       <div className="side-stack">
         <Card title="状态分布" className="natural">
