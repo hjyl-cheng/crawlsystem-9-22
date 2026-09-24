@@ -1,6 +1,12 @@
 # 主 Agent 当前交付状态
 
-更新：2026-09-24（Asia/Shanghai）。**执行与控制台已合入主线；Control、Ingest、派发器和执行 Worker 已常驻部署到预览集群并通过验收。跨 Temporal 追踪、namespace 授权和生产验收仍未完成。**
+更新：2026-09-24（Asia/Shanghai）。**执行与控制台已合入主线；Control、Ingest、派发器和执行 Worker 已常驻部署到预览集群并通过验收，业务链追踪已贯通四个服务。Temporal namespace 授权和生产验收仍未完成。**
+
+## 2026-09-24 业务链追踪（`6f8572a`，部署 `0c88d09`）
+
+- 创建计划时保存 Control span 的 traceparent（迁移 003），派发器的 Temporal start/cancel、Worker 每个 Activity 以及 Worker 发往 Control/Ingest 的请求都接在同一条链上；上下文存于 PG，重启不断链。实现与限制见 [observability.md](../observability.md)。
+- 单元 **49/49**，真实 PG 集成 **31/31**；[预览验收](preview-execution.json) **6 项通过**，新增“同一 trace 在 Loki 中同时出现 control、intent-dispatcher、execution-worker、ingest 四个服务”。
+- 排查发现：启动约 8 秒即被删除的 Worker Pod，其 stdout 未被 Alloy 采集（日志文件随 Pod 删除）。这不是追踪代码问题，但意味着短寿命或快速崩溃 Pod 的日志可能丢失；验收改为在替换 Pod 前核对追踪。该采集缺口列入 M5 可观测性验收。
 
 ## 2026-09-24 常驻部署（`a926c08`）
 
@@ -69,7 +75,6 @@
 
 ## 未完成及责任
 
-- **完整链路追踪**：页面已核对实际同一 Workflow/Worker/Receipt；HTTP 日志/指标已接通，但 Temporal/Activity 的 W3C 上下文传播仍未接入，不能宣称端到端 trace 已完整。
 - **Temporal namespace 授权**：已核验并确认缺口，当前证书不是限定到 M1 namespace 的身份。部署新的 namespace authorizer 必须统筹现有客户端，当前仅内部固定样本联调，不宣称生产租户隔离达标。
 - **生产验收**：容量/伸缩/背压压测、正式账号审计、业务级恢复演练尚未完成。真实采集、代理、API/Agent、分发和历史迁移属后续里程碑。
 

@@ -58,7 +58,25 @@ try {
   assert.ok(listed && !listed.stale && listed.accepting_work && listed.server_id === node && listed.build_version === expectedBuild);
   pass(`Worker heartbeat: execution-worker-0 on ${node}, accepting, current build`);
 
-  // 3. A plan that waits for AGENT survives a Worker Pod replacement, then a durable cancel reaches Temporal.
+  // 3. The same trace reached Loki from all four services (Control, dispatcher, Worker, Ingest).
+  // Checked before replacing the Worker Pod: Alloy can miss the log file of a Pod deleted seconds after start.
+  const loki = spawn('kubectl', ['-n', 'monitoring', 'port-forward', 'svc/loki', '13101:3100'], { stdio: 'ignore' });
+  let services: string[] = [];
+  try {
+    const expected = ['control', 'ingest', 'intent-dispatcher', 'execution-worker'];
+    for (const end = Date.now() + 90_000; Date.now() < end && !expected.every(name => services.includes(name)); await delay(3000)) {
+      try {
+        const query = new URLSearchParams({ query: `{job="kubernetes-pods"} |= "${traceId}"`, start: String((Date.now() - 900_000) * 1e6), limit: '500' });
+        const result = await (await fetch(`http://127.0.0.1:13101/loki/api/v1/query_range?${query}`)).json() as { data?: { result?: { values: [string, string][] }[] } };
+        const lines = (result.data?.result ?? []).flatMap(stream => stream.values.map(([, line]) => line));
+        services = [...new Set(lines.flatMap(line => { try { const record = JSON.parse(line); return record.event === 'trace_span' && record.trace_id === traceId ? [record.service as string] : []; } catch { return []; } }))].sort();
+      } catch { /* port-forward still starting */ }
+    }
+    assert.deepEqual(services, [...expected].sort(), `trace ${traceId} must be exported by all services`);
+  } finally { loki.kill(); }
+  pass(`trace ${traceId} spans Control, dispatcher, Worker and Ingest in Loki`);
+
+  // 4. A plan that waits for AGENT survives a Worker Pod replacement, then a durable cancel reaches Temporal.
   const waitingPlan = PlanSchema.parse(await api('/v1/plans', { request_id: randomUUID(), fixture_id: 'channel-basic-v1', required_domains: ['ABOUT', 'VIDEO', 'AGENT'] }));
   const waiting = await until(waitingPlan.plan_id, p => p.plan.status === 'WAITING', 90, 'waiting for AGENT');
   assert.equal(waiting.domains.find(d => d.domain === 'AGENT')?.state, 'PENDING');
@@ -91,23 +109,6 @@ try {
   const completedStatus = (await client.workflow.getHandle(completed.plan.workflow_id).describe()).status.name;
   assert.equal(completedStatus, 'COMPLETED');
   pass('durable CANCEL delivered by the deployed dispatcher; Temporal shows CANCELLED (and COMPLETED for plan 1)');
-
-  // 4. The same trace reached Loki from all four services (Control, dispatcher, Worker, Ingest).
-  const loki = spawn('kubectl', ['-n', 'monitoring', 'port-forward', 'svc/loki', '13101:3100'], { stdio: 'ignore' });
-  let services: string[] = [];
-  try {
-    const expected = ['control', 'ingest', 'intent-dispatcher', 'execution-worker'];
-    for (const end = Date.now() + 90_000; Date.now() < end && !expected.every(name => services.includes(name)); await delay(3000)) {
-      try {
-        const query = new URLSearchParams({ query: `{job="kubernetes-pods"} |= "${traceId}"`, start: String((Date.now() - 900_000) * 1e6), limit: '500' });
-        const result = await (await fetch(`http://127.0.0.1:13101/loki/api/v1/query_range?${query}`)).json() as { data?: { result?: { values: [string, string][] }[] } };
-        const lines = (result.data?.result ?? []).flatMap(stream => stream.values.map(([, line]) => line));
-        services = [...new Set(lines.flatMap(line => { try { const record = JSON.parse(line); return record.event === 'trace_span' && record.trace_id === traceId ? [record.service as string] : []; } catch { return []; } }))].sort();
-      } catch { /* port-forward still starting */ }
-    }
-    assert.deepEqual(services, [...expected].sort(), `trace ${traceId} must be exported by all services`);
-  } finally { loki.kill(); }
-  pass(`trace ${traceId} spans Control, dispatcher, Worker and Ingest in Loki`);
 
   const evidence = { verified_at: new Date().toISOString(), revision: expectedBuild, workspace_id: workspace,
     scope: 'Resident preview deployment: Control, intent-dispatcher, execution-worker StatefulSet, Ingest; local process only issued an operator token and read PG/Temporal',
