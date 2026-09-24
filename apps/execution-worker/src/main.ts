@@ -1,0 +1,64 @@
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
+import { NativeConnection, Worker, Runtime, DefaultLogger } from '@temporalio/worker';
+import { ExecutionApi } from '@crawlsystem/execution-client/http';
+import { createActivities } from './activities.ts';
+import { workerConfig } from './config.ts';
+
+const config = workerConfig();
+const log = (record: Record<string, unknown>) => process.stdout.write(`${JSON.stringify({ time: new Date().toISOString(), ...record })}\n`);
+// SDK messages may contain endpoints or user payloads. Emit only a bounded category.
+Runtime.install({ logger: new DefaultLogger('WARN', entry => log({ source: 'temporal', level: entry.level, message: 'Temporal SDK diagnostic; inspect secured service logs' })) });
+const api = new ExecutionApi({ controlUrl: config.controlUrl, ingestUrl: config.ingestUrl, timeoutMs: config.httpTimeoutMs,
+  token: async () => readFile(config.tokenFile, 'utf8') });
+const session = await api.session();
+if (session.role !== 'worker' || session.subject !== config.workerId) throw new Error('Worker credential identity mismatch');
+const running = new Map<string, number>();
+let accepting = false, stopping = false;
+const heartbeatStop = new AbortController();
+const report = () => api.heartbeat({ worker_id: config.workerId, server_id: config.serverId, build_version: config.buildVersion,
+  accepting_work: accepting, capacity: config.capacity, running_plan_ids: [...running.keys()] }, { attempts: 1 });
+const connection = await NativeConnection.connect({ address: config.temporal.address, tls: config.temporal.tls });
+let worker: Worker | undefined;
+let heartbeatLoop: Promise<void> | undefined;
+const stop = () => {
+  if (stopping) return;
+  stopping = true; accepting = false;
+  void report().catch(() => {});
+  if (worker?.getState() === 'RUNNING') worker.shutdown();
+};
+process.once('SIGTERM', stop); process.once('SIGINT', stop);
+try {
+  worker = await Worker.create({ connection, namespace: config.temporal.namespace, taskQueue: config.temporal.taskQueue,
+    identity: config.workerId, buildId: config.buildVersion,
+    // Prebuild once; each replacement process loads the same bundle without webpack.
+    workflowBundle: { codePath: fileURLToPath(new URL('../dist/workflow-bundle.cjs', import.meta.url)) },
+    activities: createActivities({ api, workerId: config.workerId, workspaceId: session.workspace_id, log,
+      enter(planId) { running.set(planId, (running.get(planId) ?? 0) + 1); return () => { const count = running.get(planId)! - 1; if (count) running.set(planId, count); else running.delete(planId); }; },
+    }),
+    maxConcurrentActivityTaskExecutions: config.capacity, maxConcurrentWorkflowTaskExecutions: config.capacity + 2,
+    maxConcurrentActivityTaskPolls: 1, maxConcurrentWorkflowTaskPolls: 1, maxCachedWorkflows: 10,
+    maxHeartbeatThrottleInterval: '1 second', defaultHeartbeatThrottleInterval: '1 second',
+    shutdownGraceTime: config.drainMs, shutdownForceTime: config.drainMs + 10_000,
+  });
+  await report();
+  if (!stopping) {
+    accepting = true;
+    heartbeatLoop = (async () => {
+      while (!heartbeatStop.signal.aborted) {
+        await report().catch(() => log({ worker_id: config.workerId, phase: 'HEARTBEAT', error_code: 'UNAVAILABLE', retryable: true }));
+        await delay(config.heartbeatMs, undefined, { signal: heartbeatStop.signal }).catch(() => {});
+      }
+    })();
+    log({ worker_id: config.workerId, phase: 'READY', build_version: config.buildVersion, workspace_id: session.workspace_id });
+    await worker.run();
+  }
+} finally {
+  accepting = false;
+  heartbeatStop.abort();
+  await heartbeatLoop;
+  await report().catch(() => {});
+  await connection.close();
+  process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop);
+}

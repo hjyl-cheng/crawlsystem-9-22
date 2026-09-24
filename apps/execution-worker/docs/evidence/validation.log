@@ -1,0 +1,451 @@
+Final serial SDK/live validation (before workspace-ID cancellation regression fix):
+
+> @crawlsystem/execution-worker@0.1.0 test
+> bash scripts/check-safe.sh unit
+
+TAP version 13
+# 2026-09-24T03:24:40.850Z [WARN] Activity failed {
+#   sdkComponent: 'worker',
+#   isLocal: false,
+#   attempt: 1,
+#   namespace: 'test',
+#   taskToken: 'dGVzdA==',
+#   activityId: 'test',
+#   activityType: 'unknown',
+#   taskQueue: 'test',
+#   workflowId: 'test',
+#   workflowRunId: '00000000-0000-0000-0000-000000000000',
+#   workflowType: 'test',
+#   error: ApplicationFailure: Execution SUBMISSION: STALE_EXECUTION
+#       at Function.create (/home/ubuntu/workspace/crawlsystem-execution/node_modules/@temporalio/common/src/failure.ts:228:12)
+#       at activity (/home/ubuntu/workspace/crawlsystem-execution/apps/execution-worker/src/activities.ts:50:32)
+#       at async Activity.execute (/home/ubuntu/workspace/crawlsystem-execution/node_modules/@temporalio/worker/src/activity.ts:145:14)
+#       at async waitForActual (node:assert:644:5)
+#       at async Function.rejects (node:assert:767:25)
+#       at async TestContext.<anonymous> (/home/ubuntu/workspace/crawlsystem-execution/apps/execution-worker/test/activities.test.ts:37:3)
+#       at async Test.run (node:internal/test_runner/test:1054:7)
+#       at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+#     cause: undefined,
+#     failure: undefined,
+#     type: 'STALE_EXECUTION',
+#     nonRetryable: true,
+#     details: [ [Object] ],
+#     nextRetryDelay: undefined,
+#     category: undefined
+#   },
+#   durationMs: 3
+# }
+# 2026-09-24T03:24:40.869Z [WARN] Activity failed {
+#   sdkComponent: 'worker',
+#   isLocal: false,
+#   attempt: 1,
+#   namespace: 'test',
+#   taskToken: 'dGVzdA==',
+#   activityId: 'test',
+#   activityType: 'unknown',
+#   taskQueue: 'test',
+#   workflowId: 'test',
+#   workflowRunId: '00000000-0000-0000-0000-000000000000',
+#   workflowType: 'test',
+#   error: ApplicationFailure: Execution SUBMISSION: UNAVAILABLE
+#       at Function.create (/home/ubuntu/workspace/crawlsystem-execution/node_modules/@temporalio/common/src/failure.ts:228:12)
+#       at activity (/home/ubuntu/workspace/crawlsystem-execution/apps/execution-worker/src/activities.ts:50:32)
+#       at async Activity.execute (/home/ubuntu/workspace/crawlsystem-execution/node_modules/@temporalio/worker/src/activity.ts:145:14)
+#       at async waitForActual (node:assert:644:5)
+#       at async Function.rejects (node:assert:767:25)
+#       at async TestContext.<anonymous> (/home/ubuntu/workspace/crawlsystem-execution/apps/execution-worker/test/activities.test.ts:49:3)
+#       at async Test.run (node:internal/test_runner/test:1054:7)
+#       at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+#     cause: undefined,
+#     failure: undefined,
+#     type: 'UNAVAILABLE',
+#     nonRetryable: false,
+#     details: [ [Object] ],
+#     nextRetryDelay: undefined,
+#     category: undefined
+#   },
+#   durationMs: 5
+# }
+# Subtest: SDK Activity executes shared fixture and duplicate attempt returns Store result
+ok 1 - SDK Activity executes shared fixture and duplicate attempt returns Store result
+  ---
+  duration_ms: 73.942265
+  type: 'test'
+  ...
+# Subtest: required AGENT remains WAITING with no fabricated submission
+ok 2 - required AGENT remains WAITING with no fabricated submission
+  ---
+  duration_ms: 19.235725
+  type: 'test'
+  ...
+# Subtest: cancelled late write is non-retryable and cannot override Store cancellation
+ok 3 - cancelled late write is non-retryable and cannot override Store cancellation
+  ---
+  duration_ms: 13.902338
+  type: 'test'
+  ...
+# Subtest: frozen payload changes and active stale epoch fail verification
+ok 4 - frozen payload changes and active stale epoch fail verification
+  ---
+  duration_ms: 2.916443
+  type: 'test'
+  ...
+# Subtest: transient Ingest failure is classified and correlated without resetting input
+ok 5 - transient Ingest failure is classified and correlated without resetting input
+  ---
+  duration_ms: 21.432362
+  type: 'test'
+  ...
+# Subtest: Worker rejects backend credentials and unbounded resource configuration
+ok 6 - Worker rejects backend credentials and unbounded resource configuration
+  ---
+  duration_ms: 4.016261
+  type: 'test'
+  ...
+# Subtest: remote transport requires TLS and origin URLs reject embedded credentials
+ok 7 - remote transport requires TLS and origin URLs reject embedded credentials
+  ---
+  duration_ms: 0.444416
+  type: 'test'
+  ...
+# Subtest: lost APPLIED response is recovered without posting a second submission
+ok 8 - lost APPLIED response is recovered without posting a second submission
+  ---
+  duration_ms: 67.037487
+  type: 'test'
+  ...
+# Subtest: unavailable receipt lookup is not absence and prevents new writes
+ok 9 - unavailable receipt lookup is not absence and prevents new writes
+  ---
+  duration_ms: 205.113573
+  type: 'test'
+  ...
+# Subtest: Ingest unavailable has at most two POST attempts; authorization has one
+ok 10 - Ingest unavailable has at most two POST attempts; authorization has one
+  ---
+  duration_ms: 6.167643
+  type: 'test'
+  ...
+# Subtest: deadline and cancellation prevent new requests
+ok 11 - deadline and cancellation prevent new requests
+  ---
+  duration_ms: 2.076608
+  type: 'test'
+  ...
+# Subtest: receipt content identity must match the original submission
+ok 12 - receipt content identity must match the original submission
+  ---
+  duration_ms: 2.570207
+  type: 'test'
+  ...
+# Subtest: invalid or oversized response is rejected and native diagnostics are redacted
+ok 13 - invalid or oversized response is rejected and native diagnostics are redacted
+  ---
+  duration_ms: 4.633498
+  type: 'test'
+  ...
+# Subtest: duplicate open or closed execution returns original run only after identity verification
+ok 14 - duplicate open or closed execution returns original run only after identity verification
+  ---
+  duration_ms: 8.96079
+  type: 'test'
+  ...
+# Subtest: same-name wrong input and wrong type are rejected
+ok 15 - same-name wrong input and wrong type are rejected
+  ---
+  duration_ms: 3.216953
+  type: 'test'
+  ...
+# Subtest: invalid ID is rejected before start, absent cancel remains unacknowledged
+ok 16 - invalid ID is rejected before start, absent cancel remains unacknowledged
+  ---
+  duration_ms: 2.486517
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3699.014031
+
+> @crawlsystem/execution-worker@0.1.0 test:temporal
+> bash scripts/check-safe.sh temporal
+
+TAP version 13
+# 2026-09-24T03:24:46.254408Z  WARN temporalio_sdk_core::worker: Temporal Server 1.16.0 or newer is required to guarantee that the latest heartbeat details are preserved when an activity fails; the server did not advertise the activity_failure_include_heartbeat capability, so heartbeat details may be lost on failure
+# Subtest: Temporal SDK workflow coordination, waiting, retries, cancellation and history replay
+    # Subtest: completion and duplicate start, including after close
+    ok 1 - completion and duplicate start, including after close
+      ---
+      duration_ms: 1033.585695
+      type: 'test'
+      ...
+# 2026-09-24T03:24:47.207652Z  WARN temporalio_sdk_core::worker: Temporal Server 1.16.0 or newer is required to guarantee that the latest heartbeat details are preserved when an activity fails; the server did not advertise the activity_failure_include_heartbeat capability, so heartbeat details may be lost on failure
+    # Subtest: unimplemented dependency waits until original deadline
+    ok 2 - unimplemented dependency waits until original deadline
+      ---
+      duration_ms: 818.258322
+      type: 'test'
+      ...
+# 2026-09-24T03:24:48.058923Z  WARN temporalio_sdk_core::worker: Temporal Server 1.16.0 or newer is required to guarantee that the latest heartbeat details are preserved when an activity fails; the server did not advertise the activity_failure_include_heartbeat capability, so heartbeat details may be lost on failure
+    # Subtest: retryable Activity failure exhausts exactly three attempts
+    ok 3 - retryable Activity failure exhausts exactly three attempts
+      ---
+      duration_ms: 877.321969
+      type: 'test'
+      ...
+# 2026-09-24T03:24:48.898258Z  WARN temporalio_sdk_core::worker: Temporal Server 1.16.0 or newer is required to guarantee that the latest heartbeat details are preserved when an activity fails; the server did not advertise the activity_failure_include_heartbeat capability, so heartbeat details may be lost on failure
+    # Subtest: cancellation interrupts durable dependency wait
+    ok 4 - cancellation interrupts durable dependency wait
+      ---
+      duration_ms: 818.858421
+      type: 'test'
+      ...
+    1..4
+ok 1 - Temporal SDK workflow coordination, waiting, retries, cancellation and history replay
+  ---
+  duration_ms: 3765.203623
+  type: 'test'
+  ...
+1..1
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5028.002111
+
+> @crawlsystem/execution-worker@0.1.0 test:live-local
+> bash scripts/check-safe.sh live-local
+
+{
+  "result": "PASSED",
+  "checks": [
+    "lost APPLIED response reconciled with original receipt",
+    "SIGKILL + replacement process resumed original Plan/input/deadline",
+    "transient Ingest 503 recovered with identical Submission",
+    "duplicate live and closed Workflow dispatch retained original run",
+    "wrong frozen input rejected",
+    "persisted START intent dispatched after worker startup; dispatcher stopped without losing execution",
+    "actual recovered Workflow history replayed",
+    "missing AGENT persisted WAITING; cancellation interrupted durable timer",
+    "late new write after cancellation rejected by real Store; original APPLIED receipt remains readable and replayable",
+    "current video/comment facts remain unique after retries and multiple fixture Plans",
+    "actual Worker identity/version/heartbeat observed; SIGTERM drained within bound; no PG environment in Worker"
+  ],
+  "evidence_directory": "/home/ubuntu/workspace/crawlsystem-execution/.runtime/execution-evidence"
+}
+
+Final typecheck, module tests and public contract tests (after cancellation fix):
+
+> @crawlsystem/execution-worker@0.1.0 test
+> bash scripts/check-safe.sh unit
+
+TAP version 13
+# 2026-09-24T03:26:17.806Z [WARN] Activity failed {
+#   sdkComponent: 'worker',
+#   isLocal: false,
+#   attempt: 1,
+#   namespace: 'test',
+#   taskToken: 'dGVzdA==',
+#   activityId: 'test',
+#   activityType: 'unknown',
+#   taskQueue: 'test',
+#   workflowId: 'test',
+#   workflowRunId: '00000000-0000-0000-0000-000000000000',
+#   workflowType: 'test',
+#   error: ApplicationFailure: Execution SUBMISSION: STALE_EXECUTION
+#       at Function.create (/home/ubuntu/workspace/crawlsystem-execution/node_modules/@temporalio/common/src/failure.ts:228:12)
+#       at activity (/home/ubuntu/workspace/crawlsystem-execution/apps/execution-worker/src/activities.ts:50:32)
+#       at async Activity.execute (/home/ubuntu/workspace/crawlsystem-execution/node_modules/@temporalio/worker/src/activity.ts:145:14)
+#       at async waitForActual (node:assert:644:5)
+#       at async Function.rejects (node:assert:767:25)
+#       at async TestContext.<anonymous> (/home/ubuntu/workspace/crawlsystem-execution/apps/execution-worker/test/activities.test.ts:37:3)
+#       at async Test.run (node:internal/test_runner/test:1054:7)
+#       at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+#     cause: undefined,
+#     failure: undefined,
+#     type: 'STALE_EXECUTION',
+#     nonRetryable: true,
+#     details: [ [Object] ],
+#     nextRetryDelay: undefined,
+#     category: undefined
+#   },
+#   durationMs: 3
+# }
+# 2026-09-24T03:26:17.822Z [WARN] Activity failed {
+#   sdkComponent: 'worker',
+#   isLocal: false,
+#   attempt: 1,
+#   namespace: 'test',
+#   taskToken: 'dGVzdA==',
+#   activityId: 'test',
+#   activityType: 'unknown',
+#   taskQueue: 'test',
+#   workflowId: 'test',
+#   workflowRunId: '00000000-0000-0000-0000-000000000000',
+#   workflowType: 'test',
+#   error: ApplicationFailure: Execution SUBMISSION: UNAVAILABLE
+#       at Function.create (/home/ubuntu/workspace/crawlsystem-execution/node_modules/@temporalio/common/src/failure.ts:228:12)
+#       at activity (/home/ubuntu/workspace/crawlsystem-execution/apps/execution-worker/src/activities.ts:50:32)
+#       at async Activity.execute (/home/ubuntu/workspace/crawlsystem-execution/node_modules/@temporalio/worker/src/activity.ts:145:14)
+#       at async waitForActual (node:assert:644:5)
+#       at async Function.rejects (node:assert:767:25)
+#       at async TestContext.<anonymous> (/home/ubuntu/workspace/crawlsystem-execution/apps/execution-worker/test/activities.test.ts:49:3)
+#       at async Test.run (node:internal/test_runner/test:1054:7)
+#       at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+#     cause: undefined,
+#     failure: undefined,
+#     type: 'UNAVAILABLE',
+#     nonRetryable: false,
+#     details: [ [Object] ],
+#     nextRetryDelay: undefined,
+#     category: undefined
+#   },
+#   durationMs: 3
+# }
+# Subtest: SDK Activity executes shared fixture and duplicate attempt returns Store result
+ok 1 - SDK Activity executes shared fixture and duplicate attempt returns Store result
+  ---
+  duration_ms: 74.742923
+  type: 'test'
+  ...
+# Subtest: required AGENT remains WAITING with no fabricated submission
+ok 2 - required AGENT remains WAITING with no fabricated submission
+  ---
+  duration_ms: 18.122747
+  type: 'test'
+  ...
+# Subtest: cancelled late write is non-retryable and cannot override Store cancellation
+ok 3 - cancelled late write is non-retryable and cannot override Store cancellation
+  ---
+  duration_ms: 13.376611
+  type: 'test'
+  ...
+# Subtest: frozen payload changes and active stale epoch fail verification
+ok 4 - frozen payload changes and active stale epoch fail verification
+  ---
+  duration_ms: 2.917294
+  type: 'test'
+  ...
+# Subtest: transient Ingest failure is classified and correlated without resetting input
+ok 5 - transient Ingest failure is classified and correlated without resetting input
+  ---
+  duration_ms: 17.710929
+  type: 'test'
+  ...
+# Subtest: Worker rejects backend credentials and unbounded resource configuration
+ok 6 - Worker rejects backend credentials and unbounded resource configuration
+  ---
+  duration_ms: 15.419113
+  type: 'test'
+  ...
+# Subtest: remote transport requires TLS and origin URLs reject embedded credentials
+ok 7 - remote transport requires TLS and origin URLs reject embedded credentials
+  ---
+  duration_ms: 0.554993
+  type: 'test'
+  ...
+# Subtest: lost APPLIED response is recovered without posting a second submission
+ok 8 - lost APPLIED response is recovered without posting a second submission
+  ---
+  duration_ms: 66.070594
+  type: 'test'
+  ...
+# Subtest: unavailable receipt lookup is not absence and prevents new writes
+ok 9 - unavailable receipt lookup is not absence and prevents new writes
+  ---
+  duration_ms: 205.146149
+  type: 'test'
+  ...
+# Subtest: Ingest unavailable has at most two POST attempts; authorization has one
+ok 10 - Ingest unavailable has at most two POST attempts; authorization has one
+  ---
+  duration_ms: 6.083851
+  type: 'test'
+  ...
+# Subtest: deadline and cancellation prevent new requests
+ok 11 - deadline and cancellation prevent new requests
+  ---
+  duration_ms: 1.897478
+  type: 'test'
+  ...
+# Subtest: receipt content identity must match the original submission
+ok 12 - receipt content identity must match the original submission
+  ---
+  duration_ms: 2.512464
+  type: 'test'
+  ...
+# Subtest: invalid or oversized response is rejected and native diagnostics are redacted
+ok 13 - invalid or oversized response is rejected and native diagnostics are redacted
+  ---
+  duration_ms: 4.458127
+  type: 'test'
+  ...
+# Subtest: duplicate open or closed execution returns original run only after identity verification
+ok 14 - duplicate open or closed execution returns original run only after identity verification
+  ---
+  duration_ms: 9.822682
+  type: 'test'
+  ...
+# Subtest: same-name wrong input and wrong type are rejected
+ok 15 - same-name wrong input and wrong type are rejected
+  ---
+  duration_ms: 2.447211
+  type: 'test'
+  ...
+# Subtest: invalid ID is rejected before start, absent cancel remains unacknowledged
+ok 16 - invalid ID is rejected before start, absent cancel remains unacknowledged
+  ---
+  duration_ms: 1.86637
+  type: 'test'
+  ...
+# Subtest: cancel accepts all workspace IDs allowed by the shared contract
+ok 17 - cancel accepts all workspace IDs allowed by the shared contract
+  ---
+  duration_ms: 1.025236
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3679.268668
+TAP version 13
+# Subtest: hash is independent of object key order but preserves array order
+ok 1 - hash is independent of object key order but preserves array order
+  ---
+  duration_ms: 2.629383
+  type: 'test'
+  ...
+# Subtest: comments preserve count, identity and disabled semantics
+ok 2 - comments preserve count, identity and disabled semantics
+  ---
+  duration_ms: 1.309817
+  type: 'test'
+  ...
+# Subtest: plans reject duplicate domains and caller-supplied status
+ok 3 - plans reject duplicate domains and caller-supplied status
+  ---
+  duration_ms: 1.293988
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 586.043764

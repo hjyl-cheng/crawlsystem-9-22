@@ -1,117 +1,88 @@
-# M1 执行侧准备与交付记录
+# M1 执行侧交付报告
 
-日期：2026-09-23。状态：已完成 G0 前的入口核对和恢复场景准备；EXEC-01～EXEC-05 尚未实现或验收，不具备业务集成条件。
+日期：2026-09-24。状态：EXEC-01～EXEC-04 已实现，EXEC-05 执行侧模块、Temporal SDK 和真实链路验证通过；待主 Agent 集成根锁文件及业务主线。真实采集/代理/Agent/API 属于 M2，本报告不宣布整个 M1 已验收。
 
-## 1. 分支与基线
+## 1. 分支、版本与范围
 
-| 项目 | 核对结果 |
+- 分支：`business/m1-execution`。
+- G0：`ca3973f43d4ee3bc355cb0cc3ab1a373f5292a92`；接口 `m1.v1`。
+- 本轮已同步的主线：`fe7d02bdb31722c91a444661e054c64d09f533d3`；本分支合并起点 `adf6492d2b28c8974fbfb0f45fd3241bf8ab9b81`。
+- 本轮交付提交：用 `git log -1 --format=%H -- apps/execution-worker packages/execution-client docs/m1/reports/execution.md` 获取；代码文件的确切 SHA-256 另存于[源码清单](../../../apps/execution-worker/docs/evidence/source-sha256.json)。
+- Node `22.22.1`、npm `9.2.0`、TypeScript `5.9.3`、Temporal SDK `1.24.0`。
+- 只修改 `apps/execution-worker/`、`packages/execution-client/` 和本报告。公共 Schema、根依赖/锁文件、数据库迁移、Control/Ingest 实现未修改。早期“G0 未发布”的准备报告已由本报告替代，历史保留在 Git。
+
+## 2. 实现结果
+
+| 任务 | 交付内容 |
 | --- | --- |
-| 工作目录 | `/home/ubuntu/workspace/crawlsystem-execution` |
-| 分支 | `business/m1-execution` |
-| 本轮起点 | `8824d7cc6d0a744b172f8b77fa7faabbffcfe985`，任务分工文档提交 |
-| 本地可见的主 Agent 分支 | `business/crawler-platform`，本次核对同样指向上述提交 |
-| G0 代码基线 | 尚未发现；上述文档提交不是 G0 |
-| 公共接口版本、迁移版本 | 尚未发布 |
-| 准备工作提交 | 通过 `git log -1 --format=%H -- docs/m1/reports/execution.md` 查询；该提交只包含准备文档 |
-| 初始改动状态 | 干净 |
+| EXEC-01 | `createWorkflowStarter(options)` 实现公共 start/cancel/close；稳定 Workflow ID、REJECT_DUPLICATE、超时回查；核对原始历史的类型、Task Queue、完整 WorkflowInput；关闭后重复派发仍返回原 run_id；不把不存在的取消直接确认成功 |
+| EXEC-02 | 确定性 `fixturePlanWorkflow`；所有 HTTP 副作用在 Activity；通过 API 验证冻结输入 Hash/归属/版本/检查点；复用公共 `fixtureSubmission` 生成频道、视频和评论；权威结果取自 Store |
+| EXEC-03 | APPLIED 响应丢失先核对原回执；相同身份/内容重传；Activity 有限尝试和 HTTP 最多两次；原 deadline 不变；缺 AGENT 使用持久定时器；取消、旧代次、授权/协议错误有明确退出；SIGTERM 有界排空 |
+| EXEC-04 | Worker/节点/构建身份、接单状态、心跳、活动 Plan 和阶段/回执/错误关联；实际 API 身份必须匹配 Worker ID；日志不带凭据或大样本；代理由公共接口表示 NOT_CONFIGURED |
+| EXEC-05 | 模块与 SDK 测试、真实 mTLS Temporal → Worker → Ingest → PG 联调、强杀恢复、历史重放、运行说明和资源事故修复；代码待主线集成 |
 
-已阅读[共同规则](../README.md)、[执行任务](../agent-execution.md)、[主 Agent 任务](../agent-main.md)、开发计划和旧系统字段参考。当前主分支的 `packages/`、`apps/` 及 `docs/m1/integration-baseline.md` 尚不存在，不能按未发布的接口编写另一套业务协议。
+Workflow 历史不保存冻结样本。真实恢复历史中 7 个载荷最大为 299 字节；保存原输入引用、期限及小型结果。心跳也不承担业务持久化职责。
 
-本次交付仅新增本报告；公共类型、根依赖、数据库、API 和其他 worktree 均未修改。
+Worker 启动拒绝 PG 连接凭据和 JWT 签名密钥；真实联调读取了 Worker 子进程的实际环境变量名核对隔离，证据不包含变量值。测试驱动的 operator token 和后端环境文件只供驱动/API/派发器使用。
 
-## 2. 提交给 G0 的执行侧接口需求
+## 3. 实际验证命令与结果
 
-以下是对主 Agent 的语义需求，具体字段名、路径、枚举、Schema 与样本由 `packages/contracts/` 统一发布。本报告不定义替代协议。
+以下命令在仓库根执行，全部串行，默认通过临时资源 scope 限制本次命令及所有子进程。
 
-| 能力 | 调用上下文 / 输入 | 必须返回或保证的语义 | 验收关联 |
-| --- | --- | --- | --- |
-| Temporal 启动接口 | 已持久化的业务执行身份、输入版本和引用、隔离环境、任务队列 | 稳定 Workflow ID 的唯一算法；同身份重复派发的结果；已有 Workflow 的归属、类型和输入版本核对方式；已关闭执行的重复派发及保留期边界 | E01～E03 |
-| 冻结输入读取 | 被授权的执行身份及输入引用 | 不可变版本或摘要；有界的样本及目标顺序；样本标识；执行代次；必需领域；总期限；恢复保留期；输入不匹配的明确错误 | E04、E12 |
-| 检查点与执行权限 | 同一原 Plan、执行代次和调用身份 | 原回执关联、已完成目标、仍可执行范围、已消耗预算与取消状态；事实与 APPLIED 回执原子更新；检查点不能仅在 Worker 内存中 | E04～E08 |
-| Submission 创建与校验 | 冻结样本、声明领域、稳定目标或分块身份 | 公共构造/规范化/摘要规则；稳定提交 ID 算法；时间和版本字段的来源；大小上限；同 ID 同内容重放与异内容冲突样例 | E05、E06、E09 |
-| Ingest 提交与回执查询 | 原提交身份、原内容、对象级授权 | 持久 APPLIED；未找到与查询失败可区分；响应丢失后核对原回执；如有 RECEIVED，明确实际持久接管及后续查询规则 | E05、E07、E10 |
-| 取消、旧代次和授权失败 | 当前 Plan / 代次与期望版本 | Store 拒绝失效代次和取消后的新写入；保留授权查询已成功回执的能力；统一错误分类、可重试性与业务关联 | E08、E09 |
-| 预算与等待 | HTTP 请求、Activity 重试、依赖等待、业务执行的各层上下文 | 总期限的权威起点；有限次数与单次超时；预算是否需持久消费及其 API；等待恢复机制；不可重试错误及预算耗尽语义 | E07、E11、E12 |
-| Worker 注册、心跳与阶段 | 实例身份、节点关系、构建版本、接单状态及当前执行关联 | 服务端心跳有效期与失联语义；并发执行关联方式；阶段/错误/最近回执查询；退出上报失败不改变业务完成事实 | E13、E14 |
-| Store 结果读取 | 原 Plan 与授权身份 | 权威领域结果和 Plan 结果；完整成功、尚缺领域与流程结束的区分；真实 Agent/API 未实现的明确表示 | E10、E11 |
-| 工程和隔离环境 | 执行模块及启动客户端 | Node、包管理器、TypeScript、Temporal SDK 固定版本；根锁文件；Control/Ingest 地址与身份注入方式；Temporal namespace / queue；隔离数据范围；启动和检查命令 | 全部 |
+| 命令 | 结果与范围 |
+| --- | --- |
+| `npm run typecheck --workspace @crawlsystem/execution-worker` | 通过；执行客户端、Worker、脚本/测试及导入的公共契约 |
+| `npm run build --workspace @crawlsystem/execution-worker` | 通过；生成 Workflow bundle，重启 Worker 只加载产物 |
+| `npm run test --workspace @crawlsystem/execution-worker` | 17/17 通过；HTTP/启动边界与 SDK MockActivityEnvironment，不冒充数据库验收 |
+| `bash apps/execution-worker/scripts/check-safe.sh contracts` | 公共契约 3/3 通过 |
+| `npm run test:temporal --workspace @crawlsystem/execution-worker` | 4 个 SDK 场景通过（含父套件 TAP 为 5/5）；测试服务器上的重复启动、持久等待截止、恰好 3 次 Activity 重试、取消及各场景历史重放 |
+| `EXECUTION_ENV_FILE=.runtime/execution.env npm run test:live-local --workspace @crawlsystem/execution-worker` | 11 项真实链路检查通过；现有 mTLS Temporal、实际 Control/Ingest/PG、实际子 Worker 和持久派发器 |
 
-需要重点避免的接口歧义：
+SDK 用例在真实服务器之前使用测试服务器及受控替身；真实联调未模拟 Store/回执。故障代理只转发真实 Ingest 请求，并在实际提交后丢弃响应或在提交前注入暂停/503。
 
-- 若 Submission 的内容包含观察时间，必须来自冻结输入或其他可恢复的固定值；Activity 重试时重新取当前时间会把同一提交变成异内容冲突。
-- 用于回执核对的摘要只覆盖公共契约声明的内容，Worker 实例、Activity attempt、PID 等诊断信息不得意外改变稳定业务提交。
-- 工作流已经存在不代表派发成功；同名但不同对象、输入版本或 Workflow 类型必须拒绝。关闭后的重复派发也不能自动创建第二次业务执行。
-- 查询回执失败不等于未找到。取消或执行代次失效后，能否读取原回执与能否新增写入须分别授权。
-- 预算若只存在进程内存，重启会重置；若只限定单个 Activity attempt，HTTP 与 Activity 嵌套重试仍可能放大请求数。总期限及需要严格累计的业务预算必须有持久依据。
+证据：[验证日志](../../../apps/execution-worker/docs/evidence/validation.log)、[真实联调结果](../../../apps/execution-worker/docs/evidence/live-results.json)、[恢复历史](../../../apps/execution-worker/docs/evidence/recovered-history.json)、[资源采样](../../../apps/execution-worker/docs/evidence/resources.json)。最终补充了公共契约允许带 `/` 的 workspace ID 取消校验，对该修改再次跑过类型检查、17 项模块测试和 3 项契约测试。
 
-## 3. G0 后的实现边界
+## 4. 真实链路结果
 
-`packages/execution-client/` 实现公共启动接口、Temporal 连接配置与关闭，以及受控 HTTP 调用。地址、证书路径和服务身份由环境注入；不使用源码中的现场地址、密码或证书。
+环境：现有 `crawlsystem-m1-main` namespace；每次生成独立 `execution-live-*` queue；隔离 workspace `m1-execution-20260924`；本机临时 Control/Ingest 端口 18120/18121；测试库由主 Agent 后端配置引用。没有清库、修改迁移或接管其他进程。
 
-`apps/execution-worker/` 包含 Workflow、Activity、进程生命周期、状态上报和模块测试。Workflow 只协调确定性步骤，历史中传递输入引用和小型结果；Activity 负责读取冻结输入、检查授权和检查点、按契约构造 Submission、核对回执及调用 Ingest。具体拆分按 G0 输入上限和检查点粒度确定。
+恢复 Plan：`0d4e8f7b-2cff-44f9-af63-b0af90538ad9`。Temporal run：`01a0d171-ea63-713f-8099-f067507ebb42`。具体输入 Hash、期限、原回执、事件和其他计划 ID 在真实联调结果中。
 
-恢复时继续原 Plan、原输入版本和原预算。开始新一轮提交前读取权威检查点；已 APPLIED 的目标由原回执确认。提交超时后查询原身份，必要时仅重传原身份及同内容；不得以新 Plan、新随机提交 ID 或新观察时间规避冲突。
+| 场景 | 实际观察 |
+| --- | --- |
+| 持久启动意图 | 创建 Plan 后再启动派发器，可靠启动原 Workflow；派发器退出不丢在途执行 |
+| 响应丢失 | ABOUT 已由 Ingest 应用后断开响应；Worker 查询原 APPLIED 回执，ABOUT 只发送一次 |
+| Worker SIGKILL/重启 | 在 VIDEO 提交前杀掉实际 Worker；新进程从原输入和检查点恢复，未更改 Plan/input_hash/deadline；历史中执行 Activity attempt 为 2 |
+| Ingest 暂时不可用 | 恢复后注入一次 503；有限重试仍发送相同 VIDEO 身份和内容 |
+| 重复派发 | 执行中和关闭后都返回原 Workflow/run；错误输入 Hash 被拒绝 |
+| 回执与事实 | 恢复 Plan 为 COMPLETED，只有 ABOUT/VIDEO 两条回执；多次计划和重试后当前视频 1 条、评论 1 条，无重复增长 |
+| 缺 AGENT | 两个可实现领域已 APPLIED，AGENT 为 PENDING，Store/Workflow 保持 WAITING/RUNNING；取消后业务为 CANCELLED |
+| 取消后迟到提交 | ABOUT 已应用、VIDEO 尚未提交时取消；旧代次 VIDEO 被真实 Store 拒绝，仅保留原 ABOUT 回执；原回执仍可查询及重放 |
+| Worker 状态 | 实际身份/版本/心跳可查询，proxy_status 为 NOT_CONFIGURED；SIGTERM 在期限内退出 |
+| 历史重放 | 实际恢复后的 Temporal 历史经 Worker.runReplayHistory 通过 |
 
-HTTP 重试有单次超时和有限次数；Activity 由 Temporal 在有限总期限内重试。执行代次失效、授权拒绝、协议冲突与取消按公共错误处理。依赖等待使用持久协调机制和明确期限，不能不断新建 Activity 重置业务预算。业务重试的批准和预算由公共 API 决定。
+业务状态与 Temporal 终态分别处理：控制取消使 Workflow 进入取消终态；业务状态来自 Store，不能据 Workflow completed/failed 自行推导完整成功。
 
-Workflow 结束并不自行设置业务完整成功。执行结果以 Store 的领域与 Plan 状态为准；未接入的真实 Agent/API 保持未完成或依赖等待，固定样本不冒充真实结果。
+## 5. 资源事故与实际修复
 
-停止流程先停止接单，再在配置期限内排空 Activity 并关闭连接；超时未完成项依赖 Temporal 和受控 API 恢复。取消传播用于及时停止副作用，最终写入围栏仍由 Store 判断。
+09:25～09:27 的开发验证重叠启动缺乏整组资源上限。宿主机无 swap，随后出现内存压力、85%～90% iowait 和 SSH 超时，测试并发很可能是触发因素。没有逐进程历史 RSS，不能假称已证明某一个进程的具体占用；事故期间未得到完整测试结果，均不计通过。详见[事故记录](../../../apps/execution-worker/docs/resource-incident.md)。
 
-Worker 上报实例/节点/版本、接单状态、有效心跳、当前 Plan/阶段、最近回执及规范错误。日志仅记录必要的关联和有界诊断，避免凭据与整份样本。固定样本阶段报告代理未使用/未配置。
+用户已让 Claude 恢复 2 GiB swap、swappiness=10，并明确不设置全用户内存上限/earlyoom。执行侧没有修改这些系统决定，而是修复自身行为：
 
-## 4. 待执行的恢复与验收场景
+- 默认构建/检查命令使用锁串行，对本次检查及所有子进程设置临时 MemoryHigh=768 MiB、MemoryMax=1 GiB、MemorySwapMax=256 MiB、CPUQuota=150%、300 秒期限。
+- 宿主机可用内存不足 2.5 GiB 时拒绝启动，低于 1.5 GiB 时结束本次检查；不支持资源边界时直接失败。
+- Worker 加载预构建 bundle，不在每次重启时运行 webpack；缓存上限从初始实现的 100 降为 10。
+- 测试 API、转发、派发器和 Worker 同属于受限进程组；退出时回收自己创建的进程。PG 转发使用主线重连 helper，测试驱动有界重试且不更换幂等请求身份。
 
-本表全部为待实现/待运行，尚无通过结果。模块替身验证、Temporal SDK 验证和真实 Control/Ingest/PG 联调分别记录；关键数据库事实由主 Agent 的隔离集成测试核对，Worker 不获得 PG 凭据。
+最终 Temporal SDK 场景采样峰值约 257 MiB；完整真实联调约 653 MiB，后者宿主机最低可用约 3.35 GiB。数字是 1 秒采样值，不是容量承诺。最初 384 MiB 编译器堆不足导致检查退出；最终类型检查采用 512 MiB 堆、整组 1 GiB 上限不变并通过。swap 只是缓冲，不保证不会再发生内存压力。
 
-| 编号 | 注入位置或前置条件 | 必须核对的结果 | 验证层 |
-| --- | --- | --- | --- |
-| E01 | 相同启动意图并发派发；Temporal 接收启动后丢失响应 | 同一业务执行和 Workflow；再次派发核对原归属/输入，不产生第二个 Plan | 客户端边界 + 真实 Temporal |
-| E02 | 已有同名 Workflow 使用不同对象、输入版本或类型 | 明确冲突，不确认启动意图成功 | 客户端边界 + 真实 Temporal |
-| E03 | Plan 已持久化但未启动时派发器崩溃；工作流关闭后再次派发 | 持久启动意图恢复；关闭后重复派发遵循同一业务身份及保留期约定 | 主 Agent + 执行集成 |
-| E04 | 首条提交前、部分目标 APPLIED 后分别 SIGKILL Worker，再启动新的进程 | 恢复原 Plan、冻结输入和剩余目标；新实例可追踪；预算和已完成事实不重置 | 真实 Temporal + Control/Ingest/PG |
-| E05 | Ingest 事务提交后、HTTP 响应送达前断开连接 | 查询得到原 APPLIED 回执；同提交仅一个业务效果 | 模块故障注入 + 真实集成 |
-| E06 | Activity 完成结果写回 Temporal 前 Worker 死亡；重复或重叠执行同一活动 | 原提交 ID 和摘要相同；重复请求返回同一持久回执 | SDK + 真实集成 |
-| E07 | Ingest 暂时 503、连接失败或超时；回执查询也暂时不可用 | 有限重试；查询失败不当作未提交；恢复后核对原回执；期限耗尽可追踪 | 模块 + SDK + 真实集成 |
-| E08 | 取消发生在读取权限后、提交前；提交已 APPLIED 后才取消 | 取消后的迟到新写入被拒绝；合法原回执仍可核对；已有事实不撤销、不误报完整成功 | 主 Agent + 执行集成 |
-| E09 | 旧代次、错误对象权限、同 ID 异内容分别提交 | 统一错误分类；拒绝新写入；不无限重试；原事实与回执不被覆盖 | 模块 + 真实集成 |
-| E10 | APPLIED 后读取检查点；如契约支持 RECEIVED，则暂未 APPLIED | APPLIED 与进度一致；RECEIVED 不计完成，持久查询后才推进 | 契约 + 真实集成 |
-| E11 | 样本必需领域缺失或要求未接入的真实 Agent/API | 不伪造产出；依赖未满足时不宣称业务完整成功；等待/取消有确定结果 | SDK + 真实集成 |
-| E12 | 接近总期限时重启；输入引用丢失/摘要不符；等待期间取消 | 不延长总期限或清零已消耗预算；输入不可用明确失败；等待可取消 | 模块 + SDK + 真实集成 |
-| E13 | SIGTERM、有在途活动、关闭期间状态上报失败 | 停止接单并有界排空；未完成项可恢复；上报失败不覆盖原业务错误 | 进程 + 真实 Temporal |
-| E14 | Worker 失联和恢复；多个活动并发；一个 Plan 失败 | 查询 API 可关联实例、节点、版本、阶段、回执与错误；心跳过期可见；无虚构代理信息 | 主 Agent查询 + 执行集成 |
-| E15 | 超过请求大小/并发预算；检查 Workflow 副作用及重放 | 有界拒绝或背压；历史/心跳不包含大样本；SDK 测试及代表性历史重放保持确定性 | 模块 + SDK + 集成 |
+## 6. 运行与主线集成
 
-每项证据应包含：代码及契约版本、隔离环境引用、原 Plan/Workflow/Submission 身份、输入与提交摘要、故障触发点、重启前后回执和权威结果、已消耗预算及总期限、实际命令和退出结果。敏感身份凭据不进入证据。
+完整命令、环境变量、停止与恢复步骤见 [Worker 说明](../../../apps/execution-worker/README.md)和[客户端说明](../../../packages/execution-client/README.md)。新增迁移：无。
 
-## 5. 已执行的核对及参考结论
+1. 主 Agent 合并本次具体提交，统一更新根锁文件以登记 `@crawlsystem/execution-client`、`@crawlsystem/execution-worker` 两个 workspace；使用已有 SDK 版本，没有要求新版本依赖。执行分支未越权修改根锁文件，本地验证使用 `npm install --package-lock=false --no-save`。
+2. 更新锁文件后 `npm ci`，构建 Workflow bundle，按 `.env.example` 注入 API/Temporal-only 的 Worker 配置。Worker 实际部署仍需容器或进程管理器整组内存限额。
+3. 主 Agent 的既有 `dev:dispatcher` 动态导入本客户端即可接入真实执行。一个 queue 对应一个 workspace，Worker JWT sub 对应实例 ID；开发令牌默认 1 小时，到期需更新文件。
+4. 保留 DONE 意图和原 Plan：Temporal 历史保留 7 天后，服务本身不能仅凭 ID 区分从未运行和已被清理的旧执行。主线不得把已关闭/过期 Plan 重新派发；适配器不创建新 Plan。
 
-| 命令 / 检查 | 结果 | 证据范围 |
-| --- | --- | --- |
-| `git branch --show-current` | `business/m1-execution` | 分支确认 |
-| `git status --short`（修改前） | 无输出 | 初始工作区干净 |
-| `git rev-parse HEAD` | `8824d7cc6d0a744b172f8b77fa7faabbffcfe985` | 文档起点 |
-| `git log -5 --oneline business/crawler-platform` | 最新为任务文档提交 | 仅本地可见分支，未声称远端无新提交 |
-| `git ls-tree -r --name-only business/crawler-platform docs/m1 packages apps` | 只有四份 M1 任务/协作文档 | 尚无本地 G0 工程与契约 |
-| `git -C /home/ubuntu/workspace/oldsystem rev-parse HEAD` | `e92d9227a5a3847430e5d062bea13227564ee419` | 与固定参考版本一致 |
-| `node --version` / `npm --version` | `v22.22.1` / `9.2.0` | 仅现场工具探测，非工程版本决策 |
-| `command -v temporal` | 未找到，退出码 1 | 本地 PATH 无 CLI；不证明远端服务不可用 |
-
-旧系统只做只读参考，未运行其服务或测试：
-
-- `services/qybullmq/src/remoteNodes/executionContext.js`：冻结计划与恢复上下文需区分，不能随意删字段绕过校验。
-- `services/qybullmq/src/remoteNodes/workerRetirement.js`：停止接单与在途执行排空需要分别核对。其 SQL、BullMQ 和锁协议不移植。
-- `services/qybullmq/test/migrationRetryIntentPostCommit.worker.postgres.redis.integration.test.js`：参考“业务已提交、队列确认前进程退出”的故障窗口；新测试使用 Temporal 与 Ingest，不复用其中直接 SQL 或清库逻辑。
-- `services/qybullmq/test/channelSnapshotAttemptFence.worker.postgres.redis.integration.test.js`：参考被接管后的旧活动迟到写入场景；新实现以公共执行代次和 Store 写入围栏为准。
-
-现有 `docs/crawlsystem-infra-a1-s3/examples/temporal-smoke.py` 为独立 Python 基础设施 echo 冒烟，使用 TLS 并通过端口转发接入。它既不是 M1 Workflow，也未在本轮运行；既有基础设施报告不能计为 E01～E15 通过。
-
-## 6. 启动、验证与后续交付
-
-当前没有可构建或启动的执行应用，因此不提供虚假的 build/start/test 命令，也没有新增迁移。G0 发布后按具体 SHA 合并，采用统一工具链实现，再记录真实命令和结果。
-
-G0 配置需覆盖：Temporal 地址、namespace、Task Queue、TLS CA/客户端证书/密钥引用及服务端名称；Control/Ingest 地址和服务身份；Worker/节点/构建身份；并发、HTTP/Activity 时间与次数预算、心跳和排空期限。实际变量名使用主 Agent 配置模板，Worker 配置不包含 PG 连接凭据。
-
-下一交付顺序：同步 G0 → 启动适配器 → 样本 Activity 与确定性 Workflow → 回执恢复/预算/取消 → 状态上报/进程退出 → SDK 与真实隔离链路验证 → 本分支提交实现及证据，由主 Agent 按具体提交集成。
-
-当前阻塞项是 G0 代码与固定 SHA、公共接口样例、隔离测试资源及运行配置。真实采集、本地代理和真实 API/Agent 按 M2 接入；本次未宣称 M1 或 M2 完成。
+本次不包括真实采集、真实 Agent/API、节点本地代理、生产容量或业务前端的最终联合验收；后两项由主 Agent 按整体验收安排。执行模块已具备主线集成条件，根锁文件登记是明确的集成步骤，不把当前分支的 `npm ci` 报为已经通过。

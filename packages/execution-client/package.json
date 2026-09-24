@@ -1,0 +1,9 @@
+{
+  "name": "@crawlsystem/execution-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./http": "./src/http.ts", "./config": "./src/config.ts" },
+  "scripts": { "test": "bash ../../apps/execution-worker/scripts/check-safe.sh unit" },
+  "dependencies": { "@crawlsystem/contracts": "0.1.0", "@temporalio/client": "1.24.0", "@temporalio/common": "1.24.0", "zod": "4.6.5" }
+}

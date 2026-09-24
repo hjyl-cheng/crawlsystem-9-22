@@ -1,0 +1,20 @@
+{
+  "name": "@crawlsystem/execution-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "build": "bash scripts/check-safe.sh build",
+    "typecheck": "bash scripts/check-safe.sh typecheck",
+    "test": "bash scripts/check-safe.sh unit",
+    "test:temporal": "bash scripts/check-safe.sh temporal",
+    "test:live": "bash scripts/check-safe.sh live",
+    "test:live-local": "bash scripts/check-safe.sh live-local"
+  },
+  "dependencies": {
+    "@crawlsystem/contracts": "0.1.0", "@crawlsystem/execution-client": "0.1.0",
+    "@temporalio/activity": "1.24.0", "@temporalio/common": "1.24.0", "@temporalio/worker": "1.24.0", "@temporalio/workflow": "1.24.0"
+  },
+  "devDependencies": { "@temporalio/testing": "1.24.0", "@temporalio/client": "1.24.0" }
+}

@@ -1,0 +1,45 @@
+{
+  "scope_memory_max_bytes": 1073741824,
+  "scope_memory_high_bytes": 805306368,
+  "scope_swap_max_bytes": 268435456,
+  "cpu_quota_percent": 150,
+  "sampling_seconds": 1,
+  "measurements": {
+    "typecheck": {
+      "sampled_peak_bytes": 510193664,
+      "minimum_host_available_kib": 3692600,
+      "samples": 8,
+      "source": "typecheck-62580.tsv"
+    },
+    "build": {
+      "sampled_peak_bytes": 224677888,
+      "minimum_host_available_kib": 4201972,
+      "samples": 4,
+      "source": "build-52052.tsv"
+    },
+    "unit": {
+      "sampled_peak_bytes": 103702528,
+      "minimum_host_available_kib": 4067552,
+      "samples": 4,
+      "source": "unit-62709.tsv"
+    },
+    "contracts": {
+      "sampled_peak_bytes": 262144,
+      "minimum_host_available_kib": 4123840,
+      "samples": 1,
+      "source": "contracts-62542.tsv"
+    },
+    "temporal": {
+      "sampled_peak_bytes": 269434880,
+      "minimum_host_available_kib": 3919456,
+      "samples": 6,
+      "source": "temporal-60755.tsv"
+    },
+    "live-local": {
+      "sampled_peak_bytes": 684277760,
+      "minimum_host_available_kib": 3513516,
+      "samples": 30,
+      "source": "live-local-61073.tsv"
+    }
+  }
+}
