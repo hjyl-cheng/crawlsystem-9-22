@@ -19,8 +19,8 @@ const workspace = 'm1-main', expectedBuild = execFileSync('git', ['rev-parse', '
 const deployed = kubectl('-n', 'crawler', 'get', 'statefulset', 'execution-worker', '-o', 'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="BUILD_VERSION")].value}');
 const base = `http://${kubectl('-n', 'control', 'get', 'svc', 'control-api-preview', '-o', 'jsonpath={.spec.clusterIP}')}:18100`;
 const token = await issueToken({ subject: 'preview-acceptance', workspace_id: workspace, role: 'operator' }, loadSigningKey(), 900);
-const api = async (path: string, body?: unknown) => {
-  const response = await fetch(base + path, { method: body ? 'POST' : 'GET', headers: { authorization: `Bearer ${token}`, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+const api = async (path: string, body?: unknown, extra: Record<string, string> = {}) => {
+  const response = await fetch(base + path, { method: body ? 'POST' : 'GET', headers: { authorization: `Bearer ${token}`, ...(body ? { 'content-type': 'application/json' } : {}), ...extra }, body: body ? JSON.stringify(body) : undefined });
   const data = await response.json();
   if (!response.ok) throw new Error(`${path} HTTP ${response.status} ${JSON.stringify(data)}`);
   return data;
@@ -43,7 +43,9 @@ try {
   assert.equal(health.build_version, expectedBuild); pass('Control and Worker run the committed revision');
 
   // 1. A plan created through Control completes via dispatcher → Temporal → resident Worker → Ingest.
-  const created = PlanSchema.parse(await api('/v1/plans', { request_id: randomUUID(), fixture_id: 'channel-basic-v1', required_domains: ['ABOUT', 'VIDEO'] }));
+  // A sampled parent forces this trace to be exported by every service regardless of the root ratio.
+  const traceId = randomUUID().replaceAll('-', '');
+  const created = PlanSchema.parse(await api('/v1/plans', { request_id: randomUUID(), fixture_id: 'channel-basic-v1', required_domains: ['ABOUT', 'VIDEO'] }, { traceparent: `00-${traceId}-${randomUUID().replaceAll('-', '').slice(0, 16)}-01` }));
   const completed = await until(created.plan_id, p => p.plan.status === 'COMPLETED', 90, 'resident completion');
   assert.equal(completed.receipts.length, 2); assert.ok(completed.domains.every(d => d.state === 'APPLIED'));
   const workers = new Set(completed.events.map(e => e.worker_id));
@@ -90,8 +92,26 @@ try {
   assert.equal(completedStatus, 'COMPLETED');
   pass('durable CANCEL delivered by the deployed dispatcher; Temporal shows CANCELLED (and COMPLETED for plan 1)');
 
+  // 4. The same trace reached Loki from all four services (Control, dispatcher, Worker, Ingest).
+  const loki = spawn('kubectl', ['-n', 'monitoring', 'port-forward', 'svc/loki', '13101:3100'], { stdio: 'ignore' });
+  let services: string[] = [];
+  try {
+    const expected = ['control', 'ingest', 'intent-dispatcher', 'execution-worker'];
+    for (const end = Date.now() + 90_000; Date.now() < end && !expected.every(name => services.includes(name)); await delay(3000)) {
+      try {
+        const query = new URLSearchParams({ query: `{job="kubernetes-pods"} |= "${traceId}"`, start: String((Date.now() - 900_000) * 1e6), limit: '500' });
+        const result = await (await fetch(`http://127.0.0.1:13101/loki/api/v1/query_range?${query}`)).json() as { data?: { result?: { values: [string, string][] }[] } };
+        const lines = (result.data?.result ?? []).flatMap(stream => stream.values.map(([, line]) => line));
+        services = [...new Set(lines.flatMap(line => { try { const record = JSON.parse(line); return record.event === 'trace_span' && record.trace_id === traceId ? [record.service as string] : []; } catch { return []; } }))].sort();
+      } catch { /* port-forward still starting */ }
+    }
+    assert.deepEqual(services, [...expected].sort(), `trace ${traceId} must be exported by all services`);
+  } finally { loki.kill(); }
+  pass(`trace ${traceId} spans Control, dispatcher, Worker and Ingest in Loki`);
+
   const evidence = { verified_at: new Date().toISOString(), revision: expectedBuild, workspace_id: workspace,
     scope: 'Resident preview deployment: Control, intent-dispatcher, execution-worker StatefulSet, Ingest; local process only issued an operator token and read PG/Temporal',
+    trace: { trace_id: traceId, services },
     completed_plan: { plan_id: completed.plan.plan_id, workflow_id: completed.plan.workflow_id, receipts: completed.receipts.map(r => r.submission_id) },
     cancelled_plan: { plan_id: waitingPlan.plan_id, workflow_id: waitingPlan.workflow_id, intents },
     worker: { worker_id: 'execution-worker-0', server_id: node, replaced_pod_uid: oldUid }, checks };
