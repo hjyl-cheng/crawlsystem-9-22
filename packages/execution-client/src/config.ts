@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { DEFAULT_TASK_QUEUE } from '@crawlsystem/contracts';
 
 export interface TemporalOptions {
@@ -22,4 +23,15 @@ export function temporalOptions(env: NodeJS.ProcessEnv = process.env): TemporalO
   };
   validateTemporalOptions(options);
   return options;
+}
+// Temporal clients read mTLS material once at connect. When cert-manager renews
+// the mounted files, stop gracefully so Kubernetes restarts us with the new pair.
+export function watchTlsFiles(env: NodeJS.ProcessEnv, onChange: () => void, intervalMs = 60_000): () => void {
+  const files = ['TEMPORAL_TLS_CA_FILE', 'TEMPORAL_TLS_CERT_FILE', 'TEMPORAL_TLS_KEY_FILE'].map(name => env[name]).filter((file): file is string => !!file);
+  if (!files.length) return () => {};
+  const digest = () => { const hash = createHash('sha256'); for (const file of files) { try { hash.update(readFileSync(file)); } catch { hash.update('missing'); } } return hash.digest('hex'); };
+  const initial = digest();
+  const timer = setInterval(() => { if (digest() !== initial) { clearInterval(timer); onChange(); } }, intervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
 }

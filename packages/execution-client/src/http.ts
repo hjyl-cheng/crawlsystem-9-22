@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
-  ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
+  ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
 
 export class ExecutionApiError extends Error {
   constructor(readonly code: ErrorCode, readonly retryable: boolean, readonly correlationId?: string) {
@@ -14,8 +14,45 @@ export interface ApiOptions { controlUrl: string; ingestUrl: string; token: () =
 export function validateApiUrl(raw: string): string {
   const url = new URL(raw);
   if (url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error('API URL must be an origin without credentials');
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname))) throw new Error('HTTPS is required outside loopback');
+  // Cluster Service names ride the WireGuard-encrypted pod network (flannel wireguard-native)
+  // behind NetworkPolicy; anything else outside loopback must use HTTPS.
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && (['127.0.0.1','localhost','[::1]'].includes(url.hostname) || /^[a-z0-9-]+\.[a-z0-9-]+\.svc\.cluster\.local$/.test(url.hostname)))) throw new Error('HTTPS is required outside loopback and cluster Services');
   return url.origin;
+}
+export interface WorkloadTokenOptions { controlUrl: string; identityToken: () => Promise<string>; workerId: string; timeoutMs?: number; fetch?: typeof fetch; now?: () => number; }
+// Exchanges the kubelet-rotated ServiceAccount token for a short API token and
+// renews it at half-life; concurrent callers share one exchange.
+export function workloadTokenSource(options: WorkloadTokenOptions): () => Promise<string> {
+  const control = validateApiUrl(options.controlUrl), fetcher = options.fetch ?? fetch, now = options.now ?? Date.now;
+  let cached: { token: string; renewAt: number; expiresAt: number } | undefined, pending: Promise<string> | undefined;
+  const exchange = async () => {
+    const identity = (await options.identityToken()).trim();
+    if (!identity || /\s/.test(identity)) throw new ExecutionApiError('UNAUTHENTICATED', false);
+    let response: Response;
+    try { response = await fetcher(new URL(ApiRoutes.workloadToken, control), { method: 'POST', redirect: 'error', headers: { authorization: `Bearer ${identity}` }, signal: AbortSignal.timeout(options.timeoutMs ?? 5000) }); }
+    catch { throw new ExecutionApiError('UNAVAILABLE', true); }
+    let data: unknown;
+    try { data = await response.json(); } catch { throw new ExecutionApiError('INVALID_REQUEST', false); }
+    if (!response.ok) {
+      const parsed = ApiErrorSchema.safeParse(data);
+      throw parsed.success ? new ExecutionApiError(parsed.data.error.code, parsed.data.error.retryable, parsed.data.error.correlation_id) : new ExecutionApiError('INVALID_REQUEST', false);
+    }
+    const parsed = WorkloadTokenSchema.safeParse(data);
+    if (!parsed.success) throw new ExecutionApiError('INVALID_REQUEST', false);
+    // The Pod name is the Worker identity; a mismatch means a wrong mount or ServiceAccount.
+    if (parsed.data.subject !== options.workerId) throw new ExecutionApiError('FORBIDDEN', false);
+    const issued = now();
+    cached = { token: parsed.data.token, renewAt: issued + parsed.data.expires_in * 500, expiresAt: issued + parsed.data.expires_in * 1000 - 5000 };
+    return parsed.data.token;
+  };
+  return async () => {
+    const current = cached, time = now();
+    if (current && time < current.renewAt) return current.token;
+    pending ??= exchange().finally(() => { pending = undefined; });
+    try { return await pending; }
+    // During a control-plane blip keep using a still-valid token instead of failing work.
+    catch (error) { if (current && time < current.expiresAt) return current.token; throw error; }
+  };
 }
 
 export class ExecutionApi {

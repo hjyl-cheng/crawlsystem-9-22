@@ -1,0 +1,110 @@
+# Ingest API: the only write path for Worker results (Store checks role, epoch,
+# idempotency and conflicts). Same image as Control, different entry bundle.
+# Secret `ingest-preview` (database-url, pg-ca.crt, jwt-secret) is copied from
+# control/control-api-preview by scripts/dev/deploy-preview.ts.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest-preview
+  namespace: ingest
+  labels: { app.kubernetes.io/name: ingest-preview }
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 0, maxUnavailable: 1 }
+  selector:
+    matchLabels: { app.kubernetes.io/name: ingest-preview }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: ingest-preview }
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: ingest-preview }
+      containers:
+        - name: ingest
+          image: docker.io/crawlsystem/control-api:IMAGE_TAG
+          imagePullPolicy: Never
+          command: ["node", "/app/ingest.mjs"]
+          ports: [{ name: http, containerPort: 18101 }]
+          env:
+            - { name: HOST, value: "0.0.0.0" }
+            - { name: INGEST_PORT, value: "18101" }
+            - { name: PG_POOL_MAX, value: "2" }
+            - { name: TRACE_SAMPLE_RATIO, value: "0.1" }
+            - { name: PG_CA_FILE, value: /secrets/pg-ca.crt }
+            - { name: PG_TLS_SERVERNAME, value: crawler-pg-pool.db.svc.cluster.local }
+            - { name: M1_JWT_SECRET_FILE, value: /secrets/jwt-secret }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: ingest-preview, key: database-url } }
+          volumeMounts:
+            - { name: secrets, mountPath: /secrets, readOnly: true }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 6
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      volumes:
+        - name: secrets
+          secret:
+            secretName: ingest-preview
+            defaultMode: 0440
+            items:
+              - { key: pg-ca.crt, path: pg-ca.crt }
+              - { key: jwt-secret, path: jwt-secret }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingest-preview
+  namespace: ingest
+spec:
+  selector: { app.kubernetes.io/name: ingest-preview }
+  ports: [{ name: http, port: 18101, targetPort: http }]
+---
+# `ingest` is default-deny for ingress: only execution Workers submit, and the
+# existing Prometheus scrapes /metrics.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingest-preview-allowed
+  namespace: ingest
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: ingest-preview }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: crawler }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: execution-worker }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+          podSelector:
+            matchLabels: { app: prometheus }
+      ports: [{ port: 18101 }]

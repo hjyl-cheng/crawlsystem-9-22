@@ -164,7 +164,7 @@ node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-worker-env.ts
 # 执行模块交付后使用：node --env-file=.runtime/execution.env ...
 node --env-file=.runtime/main.env --import tsx scripts/dev/audit-runtime-access.ts
 # 源码提交后构建，固定基础镜像 digest / esbuild / 代码提交，拒绝脏工作区：
-node --import tsx scripts/dev/build-control-image.ts
+npm run check:safe -- images   # scripts/dev/build-images.ts：Control 与 Worker 镜像
 ```
 
 实际权限检查确认 console_app 无超级用户/建库/建角色/建表/删除账号权限，连接上限 3。Temporal mTLS 可连接，服务未配置 namespace 授权；独立 namespace 仅隔离执行历史，不能视为凭据权限边界。M1 仅内部固定样本联调；完善共享 Temporal 授权需要与既有客户端共同安排，不能在这里直接改变全局授权令其他业务失效。

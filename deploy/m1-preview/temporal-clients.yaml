@@ -1,0 +1,138 @@
+# Dedicated Temporal client identities for the dispatcher and the Worker (instead
+# of the 7-day infra smoke certificate). The CA Issuer is namespaced to `temporal`,
+# so certificates are issued here and a CronJob copies each secret to its single
+# consumer namespace; clients restart themselves when the mounted files change.
+# NOTE: Temporal has no namespace authorizer yet; these identities are the basis
+# for one, not an access boundary today (docs/m1/reports/runtime-access.json).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: crawlsystem-m1-dispatcher
+  namespace: temporal
+spec:
+  commonName: crawlsystem-m1-dispatcher
+  secretName: crawlsystem-m1-dispatcher-tls
+  duration: 2160h
+  renewBefore: 720h
+  usages: [client auth]
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: internal-ca, kind: Issuer }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: crawlsystem-m1-worker
+  namespace: temporal
+spec:
+  commonName: crawlsystem-m1-worker
+  secretName: crawlsystem-m1-worker-tls
+  duration: 2160h
+  renewBefore: 720h
+  usages: [client auth]
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: internal-ca, kind: Issuer }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: temporal-client-sync
+  namespace: temporal
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: temporal-client-sync-source
+  namespace: temporal
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [crawlsystem-m1-dispatcher-tls, crawlsystem-m1-worker-tls]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: temporal-client-sync-source
+  namespace: temporal
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: temporal-client-sync-source }
+subjects: [{ kind: ServiceAccount, name: temporal-client-sync, namespace: temporal }]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: temporal-client-sync-target
+  namespace: control
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [temporal-client-dispatcher]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: temporal-client-sync-target
+  namespace: control
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: temporal-client-sync-target }
+subjects: [{ kind: ServiceAccount, name: temporal-client-sync, namespace: temporal }]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: temporal-client-sync-target
+  namespace: crawler
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [temporal-client-worker]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: temporal-client-sync-target
+  namespace: crawler
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: temporal-client-sync-target }
+subjects: [{ kind: ServiceAccount, name: temporal-client-sync, namespace: temporal }]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: temporal-client-sync
+  namespace: temporal
+spec:
+  schedule: "17 */6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: temporal-client-sync
+          automountServiceAccountToken: true
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: sync
+              image: docker.io/crawlsystem/control-api:IMAGE_TAG
+              imagePullPolicy: Never
+              command: ["node", "/app/temporal-cert-sync.mjs"]
+              env:
+                - { name: SYNC_SOURCE_NAMESPACE, value: temporal }
+                - { name: SYNC_PAIRS, value: "crawlsystem-m1-dispatcher-tls:control/temporal-client-dispatcher,crawlsystem-m1-worker-tls:crawler/temporal-client-worker" }
+              resources:
+                requests: { cpu: 10m, memory: 48Mi }
+                limits: { cpu: 200m, memory: 128Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }

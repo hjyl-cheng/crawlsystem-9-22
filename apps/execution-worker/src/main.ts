@@ -2,16 +2,19 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { NativeConnection, Worker, Runtime, DefaultLogger } from '@temporalio/worker';
-import { ExecutionApi } from '@crawlsystem/execution-client/http';
+import { ExecutionApi, workloadTokenSource } from '@crawlsystem/execution-client/http';
 import { createActivities } from './activities.ts';
 import { workerConfig } from './config.ts';
+import { watchTlsFiles } from '@crawlsystem/execution-client/config';
 
 const config = workerConfig();
 const log = (record: Record<string, unknown>) => process.stdout.write(`${JSON.stringify({ time: new Date().toISOString(), ...record })}\n`);
 // SDK messages may contain endpoints or user payloads. Emit only a bounded category.
 Runtime.install({ logger: new DefaultLogger('WARN', entry => log({ source: 'temporal', level: entry.level, message: 'Temporal SDK diagnostic; inspect secured service logs' })) });
-const api = new ExecutionApi({ controlUrl: config.controlUrl, ingestUrl: config.ingestUrl, timeoutMs: config.httpTimeoutMs,
-  token: async () => readFile(config.tokenFile, 'utf8') });
+const token = config.identityTokenFile
+  ? workloadTokenSource({ controlUrl: config.controlUrl, workerId: config.workerId, timeoutMs: config.httpTimeoutMs, identityToken: () => readFile(config.identityTokenFile!, 'utf8') })
+  : async () => readFile(config.tokenFile!, 'utf8');
+const api = new ExecutionApi({ controlUrl: config.controlUrl, ingestUrl: config.ingestUrl, timeoutMs: config.httpTimeoutMs, token });
 const session = await api.session();
 if (session.role !== 'worker' || session.subject !== config.workerId) throw new Error('Worker credential identity mismatch');
 const running = new Map<string, number>();
@@ -29,6 +32,8 @@ const stop = () => {
   if (worker?.getState() === 'RUNNING') worker.shutdown();
 };
 process.once('SIGTERM', stop); process.once('SIGINT', stop);
+// Renewed mTLS files are only read at connect: drain and let Kubernetes restart the Pod.
+const unwatch = watchTlsFiles(process.env, () => { log({ worker_id: config.workerId, phase: 'CERTIFICATE_ROTATED' }); stop(); });
 try {
   worker = await Worker.create({ connection, namespace: config.temporal.namespace, taskQueue: config.temporal.taskQueue,
     identity: config.workerId, buildId: config.buildVersion,
@@ -60,5 +65,6 @@ try {
   await heartbeatLoop;
   await report().catch(() => {});
   await connection.close();
+  unwatch();
   process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop);
 }

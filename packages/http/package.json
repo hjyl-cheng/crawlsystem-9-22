@@ -7,7 +7,9 @@
     ".": "./src/index.ts",
     "./auth": "./src/auth.ts",
     "./runtime": "./src/runtime.ts",
-    "./tracing": "./src/tracing.ts"
+    "./tracing": "./src/tracing.ts",
+    "./workload": "./src/workload.ts",
+    "./kubernetes": "./src/kubernetes.ts"
   },
   "dependencies": {
     "@crawlsystem/contracts": "0.1.0",

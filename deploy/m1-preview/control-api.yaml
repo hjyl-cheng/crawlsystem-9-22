@@ -1,10 +1,38 @@
 # Control API for the console preview, running inside the cluster so it reaches
 # PgBouncer over the Service network instead of a kubectl port-forward.
 #
-# The image is built from a single esbuild bundle on the pinned official Node
-# image and imported into each node's containerd (no registry yet), hence
-# imagePullPolicy: Never. Secret `control-api-preview` is created from ignored
-# runtime files; see apps/control-api/README.md.
+# The image is built by scripts/dev/build-images.ts and imported into each
+# node's containerd (no registry yet), hence imagePullPolicy: Never. Secret
+# `control-api-preview` is created from ignored runtime files; see
+# apps/control-api/README.md. Apply through scripts/dev/deploy-preview.ts.
+#
+# Control also exchanges Worker ServiceAccount tokens for short API tokens
+# (POST /v1/workload/token), so it runs with its own ServiceAccount that may
+# create TokenReviews and nothing else.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: control-api
+  namespace: control
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crawlsystem-control-tokenreview
+rules:
+  - apiGroups: [authentication.k8s.io]
+    resources: [tokenreviews]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: crawlsystem-control-tokenreview
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: crawlsystem-control-tokenreview }
+subjects:
+  - { kind: ServiceAccount, name: control-api, namespace: control }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,7 +50,8 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: control-api-preview }
     spec:
-      automountServiceAccountToken: false
+      serviceAccountName: control-api
+      automountServiceAccountToken: true
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
@@ -49,6 +78,9 @@ spec:
             - { name: CONSOLE_PG_POOL_MAX, value: "1" }
             - { name: M1_WORKSPACE_ID, value: "m1-main" }
             - { name: TRACE_SAMPLE_RATIO, value: "0.1" }
+            - { name: WORKLOAD_SERVICE_ACCOUNT, value: "system:serviceaccount:crawler:execution-worker" }
+            - { name: WORKLOAD_TOKEN_AUDIENCE, value: crawlsystem-control }
+            - { name: WORKLOAD_TOKEN_SECONDS, value: "900" }
             - { name: PG_CA_FILE, value: /secrets/pg-ca.crt }
             - { name: PG_TLS_SERVERNAME, value: crawler-pg-pool.db.svc.cluster.local }
             - { name: M1_JWT_SECRET_FILE, value: /secrets/jwt-secret }
@@ -132,4 +164,23 @@ spec:
             matchLabels: { kubernetes.io/metadata.name: monitoring }
           podSelector:
             matchLabels: { app: prometheus }
+      ports: [{ port: 18100 }]
+---
+# Execution Workers read inputs, report heartbeats/events and exchange their
+# ServiceAccount token here. Nothing else in `crawler` may reach Control.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: control-api-preview-from-workers
+  namespace: control
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: control-api-preview }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: crawler }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: execution-worker }
       ports: [{ port: 18100 }]

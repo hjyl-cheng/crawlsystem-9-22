@@ -12,6 +12,29 @@ test('Worker rejects backend credentials and unbounded resource configuration', 
 });
 test('remote transport requires TLS and origin URLs reject embedded credentials', () => {
   assert.throws(() => validateApiUrl('http://api.example.invalid'));
+  assert.equal(validateApiUrl('http://control-api-preview.control.svc.cluster.local:18100'), 'http://control-api-preview.control.svc.cluster.local:18100');
+  for (const host of ['http://svc.cluster.local.example.invalid', 'http://a.b.c.svc.cluster.local', 'http://control.svc.cluster.local']) assert.throws(() => validateApiUrl(host));
   assert.throws(() => validateApiUrl('https://user:password@api.example.invalid'));
   assert.throws(() => validateTemporalOptions({ address: 'remote:7233', namespace: 'crawlsystem-m1-test', taskQueue: 'test' }));
+});
+test('Worker requires exactly one credential source', () => {
+  const { WORKER_TOKEN_FILE: _unused, ...cluster } = env;
+  assert.equal(workerConfig({ ...cluster, WORKLOAD_IDENTITY_TOKEN_FILE: '/var/run/secrets/tokens/control' }).identityTokenFile, '/var/run/secrets/tokens/control');
+  assert.throws(() => workerConfig(cluster));
+  assert.throws(() => workerConfig({ ...env, WORKLOAD_IDENTITY_TOKEN_FILE: '/var/run/secrets/tokens/control' }));
+});
+test('a renewed mTLS file triggers one graceful restart signal', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { watchTlsFiles } = await import('@crawlsystem/execution-client/config');
+  const dir = mkdtempSync('/tmp/crawlsystem-tls-watch-');
+  for (const name of ['ca', 'cert', 'key']) writeFileSync(`${dir}/${name}`, 'v1');
+  let changes = 0;
+  const stop = watchTlsFiles({ TEMPORAL_TLS_CA_FILE: `${dir}/ca`, TEMPORAL_TLS_CERT_FILE: `${dir}/cert`, TEMPORAL_TLS_KEY_FILE: `${dir}/key` }, () => { changes++; }, 20);
+  try {
+    await new Promise(resolve => setTimeout(resolve, 60)); assert.equal(changes, 0);
+    writeFileSync(`${dir}/cert`, 'v2');
+    await new Promise(resolve => setTimeout(resolve, 80)); assert.equal(changes, 1);
+    writeFileSync(`${dir}/cert`, 'v3');
+    await new Promise(resolve => setTimeout(resolve, 60)); assert.equal(changes, 1);
+  } finally { stop(); }
 });

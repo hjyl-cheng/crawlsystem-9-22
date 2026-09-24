@@ -1,0 +1,67 @@
+import {execFileSync,spawn,spawnSync} from 'node:child_process';
+import {createReadStream,readFileSync,writeFileSync} from 'node:fs';
+
+// Deploys the M1 preview stack from the images built by build-images.ts:
+// Control (2), Ingest (2), intent dispatcher (1), execution Worker (1) and the
+// Temporal client certificate sync. There is no registry: images are imported
+// into containerd on every node first. Secrets are derived from existing cluster
+// Secrets; nothing secret is read into this process's output or written to Git.
+const kubectl=(args:string[],input?:string)=>execFileSync('kubectl',args,{encoding:'utf8',input,stdio:['pipe','pipe','pipe']}).trim();
+const git=(...args:string[])=>execFileSync('git',args,{encoding:'utf8'}).trim();
+const build=JSON.parse(readFileSync('.runtime/latest-images.json','utf8')) as {revision:string;control:{image:string;tarball:string};worker:{image:string;tarball:string}};
+if(build.revision!==git('rev-parse','HEAD'))throw new Error('latest-images.json is not built from HEAD; rebuild first');
+if(git('status','--porcelain'))throw new Error('Deploy only from a clean, committed tree');
+const tagOf=(image:string)=>image.split(':').at(-1)!;
+const nodes=['a1','a2','a3','s1','s2','s3'];
+const step=(message:string)=>process.stdout.write(`${new Date().toISOString()} ${message}\n`);
+
+// 1. Import images where missing. a1 is this host; others via the deploy SSH aliases.
+async function importImage(node:string,image:string,tarball:string){
+  const remote=node==='a1'?[]:['ssh',`crawl-${node}`];
+  const run=(command:string[])=>spawnSync(remote[0]??command[0]!,remote.length?[...remote.slice(1),...command]:command.slice(1),{encoding:'utf8'});
+  if(run(['sudo','-n','k3s','ctr','-n','k8s.io','images','ls','-q',`name==${image}`]).stdout.trim()===image)return 'present';
+  const command=[...remote,'sudo','-n','k3s','ctr','-n','k8s.io','images','import','-'];
+  await new Promise<void>((resolve,reject)=>{
+    const child=spawn(command[0]!,command.slice(1),{stdio:['pipe','ignore','inherit']});
+    createReadStream(tarball).pipe(child.stdin);
+    child.on('exit',code=>code===0?resolve():reject(new Error(`image import on ${node} exited ${code}`)));child.on('error',reject);
+  });
+  if(run(['sudo','-n','k3s','ctr','-n','k8s.io','images','ls','-q',`name==${image}`]).stdout.trim()!==image)throw new Error(`${image} missing on ${node} after import`);
+  return 'imported';
+}
+const imports:Record<string,Record<string,string>>={};
+for(const node of nodes){imports[node]={};for(const artifact of [build.control,build.worker])imports[node]![artifact.image]=await importImage(node,artifact.image,artifact.tarball);step(`images on ${node}: ${JSON.stringify(imports[node])}`);}
+
+// 2. Record what runs now, for rollback.
+const current=(namespace:string,kind:string,name:string)=>{try{return kubectl(['-n',namespace,'get',kind,name,'-o','jsonpath={.spec.template.spec.containers[0].image}']);}catch{return null;}};
+const previous={control:current('control','deployment','control-api-preview'),ingest:current('ingest','deployment','ingest-preview'),
+  dispatcher:current('control','deployment','intent-dispatcher'),worker:current('crawler','statefulset','execution-worker')};
+
+const render=(file:string)=>readFileSync(file,'utf8').replaceAll('control-api:IMAGE_TAG',`control-api:${tagOf(build.control.image)}`)
+  .replaceAll('execution-worker:IMAGE_TAG',`execution-worker:${tagOf(build.worker.image)}`).replaceAll('BUILD_REVISION',build.revision);
+const apply=(file:string)=>step(kubectl(['apply','-f','-'],render(file)).split('\n').join('; '));
+const secretData=(namespace:string,name:string)=>JSON.parse(kubectl(['-n',namespace,'get','secret',name,'-o','json'])).data as Record<string,string>;
+const putSecret=(namespace:string,name:string,data:Record<string,string>)=>kubectl(['apply','-f','-'],JSON.stringify({apiVersion:'v1',kind:'Secret',type:'Opaque',metadata:{name,namespace},data}));
+const pick=(data:Record<string,string>,keys:string[])=>Object.fromEntries(keys.map(key=>{if(!data[key])throw new Error(`secret key ${key} missing`);return [key,data[key]];}));
+
+// 3. Temporal client identities: issue, wait, then seed the consumer Secrets (the CronJob keeps them current).
+apply('deploy/m1-preview/temporal-clients.yaml');
+for(const name of ['crawlsystem-m1-dispatcher','crawlsystem-m1-worker'])kubectl(['-n','temporal','wait','--for=condition=Ready',`certificate/${name}`,'--timeout=120s']);
+const tlsKeys=['ca.crt','tls.crt','tls.key'];
+putSecret('control','temporal-client-dispatcher',pick(secretData('temporal','crawlsystem-m1-dispatcher-tls'),tlsKeys));
+putSecret('crawler','temporal-client-worker',pick(secretData('temporal','crawlsystem-m1-worker-tls'),tlsKeys));
+// 4. Ingest uses the same facts database and verification key as Control.
+putSecret('ingest','ingest-preview',pick(secretData('control','control-api-preview'),['database-url','pg-ca.crt','jwt-secret']));
+step('secrets ready: control/temporal-client-dispatcher, crawler/temporal-client-worker, ingest/ingest-preview');
+
+// 5. Roll out in dependency order: Control (token exchange) and Ingest before Workers.
+const rollouts:[string,string,string][]=[['control-api','control','deployment/control-api-preview'],['ingest','ingest','deployment/ingest-preview'],
+  ['dispatcher','control','deployment/intent-dispatcher'],['execution-worker','crawler','statefulset/execution-worker']];
+for(const [file,namespace,resource] of rollouts){
+  apply(`deploy/m1-preview/${file}.yaml`);
+  kubectl(['-n',namespace,'rollout','status',resource,'--timeout=240s']);step(`${resource} rolled out`);
+}
+const record={revision:build.revision,deployed_at:new Date().toISOString(),control_image:build.control.image,worker_image:build.worker.image,imports,previous,
+  rollback:'kubectl set image to the previous images (still imported on every node); delete intent-dispatcher / execution-worker if previous is null.'};
+writeFileSync(`.runtime/deploy-${build.revision.slice(0,12)}.json`,JSON.stringify(record,null,2)+'\n');
+console.log(JSON.stringify(record,null,2));

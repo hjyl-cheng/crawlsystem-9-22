@@ -47,7 +47,7 @@ npm run console:accounts -- import accounts.json                              # 
 
 ## 当前预览部署与验证
 
-**2026-09-23 起预览 API 运行在集群 `control` 命名空间**（[`deploy/preview.yaml`](deploy/preview.yaml)，2 副本），通过 Service 网络直连 `crawler-pg-pool.db.svc.cluster.local`，不再经过 `kubectl port-forward`。原因：port-forward 所有连接共用一条 API Server→kubelet 通道，单个连接被重置就会整体退出，重连期间请求全部 503。
+**2026-09-23 起预览 API 运行在集群 `control` 命名空间**（[`deploy/m1-preview/control-api.yaml`](../../deploy/m1-preview/control-api.yaml)，2 副本），通过 Service 网络直连 `crawler-pg-pool.db.svc.cluster.local`，不再经过 `kubectl port-forward`。原因：port-forward 所有连接共用一条 API Server→kubelet 通道，单个连接被重置就会整体退出，重连期间请求全部 503。
 
 - 镜像：`npx esbuild apps/control-api/src/main.ts --bundle --platform=node --format=esm` 打成单文件，用 `crane append` 叠加到按 digest 锁定的 `node:22.22.1-alpine`，导入 6 台节点的 containerd（暂无镜像仓库，`imagePullPolicy: Never`）。产物位于忽略目录 `.runtime/control-api-image/`。
 - 双副本账号池各 1 个连接；滚动更新不增加临时副本，避免越过账号角色连接预算。重新部署主线镜像后这些配置和共享限流才会生效。
@@ -69,7 +69,7 @@ node --import tsx --test apps/control-api/test/console-auth.test.ts
 
 ## 主线构建与运行验收
 
-`node --import tsx scripts/dev/build-control-image.ts` 从干净提交构建，固定 Node 镜像 digest、esbuild 版本并记录 bundle SHA-256。生成物写入本 worktree 的 `.runtime/control-api-image-<revision>/`；每台可调度节点须预先导入镜像，再按具体镜像名应用清单。`/healthz.build_version` 必须与该源码提交一致。没有镜像仓库时不可仅修改镜像 tag 而跳过各节点导入。
+`npm run check:safe -- images`（`scripts/dev/build-images.ts`）从干净提交构建 Control 与 Worker 两个镜像，固定 Node 镜像 digest、esbuild 版本并记录内容 SHA-256；`node --import tsx scripts/dev/deploy-preview.ts` 把镜像导入六个节点后按具体镜像名应用 `deploy/m1-preview/` 清单。`/healthz.build_version` 必须与该源码提交一致。没有镜像仓库时不可仅修改镜像 tag 而跳过各节点导入。
 
 `/readyz` 在配置数据库账号时同时检查事实池、账号表和共享预算表。`verify-preview-replicas.ts capture` 使用 `CONSOLE_VERIFY_CREDENTIALS_FILE` 的现有测试账号，Cookie 仅存入私有 .runtime；滚动后运行 `EXPECTED_BUILD=<revision> node --import tsx scripts/dev/verify-preview-replicas.ts` 验证两个 Pod 的版本、同一 Cookie、共享限流、退出撤销、只读权限及统计 schema。限流探针使用随机不存在账号，不占用真实用户的用户名预算。
 

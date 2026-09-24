@@ -1,0 +1,90 @@
+# Temporal execution Worker. A StatefulSet gives stable Pod names, which are the
+# Worker identities shown in the console. The Pod has no PG credentials and no
+# signing key: it exchanges a kubelet-rotated, audience-bound ServiceAccount
+# token at Control for a 15-minute API token (subject = Pod name).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: execution-worker
+  namespace: crawler
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: execution-worker
+  namespace: crawler
+spec:
+  clusterIP: None
+  selector: { app.kubernetes.io/name: execution-worker }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: execution-worker
+  namespace: crawler
+  labels: { app.kubernetes.io/name: execution-worker }
+spec:
+  serviceName: execution-worker
+  replicas: 1
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: { app.kubernetes.io/name: execution-worker }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: execution-worker }
+    spec:
+      serviceAccountName: execution-worker
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # Worker drain (WORKER_DRAIN_MS) + SDK force window.
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: worker
+          image: docker.io/crawlsystem/execution-worker:IMAGE_TAG
+          imagePullPolicy: Never
+          command: ["node", "/app/worker/src/main.mjs"]
+          env:
+            - name: WORKER_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: SERVER_ID
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - { name: BUILD_VERSION, value: "BUILD_REVISION" }
+            - { name: NODE_OPTIONS, value: "--max-old-space-size=256" }
+            - { name: WORKER_CAPACITY, value: "2" }
+            - { name: CONTROL_API_URL, value: "http://control-api-preview.control.svc.cluster.local:18100" }
+            - { name: INGEST_API_URL, value: "http://ingest-preview.ingest.svc.cluster.local:18101" }
+            - { name: WORKLOAD_IDENTITY_TOKEN_FILE, value: /var/run/secrets/crawlsystem/control-token }
+            - { name: TEMPORAL_ADDRESS, value: "temporal-frontend.temporal.svc.cluster.local:7233" }
+            - { name: TEMPORAL_NAMESPACE, value: crawlsystem-m1-main }
+            - { name: TEMPORAL_TASK_QUEUE, value: crawlsystem-m1-main }
+            - { name: TEMPORAL_TLS_SERVER_NAME, value: temporal-frontend.temporal.svc.cluster.local }
+            - { name: TEMPORAL_TLS_CA_FILE, value: /temporal/ca.crt }
+            - { name: TEMPORAL_TLS_CERT_FILE, value: /temporal/tls.crt }
+            - { name: TEMPORAL_TLS_KEY_FILE, value: /temporal/tls.key }
+          volumeMounts:
+            - { name: control-token, mountPath: /var/run/secrets/crawlsystem, readOnly: true }
+            - { name: temporal, mountPath: /temporal, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      volumes:
+        - name: control-token
+          projected:
+            sources:
+              - serviceAccountToken: { audience: crawlsystem-control, expirationSeconds: 3600, path: control-token }
+        - name: temporal
+          secret: { secretName: temporal-client-worker, defaultMode: 0440 }
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }

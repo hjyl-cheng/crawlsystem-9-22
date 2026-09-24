@@ -21,6 +21,7 @@ case "${1:-}" in
   typecheck) heap_mib=640; command=(node node_modules/typescript/bin/tsc --noEmit) ;;
   unit) command=(node --import tsx --test --test-concurrency=1 packages/contracts/test/*.test.ts packages/http/test/*.test.ts apps/control-api/test/*.test.ts apps/console/tests/*.test.ts packages/execution-client/test/*.test.ts apps/execution-worker/test/*.test.ts) ;;
   execution-build) command=(npm run build:execution) ;;
+  images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts) ;;
   execution-temporal) command=(npm run test:temporal) ;;
   execution-live) command=(node --env-file=.runtime/main-joint.env --import tsx apps/execution-worker/scripts/live-with-dependencies.ts) ;;
   execution-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-execution-console.ts) ;;
@@ -29,7 +30,7 @@ case "${1:-}" in
   integration)
     command=(node "--env-file=${M1_CHECK_ENV_FILE:-.runtime/main.env}" --import tsx --test --test-concurrency=1 tests/integration/*.test.ts)
     ;;
-  *) echo 'Usage: bash scripts/dev/check-safe.sh lockfile|install|typecheck|unit|build-console|browser|integration|execution-build|execution-temporal|execution-live|execution-browser' >&2; exit 64 ;;
+  *) echo 'Usage: bash scripts/dev/check-safe.sh lockfile|install|typecheck|unit|build-console|browser|integration|execution-build|images|execution-temporal|execution-live|execution-browser' >&2; exit 64 ;;
 esac
 
 unit="crawlsystem-main-check-$$"

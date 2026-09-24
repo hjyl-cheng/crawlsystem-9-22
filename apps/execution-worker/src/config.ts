@@ -12,10 +12,14 @@ export function workerConfig(env: NodeJS.ProcessEnv = process.env) {
     return value;
   };
   const buildVersion = required('BUILD_VERSION');
+  // Exactly one credential source: a pre-issued API token (development) or the
+  // projected ServiceAccount token exchanged at Control (cluster).
+  const tokenFile = env.WORKER_TOKEN_FILE || undefined, identityTokenFile = env.WORKLOAD_IDENTITY_TOKEN_FILE || undefined;
+  if (!tokenFile === !identityTokenFile) throw new Error('Set exactly one of WORKER_TOKEN_FILE or WORKLOAD_IDENTITY_TOKEN_FILE');
   if (buildVersion.length > 120) throw new Error('BUILD_VERSION must be at most 120 characters');
   return {
     temporal: temporalOptions(env), controlUrl: validateApiUrl(required('CONTROL_API_URL')), ingestUrl: validateApiUrl(required('INGEST_API_URL')),
-    tokenFile: required('WORKER_TOKEN_FILE'), workerId: IdSchema.parse(required('WORKER_ID')), serverId: IdSchema.parse(required('SERVER_ID')),
+    tokenFile, identityTokenFile, workerId: IdSchema.parse(required('WORKER_ID')), serverId: IdSchema.parse(required('SERVER_ID')),
     buildVersion, capacity: integer('WORKER_CAPACITY', 2, 1, 20), heartbeatMs: integer('WORKER_HEARTBEAT_MS', 20_000, 1000, 30_000),
     httpTimeoutMs: integer('WORKER_HTTP_TIMEOUT_MS', 5000, 100, 10_000), drainMs: integer('WORKER_DRAIN_MS', 15_000, 1000, 60_000),
   };

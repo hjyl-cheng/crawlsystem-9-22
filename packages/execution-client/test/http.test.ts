@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixtureSubmission } from '@crawlsystem/contracts/hash';
-import { ExecutionApi, ExecutionApiError } from '../src/http.ts';
+import { ExecutionApi, ExecutionApiError, workloadTokenSource } from '../src/http.ts';
 import { fixtureApi, fixtureContext } from '../../../apps/execution-worker/test/support.ts';
 
 function setup() {
@@ -46,4 +46,35 @@ test('invalid or oversized response is rejected and native diagnostics are redac
   }
   const api = new ExecutionApi({ controlUrl: 'http://localhost:1', ingestUrl: 'http://localhost:2', token: async () => 'secret', fetch: async () => { throw new Error('Bearer secret'); } });
   await assert.rejects(api.input('id', { attempts: 1 }), (e: unknown) => e instanceof Error && !e.message.includes('secret') && !e.cause);
+});
+
+function tokenServer(subject = 'worker-0', expires_in = 600) {
+  const calls: string[] = [];
+  let fail = false;
+  const fetcher = (async (url: URL, init: RequestInit) => {
+    calls.push(`${url.pathname} ${(init.headers as Record<string, string>).authorization}`);
+    if (fail) throw new Error('connect ECONNREFUSED');
+    return Response.json({ token: `api-token-${calls.length}-padding-padding`, subject, workspace_id: 'w', role: 'worker', server_id: 'a2', expires_in });
+  }) as typeof fetch;
+  return { calls, fetcher, fail: () => { fail = true; } };
+}
+test('workload token is exchanged once, shared, and renewed at half-life', async () => {
+  let now = 0; const server = tokenServer();
+  const token = workloadTokenSource({ controlUrl: 'http://control.control.svc.cluster.local:18100', workerId: 'worker-0', identityToken: async () => 'sa-token\n', fetch: server.fetcher, now: () => now });
+  const [a, b] = await Promise.all([token(), token()]);
+  assert.equal(a, b); assert.deepEqual(server.calls, ['/v1/workload/token Bearer sa-token']);
+  now = 299_000; assert.equal(await token(), a); assert.equal(server.calls.length, 1);
+  now = 300_000; assert.notEqual(await token(), a); assert.equal(server.calls.length, 2);
+});
+test('a Control outage keeps a still-valid token, then fails once it expires', async () => {
+  let now = 0; const server = tokenServer();
+  const token = workloadTokenSource({ controlUrl: 'http://localhost:1', workerId: 'worker-0', identityToken: async () => 'sa', fetch: server.fetcher, now: () => now });
+  const first = await token(); server.fail();
+  now = 400_000; assert.equal(await token(), first);
+  now = 600_000; await assert.rejects(token(), (e: unknown) => e instanceof ExecutionApiError && e.code === 'UNAVAILABLE' && e.retryable);
+});
+test('a token for another Pod identity is refused', async () => {
+  const server = tokenServer('worker-1');
+  const token = workloadTokenSource({ controlUrl: 'http://localhost:1', workerId: 'worker-0', identityToken: async () => 'sa', fetch: server.fetcher });
+  await assert.rejects(token(), (e: unknown) => e instanceof ExecutionApiError && e.code === 'FORBIDDEN');
 });

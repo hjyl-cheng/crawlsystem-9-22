@@ -1,18 +1,23 @@
+import { writeFileSync } from 'node:fs';
 import { setTimeout } from 'node:timers/promises';
 import { Store } from '@crawlsystem/store';
 import { createPool } from '@crawlsystem/store/config';
-import { type WorkflowStarter } from '@crawlsystem/contracts';
+import { createWorkflowStarter } from '@crawlsystem/execution-client';
+import { watchTlsFiles } from '@crawlsystem/execution-client/config';
 import { IntentDispatcher } from './dispatcher.ts';
 import { temporalOptions } from './temporal-config.ts';
 function required(name:string):string {const value=process.env[name];if(!value)throw new Error(`${name} is required`);return value;}
-// Execution Agent owns this module. A missing adapter is a startup error, never a mock workflow.
-const moduleName='@crawlsystem/execution-client';
-const adapter=await import(moduleName);
-const starter:WorkflowStarter & {close():Promise<void>}=await adapter.createWorkflowStarter(temporalOptions());
+// The real Temporal adapter is linked statically; there is no mock workflow fallback.
+const starter=await createWorkflowStarter(temporalOptions());
 const pool=createPool(),dispatcher=new IntentDispatcher(new Store(pool),starter,required('M1_WORKSPACE_ID'));
 let stopping=false;process.once('SIGINT',()=>{stopping=true;});process.once('SIGTERM',()=>{stopping=true;});
+// Renewed mTLS files: exit cleanly (intents are leased) and let Kubernetes restart us.
+watchTlsFiles(process.env,()=>{process.stderr.write('Temporal client certificate changed; restarting\n');stopping=true;});
+// Liveness: a hung loop stops touching this file and the probe restarts the Pod.
+const alive=process.env.DISPATCHER_ALIVE_FILE;
 try {
   while(!stopping) {
+    if(alive)writeFileSync(alive,String(Date.now()));
     try {const worked=await dispatcher.tick();if(!worked)await setTimeout(1000);}
     catch {process.stderr.write('Dispatcher dependency unavailable; durable intents retained\n');await setTimeout(3000);}
   }
