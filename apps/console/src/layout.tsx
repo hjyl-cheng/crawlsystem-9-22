@@ -8,9 +8,9 @@ import { roleLabels } from './presentation.js';
 function Pending({ children }: { children: ReactNode }) {
   return <span className="nav-pending" aria-disabled="true" title="此功能尚未接入">{children}<small>待接入</small></span>;
 }
-/** Only the group holding the current page starts expanded, keeping the sidebar short. */
-function NavGroup({ icon, label, active = false, children }: { icon: ReactNode; label: string; active?: boolean; children: ReactNode }) {
-  return <details className="nav-group" open={active}><summary>{icon}<span>{label}</span><ChevronDown size={12}/></summary><div className="nav-children">{children}</div></details>;
+/** Groups start expanded. The prop never changes, so React leaves a group the user collapsed alone. */
+function NavGroup({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+  return <details className="nav-group" open><summary>{icon}<span>{label}</span><ChevronDown size={12}/></summary><div className="nav-children">{children}</div></details>;
 }
 export function Layout() {
   const { session, logout } = useAuth();
@@ -19,7 +19,6 @@ export function Layout() {
   const [searchError, setSearchError] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const under = (...prefixes: string[]) => prefixes.some(prefix => location.pathname.startsWith(prefix));
   function lookup(event: FormEvent) {
     event.preventDefault();
     if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(search.trim())) { setSearchError(true); return; }
@@ -33,7 +32,7 @@ export function Layout() {
       <button className="mobile-only sidebar-close icon-button" aria-label="关闭导航" onClick={() => setMenuOpen(false)}><X size={18}/></button>
       <nav aria-label="主导航" onClick={event => { if ((event.target as HTMLElement).closest('a')) setMenuOpen(false); }}>
         <NavLink className="nav-primary" to="/" end aria-label="采集总览"><House size={16}/><span>首页</span></NavLink>
-        <NavGroup icon={<BriefcaseBusiness size={16}/>} label="任务管理" active={under('/plans', '/discover', '/update', '/agent', '/data-api', '/delivery')}>
+        <NavGroup icon={<BriefcaseBusiness size={16}/>} label="任务管理">
           <NavLink to="/discover/queries">Query 发现</NavLink><NavLink to="/discover/candidates">候选频道</NavLink>
           <NavLink to="/plans">全量采集</NavLink>
           <NavLink to="/update">更新采集</NavLink><NavLink to="/agent">Agent 任务</NavLink><NavLink to="/data-api">数据 API</NavLink><NavLink to="/delivery">发布交付</NavLink>
@@ -42,7 +41,7 @@ export function Layout() {
         <NavLink className="nav-primary" to="/proxies"><Network size={16}/><span>IP 资源管理</span></NavLink>
         <NavLink className="nav-primary" to="/workers"><Server size={16}/><span>Worker 管理</span></NavLink>
         <NavGroup icon={<FileChartColumn size={16}/>} label="数据与分析"><Pending>采集统计</Pending><Pending>质量分析</Pending><Link to="/#trends">趋势分析</Link></NavGroup>
-        <NavGroup icon={<Settings size={16}/>} label="系统管理" active={under('/errors')}><Pending>用户管理</Pending><Pending>配置管理</Pending><NavLink to="/errors" aria-label="错误与追踪">错误与日志</NavLink></NavGroup>
+        <NavGroup icon={<Settings size={16}/>} label="系统管理"><Pending>用户管理</Pending><Pending>配置管理</Pending><NavLink to="/errors" aria-label="错误与追踪">错误与日志</NavLink></NavGroup>
       </nav>
       <div className="sidebar-version">M1 · 固定样本联调 <span title="灰色菜单表示尚未接入的功能"><CircleHelp size={12}/></span></div>
     </aside>
