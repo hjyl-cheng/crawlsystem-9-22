@@ -2,17 +2,20 @@ import Fastify, { LogController, type FastifyInstance, type FastifyRequest } fro
 import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { z, ZodError } from 'zod';
-import { MAX_BODY_BYTES, PlanStatusSchema, type Principal } from '@crawlsystem/contracts';
+import { MAX_BODY_BYTES, PlanStatusSchema, SourceModeSchema, type Principal, type SourceMode } from '@crawlsystem/contracts';
 import { Store, StoreError } from '@crawlsystem/store';
 import { authenticate } from './auth.ts';
 import { RequestTracing } from './tracing.ts';
 
 declare module 'fastify' { interface FastifyRequest { principal:Principal; traceparent?:string; } }
 export interface ServerOptions { store:Store; signingKey:Uint8Array; logger?:boolean; allowedOrigin?:string; maxInFlight?:number; metricsWorkspace?:string; tracing?:RequestTracing; readiness?:()=>Promise<void>; authenticateRequest?:(request:FastifyRequest)=>Promise<Principal|undefined>; }
-export function pagination(query:unknown): {limit:number;offset:number;status?:string} {
-  const q=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(20),cursor:z.string().regex(/^\d{1,6}$/).default('0'),status:PlanStatusSchema.optional()}).parse(query);
+// Business views count real channels only; fixture (test sample) plans are listed on explicit request.
+const SourceQuery={source_mode:SourceModeSchema.default('youtube')};
+export function sourceMode(query:unknown):SourceMode {return z.strictObject(SourceQuery).parse(query ?? {}).source_mode;}
+export function pagination(query:unknown): {limit:number;offset:number;status?:string;sourceMode:SourceMode} {
+  const q=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(20),cursor:z.string().regex(/^\d{1,6}$/).default('0'),status:PlanStatusSchema.optional(),...SourceQuery}).parse(query);
   const offset=Number(q.cursor);if(offset>100000) throw new StoreError('INVALID_REQUEST','Cursor exceeds maximum',400);
-  return {limit:q.limit,offset,status:q.status};
+  return {limit:q.limit,offset,status:q.status,sourceMode:q.source_mode};
 }
 export function planId(request:FastifyRequest):string {return z.object({id:z.uuid()}).parse(request.params).id;}
 export function createServer(service:'control'|'ingest',options:ServerOptions):FastifyInstance {

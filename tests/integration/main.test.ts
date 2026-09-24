@@ -161,8 +161,9 @@ test('all console query endpoints return actual persisted objects with the publi
   const event={event_id:randomUUID(),execution_epoch:1,worker_id:'worker',phase:'fixture',kind:'ERROR',domain:null,message:'Sample diagnostic',error_code:'UNAVAILABLE'};
   assert.equal((await control.inject({method:'POST',url:`/v1/plans/${t.plan.plan_id}/events`,headers:w,payload:event})).statusCode,200);
   const heartbeat=await control.inject({method:'POST',url:'/v1/workers/heartbeat',headers:w,payload:{worker_id:'worker',server_id:'a1-test',build_version:'test',accepting_work:true,capacity:1,running_plan_ids:[t.plan.plan_id]}});WorkerSchema.parse(heartbeat.json());
-  for(const path of ['plans','channels','workers','errors']) {
-    const r=await control.inject({url:`/v1/${path}?limit=1`,headers:h});assert.equal(r.statusCode,200);assert.equal(r.json().items.length,1);
+  // Fixture plans appear in business lists only on request (source_mode=fixture).
+  for(const path of ['plans?source_mode=fixture&','channels?source_mode=fixture&','workers?','errors?source_mode=fixture&']) {
+    const r=await control.inject({url:`/v1/${path}limit=1`,headers:h});assert.equal(r.statusCode,200);assert.equal(r.json().items.length,1);
   }
   const channel=await control.inject({url:`/v1/channels/${encodeURIComponent(t.plan.channel_id)}`,headers:h});ChannelDetailSchema.parse(channel.json());
   await pool.query("UPDATE m1.workers SET last_heartbeat_at=clock_timestamp()-interval '91 seconds' WHERE workspace_id=$1",[t.worker.workspace_id]);
@@ -186,7 +187,7 @@ test('diagnostic failure closes only active plans; deadlines are durable and swe
   const expired=await setup();await pool.query("UPDATE m1.plans SET deadline_at=clock_timestamp()-interval '1 second' WHERE plan_id=$1",[expired.plan.plan_id]);
   assert.equal(await store.expirePlans(20,expired.worker.workspace_id),1);assert.equal(await store.expirePlans(20,expired.worker.workspace_id),0);
   assert.equal((await store.getInput(expired.worker,expired.plan.plan_id)).plan.status,'FAILED');
-  assert.equal((await store.listErrors(expired.reader)).items[0]?.error_code,'BUDGET_EXHAUSTED');
+  assert.equal((await store.listErrors(expired.reader,20,0,'fixture')).items[0]?.error_code,'BUDGET_EXHAUSTED');
 });
 test('durable start survives dispatcher restart and lost acknowledgement using stable identity',async()=>{
   const t=await setup();const started=new Map<string,string>();let calls=0;

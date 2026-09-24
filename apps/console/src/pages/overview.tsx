@@ -21,7 +21,7 @@ function PipelinePanel({ detail, resource, completeness, loading = false }: { de
   return <>
     <div className="chain-heading"><div><h2>采集链路实时状态</h2>{detail ? <><span className="chain-scope">最近 Plan</span><PlanBadge status={detail.plan.status}/></> : <Badge>{loading ? '正在查询…' : '等待计划数据'}</Badge>}</div><div className="chain-actions">{resource && <Refresh resource={resource}/>}<More to={detail ? planPath(detail.plan.plan_id) : '/plans'}>查看链路详情</More></div></div>
     <Pipeline detail={detail} completeness={completeness}/>
-    <div className="chain-foot"><span><i/>实线为样本已接入路径，虚线为待接入环节</span><span className="mobile-chain-hint">左右滑动查看完整链路 →</span>{detail ? <Link to={planPath(detail.plan.plan_id)}>最近 Plan：{shortId(detail.plan.plan_id)} · 固定样本</Link> : <span>{loading ? '正在查询最近计划…' : '还没有样本计划，创建后可查看领域结果与回执'}</span>}</div>
+    <div className="chain-foot"><span><i/>实线为已接入路径，虚线为待接入环节</span><span className="mobile-chain-hint">左右滑动查看完整链路 →</span>{detail ? <Link to={planPath(detail.plan.plan_id)}>最近 Plan：{shortId(detail.plan.plan_id)} · 真实频道</Link> : <span>{loading ? '正在查询最近计划…' : '还没有真实频道计划，创建后可查看领域结果与回执'}</span>}</div>
   </>;
 }
 function LatestPipeline({ id, completeness }: { id: string; completeness: Resource<Completeness> }) {
@@ -91,9 +91,9 @@ export default function Overview() {
       <div id="trends"><Trends/></div>
       <div className="stacked-panels">
         <CapacityRisk/>
-        <Panel title="最近采集的频道" extra={<More to="/channels"/>} className="recent-panel"><ResourceView resource={channels} showMeta={false}>{page => page.items.length ? <div className="table-scroll"><table><thead><tr><th>频道名称</th><th>最近计划</th><th>更新时间</th></tr></thead><tbody>{page.items.map(channel => <tr key={channel.channel_id}><td><Link className="truncate" to={channelPath(channel.channel_id)} title={channel.channel_id}>{channel.title ?? '基础资料待入库'}</Link> <span className="fixture-tag">样本</span></td><td>{planFor(channel.latest_plan_id) ? <PlanBadge status={planFor(channel.latest_plan_id)!.status}/> : <span className="text-muted">待查询</span>}</td><td>{compactTime(channel.updated_at)}</td></tr>)}</tbody></table></div> : <Empty title="尚无频道记录"/>}</ResourceView></Panel>
+        <Panel title="最近采集的频道" extra={<More to="/channels"/>} className="recent-panel"><ResourceView resource={channels} showMeta={false}>{page => page.items.length ? <div className="table-scroll"><table><thead><tr><th>频道名称</th><th>最近计划</th><th>更新时间</th></tr></thead><tbody>{page.items.map(channel => <tr key={channel.channel_id}><td><Link className="truncate" to={channelPath(channel.channel_id)} title={channel.channel_id}>{channel.title ?? '基础资料待入库'}</Link>{channel.source_mode === 'fixture' && <> <span className="fixture-tag">样本</span></>}</td><td>{planFor(channel.latest_plan_id) ? <PlanBadge status={planFor(channel.latest_plan_id)!.status}/> : <span className="text-muted">待查询</span>}</td><td>{compactTime(channel.updated_at)}</td></tr>)}</tbody></table></div> : <Empty title="尚无频道记录"/>}</ResourceView></Panel>
       </div>
     </div>
-    <footer className="dashboard-foot"><span><CircleHelp size={12}/>固定样本联调 · 列表最多查询 5 条，非系统总量；完整性为后端全量统计；“—”表示尚未接入</span><span>来源：持久业务记录 · 时间以浏览器时区显示</span></footer>
+    <footer className="dashboard-foot"><span><CircleHelp size={12}/>统计只含真实频道，固定样本测试计划不计入 · 列表最多查询 5 条，非系统总量；完整性为后端全量统计；“—”表示尚未接入</span><span>来源：持久业务记录 · 时间以浏览器时区显示</span></footer>
   </div>;
 }

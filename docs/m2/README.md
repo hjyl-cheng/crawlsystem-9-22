@@ -28,6 +28,8 @@
 
 **状态。** 真实计划在全部必需领域完成前为 RUNNING；WAITING 只用于固定样本中 Agent 未接入的情况。缺字段按 `exact / estimated / empty / unavailable / unresolved / disabled` 表达，不填零冒充成功。
 
+**统计口径。** 计划统计、频道完整性、频道列表、错误列表和计划列表只含真实频道计划（`source_mode=youtube`）；固定样本计划只用于联调与故障测试，接口带 `source_mode=fixture` 才返回，控制台计划列表可切换查看，不计入任何业务数字。
+
 **Workflow。** 统一为 `channelPlanWorkflow`，按冻结输入的 `source_mode` 选择固定样本或真实采集路径；业务身份（plan_id、代次、input_hash、workflow_id）不变。
 
 ## 第 5 步：Agent 决定

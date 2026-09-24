@@ -3,7 +3,7 @@ import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Wor
 import { detailFixture, channelFixture, workerFixture, errorFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
-  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false };
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -30,7 +30,8 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       if (state.detail) { state.detail.plan.status = 'CANCELLED'; state.detail.plan.version++; state.detail.plan.finished_at = '2026-09-23T08:10:00.000Z'; return json(state.detail.plan); }
     }
     if (path === '/v1/plans') {
-      const matches = state.detail && (!url.searchParams.get('status') || url.searchParams.get('status') === state.detail.plan.status);
+      // strictSource: like the backend, real channels unless source_mode=fixture is asked for.
+      const matches = state.detail && (!url.searchParams.get('status') || url.searchParams.get('status') === state.detail.plan.status) && (!state.strictSource || (url.searchParams.get('source_mode') ?? 'youtube') === state.detail.plan.source_mode);
       return json({ items: matches && url.searchParams.get('cursor') !== '20' ? [state.detail!.plan] : [], next_cursor: state.pageTwo && url.searchParams.get('cursor') === '0' ? '20' : null });
     }
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
@@ -293,12 +294,15 @@ test('candidate channels show no figures until the sample preview is switched on
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 test('full collection shows backend plan statistics next to the real plan list', async ({ page }) => {
-  await mock(page, detailFixture({ status: 'WAITING' }, ['ABOUT'])); await login(page, '/plans');
+  const state = await mock(page, detailFixture({ status: 'WAITING' }, ['ABOUT'])); state.strictSource = true; await login(page, '/plans');
   await expect(page.getByRole('heading', { name: '全量采集', exact: true })).toBeVisible();
   await expect(page.locator('.status-cell.amber strong')).toHaveText('1');
   await expect(page.locator('.domain-bars div', { hasText: '频道基础信息' }).locator('b')).toHaveText('100.0%');
   await expect(page.locator('.domain-bars div', { hasText: '视频与评论' }).locator('b')).toHaveText('0.0%');
+  await expect(page.getByText('没有符合条件的计划'), 'the list shows real channels by default').toBeVisible();
+  await page.getByLabel('来源').selectOption('fixture');
   await expect(page.locator('.plans-list tbody tr').first()).toContainText('固定样本');
+  await expect(page.getByText('固定样本测试计划（联调与故障测试用，不计入统计）', { exact: false })).toBeVisible();
   await expect(page.getByLabel('预览示例数据'), 'real plan data offers no design sample').toHaveCount(0);
 });
 test('update collection shows no figures until the sample preview is switched on, and has no Clock menu', async ({ page }) => {

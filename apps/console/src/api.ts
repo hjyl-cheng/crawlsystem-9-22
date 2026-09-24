@@ -3,7 +3,7 @@ import {
   ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,
   ChannelListItemSchema, ChannelDetailSchema, CompletenessSchema, ConsoleAccountListSchema, PlansSummarySchema, WorkerSchema, StoredEventSchema,
   ReceiptSchema, CreatePlanSchema, CancelPlanSchema, LoginSchema, LogoutSchema, pageSchema, ProxyOverviewSchema, ProxyImportSchema, ProxyUpdateSchema, ProxyViewSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySourceViewSchema,
-  type CreatePlan, type ProxyImport, type ProxySourceCreate, type ErrorCode, type PlanStatus, type Login,
+  type CreatePlan, type ProxyImport, type ProxySourceCreate, type ErrorCode, type PlanStatus, type SourceMode, type Login,
 } from '@crawlsystem/contracts';
 
 const messages: Record<ErrorCode, string> = {
@@ -84,7 +84,7 @@ export class ControlApi {
   session = (signal?: AbortSignal) => this.request(ApiRoutes.session, SessionSchema, signal);
   login = (body: Login, signal?: AbortSignal) => this.request(ApiRoutes.login, SessionSchema, signal, LoginSchema.parse(body));
   logout = (signal?: AbortSignal) => this.request(ApiRoutes.logout, LogoutSchema, signal, {});
-  plans = (cursor = '0', status?: PlanStatus, limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.plans}?${new URLSearchParams({ limit: String(limit), cursor, ...(status ? { status } : {}) })}`, pageSchema(PlanSchema), signal);
+  plans = (cursor = '0', status?: PlanStatus, limit = 20, signal?: AbortSignal, sourceMode: SourceMode = 'youtube') => this.request(`${ApiRoutes.plans}?${new URLSearchParams({ limit: String(limit), cursor, source_mode: sourceMode, ...(status ? { status } : {}) })}`, pageSchema(PlanSchema), signal);
   plan = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.plan(id), PlanDetailSchema, signal);
   create = (body: CreatePlan, signal?: AbortSignal) => this.request(ApiRoutes.plans, PlanSchema, signal, CreatePlanSchema.parse(body));
   cancel = (id: string, body: z.infer<typeof CancelPlanSchema>, signal?: AbortSignal) => this.request(ApiRoutes.cancel(id), PlanSchema, signal, CancelPlanSchema.parse(body));

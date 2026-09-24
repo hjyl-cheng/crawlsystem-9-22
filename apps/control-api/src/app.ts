@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ApiRoutes, CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema, LoginSchema } from '@crawlsystem/contracts';
 import { requireRole, StoreError } from '@crawlsystem/store';
-import { createServer, pagination, planId, type ServerOptions } from '@crawlsystem/http';
+import { createServer, pagination, planId, sourceMode, type ServerOptions } from '@crawlsystem/http';
 import { authenticate } from '@crawlsystem/http/auth';
 import type { WorkloadIdentity } from '@crawlsystem/http/workload';
 import type { ProxyStore } from '@crawlsystem/store/proxies';
@@ -50,16 +50,16 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   });
   // The creating request's trace context is stored so dispatch and execution continue that trace.
   app.post('/v1/plans',async request=>store.createPlan(request.principal,CreatePlanSchema.parse(request.body),request.traceparent));
-  app.get('/v1/plans',async request=>{const q=pagination(request.query);return store.listPlans(request.principal,q.limit,q.offset,q.status);});
+  app.get('/v1/plans',async request=>{const q=pagination(request.query);return store.listPlans(request.principal,q.limit,q.offset,q.status,q.sourceMode);});
   app.get('/v1/plans/:id',async request=>store.getPlan(request.principal,planId(request)));
   app.get('/v1/plans/:id/input',async request=>{requireRole(request.principal,'worker');return store.getInput(request.principal,planId(request));});
   app.get('/v1/plans/:id/agent-input',async request=>store.agentInput(request.principal,planId(request)));
   app.post('/v1/plans/:id/cancel',async request=>store.cancel(request.principal,planId(request),CancelPlanSchema.parse(request.body)));
   app.post('/v1/plans/:id/events',async request=>store.event(request.principal,planId(request),ExecutionEventSchema.parse(request.body)));
   app.get('/v1/receipts/:id',async request=>store.getReceipt(request.principal,planId(request)));
-  app.get('/v1/channels',async request=>{const q=pagination(request.query);return store.listChannels(request.principal,q.limit,q.offset);});
-  app.get(ApiRoutes.plansSummary,async request=>store.plansSummary(request.principal));
-  app.get(ApiRoutes.completeness,async request=>store.completeness(request.principal));
+  app.get('/v1/channels',async request=>{const q=pagination(request.query);return store.listChannels(request.principal,q.limit,q.offset,q.sourceMode);});
+  app.get(ApiRoutes.plansSummary,async request=>store.plansSummary(request.principal,sourceMode(request.query)));
+  app.get(ApiRoutes.completeness,async request=>store.completeness(request.principal,sourceMode(request.query)));
   app.get('/v1/channels/:id',async request=>store.getChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id));
   app.post('/v1/workers/heartbeat',async request=>store.heartbeat(request.principal,HeartbeatSchema.parse(request.body)));
   app.get(ApiRoutes.proxies,async request=>proxies().overview(request.principal));
@@ -71,6 +71,6 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.post('/v1/proxy-sources/:id',async request=>proxies().updateSource(request.principal,planId(request),request.body));
   app.post(ApiRoutes.proxySync,{bodyLimit:262144},async request=>proxies().sync(request.principal,request.body));
   app.get('/v1/workers',async request=>{const q=pagination(request.query);return store.listWorkers(request.principal,q.limit,q.offset);});
-  app.get('/v1/errors',async request=>{const q=pagination(request.query);return store.listErrors(request.principal,q.limit,q.offset);});
+  app.get('/v1/errors',async request=>{const q=pagination(request.query);return store.listErrors(request.principal,q.limit,q.offset,q.sourceMode);});
   return app;
 }

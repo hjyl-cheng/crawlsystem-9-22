@@ -106,7 +106,9 @@ export default function Plans() {
   const paging = usePagination();
   const parsed = PlanStatusSchema.safeParse(paging.params.get('status'));
   const status = parsed.success ? parsed.data : undefined;
-  const list = useResource(`plans:${paging.cursor}:${status ?? ''}`, signal => api.plans(paging.cursor, status, 20, signal));
+  // The list shows real channels unless test samples are asked for; statistics always count real channels only.
+  const source = paging.params.get('source') === 'fixture' ? 'fixture' : 'youtube';
+  const list = useResource(`plans:${paging.cursor}:${status ?? ''}:${source}`, signal => api.plans(paging.cursor, status, 20, signal, source));
   const summary = useResource('plans-summary', signal => api.plansSummary(signal), true, SUMMARY_INTERVAL_MS);
   const s = summary.data;
   return <div className="dashboard discover plans-page">
@@ -121,13 +123,14 @@ export default function Plans() {
     <Summary s={s} loading={summary.loading}/>
     <div className="discover-row row-state"><StatusAndDomains s={s} loading={summary.loading}/><RecentErrors/></div>
     <section className="panel plans-list">
-      <div className="panel-heading"><div><h2>计划列表</h2><p>真实频道与固定样本计划 · 每页 20 条</p></div>
+      <div className="panel-heading"><div><h2>计划列表</h2><p>{source === 'youtube' ? '真实频道计划' : '固定样本测试计划（联调与故障测试用，不计入统计）'} · 每页 20 条</p></div>
+        <label className="filter-inline">来源<select value={source} onChange={event => { const params = new URLSearchParams(paging.params); params.set('cursor', '0'); event.target.value === 'fixture' ? params.set('source', 'fixture') : params.delete('source'); paging.setParams(params); }}><option value="youtube">真实频道</option><option value="fixture">固定样本测试</option></select></label>
         <label className="filter-inline">计划状态<select value={status ?? ''} onChange={event => { const params = new URLSearchParams(paging.params); params.set('cursor', '0'); event.target.value ? params.set('status', event.target.value) : params.delete('status'); paging.setParams(params); }}><option value="">全部状态</option>{PlanStatusSchema.options.map(value => <option key={value} value={value}>{planLabels[value]}</option>)}</select></label>
       </div>
       <ResourceView resource={list}>{page => <>{page.items.length ? <div className="table-scroll"><table><thead><tr><th>计划编号</th><th>频道</th><th>来源</th><th>必需领域</th><th>执行状态</th><th>版本 / 代次</th><th>创建时间</th><th>更新时间</th><th/></tr></thead>
         <tbody>{page.items.map(plan => <tr key={plan.plan_id}><td><Link to={planPath(plan.plan_id)} className="mono">{plan.plan_id}</Link></td><td><Link to={channelPath(plan.channel_id)}>{plan.channel_id}</Link></td><td>{plan.source_mode === 'youtube' ? <span className="source-tag">YouTube</span> : <span className="fixture-tag" title="联调用固定样本，不访问 YouTube">固定样本</span>}</td><td><DomainChips domains={plan.required_domains.map(domain => ({ domain }))}/></td><td><PlanBadge status={plan.status}/></td><td>v{plan.version} / {plan.execution_epoch}</td><td>{time(plan.created_at)}</td><td>{time(plan.updated_at)}</td><td><Link to={planPath(plan.plan_id)}>查看详情 →</Link></td></tr>)}</tbody></table></div>
         : <Empty title="没有符合条件的计划">可以调整状态筛选，或创建一轮计划。</Empty>}<Pagination cursor={paging.cursor} next={page.next_cursor} count={page.items.length} go={paging.go}/></>}</ResourceView>
     </section>
-    <footer className="dashboard-foot"><span>统计为当前工作空间全部计划；“近 24 小时”按服务器时间滚动计算。</span><span>{s ? `统计时间 ${clock(s.observed_at)}` : ''}</span></footer>
+    <footer className="dashboard-foot"><span>统计只含真实频道计划，固定样本测试计划不计入；“近 24 小时”按服务器时间滚动计算。</span><span>{s ? `统计时间 ${clock(s.observed_at)}` : ''}</span></footer>
   </div>;
 }
