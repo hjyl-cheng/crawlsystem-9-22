@@ -1,13 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
-import { ArrowRight, Box, CircleAlert, ListChecks, CircleCheck, CircleDot, CirclePlay, CircleX, Clock3, FileText, FolderOpen, Hourglass, Plus, TriangleAlert, Video, Bot } from 'lucide-react';
+import { ArrowRight, Box, CircleAlert, ListChecks, CircleCheck, CircleDot, CirclePlay, CircleX, Clock3, FileText, FolderOpen, Hourglass, Plus, Video, Bot } from 'lucide-react';
 import { PlanStatusSchema, type PlanStatus, type PlansSummary } from '@crawlsystem/contracts';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
 import { Empty, Pagination, PlanBadge, ResourceView, usePagination } from '../ui.js';
 import { channelPath, domainLabels, errorCodeLabels, planLabels, planPath, time } from '../presentation.js';
 import Donut from '../components/donut.js';
-import type { PlansSampleRow } from './plans-sample.js';
 import './overview.css';
 import './discover.css';
 import './plans.css';
@@ -32,7 +31,9 @@ function Card({ title, subtitle, extra, className = '', children }: { title: str
 }
 const More = ({ to, children = '查看全部' }: { to: string; children?: string }) => <Link className="dashboard-more" to={to}>{children}<ArrowRight size={12}/></Link>;
 
-function Summary({ s, loading, approved }: { s?: PlansSummary; loading: boolean; approved?: number }) {
+function Summary({ s, loading }: { s?: PlansSummary; loading: boolean }) {
+  // Candidate admission is not connected yet; the funnel starts from created plans until it is.
+  const approved: number | undefined = undefined;
   const v = (n?: number) => s && n !== undefined ? fmt(n) : loading ? '…' : '—';
   const domain = (key: 'ABOUT' | 'VIDEO' | 'AGENT') => s?.domains.find(d => d.domain === key);
   const kpis: { label: string; tone: string; icon: ReactNode; value?: number; foot: ReactNode }[] = [
@@ -85,22 +86,17 @@ function StatusAndDomains({ s, loading }: { s?: PlansSummary; loading: boolean }
   </>;
 }
 
-function RecentErrors({ sample }: { sample?: typeof import('./plans-sample.js')['plansErrorsSample'] }) {
+function RecentErrors() {
   const { api } = useAuth();
   const errors = useResource('plans-errors', signal => api.errors('0', 5, signal), true, SUMMARY_INTERVAL_MS);
   const table = (rows: { key: string; at: string; phase: string; kind: ReactNode; link: ReactNode }[]) => <div className="table-scroll"><table><thead><tr><th>时间</th><th>阶段</th><th>错误</th><th>关联</th></tr></thead>
     <tbody>{rows.map(r => <tr key={r.key}><td>{r.at}</td><td><span className="truncate">{r.phase}</span></td><td>{r.kind}</td><td>{r.link}</td></tr>)}</tbody></table></div>;
   return <Card title="最近错误" extra={<More to="/errors"/>}>
-    {sample ? table(sample.map(e => ({ key: e.at + e.plan, at: e.at, phase: e.phase, kind: <span className="error-event-tag">{e.message}</span>, link: <span className="text-muted">{e.plan}</span> })))
-      : errors.data ? (errors.data.items.length ? table(errors.data.items.map(e => ({ key: e.event_id, at: clock(e.created_at), phase: e.phase, kind: <span className="error-event-tag" title={e.message}>{e.error_code ? errorCodeLabels[e.error_code] : e.kind === 'FAILED' ? '执行失败' : '执行错误'}</span>, link: <Link to={`/errors?event=${encodeURIComponent(e.event_id)}`}>查看</Link> }))) : <Empty title="暂无错误事件"/>)
+    {errors.data ? (errors.data.items.length ? table(errors.data.items.map(e => ({ key: e.event_id, at: clock(e.created_at), phase: e.phase, kind: <span className="error-event-tag" title={e.message}>{e.error_code ? errorCodeLabels[e.error_code] : e.kind === 'FAILED' ? '执行失败' : '执行错误'}</span>, link: <Link to={`/errors?event=${encodeURIComponent(e.event_id)}`}>查看</Link> }))) : <Empty title="暂无错误事件"/>)
       : <Empty title={errors.error ? '错误事件查询失败' : '正在查询…'}/>}
   </Card>;
 }
 
-function SampleList({ rows }: { rows: PlansSampleRow[] }) {
-  return <div className="table-scroll"><table><thead><tr><th>计划编号</th><th>频道</th><th>来源</th><th>必需领域</th><th>执行状态</th><th>等待原因</th><th>创建时间</th><th>更新时间</th></tr></thead>
-    <tbody>{rows.map(r => <tr key={r.id}><td className="mono">{r.id}</td><td>{r.channel}</td><td><span className="source-tag">候选频道</span></td><td><DomainChips domains={r.domains}/></td><td><PlanBadge status={r.status}/></td><td className={r.waiting ? 'text-amber' : 'text-muted'}>{r.waiting ?? '—'}</td><td>{r.created}</td><td>{r.updated}</td></tr>)}</tbody></table></div>;
-}
 function DomainChips({ domains }: { domains: { domain: 'ABOUT' | 'VIDEO' | 'AGENT'; applied?: boolean }[] }) {
   return <span className="domain-chips">{domains.map(d => <span key={d.domain} className={d.applied === undefined ? '' : d.applied ? 'done' : 'todo'} title={`${domainLabels[d.domain]}${d.applied === undefined ? '' : d.applied ? '：已入库' : '：未入库'}`}>{shortDomain[d.domain]}</span>)}</span>;
 }
@@ -112,36 +108,25 @@ export default function Plans() {
   const status = parsed.success ? parsed.data : undefined;
   const list = useResource(`plans:${paging.cursor}:${status ?? ''}`, signal => api.plans(paging.cursor, status, 20, signal));
   const summary = useResource('plans-summary', signal => api.plansSummary(signal), true, SUMMARY_INTERVAL_MS);
-  const [sampleOn, setSampleOn] = useState(false);
-  const [sample, setSample] = useState<typeof import('./plans-sample.js')>();
-  // The sample module loads only when asked for, so it never ships with the default view.
-  useEffect(() => {
-    if (!sampleOn) { setSample(undefined); return; }
-    let live = true;
-    void import('./plans-sample.js').then(module => { if (live) setSample(module); });
-    return () => { live = false; };
-  }, [sampleOn]);
-  const s = sample ? sample.plansSummarySample : summary.data;
+  const s = summary.data;
   return <div className="dashboard discover plans-page">
     <header className="dashboard-heading">
       <div><h1>全量采集</h1><p>候选频道审核通过后的首次全量采集：计划、执行、等待与完成</p>
-        {sample ? <span className="data-freshness failing"><i/>示例数据</span> : summary.updatedAt ? <span className={`data-freshness ${summary.error ? 'failing' : ''}`}><i/>{summary.error ? '统计查询失败' : '数据已同步'} · {new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(summary.updatedAt)}</span> : null}
+        {summary.updatedAt ? <span className={`data-freshness ${summary.error ? 'failing' : ''}`}><i/>{summary.error ? '统计查询失败' : '数据已同步'} · {new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(summary.updatedAt)}</span> : null}
       </div>
       <div className="dashboard-period">
-        <label className="sample-switch" htmlFor="plans-sample"><input id="plans-sample" type="checkbox" checked={sampleOn} onChange={event => setSampleOn(event.target.checked)}/>预览示例数据</label>
         {session.role === 'operator' && <Link className="button small primary" to="/plans/new"><Plus size={14}/>创建计划</Link>}
       </div>
     </header>
-    {sample && <div className="sample-banner" role="note"><TriangleAlert size={14}/>以下为设计示例数据（频道均为虚构），用于预览生产规模下的页面效果，不是真实统计。关闭开关即显示真实计划数据。</div>}
-    <Summary s={s} loading={!sample && summary.loading} approved={sample?.approvedCandidatesSample}/>
-    <div className="discover-row row-state"><StatusAndDomains s={s} loading={!sample && summary.loading}/><RecentErrors sample={sample?.plansErrorsSample}/></div>
+    <Summary s={s} loading={summary.loading}/>
+    <div className="discover-row row-state"><StatusAndDomains s={s} loading={summary.loading}/><RecentErrors/></div>
     <section className="panel plans-list">
-      <div className="panel-heading"><div><h2>计划列表</h2><p>{sample ? `示例 ${sample.plansListSample.length} 条` : 'M1 仅支持固定样本计划 · 每页 20 条'}</p></div>
-        <label className="filter-inline">计划状态<select value={status ?? ''} disabled={!!sample} onChange={event => { const params = new URLSearchParams(paging.params); params.set('cursor', '0'); event.target.value ? params.set('status', event.target.value) : params.delete('status'); paging.setParams(params); }}><option value="">全部状态</option>{PlanStatusSchema.options.map(value => <option key={value} value={value}>{planLabels[value]}</option>)}</select></label>
+      <div className="panel-heading"><div><h2>计划列表</h2><p>真实频道与固定样本计划 · 每页 20 条</p></div>
+        <label className="filter-inline">计划状态<select value={status ?? ''} onChange={event => { const params = new URLSearchParams(paging.params); params.set('cursor', '0'); event.target.value ? params.set('status', event.target.value) : params.delete('status'); paging.setParams(params); }}><option value="">全部状态</option>{PlanStatusSchema.options.map(value => <option key={value} value={value}>{planLabels[value]}</option>)}</select></label>
       </div>
-      {sample ? <SampleList rows={sample.plansListSample}/> : <ResourceView resource={list}>{page => <>{page.items.length ? <div className="table-scroll"><table><thead><tr><th>计划编号</th><th>频道</th><th>来源</th><th>必需领域</th><th>执行状态</th><th>版本 / 代次</th><th>创建时间</th><th>更新时间</th><th/></tr></thead>
-        <tbody>{page.items.map(plan => <tr key={plan.plan_id}><td><Link to={planPath(plan.plan_id)} className="mono">{plan.plan_id}</Link></td><td><Link to={channelPath(plan.channel_id)}>{plan.channel_id}</Link></td><td><span className="fixture-tag" title="M1 联调使用固定样本，尚未接入候选频道">固定样本</span></td><td><DomainChips domains={plan.required_domains.map(domain => ({ domain }))}/></td><td><PlanBadge status={plan.status}/></td><td>v{plan.version} / {plan.execution_epoch}</td><td>{time(plan.created_at)}</td><td>{time(plan.updated_at)}</td><td><Link to={planPath(plan.plan_id)}>查看详情 →</Link></td></tr>)}</tbody></table></div>
-        : <Empty title="没有符合条件的计划">可以调整状态筛选，或创建一轮样本计划。</Empty>}<Pagination cursor={paging.cursor} next={page.next_cursor} count={page.items.length} go={paging.go}/></>}</ResourceView>}
+      <ResourceView resource={list}>{page => <>{page.items.length ? <div className="table-scroll"><table><thead><tr><th>计划编号</th><th>频道</th><th>来源</th><th>必需领域</th><th>执行状态</th><th>版本 / 代次</th><th>创建时间</th><th>更新时间</th><th/></tr></thead>
+        <tbody>{page.items.map(plan => <tr key={plan.plan_id}><td><Link to={planPath(plan.plan_id)} className="mono">{plan.plan_id}</Link></td><td><Link to={channelPath(plan.channel_id)}>{plan.channel_id}</Link></td><td>{plan.source_mode === 'youtube' ? <span className="source-tag">YouTube</span> : <span className="fixture-tag" title="联调用固定样本，不访问 YouTube">固定样本</span>}</td><td><DomainChips domains={plan.required_domains.map(domain => ({ domain }))}/></td><td><PlanBadge status={plan.status}/></td><td>v{plan.version} / {plan.execution_epoch}</td><td>{time(plan.created_at)}</td><td>{time(plan.updated_at)}</td><td><Link to={planPath(plan.plan_id)}>查看详情 →</Link></td></tr>)}</tbody></table></div>
+        : <Empty title="没有符合条件的计划">可以调整状态筛选，或创建一轮计划。</Empty>}<Pagination cursor={paging.cursor} next={page.next_cursor} count={page.items.length} go={paging.go}/></>}</ResourceView>
     </section>
     <footer className="dashboard-foot"><span>统计为当前工作空间全部计划；“近 24 小时”按服务器时间滚动计算。</span><span>{s ? `统计时间 ${clock(s.observed_at)}` : ''}</span></footer>
   </div>;

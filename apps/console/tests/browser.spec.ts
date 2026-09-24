@@ -161,7 +161,7 @@ test('backend permission denial is visible and never shown as successful cancell
 test('worker loss of heartbeat follows the server state', async ({ page }) => {
   const state = await mock(page); state.workers = [workerFixture()]; await login(page, '/workers'); await expect(page.getByText('心跳正常', { exact: true })).toBeVisible();
   state.workers[0]!.stale = true; await page.getByRole('button', { name: '刷新数据' }).click(); await expect(page.getByText('心跳失联', { exact: true })).toBeVisible();
-  await expect(page.getByText('固定样本不使用代理', { exact: true })).toBeVisible();
+  await expect(page.getByText('节点代理管理尚未部署', { exact: true })).toBeVisible();
 });
 test('error entry links to the correct plan and its persisted receipt', async ({ page }) => {
   const detail = detailFixture({ status: 'FAILED' }, ['ABOUT']); await mock(page, detail); await login(page, '/errors');
@@ -298,10 +298,8 @@ test('full collection shows backend plan statistics next to the real plan list',
   await expect(page.locator('.status-cell.amber strong')).toHaveText('1');
   await expect(page.locator('.domain-bars div', { hasText: '频道基础信息' }).locator('b')).toHaveText('100.0%');
   await expect(page.locator('.domain-bars div', { hasText: '视频与评论' }).locator('b')).toHaveText('0.0%');
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toHaveCount(0);
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
-  await expect(page.locator('.discover-kpi strong').first()).toHaveText('156');
+  await expect(page.locator('.plans-list tbody tr').first()).toContainText('固定样本');
+  await expect(page.getByLabel('预览示例数据'), 'real plan data offers no design sample').toHaveCount(0);
 });
 test('update collection shows no figures until the sample preview is switched on, and has no Clock menu', async ({ page }) => {
   await mock(page); await login(page, '/update');
@@ -357,9 +355,7 @@ test('channel management lists real channel facts and shows the selected channel
   await expect(page.locator('.channel-detail').getByText('已入库视频', { exact: true })).toBeVisible();
   await page.locator('.channel-detail').getByRole('tab', { name: '更新策略' }).click();
   await expect(page.locator('.channel-detail').getByText('未接入').first()).toBeVisible();
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
-  await expect(page.locator('.channels-list tbody tr')).toHaveCount(10);
+  await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
 });
 test('IP resource management replaces three proxy menus and reports the real proxy status of Workers', async ({ page }) => {
   const state = await mock(page); state.workers = [{ worker_id: 'w1', server_id: 'n1', build_version: 'v1', accepting_work: true, capacity: 1, running_plan_ids: [], last_heartbeat_at: '2026-09-23T08:00:00.000Z', stale: false, proxy_status: 'NOT_CONFIGURED' }];
@@ -380,8 +376,7 @@ test('worker management merges the node menus and shows real heartbeats with ser
   await expect(page.locator('.row-servers tbody')).toContainText('fixture-node');
   await expect(page.locator('.worker-detail')).toContainText('fixture-worker');
   await expect(page.getByText('资源指标尚未接入（Prometheus）', { exact: false }).first()).toBeVisible();
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.locator('.worker-list tbody tr')).toHaveCount(8);
+  await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
 });
 test('configuration management says the configuration centre is not connected and shows invented items only behind the switch', async ({ page }) => {
   await mock(page); await login(page, '/config');
