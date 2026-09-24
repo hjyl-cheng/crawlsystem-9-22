@@ -1,6 +1,17 @@
 # 主 Agent 当前交付状态
 
-更新：2026-09-24（Asia/Shanghai）。**执行与控制台已合入主线，固定样本的真实执行、恢复、持久取消和页面联合验收通过；常驻执行部署、跨 Temporal 追踪和生产验收仍未完成。**
+更新：2026-09-24（Asia/Shanghai）。**执行与控制台已合入主线；Control、Ingest、派发器和执行 Worker 已常驻部署到预览集群并通过验收。跨 Temporal 追踪、namespace 授权和生产验收仍未完成。**
+
+## 2026-09-24 常驻部署（`a926c08`）
+
+- 预览集群现运行：Control ×2（control）、Ingest ×2（ingest）、intent-dispatcher ×1（control）、execution-worker StatefulSet ×1（crawler）。镜像 `control-api:main-a926c0848140-6afcf8e0`、`execution-worker:main-a926c0848140-37de4731`，已导入六个节点；回退记录在 `.runtime/deploy-a926c0848140.json`（Control 原镜像 `main-653a09601e81-52eabbc4` 仍在各节点）。清单见 `deploy/m1-preview/`，由 `scripts/dev/deploy-preview.ts` 应用。
+- Worker 不再使用手工签发的 1 小时令牌：Pod 以 audience 绑定、kubelet 轮换的 ServiceAccount 令牌调用 `POST /v1/workload/token`，Control 经 TokenReview 核验后签发 15 分钟 worker 令牌，subject 为 Pod 名、server_id 为节点。Control 的 ServiceAccount 只能创建 TokenReview。
+- 派发器与 Worker 使用 cert-manager 签发的专用 Temporal 客户端证书（90 天，提前 30 天续期），CronJob 每 6 小时同步到使用方命名空间，文件变化时进程自行退出重启。手动触发一次同步任务通过。
+- 集群内 Service 使用 HTTP：Pod 网络为 flannel wireguard-native 加密，NetworkPolicy 只允许 Worker Pod 访问 Control/Ingest。
+- [实际验收](preview-execution.json) **5 项通过**：部署版本与提交一致；经 Control 创建的计划由常驻 Worker 完成、2 条 APPLIED；Worker 心跳显示 Pod 身份、节点 a1、当前构建；等待 AGENT 的计划在删除重建 Worker Pod 后保持 WAITING，新 Pod 经 TokenReview 重新认证；取消经已部署派发器送达，Temporal 显示 CANCELLED。
+- 单元测试 **47/47**（新增令牌交换、续期、证书同步和证书变更重启测试），类型检查通过。
+
+尚未包含：Ingest 的 Prometheus 采集、Worker 存活探针、跨 Temporal/Activity 的追踪、namespace 授权隔离。
 
 最近已验收的预览部署源码：`653a09601e8188c6643cfae840ad0f60cdf8e3ea`。镜像：`docker.io/crawlsystem/control-api:main-653a09601e81-52eabbc4`，基础镜像固定 Node 22.22.1-alpine digest。本轮后端修复和执行集成尚未发布到该预览部署；以镜像内 healthz.build_version 为部署版本依据。
 
@@ -58,7 +69,6 @@
 
 ## 未完成及责任
 
-- **常驻运行与发布**：本轮是受控联合验收；执行 Worker、派发器的持久部署、短期令牌轮换和运行资源限额仍需接入。预览后端仍为上节已部署版本，尚未包含本轮修复。
 - **完整链路追踪**：页面已核对实际同一 Workflow/Worker/Receipt；HTTP 日志/指标已接通，但 Temporal/Activity 的 W3C 上下文传播仍未接入，不能宣称端到端 trace 已完整。
 - **Temporal namespace 授权**：已核验并确认缺口，当前证书不是限定到 M1 namespace 的身份。部署新的 namespace authorizer 必须统筹现有客户端，当前仅内部固定样本联调，不宣称生产租户隔离达标。
 - **生产验收**：容量/伸缩/背压压测、正式账号审计、业务级恢复演练尚未完成。真实采集、代理、API/Agent、分发和历史迁移属后续里程碑。

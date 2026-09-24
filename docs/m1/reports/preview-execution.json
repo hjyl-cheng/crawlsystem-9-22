@@ -1,0 +1,44 @@
+{
+  "verified_at": "2026-09-24T06:06:38.224Z",
+  "revision": "a926c0848140b080994ab57eab865eda5ccbeb20",
+  "workspace_id": "m1-main",
+  "scope": "Resident preview deployment: Control, intent-dispatcher, execution-worker StatefulSet, Ingest; local process only issued an operator token and read PG/Temporal",
+  "completed_plan": {
+    "plan_id": "db110b1d-6c0c-445f-ba7e-ff6b7281304e",
+    "workflow_id": "m1/m1-main/db110b1d-6c0c-445f-ba7e-ff6b7281304e",
+    "receipts": [
+      "e302f920-64c2-80ba-9337-f33bc9dca52b",
+      "d1d01335-21b4-8a69-b320-f2b77ba5c813"
+    ]
+  },
+  "cancelled_plan": {
+    "plan_id": "8a89a41b-9a2d-483a-9d51-c605d24e4893",
+    "workflow_id": "m1/m1-main/8a89a41b-9a2d-483a-9d51-c605d24e4893",
+    "intents": [
+      {
+        "kind": "CANCEL",
+        "state": "DONE",
+        "attempts": 1,
+        "workflow_run_id": null
+      },
+      {
+        "kind": "START",
+        "state": "DONE",
+        "attempts": 1,
+        "workflow_run_id": "01a0d205-d134-7716-b107-42416efe98ad"
+      }
+    ]
+  },
+  "worker": {
+    "worker_id": "execution-worker-0",
+    "server_id": "a1",
+    "replaced_pod_uid": "34a6148c-ccf7-4132-b44e-53c1f4612a84"
+  },
+  "checks": [
+    "Control and Worker run the committed revision",
+    "plan created via Control completed by the resident Worker with 2 APPLIED receipts",
+    "Worker heartbeat: execution-worker-0 on a1, accepting, current build",
+    "Worker Pod replaced (new UID, same identity) and re-authenticated via TokenReview; waiting plan intact",
+    "durable CANCEL delivered by the deployed dispatcher; Temporal shows CANCELLED (and COMPLETED for plan 1)"
+  ]
+}
