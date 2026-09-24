@@ -1,18 +1,27 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, Download, Globe, Layers, MoreHorizontal, Plus, Radar, Search, ShieldCheck, Snowflake, Trash2, TriangleAlert, Upload } from 'lucide-react';
-import type { ProxyImport, ProxyOverview } from '@crawlsystem/contracts';
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { ArrowRight, Download, Globe, Layers, MoreHorizontal, Plus, Radar, Search, ShieldCheck, Snowflake, Trash2, Upload } from 'lucide-react';
+import type { ProxyImport, ProxyOverview, ProxyState } from '@crawlsystem/contracts';
 import { ApiFailure } from '../api.js';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
-import { Empty, ErrorBox } from '../ui.js';
+import { Empty, ErrorBox, Modal } from '../ui.js';
 import Donut from '../components/donut.js';
 import LineChart from '../components/line-chart.js';
-import type { IpState, ProxiesView } from './proxies-sample.js';
 import './overview.css';
 import './discover.css';
 import './proxies.css';
 
 const NOT_CONNECTED = '该功能尚未接入';
+type IpState = ProxyState;
+interface ProxiesView {
+  kpis: { total: number; providers: number; groups: number; healthy: number; healthyRate: string; cooldown: number; failed: number; requests: string };
+  ips: { id: string; ip: string; port: number; region: string; provider: string; group: string; state: IpState; success: string; latency: string; requests: number; checked: string; node: string; server: string | null; enabled: boolean; version: number }[];
+  states: { state: IpState; count: number }[];
+  providers: { name: string; count: number }[];
+  groups: { name: string; count: number; color: string }[];
+  providerStats: { name: string; ips: number; availability: string; requests: string }[];
+  trend: { day: string; value: number }[];
+}
 // Same five states as the overview's IP panel.
 const stateMeta: Record<IpState, { label: string; tone: string; color: string }> = {
   healthy: { label: '正常', tone: 'green', color: '#11c38c' }, degraded: { label: '降级', tone: 'amber', color: '#ffad21' }, cooldown: { label: '冷却中', tone: 'blue', color: '#3d88ff' },
@@ -26,8 +35,8 @@ const ago = (at: string) => { const s = Math.max(0, Math.round((Date.now() - Dat
 /** Real inventory into the page's view model. Figures are today's (UTC) node-reported counters. */
 function fromOverview(o: ProxyOverview): ProxiesView {
   const total = o.items.length, healthy = o.by_state.healthy;
-  return { kpis: { total, totalDelta: '', providers: o.providers.length, groups: o.groups.length, healthy, healthyRate: total ? `${(healthy / total * 100).toFixed(1)}%` : '—',
-      cooldown: o.by_state.cooldown, failed: o.by_state.failed, requests: fmt(o.requests_today), requestsDelta: '' },
+  return { kpis: { total, providers: o.providers.length, groups: o.groups.length, healthy, healthyRate: total ? `${(healthy / total * 100).toFixed(1)}%` : '—',
+      cooldown: o.by_state.cooldown, failed: o.by_state.failed, requests: fmt(o.requests_today) },
     ips: o.items.map(p => ({ id: p.proxy_id, ip: p.host, port: p.port, region: p.country_code ?? '—', provider: p.provider, group: p.group, state: p.state,
       success: rate(p.requests_today, p.failures_today), latency: p.latency_ms === null ? '—' : `${p.latency_ms} ms`, requests: p.requests_today,
       checked: p.observed_at ? ago(p.observed_at) : '—', node: p.server_id ?? '—', server: p.server_id, enabled: p.enabled, version: p.version })),
@@ -48,7 +57,7 @@ export function parseProxyLines(text: string, common: Omit<ProxyImport['entries'
       username: url.username ? decodeURIComponent(url.username) : null, password: url.password ? decodeURIComponent(url.password) : null };
   });
 }
-function ImportPanel({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
+function ImportForm({ onDone }: { onDone: () => void }) {
   const { api } = useAuth();
   const [text, setText] = useState(''), [provider, setProvider] = useState(''), [group, setGroup] = useState(''), [country, setCountry] = useState(''), [concurrency, setConcurrency] = useState(2), [kind, setKind] = useState<'static' | 'rotating'>('static');
   const [busy, setBusy] = useState(false), [error, setError] = useState<ApiFailure>(), [result, setResult] = useState<string>();
@@ -63,8 +72,7 @@ function ImportPanel({ onDone, onClose }: { onDone: () => void; onClose: () => v
     catch (cause) { setError(cause instanceof ApiFailure ? cause : new ApiFailure('导入失败，请核对后重试')); }
     finally { setBusy(false); }
   }
-  return <section className="panel proxy-import"><div className="panel-heading"><div><h2>导入代理 IP</h2><p>每行一个：协议://用户名:密码@地址:端口。密码只加密保存在后端，页面不会再显示。</p></div><button className="button small" onClick={onClose}>关闭</button></div>
-    <form onSubmit={submit}><textarea aria-label="代理地址列表" rows={5} value={text} onChange={e => setText(e.target.value)} placeholder={'http://user:pass@198.51.100.10:8080\nsocks5://user:pass@203.0.113.5:1080'} disabled={busy}/>
+  return <form className="proxy-import" onSubmit={submit}><textarea aria-label="代理地址列表" rows={6} value={text} onChange={e => setText(e.target.value)} placeholder={'http://user:pass@198.51.100.10:8080\nsocks5://user:pass@203.0.113.5:1080'} disabled={busy}/>
       <div className="proxy-import-fields">
         <label>服务商<input aria-label="服务商" required value={provider} onChange={e => setProvider(e.target.value)} disabled={busy}/></label>
         <label>分组<input aria-label="分组" required value={group} onChange={e => setGroup(e.target.value)} disabled={busy}/></label>
@@ -73,14 +81,14 @@ function ImportPanel({ onDone, onClose }: { onDone: () => void; onClose: () => v
         <label>单 IP 并发<input aria-label="单 IP 并发" type="number" min={1} max={64} value={concurrency} onChange={e => setConcurrency(Number(e.target.value))} disabled={busy}/></label>
       </div>
       {error && <ErrorBox error={error}/>}{result && <div className="notice" role="status">{result}</div>}
-      <button className="button primary" disabled={busy}><Upload size={14}/>{busy ? '正在导入…' : '导入'}</button></form></section>;
+      <div className="dialog-actions"><button className="button primary" disabled={busy}><Upload size={14}/>{busy ? '正在导入…' : '导入'}</button></div></form>;
 }
 function RowActions({ ip, servers, onDone }: { ip: ProxiesView['ips'][number]; servers: string[]; onDone: () => void }) {
   const { api } = useAuth();
   const [busy, setBusy] = useState(false), [error, setError] = useState<string>();
   async function update(change: { enabled?: boolean; server_id?: string | null }) {
     setBusy(true); setError(undefined);
-    try { await api.updateProxy(ip.id!, { expected_version: ip.version!, ...change }); onDone(); }
+    try { await api.updateProxy(ip.id, { expected_version: ip.version, ...change }); onDone(); }
     catch (cause) { setError(cause instanceof ApiFailure ? cause.message : '操作失败'); }
     finally { setBusy(false); }
   }
@@ -107,40 +115,28 @@ export default function Proxies() {
   // Real fact today: registered Workers report their proxy status (fixture runs use none).
   const workers = useResource('proxies-workers', signal => api.workers('0', 20, signal), true, 15_000);
   const unconfigured = workers.data?.items.filter(w => w.proxy_status === 'NOT_CONFIGURED').length;
-  const [sampleOn, setSampleOn] = useState(false);
-  const [sample, setData] = useState<ProxiesView>();
-  const real = useMemo(() => overview.data && fromOverview(overview.data), [overview.data]);
-  const data = sample ?? real;
+  const data = useMemo(() => overview.data && fromOverview(overview.data), [overview.data]);
   // Candidate servers for binding: nodes that already run Workers, plus current bindings.
   const servers = [...new Set(workers.data?.items.map(w => w.server_id) ?? [])];
   const ips = data?.ips.filter(ip => (!stateFilter || ip.state === stateFilter) && (!query || `${ip.ip} ${ip.group} ${ip.provider}`.toLowerCase().includes(query.trim().toLowerCase())));
-  // The sample module loads only when asked for, so it never ships with the default view.
-  useEffect(() => {
-    if (!sampleOn) { setData(undefined); return; }
-    let live = true;
-    void import('./proxies-sample.js').then(module => { if (live) setData(module.proxiesSample); });
-    return () => { live = false; };
-  }, [sampleOn]);
   const k = data?.kpis;
   const stateTotal = data?.states.reduce((s, x) => s + x.count, 0) ?? 0, providerMax = Math.max(1, ...(data?.providers.map(p => p.count) ?? [1]));
   const providerTotal = data?.providers.reduce((s, p) => s + p.count, 0) ?? 0, groupTotal = data?.groups.reduce((s, g) => s + g.count, 0) ?? 0;
   return <div className="dashboard discover proxies-page">
     <header className="dashboard-heading">
       <div><h1>IP 资源管理</h1><p>统一管理代理 IP、分组、服务商与服务器绑定，监控可用性与冷却</p>
-        {sample ? <span className="data-freshness failing"><i/>示例数据</span> : overview.data ? <span className="data-freshness" title="代理库存与节点上报的当前状态"><i/>代理库存已同步 · {fmt(overview.data.items.length)} 个 IP{unconfigured ? ` · ${unconfigured} 个 Worker 尚未使用代理` : ''}</span> : null}
+        {overview.data ? <span className="data-freshness" title="代理库存与节点上报的当前状态"><i/>代理库存已同步 · {fmt(overview.data.items.length)} 个 IP{unconfigured ? ` · ${unconfigured} 个 Worker 尚未使用代理` : ''}</span> : null}
       </div>
-      <div className="dashboard-period"><label className="sample-switch" htmlFor="proxies-sample"><input id="proxies-sample" type="checkbox" checked={sampleOn} onChange={event => setSampleOn(event.target.checked)}/>预览示例数据</label>
-        <button className="button small primary" disabled={!operator || !!sample} title={operator ? undefined : '只读身份不能导入'} onClick={() => setImporting(true)}><Plus size={13}/>添加 IP</button></div>
+      <div className="dashboard-period"><button className="button small primary" disabled={!operator} title={operator ? undefined : '只读身份不能导入'} onClick={() => setImporting(true)}><Plus size={13}/>添加 IP</button></div>
     </header>
-    {overview.error && !sample && <ErrorBox error={overview.error}/>}
-    {importing && operator && !sample && <ImportPanel onDone={overview.refresh} onClose={() => setImporting(false)}/>}
-    {sample && <div className="sample-banner" role="note"><TriangleAlert size={14}/>以下为设计示例数据：服务商为匿名，IP 取自文档示例地址段，不指向真实主机。代理凭据不在控制台展示。</div>}
+    {overview.error && <ErrorBox error={overview.error}/>}
+    <Modal wide open={importing && operator} onOpenChange={setImporting} title="导入代理 IP" description="每行一个：协议://用户名:密码@地址:端口。密码只加密保存在后端，页面不会再显示；导入后绑定到服务器才会被使用。"><ImportForm onDone={overview.refresh}/></Modal>
 
     <div className="discover-kpis">
-      <Kpi label="IP 总数" tone="blue" icon={<Globe size={22}/>} value={k && fmt(k.total)} foot={k ? `${k.providers} 家服务商 · ${k.groups} 个分组` : NOT_CONNECTED}/>
-      <Kpi label="正常可用" tone="green" icon={<ShieldCheck size={22}/>} value={k && fmt(k.healthy)} foot={k ? `可用率 ${k.healthyRate}` : NOT_CONNECTED}/>
-      <Kpi label="冷却 / 异常" tone="red" icon={<Snowflake size={22}/>} value={k && `${fmt(k.cooldown)} / ${fmt(k.failed)}`} foot={k ? '限流后冷却，到期自动恢复' : NOT_CONNECTED}/>
-      <Kpi label="今日请求量" tone="blue" icon={<Layers size={22}/>} value={k?.requests} foot={k ? `较昨日 ${k.requestsDelta}` : NOT_CONNECTED}/>
+      <Kpi label="IP 总数" tone="blue" icon={<Globe size={22}/>} value={k && fmt(k.total)} foot={k ? `${k.providers} 家服务商 · ${k.groups} 个分组` : '—'}/>
+      <Kpi label="正常可用" tone="green" icon={<ShieldCheck size={22}/>} value={k && fmt(k.healthy)} foot={k ? `可用率 ${k.healthyRate}` : '—'}/>
+      <Kpi label="冷却 / 异常" tone="red" icon={<Snowflake size={22}/>} value={k && `${fmt(k.cooldown)} / ${fmt(k.failed)}`} foot={k ? '限流后冷却，到期自动恢复' : '—'}/>
+      <Kpi label="今日请求量" tone="blue" icon={<Layers size={22}/>} value={k?.requests} foot={k ? '今日（UTC）节点上报' : '—'}/>
     </div>
 
     <div className="discover-row row-ips">
@@ -150,9 +146,9 @@ export default function Proxies() {
           <select aria-label="全部状态" value={stateFilter} onChange={e => setStateFilter(e.target.value)} disabled={!data}><option value="">全部状态</option>{(Object.keys(stateMeta) as IpState[]).map(s => <option key={s} value={s}>{stateMeta[s].label}</option>)}</select></div>
         {data && data.ips.length ? <div className="table-scroll"><table><thead><tr><th>IP 地址</th><th className="num">端口</th><th>地区</th><th>服务商</th><th>分组</th><th>状态</th><th className="num">成功率</th><th className="num">响应时间</th><th className="num">今日请求</th><th>绑定节点</th><th>最后检测</th><th>操作</th></tr></thead>
           <tbody>{ips!.map(ip => { const m = stateMeta[ip.state]; return <tr key={ip.id ?? `${ip.ip}:${ip.port}`}><td className="mono query-term">{ip.ip}</td><td className="num">{ip.port}</td><td>{ip.region}</td><td>{ip.provider}</td><td><span className="keyword-chip">{ip.group}</span></td>
-            <td><span className={`status-chip ${m.tone}`}><i/>{m.label}</span></td><td className={`num ${ip.state === 'failed' ? 'text-red' : ''}`}>{ip.success}</td><td className="num">{ip.latency}</td><td className="num">{ip.requests ? fmt(ip.requests) : '—'}</td><td className="mono">{ip.node}</td><td>{ip.checked}</td><td className="row-actions">{ip.id && operator ? <RowActions ip={ip} servers={servers} onDone={overview.refresh}/> : <><span title={NOT_CONNECTED}>检测</span><MoreHorizontal size={14}/></>}</td></tr>; })}</tbody></table></div>
+            <td><span className={`status-chip ${m.tone}`}><i/>{m.label}</span></td><td className={`num ${ip.state === 'failed' ? 'text-red' : ''}`}>{ip.success}</td><td className="num">{ip.latency}</td><td className="num">{ip.requests ? fmt(ip.requests) : '—'}</td><td className="mono">{ip.node}</td><td>{ip.checked}</td><td className="row-actions">{operator ? <RowActions ip={ip} servers={servers} onDone={overview.refresh}/> : <><span title={NOT_CONNECTED}>检测</span><MoreHorizontal size={14}/></>}</td></tr>; })}</tbody></table></div>
           : <Empty title="尚无代理 IP">{operator ? '点击“添加 IP”导入代理。导入后绑定到服务器，由该节点的本地代理管理按并发与冷却使用。' : '尚未导入代理。'}</Empty>}
-        <footer className="pager">{data ? <span>共 {fmt(data.kpis.total)} 条{sample ? '（示例）' : ips && ips.length !== data.ips.length ? `，筛选后 ${fmt(ips.length)} 条` : ''}</span> : <span>—</span>}</footer>
+        <footer className="pager">{data ? <span>共 {fmt(data.kpis.total)} 条{ips && ips.length !== data.ips.length ? `，筛选后 ${fmt(ips.length)} 条` : ''}</span> : <span>—</span>}</footer>
       </section>
       <div className="side-stack">
         <Card title="状态分布" className="natural">
@@ -176,10 +172,10 @@ export default function Proxies() {
       </Card>
       <Card title="常用操作">
         <div className="quick-actions">{([['批量检测', <Radar size={18}/>], ['清理异常 IP', <Trash2 size={18}/>], ['导入 IP', <Upload size={18}/>], ['导出列表', <Download size={18}/>]] as const).map(([label, icon]) => label === '导入 IP'
-          ? <button key={label} className="quick-action" disabled={!operator || !!sample} onClick={() => setImporting(true)}>{icon}<span>{label}</span></button>
+          ? <button key={label} className="quick-action" disabled={!operator} onClick={() => setImporting(true)}>{icon}<span>{label}</span></button>
           : <button key={label} className="quick-action" disabled title={NOT_CONNECTED}>{icon}<span>{label}</span></button>)}</div>
       </Card>
     </div>
-    <footer className="dashboard-foot"><span>代理资源由中心统一分组与分配，节点本地执行；冷却中的 IP 到期自动恢复，不计为异常。</span><span>“预览示例数据”仅用于查看页面设计</span></footer>
+    <footer className="dashboard-foot"><span>代理资源由中心统一分组与分配，节点本地执行；冷却中的 IP 到期自动恢复，不计为异常。</span><span>密码只加密保存在后端，页面不展示</span></footer>
   </div>;
 }

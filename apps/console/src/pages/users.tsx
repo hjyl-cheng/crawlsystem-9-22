@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowRight, Download, KeyRound, MonitorSmartphone, Plus, Search, ShieldCheck, TriangleAlert, UserCheck, Users as UsersIcon, UserX } from 'lucide-react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { ArrowRight, Download, KeyRound, MonitorSmartphone, Plus, Search, ShieldCheck, UserCheck, Users as UsersIcon, UserX } from 'lucide-react';
 import type { ConsoleAccount } from '@crawlsystem/contracts';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
 import { Empty } from '../ui.js';
 import { roleLabels } from '../presentation.js';
 import LineChart from '../components/line-chart.js';
-import type { UsersSample } from './users-sample.js';
 import './overview.css';
 import './discover.css';
 import './users.css';
@@ -71,22 +70,12 @@ export default function Users() {
 function UsersView() {
   const { api, session } = useAuth();
   const resource = useResource('console-accounts', signal => api.consoleAccounts(signal), true, 30_000);
-  const [sampleOn, setSampleOn] = useState(false);
-  const [sample, setSample] = useState<UsersSample>();
   const [selected, setSelected] = useState<string>();
   const [query, setQuery] = useState(''), [role, setRole] = useState(''), [status, setStatus] = useState('');
-  // The sample module loads only when asked for, so it never ships with the default view.
-  useEffect(() => {
-    setQuery(''); setRole(''); setStatus('');
-    if (!sampleOn) { setSample(undefined); setSelected(undefined); return; }
-    let live = true;
-    void import('./users-sample.js').then(module => { if (live) { setSample(module.usersSample); setSelected(module.usersSample.accounts[0]!.username); } });
-    return () => { live = false; };
-  }, [sampleOn]);
-  const accounts = sample ? sample.accounts : resource.data?.items;
-  const workspace = sample ? sample.workspace : session.workspace_id;
+  const accounts = resource.data?.items;
+  const workspace = session.workspace_id;
   const rows = useMemo(() => accounts?.filter(a => (!query || `${a.username} ${a.subject}`.toLowerCase().includes(query.trim().toLowerCase())) && (!role || a.role === role) && (!status || a.status === status)), [accounts, query, role, status]);
-  const current = accounts?.find(a => a.username === selected) ?? (sample ? undefined : accounts?.find(a => a.subject === session.subject) ?? accounts?.[0]);
+  const current = accounts?.find(a => a.username === selected) ?? accounts?.find(a => a.subject === session.subject) ?? accounts?.[0];
   const active = accounts?.filter(a => a.status === 'ACTIVE').length, operators = accounts?.filter(a => a.role === 'operator').length;
   const known = accounts?.filter(a => a.active_sessions !== null), online = known?.length ? known.reduce((s, a) => s + a.active_sessions!, 0) : undefined;
   const latest = accounts?.map(a => a.latest_session_at).filter((v): v is string => !!v).sort().at(-1);
@@ -94,11 +83,10 @@ function UsersView() {
   return <div className="dashboard discover users-page">
     <header className="dashboard-heading">
       <div><h1>用户管理</h1><p>管理控制台账号、角色权限与登录会话</p>
-        {sample ? <span className="data-freshness failing"><i/>示例数据</span> : resource.updatedAt && resource.data ? <span className="data-freshness" title="来自账号库 console.accounts"><i/>账号库已同步 · {short(new Date(resource.updatedAt).toISOString())}</span> : null}</div>
-      <div className="dashboard-period"><label className="sample-switch" htmlFor="users-sample"><input id="users-sample" type="checkbox" checked={sampleOn} onChange={event => setSampleOn(event.target.checked)}/>预览示例数据</label>
+        {resource.updatedAt && resource.data ? <span className="data-freshness" title="来自账号库 console.accounts"><i/>账号库已同步 · {short(new Date(resource.updatedAt).toISOString())}</span> : null}</div>
+      <div className="dashboard-period">
         <button className="button small" disabled title={CLI_ONLY}><Download size={13}/>导出列表</button><button className="button small primary" disabled title={CLI_ONLY}><Plus size={13}/>新建用户</button></div>
     </header>
-    {sample && <div className="sample-banner" role="note"><TriangleAlert size={14}/>以下为设计示例数据：账号均为虚构占位名，登录趋势与操作记录也是虚构的。关闭开关即显示真实账号。</div>}
 
     <div className="discover-kpis">
       <Kpi label="用户总数" tone="blue" icon={<UsersIcon size={22}/>} value={accounts?.length} foot={<>工作空间 <span className="mono">{workspace}</span></>}/>
@@ -109,7 +97,7 @@ function UsersView() {
 
     <div className="discover-row users-main">
       <section className="panel user-list">
-        <div className="panel-heading"><div><h2>用户列表{rows && <small className="list-count">共 {rows.length} 条{sample ? '（示例）' : ''}</small>}</h2></div>
+        <div className="panel-heading"><div><h2>用户列表{rows && <small className="list-count">共 {rows.length} 条</small>}</h2></div>
           <div className="list-tools user-filters">
             <label className="list-search" htmlFor="user-search"><Search size={13}/><input id="user-search" placeholder="搜索用户名 / 主体 ID…" value={query} onChange={event => setQuery(event.target.value)} disabled={!accounts}/></label>
             <select aria-label="角色" value={role} onChange={event => setRole(event.target.value)} disabled={!accounts}><option value="">全部角色</option><option value="operator">操作员</option><option value="reader">只读用户</option></select>
@@ -118,25 +106,23 @@ function UsersView() {
           </div></div>
         {rows ? <div className="table-scroll"><table><thead><tr><th>用户</th><th>角色</th><th>状态</th><th className="num">在线会话</th><th>最近登录</th><th>创建时间</th><th>最后修改</th><th>操作</th></tr></thead>
           <tbody>{rows.map(a => <tr key={a.username} className={a.username === current?.username ? 'selected' : ''} onClick={() => setSelected(a.username)} aria-selected={a.username === current?.username}>
-            <td><div className="channel-cell"><Avatar name={a.username}/><div><b>{a.username}{!sample && a.subject === session.subject && <em className="self-tag">我</em>}</b><small className="mono">{a.subject}</small></div></div></td>
+            <td><div className="channel-cell"><Avatar name={a.username}/><div><b>{a.username}{a.subject === session.subject && <em className="self-tag">我</em>}</b><small className="mono">{a.subject}</small></div></div></td>
             <td><RoleChip role={a.role}/></td><td><StatusChip status={a.status}/></td><td className="num">{a.active_sessions ?? '—'}</td><td>{shortOrDash(a.latest_session_at)}</td><td>{shortOrDash(a.created_at)}</td><td>{shortOrDash(a.updated_at)}</td>
             <td><button className="link-button" onClick={event => { event.stopPropagation(); setSelected(a.username); }}>查看</button></td></tr>)}
             {!rows.length && <tr><td colSpan={8} className="no-match">没有符合条件的用户</td></tr>}</tbody></table></div>
           : <Empty title={resource.error ? '无法读取账号' : '正在读取账号…'}>{resource.error?.message}</Empty>}
       </section>
-      <Detail key={current?.username} account={current} workspace={workspace} self={!sample && current?.subject === session.subject}/>
+      <Detail key={current?.username} account={current} workspace={workspace} self={current?.subject === session.subject}/>
     </div>
 
     <div className="discover-row users-lower">
-      <Card title="近 7 日登录趋势" className="login-trend" extra={sample && <div className="chart-legend"><span><i style={{ background: '#277cf7' }}/>登录次数</span></div>}>
-        <LineChart points={sample?.logins.map(l => ({ x: l.day, values: { logins: l.value } }))} series={[{ key: 'logins', label: '登录次数', color: '#277cf7', area: true }]} max={sample ? 40 : undefined} empty={NO_HISTORY} label="近 7 日登录趋势"/>
+      <Card title="近 7 日登录趋势" className="login-trend">
+        <LineChart points={undefined} series={[{ key: 'logins', label: '登录次数', color: '#277cf7', area: true }]} empty={NO_HISTORY} label="近 7 日登录趋势"/>
       </Card>
       <Card title="账号变更与待处理事项" className="user-events" extra={<span className="dashboard-unavailable" title={NO_AUDIT}>查看全部<ArrowRight size={12}/></span>}>
-        {sample ? <div className="table-scroll"><table><thead><tr><th>时间</th><th>类型</th><th>用户</th><th>内容</th><th>状态</th></tr></thead>
-          <tbody>{sample.events.map(e => <tr key={`${e.time}-${e.user}`}><td>{e.time}</td><td>{e.type}</td><td className="mono">{e.user}</td><td>{e.detail}</td><td><span className={`status-chip ${e.tone}`}><i/>{e.status}</span></td></tr>)}</tbody></table></div>
-          : <Empty title="暂无记录">{NO_AUDIT}。账号的新建、改密、停用目前通过服务器命令行完成。</Empty>}
+        <Empty title="暂无记录">{NO_AUDIT}。账号的新建、改密、停用目前通过服务器命令行完成。</Empty>
       </Card>
     </div>
-    <footer className="dashboard-foot"><span>账号与会话来自账号库；密码只以加盐哈希保存，页面不展示任何凭据。</span><span>“预览示例数据”仅用于查看页面设计</span></footer>
+    <footer className="dashboard-foot"><span>账号与会话来自账号库；密码只以加盐哈希保存，页面不展示任何凭据。</span><span>账号的新建、改密与停用通过服务器命令行完成</span></footer>
   </div>;
 }

@@ -45,8 +45,8 @@ export function SafeLink({ href, children }: { href: string; children: ReactNode
   try { if (!['http:', 'https:'].includes(new URL(href).protocol)) return <span>{children}</span>; } catch { return <span>{children}</span>; }
   return <a href={href} target="_blank" rel="noopener noreferrer">{children} ↗</a>;
 }
-export function Modal({ open, onOpenChange, title, description, children }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; description: string; children: ReactNode }) {
-  return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="dialog-content">
+export function Modal({ open, onOpenChange, title, description, children, wide = false }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; description: string; children: ReactNode; wide?: boolean }) {
+  return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className={`dialog-content${wide ? ' wide' : ''}`}>
     <Dialog.Title>{title}</Dialog.Title><Dialog.Description>{description}</Dialog.Description>
     <Dialog.Close className="dialog-close icon-button" aria-label="关闭对话框"><X size={18}/></Dialog.Close>{children}
   </Dialog.Content></Dialog.Portal></Dialog.Root>;

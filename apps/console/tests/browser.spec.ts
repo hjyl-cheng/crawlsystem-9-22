@@ -355,9 +355,7 @@ test('IP resource management replaces three proxy menus and reports the real pro
   for (const old of ['IP 管理', 'IP 分组', '服务器管理']) await expect(nav.getByText(old, { exact: true })).toHaveCount(0);
   await expect(page.getByText('1 个 Worker 尚未使用代理', { exact: false })).toBeVisible();
   await expect(page.getByText('尚无代理 IP', { exact: true })).toBeVisible();
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.locator('.ip-list tbody tr')).toHaveCount(10);
-  await expect(page.locator('.ip-list tbody')).toContainText('192.0.2.34');
+  await expect(page.getByLabel('预览示例数据'), 'real inventory pages offer no design sample').toHaveCount(0);
 });
 test('worker management merges the node menus and shows real heartbeats with servers derived from them', async ({ page }) => {
   const state = await mock(page); state.workers = [workerFixture()]; await login(page, '/workers');
@@ -400,9 +398,7 @@ test('user management lists the real workspace accounts without credentials and 
   await expect(page.locator('.user-detail')).toContainText('不能创建或取消采集计划');
   await expect(page.locator('.user-detail').getByRole('button', { name: '启用账号' })).toBeDisabled();
   await expect(page.getByText('登录历史尚未留存', { exact: false })).toBeVisible();
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
-  await expect(page.locator('.user-list tbody tr')).toHaveCount(10);
+  await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
 });
 test('read-only users do not see user management, even through a direct URL', async ({ page }) => {
   await mock(page, undefined, 'reader'); await login(page, '/users');
@@ -428,13 +424,16 @@ test('operators import proxies without the page ever showing the password, then 
   const state = await mock(page); state.workers = [{ worker_id: 'w1', server_id: 'a1', build_version: 'v1', accepting_work: true, capacity: 1, running_plan_ids: [], last_heartbeat_at: '2026-09-23T08:00:00.000Z', stale: false, proxy_status: 'NOT_CONFIGURED' }];
   await login(page, '/proxies');
   await page.getByRole('button', { name: '添加 IP' }).click();
+  const dialog = page.getByRole('dialog', { name: '导入代理 IP' });
+  await expect(dialog).toBeVisible();
   await page.getByLabel('代理地址列表').fill('http://alice:s3cret-pass@198.51.100.10:8080\nnot-a-proxy');
   await page.getByLabel('服务商').fill('Vendor A'); await page.getByLabel('分组').fill('US Residential'); await page.getByLabel('国家代码').fill('us');
   await page.getByRole('button', { name: '导入', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('第 2 行不是有效地址'); expect(state.imports).toHaveLength(0);
   await page.getByLabel('代理地址列表').fill('http://alice:s3cret-pass@198.51.100.10:8080\nsocks5://203.0.113.5:1080');
   await page.getByRole('button', { name: '导入', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('新增 2 个');
+  await expect(dialog.getByRole('status')).toContainText('新增 2 个');
+  await dialog.getByRole('button', { name: '关闭对话框' }).click(); await expect(dialog).toHaveCount(0);
   expect(state.imports[0]).toMatchObject({ entries: [{ protocol: 'http', host: '198.51.100.10', port: 8080, username: 'alice', password: 's3cret-pass', country_code: 'US' }, { protocol: 'socks5', host: '203.0.113.5', port: 1080, username: null, password: null }] });
   await expect(page.locator('.ip-list tbody tr')).toHaveCount(2);
   await expect(page.locator('body')).not.toContainText('s3cret-pass');
