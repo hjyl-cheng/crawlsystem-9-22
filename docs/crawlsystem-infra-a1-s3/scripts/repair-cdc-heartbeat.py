@@ -7,7 +7,8 @@ the Debezium task failed. Fix: heartbeat topic + ACL, a heartbeat table inside t
 publication (not in table.include.list), heartbeat config, then recreate the slot.
 
 Default is a read-only plan. `--apply` performs it. Outbox rows written while the
-slot was lost are not replayed (infra_smoke synthetic data only)."""
+slot was lost are recovered by a fresh snapshot of the outbox table (offsets reset),
+so consumers see duplicates, never gaps; outbox consumers must be idempotent anyway."""
 import json, sys, time, urllib.request
 from infra_common import ROOT, k, obj, pg_primary, sql, forward
 
@@ -60,7 +61,15 @@ def main(apply):
         elif current and current['wal_status'] == 'lost':
             raise RuntimeError('Lost slot is still active; stop the connector task first')
         connect(port, 'PUT', '/connectors/infra-outbox/config', {**config, **HEARTBEAT})
-        connect(port, 'PUT', '/connectors/infra-outbox/resume')
+        if current is None or current['wal_status'] == 'lost':
+            # Stored offsets point at WAL that no longer exists; Debezium refuses to stream from
+            # them. Reset offsets (connector must be STOPPED) so it snapshots the outbox afresh.
+            connect(port, 'PUT', '/connectors/infra-outbox/stop')
+            for _ in range(30):
+                if status(port)[0] == 'STOPPED': break
+                time.sleep(2)
+            else: raise RuntimeError('Connector did not stop for offset reset')
+            connect(port, 'DELETE', '/connectors/infra-outbox/offsets')
         connect(port, 'POST', '/connectors/infra-outbox/restart?includeTasks=true&onlyFailed=false')
         # 4. The task recreates the slot; after a heartbeat the retained WAL must shrink.
         deadline = time.time() + 300; first = None
