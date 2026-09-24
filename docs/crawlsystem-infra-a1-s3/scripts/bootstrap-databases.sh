@@ -19,14 +19,21 @@ CREATE TABLE IF NOT EXISTS publication.outbox(
 ALTER TABLE publication.outbox OWNER TO crawler_owner;
 GRANT USAGE ON SCHEMA publication TO dbz_svc;
 GRANT SELECT ON publication.outbox TO dbz_svc;
+-- Debezium heartbeat target: in the publication so heartbeats advance the slot,
+-- but not in table.include.list, so it never reaches the outbox topic.
+CREATE TABLE IF NOT EXISTS publication.debezium_heartbeat(id smallint PRIMARY KEY CHECK (id = 1), beat_at timestamptz NOT NULL);
+ALTER TABLE publication.debezium_heartbeat OWNER TO crawler_owner;
+GRANT SELECT, INSERT, UPDATE ON publication.debezium_heartbeat TO dbz_svc;
 DO $$ BEGIN
  IF NOT EXISTS(SELECT FROM pg_publication WHERE pubname='infra_outbox_pub') THEN
-   CREATE PUBLICATION infra_outbox_pub FOR TABLE publication.outbox;
+   CREATE PUBLICATION infra_outbox_pub FOR TABLE publication.outbox, publication.debezium_heartbeat;
+ ELSIF NOT EXISTS(SELECT FROM pg_publication_tables WHERE pubname='infra_outbox_pub' AND tablename='debezium_heartbeat') THEN
+   ALTER PUBLICATION infra_outbox_pub ADD TABLE publication.debezium_heartbeat;
  END IF;
 END $$;
 SELECT schemaname,tablename FROM pg_publication_tables WHERE pubname='infra_outbox_pub';
 SQL
 # Assert publication was not broadened by an older setup.
 COUNT=$(kubectl -n db exec "$P" -- psql -XAt -U postgres -d infra_smoke -c "SELECT count(*) FROM pg_publication_tables WHERE pubname='infra_outbox_pub'")
-[[ $COUNT == 1 ]] || { echo 'Unexpected publication tables, stop'; exit 2; }
+[[ $COUNT == 2 ]] || { echo 'Unexpected publication tables (expected outbox + heartbeat), stop'; exit 2; }
 echo 'Dedicated infra_smoke database prepared. No business schema has been created.'

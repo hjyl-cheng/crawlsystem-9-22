@@ -29,8 +29,13 @@ def main():
         q(f"INSERT INTO infra_smoke.connectivity (id) VALUES ('{marker}')")
         assert q(f"SELECT count() FROM infra_smoke.connectivity WHERE id='{marker}'").strip()=='1'
         result['clickhouse']='PASS'
-    with forward('temporal','svc/temporal-frontend',7233) as port:
-        env=dict(os.environ,TEMPORAL_ADDRESS=f'127.0.0.1:{port}')
+    # With namespace authorization enabled (docs/m1/temporal-authorization.md) the public
+    # frontend requires a JWT; this host-side admin check uses the internal-frontend instead.
+    internal=json.loads(k('-n','temporal','get','svc','-o','json'))['items']
+    internal=any(item['metadata']['name']=='temporal-internal-frontend' for item in internal)
+    service,remote,domain=('svc/temporal-internal-frontend',7236,'temporal-internode.temporal.svc') if internal else ('svc/temporal-frontend',7233,'temporal-frontend.temporal.svc.cluster.local')
+    with forward('temporal',service,remote) as port:
+        env=dict(os.environ,TEMPORAL_ADDRESS=f'127.0.0.1:{port}',TEMPORAL_TLS_DOMAIN=domain)
         p=subprocess.run([str(ROOT/'.venv-infra/bin/python'),str(ROOT/'examples/temporal-smoke.py')],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=90)
         if p.returncode or b'INFRA_OK:A1-S3' not in p.stdout: raise RuntimeError('Temporal workflow smoke failed')
         result['temporal']='PASS'

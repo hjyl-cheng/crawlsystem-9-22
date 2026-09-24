@@ -27,7 +27,7 @@ async def main() -> None:
         server_root_ca_cert=(p/'ca.crt').read_bytes(),
         client_cert=(p/'tls.crt').read_bytes(),
         client_private_key=(p/'tls.key').read_bytes(),
-        domain='temporal-frontend.temporal.svc.cluster.local'))
+        domain=os.environ.get('TEMPORAL_TLS_DOMAIN', 'temporal-frontend.temporal.svc.cluster.local')))
     queue = 'infra-smoke-' + str(uuid.uuid4())
     async with Worker(client, task_queue=queue, workflows=[InfraSmoke], activities=[echo_activity]):
         result = await asyncio.wait_for(client.execute_workflow(
