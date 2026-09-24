@@ -81,12 +81,15 @@ test('existing Worker Bearer authentication still works independently of console
     assert.equal((await f.app.inject({ url: '/v1/session', headers: { authorization: 'Bearer invalid' } })).statusCode, 401);
   } finally { await f.app.close(); }
 });
-test('account listing returns the caller workspace without password material and refuses Worker tokens', async () => {
+test('account listing is operator-only, stays in the caller workspace and carries no password material', async () => {
   const f = fixture();
   try {
     assert.equal((await f.app.inject({ url: '/v1/console/accounts' })).statusCode, 401);
     const cookie = String((await f.login()).headers['set-cookie']).split(';')[0]!;
-    const listed = await f.app.inject({ url: '/v1/console/accounts', headers: { cookie } });
+    // Account administration is operator-only: the logged-in reader is refused.
+    assert.equal((await f.app.inject({ url: '/v1/console/accounts', headers: { cookie } })).statusCode, 403);
+    const operator = await issueToken({ subject: 'test-operator', workspace_id: 'auth-test', role: 'operator' }, key);
+    const listed = await f.app.inject({ url: '/v1/console/accounts', headers: { authorization: `Bearer ${operator}` } });
     assert.equal(listed.statusCode, 200);
     const body = listed.json();
     assert.equal(body.source, 'MEMORY');

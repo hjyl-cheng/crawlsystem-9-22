@@ -382,3 +382,9 @@ test('user management lists the real workspace accounts without credentials and 
   await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
   await expect(page.locator('.user-list tbody tr')).toHaveCount(10);
 });
+test('read-only users do not see user management, even through a direct URL', async ({ page }) => {
+  await mock(page, undefined, 'reader'); await login(page, '/users');
+  await expect(page.getByRole('alert')).toContainText('没有查看账号列表的权限');
+  await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '用户管理' })).toHaveCount(0);
+  await expect(page.locator('.user-list')).toHaveCount(0);
+});

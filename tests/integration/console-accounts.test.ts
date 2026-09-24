@@ -70,7 +70,7 @@ test('account listing stays inside the workspace, reports disabled accounts and 
   const cookie=(await auth.login(a.username,password)).cookie.split(';')[0]!;
   await pool.query(`INSERT INTO console.sessions(token_hash,username,created_at,expires_at) VALUES(repeat(md5($1),2),$1,clock_timestamp()-interval '2 hours',clock_timestamp()-interval '1 hour')`,[a.username]);
   try {
-    const listed=await auth.listAccounts({subject:a.subject,workspace_id:a.workspace_id,role:'reader'});
+    const listed=await auth.listAccounts({subject:a.subject,workspace_id:a.workspace_id,role:'operator'});
     assert.equal(listed.source,'DATABASE');
     assert.deepEqual(listed.items.map(i=>i.username).sort(),[a.username,second].sort());
     assert.ok(!listed.items.some(i=>i.username===other.username));
@@ -78,6 +78,6 @@ test('account listing stays inside the workspace, reports disabled accounts and 
     assert.equal(mine.active_sessions,1);assert.equal(mine.status,'ACTIVE');assert.ok(mine.latest_session_at&&mine.created_at);
     assert.equal(disabled.status,'DISABLED');assert.equal(disabled.role,'operator');assert.equal(disabled.active_sessions,0);assert.equal(disabled.latest_session_at,null);
     assert.doesNotMatch(JSON.stringify(listed),new RegExp(`${a.salt}|${a.password_hash}`));
-    await assert.rejects(()=>auth.listAccounts({subject:'w',workspace_id:a.workspace_id,role:'worker'}),e=>e instanceof StoreError&&e.code==='FORBIDDEN');
+    for(const role of ['reader','worker'] as const)await assert.rejects(()=>auth.listAccounts({subject:'w',workspace_id:a.workspace_id,role}),e=>e instanceof StoreError&&e.code==='FORBIDDEN');
   } finally {await auth.revoke(cookie);await pool.query('DELETE FROM console.sessions WHERE username=$1',[a.username]);}
 });

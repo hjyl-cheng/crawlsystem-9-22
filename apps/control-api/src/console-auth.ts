@@ -143,9 +143,9 @@ export class ConsoleAuth {
     const value = this.cookieValue(header);
     if (value) await this.store.revokeSession(digest(value), new Date(this.now()));
   }
-  /** Lists the caller's own workspace only; Worker identities never see console accounts. */
+  /** Operators only (account administration), and only the caller's own workspace. */
   async listAccounts(principal: Principal): Promise<ConsoleAccountList> {
-    if (principal.role !== 'reader' && principal.role !== 'operator') throw new StoreError('FORBIDDEN', 'This role cannot perform the operation', 403);
+    if (principal.role !== 'operator') throw new StoreError('FORBIDDEN', 'This role cannot perform the operation', 403);
     if (!this.store.listAccounts) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED', 'Account listing is not available for this account source', 503);
     const now = new Date(this.now());
     return { observed_at: now.toISOString(), ...await this.store.listAccounts(principal.workspace_id, now) };

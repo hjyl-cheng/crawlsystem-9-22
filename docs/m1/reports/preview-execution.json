@@ -1,10 +1,10 @@
 {
-  "verified_at": "2026-09-24T07:36:30.768Z",
-  "revision": "623b10426bf835c197d431e88e21a89b62a64470",
+  "verified_at": "2026-09-24T08:20:11.689Z",
+  "revision": "0bd0eba7c68e15d111a985b04ec339fff7ee7aba",
   "workspace_id": "m1-main",
   "scope": "Resident preview deployment: Control, intent-dispatcher, execution-worker StatefulSet, Ingest; local process only issued an operator token and read PG/Temporal",
   "trace": {
-    "trace_id": "ca451a44a1f6407292f61a4ad65fc9d8",
+    "trace_id": "a4f82175c80d4236b8a649b0a5260eee",
     "services": [
       "control",
       "execution-worker",
@@ -13,16 +13,16 @@
     ]
   },
   "completed_plan": {
-    "plan_id": "56c6c8c3-e0f5-4cc5-8b1d-088824e679fa",
-    "workflow_id": "m1/m1-main/56c6c8c3-e0f5-4cc5-8b1d-088824e679fa",
+    "plan_id": "f378e4de-1caa-469f-bbf4-b7561b89ed86",
+    "workflow_id": "m1/m1-main/f378e4de-1caa-469f-bbf4-b7561b89ed86",
     "receipts": [
-      "ec89f233-7d9e-81cf-b622-330644ea764b",
-      "1f33326b-0886-884c-87da-2693e780debc"
+      "3b9fb61f-c54e-8493-95fb-771b9bd74ac8",
+      "0f55d03c-fe83-8af3-afb1-8c57e507786f"
     ]
   },
   "cancelled_plan": {
-    "plan_id": "1ae78691-831b-4079-9a6a-a5dcb90c7e9a",
-    "workflow_id": "m1/m1-main/1ae78691-831b-4079-9a6a-a5dcb90c7e9a",
+    "plan_id": "e0e9ab60-ba40-473f-8fd8-9fb3cc8293c6",
+    "workflow_id": "m1/m1-main/e0e9ab60-ba40-473f-8fd8-9fb3cc8293c6",
     "intents": [
       {
         "kind": "CANCEL",
@@ -34,20 +34,20 @@
         "kind": "START",
         "state": "DONE",
         "attempts": 1,
-        "workflow_run_id": "01a0d258-18ac-7df5-a6f0-e0e95c2f72af"
+        "workflow_run_id": "01a0d280-18d8-7934-b37f-e780fdc8265f"
       }
     ]
   },
   "worker": {
     "worker_id": "execution-worker-0",
     "server_id": "s1",
-    "replaced_pod_uid": "f1b5c99a-1454-476b-a651-f734d0722c42"
+    "replaced_pod_uid": "c2c7ae21-71b6-4434-baf7-ad9618f4c3e1"
   },
   "checks": [
     "Control and Worker run the committed revision",
     "plan created via Control completed by the resident Worker with 2 APPLIED receipts",
     "Worker heartbeat: execution-worker-0 on s1, accepting, current build",
-    "trace ca451a44a1f6407292f61a4ad65fc9d8 spans Control, dispatcher, Worker and Ingest in Loki",
+    "trace a4f82175c80d4236b8a649b0a5260eee spans Control, dispatcher, Worker and Ingest in Loki",
     "Worker Pod replaced (new UID, same identity) and re-authenticated via TokenReview; waiting plan intact",
     "durable CANCEL delivered by the deployed dispatcher; Temporal shows CANCELLED (and COMPLETED for plan 1)"
   ]

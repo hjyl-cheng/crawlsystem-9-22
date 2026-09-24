@@ -60,7 +60,15 @@ function Detail({ account, workspace, self }: { account?: ConsoleAccount; worksp
   </section>;
 }
 
+// Account administration is operator-only; the API refuses read-only identities too.
 export default function Users() {
+  const { session } = useAuth();
+  if (session.role !== 'operator') return <div className="dashboard users-page"><header className="dashboard-heading"><div><h1>用户管理</h1></div></header>
+    <div role="alert" className="notice warning">当前为只读身份，没有查看账号列表的权限。</div></div>;
+  return <UsersView/>;
+}
+
+function UsersView() {
   const { api, session } = useAuth();
   const resource = useResource('console-accounts', signal => api.consoleAccounts(signal), true, 30_000);
   const [sampleOn, setSampleOn] = useState(false);
