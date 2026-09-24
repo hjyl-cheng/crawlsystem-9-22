@@ -1,0 +1,52 @@
+/* Configuration management. Discover chrome on the 4-column grid: the config list (3)
+   over change history (2) and release checks (1); the detail panel (1) spans both rows. */
+.config-page .config-main { flex: 1 1 0; min-height: 420px; grid-template-rows: minmax(0, 1.3fr) minmax(0, 1fr); }
+.dashboard.config-page .config-list { grid-column: 1 / span 3; grid-row: 1; min-height: 0; }
+.dashboard.config-page .config-detail { grid-column: 4; grid-row: 1 / span 2; min-height: 0; }
+.dashboard.config-page .config-changes { grid-column: 1 / span 2; grid-row: 2; min-height: 0; }
+.dashboard.config-page .config-checks { grid-column: 3; grid-row: 2; min-height: 0; }
+.config-page td { vertical-align: middle; }
+.config-list .table-scroll, .config-changes .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
+.config-list tbody tr { cursor: pointer; }
+.config-list tbody tr.selected { background: #eef5ff; }
+.config-list tbody tr.selected .cell-title { color: #277cf7; }
+.config-no-match { text-align: center; color: #8797b0; cursor: default; }
+.config-list .panel-heading { align-items: center; }
+.config-count { margin-left: 8px; font-size: var(--fs-meta); font-weight: 400; color: #7a8ca8; }
+.config-filters { flex-wrap: nowrap; }
+.config-filters .list-search input { width: 170px; }
+.check-body { flex: 1; min-height: 0; overflow: auto; padding-bottom: 10px; }
+
+.risk-mark { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-meta); }
+.risk-mark i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.risk-mark.green { color: #0b8a63; } .risk-mark.amber { color: #b36f00; } .risk-mark.red { color: #c2413a; }
+
+.config-detail .detail-head { padding-top: 0; }
+.config-detail .detail-head>.status-chip { margin-left: auto; flex-shrink: 0; }
+.config-detail .detail-head small { display: block; overflow-wrap: anywhere; }
+.config-icon { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; background: #eaf2ff; color: #277cf7; }
+.config-value { display: flex; gap: 12px; margin: 0; padding: 8px 10px; border: 1px solid #e4edf8; border-radius: 5px; background: #f7faff; font: var(--fs-text)/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #2562cf; white-space: pre-wrap; overflow-wrap: anywhere; }
+.config-value>span { color: #9aa9bf; user-select: none; }
+.config-note { display: block; width: 100%; min-height: 64px; resize: none; padding: 7px 9px; border: 1px solid #dde6f1; border-radius: 5px; background: #fbfdff; font: inherit; font-size: var(--fs-text); color: #253f6a; }
+.config-detail .detail-actions { flex-wrap: wrap; }
+.config-detail .detail-actions .button { flex: 1 1 40%; }
+
+.check-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 0 12px; }
+.check-tiles>div { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 1px 7px; padding: 6px 8px; border: 1px solid #e4edf8; border-radius: 6px; background: #fbfdff; }
+.check-tiles svg { grid-row: 1 / span 2; }
+.check-tiles span { font-size: var(--fs-meta); color: #52688c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.check-tiles b { font-size: var(--fs-card); font-weight: 600; font-variant-numeric: tabular-nums; }
+.check-tiles .green { color: #0b8a63; } .check-tiles .amber { color: #b36f00; } .check-tiles .blue { color: #277cf7; }
+.check-sub { margin: 10px 12px 4px; font-size: var(--fs-text); font-weight: 700; color: #193257; }
+.group-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 4px 8px; padding: 0 12px; }
+.group-counts>div { display: flex; justify-content: space-between; gap: 6px; padding: 3px 8px; border-radius: 4px; background: #f5f8fc; font-size: var(--fs-meta); color: #52688c; }
+.group-counts b { font-weight: 500; color: #253f6a; font-variant-numeric: tabular-nums; }
+.check-empty { margin: 0 12px; font-size: var(--fs-text); color: #8797b0; }
+
+@media (max-width: 1040px), (max-height: 600px) {
+  .config-page .config-main { flex: none; grid-template-rows: none; }
+  .dashboard.config-page .config-list, .dashboard.config-page .config-detail, .dashboard.config-page .config-changes, .dashboard.config-page .config-checks { grid-column: 1 / -1; grid-row: auto; min-height: 300px; }
+  .dashboard.config-page .config-list { min-height: 380px; }
+  .config-list .panel-heading { flex-wrap: wrap; }
+  .config-filters { flex-wrap: wrap; }
+}

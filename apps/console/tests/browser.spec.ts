@@ -346,3 +346,18 @@ test('worker management merges the node menus and shows real heartbeats with ser
   await page.getByLabel('预览示例数据').check();
   await expect(page.locator('.worker-list tbody tr')).toHaveCount(8);
 });
+test('configuration management says the configuration centre is not connected and shows invented items only behind the switch', async ({ page }) => {
+  await mock(page); await login(page, '/config');
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await expect(nav.getByRole('link', { name: '配置管理' })).toBeVisible();
+  await expect(page.getByText('尚无配置项', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('配置分组')).toBeDisabled();
+  await page.getByLabel('预览示例数据').check();
+  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
+  await expect(page.locator('.config-list tbody tr')).toHaveCount(8);
+  await page.getByLabel('风险等级').selectOption('high');
+  await expect(page.locator('.config-list tbody tr')).toHaveCount(3);
+  await page.locator('.config-list tbody tr', { hasText: 'IP 冷却时长' }).click();
+  await expect(page.locator('.config-detail')).toContainText('proxy.ip.cooldown_minutes');
+  await expect(page.locator('.config-detail').getByRole('button', { name: '发布配置' })).toBeDisabled();
+});
