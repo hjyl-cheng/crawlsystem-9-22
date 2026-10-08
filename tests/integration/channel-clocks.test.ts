@@ -118,6 +118,9 @@ test('operators pause, resume, remove and re-manage with a version check; remove
   const again = await command('manage', 4);
   assert.equal(again.state, 'managed'); assert.equal(again.version, 5);
   assert.ok(again.clocks.length === 3 && again.clocks.every(k => k.reason === 'manual_manage' && k.retry_at === null));
+  const facts = await store.getChannel(p.reader, channel);
+  assert.equal(again.clocks.find(k => k.clock === 'ABOUT')!.last_success_at, new Date(facts.about!.observed_at).toISOString(), 'facts collected before count as the last success');
+  assert.equal(again.clocks.find(k => k.clock === 'AGENT')!.last_success_at, null, 'never profiled');
   const fixture = await store.createPlan(p.operator, { request_id: randomUUID(), fixture_id: 'channel-basic-v1', required_domains: ['ABOUT'] });
   await rejects(() => store.manageChannel(p.operator, fixture.channel_id, { action: 'manage', expected_version: 0 }), 'INVALID_REQUEST');
   const fresh = channelId();

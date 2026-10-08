@@ -5,7 +5,7 @@ import type { ChannelListItem } from '@crawlsystem/contracts';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
 import { Empty, Pagination, PlanBadge, ResourceView, SafeLink, usePagination } from '../ui.js';
-import { channelPath, clockState, managementLabels, number, planPath, time } from '../presentation.js';
+import { channelPath, dueIn, number, planPath, time } from '../presentation.js';
 import ClockPolicy from '../components/clock-policy.js';
 import './overview.css';
 import './discover.css';
@@ -43,15 +43,20 @@ function RealDetail({ id }: { id: string }) {
     <footer className="detail-actions"><Link className="button small" to={channelPath(id)}>查看完整数据</Link><button className="button small" disabled title={SCHEDULER_PENDING}>立即更新</button></footer>
   </section>;
 }
-const clockShort: Record<ChannelListItem['clocks'][number]['clock'], string> = { ABOUT: '资料', VIDEO: '视频', AGENT: 'Agent' };
-const day = (value: string) => new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(new Date(value));
-/** "Next update" cell: one line per clock with its state, as in the old dashboard. */
+const clockShort: Record<ChannelListItem['clocks'][number]['clock'], string> = { ABOUT: '资料', VIDEO: '视频', AGENT: 'Agent 画像' };
+const localDay = (value: string) => new Date(value).toDateString();
+/** "Next update" cell: the next date and what is updated then (every kind due that same day). */
 function NextUpdates({ ch }: { ch: ChannelListItem }) {
-  if (!ch.clocks.length) return <span className="text-muted">{managementLabels[ch.management_state ?? 'none']}</span>;
-  return <div className="clock-lines">{ch.clocks.map(k => { const s = clockState(k, ch.management_state); return <div key={k.clock} className="clock-line">
-    <span className="clock-name">{clockShort[k.clock]}</span><span className="mono">{day(k.next_due_at)}</span><span className={`status-chip ${s.tone === 'bad' ? 'red' : s.tone === 'warn' ? 'amber' : ''}`}>{s.label}</span></div>; })}</div>;
+  if (ch.management_state === 'paused') return <span className="text-muted">已关闭自动更新</span>;
+  if (ch.management_state !== 'managed' || !ch.clocks.length) return <span className="text-muted">未开启</span>;
+  const next = ch.clocks.reduce((a, b) => Date.parse(b.next_due_at) < Date.parse(a.next_due_at) ? b : a);
+  const parts = ch.clocks.filter(k => localDay(k.next_due_at) === localDay(next.next_due_at)).map(k => clockShort[k.clock]).join('、');
+  const overdueDays = Math.floor((Date.now() - Date.parse(next.next_due_at)) / 86_400_000);
+  return <div className="next-update">{Date.parse(next.next_due_at) <= Date.now()
+      ? <b className="text-red">已过期{overdueDays > 0 ? ` ${overdueDays} 天` : ''}</b>
+      : <><b>{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' }).format(new Date(next.next_due_at))}</b><small>（{dueIn(next.next_due_at)}）</small></>}
+    <small className="cell-note">{parts}</small></div>;
 }
-
 export default function Channels() {
   const { api } = useAuth(); const paging = usePagination();
   const resource = useResource(`channels:${paging.cursor}`, signal => api.channels(paging.cursor, 20, signal));

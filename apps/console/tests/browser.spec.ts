@@ -357,9 +357,9 @@ test('channel management lists real channel facts and shows the selected channel
   const row = page.locator('.channels-list tbody tr').first();
   await expect(row).toContainText('M1 固定样本频道'); await expect(row).toContainText('本轮已完成');
   await expect(page.locator('.channel-detail').getByText('已入库视频', { exact: true })).toBeVisible();
-  await expect(row).toContainText('未纳管');
+  await expect(row).toContainText('未开启');
   await page.locator('.channel-detail').getByRole('tab', { name: '更新策略' }).click();
-  await expect(page.locator('.channel-detail').getByText('固定样本频道不参与持续更新。')).toBeVisible();
+  await expect(page.locator('.channel-detail').getByText('固定样本频道不参与自动更新。')).toBeVisible();
   await expect(page.locator('.channel-detail').getByText('未接入')).toHaveCount(0);
   await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
 });

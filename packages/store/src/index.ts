@@ -318,7 +318,12 @@ export class Store {
       const to = { manage:'managed', pause:'paused', resume:'managed', remove:'removed' }[command.action];
       const now = (await client.query(`UPDATE m1.channels SET management_state=$3,management_version=management_version+1,management_changed_at=clock_timestamp()
         WHERE workspace_id=$1 AND channel_id=$2 RETURNING management_changed_at`,[principal.workspace_id,channelId,to])).rows[0]!.management_changed_at as Date;
-      if (command.action === 'manage') await this.seedClocks(client,principal.workspace_id,channelId,now,'manual_manage',null);
+      if (command.action === 'manage') {
+        // Facts collected before management count as each clock's last success (shown as "上次").
+        const videos = (await client.query(`SELECT max((data->>'observed_at')::timestamptz) AS at FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND data->>'observed_at' IS NOT NULL`,[principal.workspace_id,channelId])).rows[0]!.at as Date | null;
+        const seen = { ABOUT:row.about?.observed_at ?? null, VIDEO:videos ? iso(videos) : null, AGENT:row.agent?.observed_at ?? null } as Record<ClockName,string|null>;
+        await this.seedClocks(client,principal.workspace_id,channelId,now,'manual_manage',null,[],seen);
+      }
       return this.management(client,{...row,management_state:to,management_version:row.management_version+1,management_changed_at:now});
     });
   }
@@ -341,9 +346,9 @@ export class Store {
       const facts: ClockFacts = { latestPublishedAt:latest ? iso(latest) : null, newVideosFound:null, emptyDiscoveryRuns:clock.empty_runs };
       const d = decideClock(command.clock,clock.last_success_at ? 'success' : 'first',facts,now,command.interval_days);
       await client.query(`UPDATE m1.channel_clocks SET override_days=$4::int,interval_days=$5::int,reason=$6,policy_version=$7,
-          due_at=coalesce(last_success_at,$8::timestamptz)+($5::int*interval '1 day'),
-          retry_at=CASE WHEN retry_at > coalesce(last_success_at,$8::timestamptz)+($5::int*interval '1 day') THEN NULL ELSE retry_at END,updated_at=clock_timestamp()
-        WHERE workspace_id=$1 AND channel_id=$2 AND clock=$3`,[principal.workspace_id,channelId,command.clock,command.interval_days,d.interval_days,d.reason,CLOCK_POLICY_VERSION,now]);
+          due_at=coalesce(last_success_at,due_at-(interval_days*interval '1 day'))+($5::int*interval '1 day'),
+          retry_at=CASE WHEN retry_at > coalesce(last_success_at,due_at-(interval_days*interval '1 day'))+($5::int*interval '1 day') THEN NULL ELSE retry_at END,updated_at=clock_timestamp()
+        WHERE workspace_id=$1 AND channel_id=$2 AND clock=$3`,[principal.workspace_id,channelId,command.clock,command.interval_days,d.interval_days,d.reason,CLOCK_POLICY_VERSION]);
       const updated = (await client.query('UPDATE m1.channels SET management_version=management_version+1 WHERE workspace_id=$1 AND channel_id=$2 RETURNING *',[principal.workspace_id,channelId])).rows[0]!;
       return this.management(client,updated);
     });
@@ -358,9 +363,9 @@ export class Store {
         last_attempt_at:k.last_attempt_at ? iso(k.last_attempt_at) : null, last_plan_id:k.last_plan_id ?? null, refresh_due_at:k.clock === 'VIDEO' && k.refresh_due_at ? iso(k.refresh_due_at) : null, override_days:k.override_days ?? null })) };
   }
   /** Fresh clocks for a channel entering management (first collection or operator command); `applied` clocks record this plan as their success. */
-  private async seedClocks(client: PoolClient, workspaceId: string, channelId: string, now: Date, reason: ClockReason, planId: string | null, applied: ClockName[] = []): Promise<void> {
+  private async seedClocks(client: PoolClient, workspaceId: string, channelId: string, now: Date, reason: ClockReason, planId: string | null, applied: ClockName[] = [], seen: Partial<Record<ClockName,string|null>> = {}): Promise<void> {
     for (const clock of CLOCK_NAMES) {
-      const ran = planId !== null && applied.includes(clock);
+      const ran = planId !== null && applied.includes(clock), lastSuccess = ran ? now : seen[clock] ? new Date(seen[clock]!) : null;
       const decision = decideClock(clock,'first',{latestPublishedAt:null,newVideosFound:null,emptyDiscoveryRuns:0},now);
       // The recent-video refresh restarts its own period with the clocks (first collection covered the scope).
       await client.query(`INSERT INTO m1.channel_clocks(workspace_id,channel_id,clock,due_at,retry_at,interval_days,reason,policy_version,last_success_at,last_attempt_at,last_plan_id,empty_runs,refresh_due_at)
@@ -371,7 +376,7 @@ export class Store {
           reason=CASE WHEN m1.channel_clocks.override_days IS NULL THEN EXCLUDED.reason ELSE 'manual_override' END,
           policy_version=EXCLUDED.policy_version,last_success_at=coalesce(EXCLUDED.last_success_at,m1.channel_clocks.last_success_at),last_attempt_at=coalesce(EXCLUDED.last_attempt_at,m1.channel_clocks.last_attempt_at),
           last_plan_id=coalesce(EXCLUDED.last_plan_id,m1.channel_clocks.last_plan_id),empty_runs=0,updated_at=clock_timestamp()`,
-        [workspaceId,channelId,clock,now,decision.interval_days,reason,CLOCK_POLICY_VERSION,ran ? now : null,ran ? planId : null,REFRESH_INTERVAL_DAYS]);
+        [workspaceId,channelId,clock,now,decision.interval_days,reason,CLOCK_POLICY_VERSION,lastSuccess,ran ? planId : null,REFRESH_INTERVAL_DAYS]);
     }
   }
   /**
