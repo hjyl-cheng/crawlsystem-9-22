@@ -8,6 +8,9 @@ import { agentInputHash, contentHash, submissionHash } from '@crawlsystem/contra
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
 import { instantFromDate, type ClockKind, type Observation } from '@crawlsystem/feature-clock';
 import { aboutObservation, agentObservation, applyObservations, loadClocks, videoObservation, writeClocks, type ClockActivity } from './feature-clocks.ts';
+import { UpdateLimitsSchema, ChannelUpdateSchema, DataApiPermitRequestSchema, type UpdateLimits, type DataApiPermit } from '@crawlsystem/contracts';
+import { apiBudget, estimateApiUnits, releaseApiReservation, schedulerState } from './update-budget.ts';
+import { readUpdates } from './update-view.ts';
 
 export class StoreError extends Error {
   constructor(public code: ErrorCode, message: string, public status = 409, public retryable = false) { super(message); }
@@ -18,7 +21,7 @@ export function requireRole(principal: Principal, ...roles: Role[]): void {
 const iso = (value: Date | string): string => new Date(value).toISOString();
 export function toPlan(row: QueryResultRow): Plan {
   return { plan_id: row.plan_id, run_id: row.run_id, workspace_id: row.workspace_id, channel_id: row.channel_id, source_revision: Number(row.source_revision),
-    source_mode: row.source_mode, fixture_id: row.fixture_id ?? null, required_domains: row.required_domains, status: row.status, version: row.version, execution_epoch: row.execution_epoch,
+    source_mode: row.source_mode, fixture_id: row.fixture_id ?? null, plan_kind: row.plan_kind ?? 'FULL', required_domains: row.required_domains, status: row.status, version: row.version, execution_epoch: row.execution_epoch,
     input_hash: row.input_hash, workflow_id: row.workflow_id, created_at: iso(row.created_at), updated_at: iso(row.updated_at), finished_at: row.finished_at ? iso(row.finished_at) : null,
     deadline_at: iso(row.deadline_at), publication_status: 'NOT_ENABLED' };
 }
@@ -27,7 +30,7 @@ const terminal = (status: string) => ['COMPLETED','CANCELLED','FAILED'].includes
 export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; trace_context?: string; }
 
 export class Store {
-  constructor(public readonly pool: Pool) {}
+  constructor(public readonly pool: Pool, public readonly updateLimits: UpdateLimits = UpdateLimitsSchema.parse({})) {}
   private async tx<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       const client = await this.pool.connect();
@@ -69,6 +72,16 @@ export class Store {
       : createFrozenFixture(input.required_domains, deadline);
     const fixtureId = frozen.source_mode === 'fixture' ? frozen.fixture_id : null;
     return this.tx(async client => {
+      if (frozen.source_mode === 'youtube') {
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('channel-plan:' || $1 || ':' || $2))", [principal.workspace_id, frozen.channel_id]);
+        const replay = (await client.query('SELECT * FROM m1.plans WHERE workspace_id=$1 AND request_id=$2', [principal.workspace_id, input.request_id])).rows[0];
+        if (replay) {
+          if (replay.request_hash !== requestHash) throw new StoreError('CONFLICT', 'Creation identity has different input');
+          return toPlan(replay);
+        }
+        if ((await client.query("SELECT 1 FROM m1.plans WHERE workspace_id=$1 AND channel_id=$2 AND plan_kind='UPDATE' AND status IN ('QUEUED','RUNNING','WAITING')", [principal.workspace_id, frozen.channel_id])).rowCount)
+          throw new StoreError('CONFLICT', 'A channel update is already active');
+      }
       const inserted = await client.query(`INSERT INTO m1.plans(plan_id,run_id,workspace_id,request_id,request_hash,channel_id,source_mode,fixture_id,required_domains,status,frozen_input,input_hash,workflow_id,deadline_at,trace_context)
         VALUES($1,$2,$3,$4,$5,$6,$14,$7,$8,'QUEUED',$9,$10,$11,$12,$13) ON CONFLICT(workspace_id,request_id) DO NOTHING RETURNING *`,
         [planId, randomUUID(), principal.workspace_id, input.request_id, requestHash, frozen.channel_id, fixtureId, input.required_domains, frozen, contentHash(frozen), `m1/${principal.workspace_id}/${planId}`, deadline, trace, frozen.source_mode]);
@@ -84,6 +97,125 @@ export class Store {
         WHERE m1.channels.latest_plan_revision < EXCLUDED.latest_plan_revision`, [principal.workspace_id,frozen.channel_id,planId,row.source_revision]);
       await client.query("INSERT INTO m1.intents(intent_id,plan_id,kind) VALUES($1,$2,'START')", [randomUUID(),planId]);
       return toPlan(row);
+    });
+  }
+  /** Bounded scan; the workspace lock makes admission safe across dispatcher replicas. */
+  async scheduleUpdates(workspaceId: string, now = new Date()): Promise<Plan[]> {
+    return this.tx(async client => {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('update-admission:' || $1))", [workspaceId]);
+      await schedulerState(client, workspaceId, this.updateLimits, now);
+      if (!this.updateLimits.enabled) return [];
+      // Only clocks in auto_domains are scheduled; the others stay due until updated manually.
+      const candidates = await client.query(`SELECT c.channel_id,min(k.due_at) AS due FROM m1.channels c JOIN m1.channel_clocks k USING(workspace_id,channel_id)
+        WHERE c.workspace_id=$1 AND c.management_state='managed' AND k.due_at<=$2 AND k.clock=ANY($3::text[])
+          AND (k.last_scheduled_at IS NULL OR k.last_scheduled_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+          AND (k.last_attempt_at IS NULL OR k.last_attempt_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+          AND NOT EXISTS(SELECT 1 FROM m1.plans p WHERE p.workspace_id=c.workspace_id AND p.channel_id=c.channel_id AND p.status IN ('QUEUED','RUNNING','WAITING'))
+        GROUP BY c.channel_id ORDER BY due,c.channel_id LIMIT 25`, [workspaceId, now, this.updateLimits.auto_domains]);
+      const plans: Plan[] = [];
+      for (const candidate of candidates.rows) {
+        const plan = await this.insertUpdate(client, workspaceId, candidate.channel_id, now);
+        if (plan) plans.push(plan);
+      }
+      return plans;
+    });
+  }
+  async updateChannel(principal: Principal, channelId: string, raw: unknown): Promise<Plan> {
+    requireRole(principal, 'operator');
+    const command = ChannelUpdateSchema.parse(raw), requestHash = contentHash({ channelId, command });
+    return this.tx(async client => {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('update-admission:' || $1))", [principal.workspace_id]);
+      const old = (await client.query('SELECT * FROM m1.plans WHERE workspace_id=$1 AND request_id=$2', [principal.workspace_id, command.request_id])).rows[0];
+      if (old) {
+        if (old.request_hash !== requestHash) throw new StoreError('CONFLICT', 'Update identity has different input');
+        return toPlan(old);
+      }
+      const plan = await this.insertUpdate(client, principal.workspace_id, channelId, new Date(), { ...command, requestHash });
+      if (!plan) throw new StoreError('BUDGET_EXHAUSTED', 'Update admission budget is full; the channel remains due');
+      return plan;
+    });
+  }
+  async updates(principal: Principal, limit=20, offset=0, filter: { state?: string; search?: string } = {}) {
+    requireRole(principal, 'reader', 'operator');
+    return readUpdates(this.pool, principal.workspace_id, this.updateLimits, toPlan, limit, offset, filter);
+  }
+  private async insertUpdate(client: PoolClient, workspace: string, channelId: string, now: Date,
+    manual?: { request_id: string; expected_version: number; domains?: Domain[]; requestHash: string }): Promise<Plan | null> {
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('channel-plan:' || $1 || ':' || $2))", [workspace, channelId]);
+    const channel = (await client.query('SELECT * FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE', [workspace, channelId])).rows[0];
+    if (!channel) throw new StoreError('NOT_FOUND', 'Channel not found', 404);
+    if (manual && channel.management_version !== manual.expected_version) throw new StoreError('CONFLICT', 'Channel management changed; refresh before updating');
+    if (channel.management_state !== 'managed') {
+      if (manual) throw new StoreError('CONFLICT', 'Only managed channels can be updated');
+      return null;
+    }
+    const active = await client.query("SELECT 1 FROM m1.plans WHERE workspace_id=$1 AND channel_id=$2 AND status IN ('QUEUED','RUNNING','WAITING')", [workspace, channelId]);
+    if (active.rowCount) { if (manual) throw new StoreError('CONFLICT', 'This channel already has an active plan'); return null; }
+    const clocks = (await client.query('SELECT * FROM m1.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 ORDER BY clock', [workspace, channelId])).rows;
+    const utcStart = Date.parse(now.toISOString().slice(0, 10));
+    const due = clocks.filter(k => new Date(k.due_at).getTime() <= now.getTime());
+    const domains = manual?.domains ?? CLOCK_NAMES.filter(d => due.some(k => k.clock === d && (manual || (this.updateLimits.auto_domains.includes(d) &&
+      (!k.last_scheduled_at || new Date(k.last_scheduled_at).getTime() < utcStart) && (!k.last_attempt_at || new Date(k.last_attempt_at).getTime() < utcStart)))));
+    if (!domains.length) { if (manual) throw new StoreError('CONFLICT', 'No channel domain is due; choose a domain explicitly'); return null; }
+    const counts = (await client.query(`SELECT count(*) FILTER(WHERE status IN ('QUEUED','RUNNING','WAITING'))::int AS active,
+      count(*) FILTER(WHERE status IN ('QUEUED','RUNNING','WAITING') AND 'AGENT'=ANY(required_domains))::int AS agent,
+      count(*) FILTER(WHERE plan_kind='UPDATE' AND created_at>=date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+        AND created_at<((date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC')+interval '1 day') AT TIME ZONE 'UTC'))::int AS daily
+      FROM m1.plans WHERE workspace_id=$1 AND source_mode='youtube'`, [workspace, now])).rows[0]!;
+    const limits = this.updateLimits;
+    if (counts.active >= limits.max_active_plans || counts.daily >= limits.daily_plan_limit || (domains.includes('AGENT') && counts.agent >= limits.max_agent_plans)) return null;
+    const previous = (await client.query('SELECT frozen_input FROM m1.plans WHERE plan_id=$1', [channel.latest_plan_id])).rows[0]!.frozen_input as FrozenInput;
+    if (previous.source_mode !== 'youtube') throw new StoreError('INVALID_REQUEST', 'Only real channels can be updated', 400);
+    const units = estimateApiUnits(domains, previous.scope.video_limit), budget = await apiBudget(client, workspace, now, true);
+    if (budget.used + budget.reserved + units > limits.api_daily_limit) return null;
+    const ids = domains.includes('AGENT') && !domains.includes('VIDEO') ? (await client.query(`SELECT video_id FROM m1.videos
+      WHERE workspace_id=$1 AND channel_id=$2 AND NOT coalesce((data->>'unavailable')::boolean,false)
+      ORDER BY data->>'published_at' DESC NULLS LAST,video_id LIMIT $3`, [workspace, channelId, previous.scope.video_limit])).rows.map(r => r.video_id as string) : undefined;
+    const deadline = new Date(now.getTime() + 120 * 60_000).toISOString();
+    const frozen = FrozenInputSchema.parse({ schema_version: CONTRACT_VERSION, source_mode: 'youtube', plan_kind: 'UPDATE', channel_id: channelId,
+      required_domains: domains, scope: previous.scope, reference_time: now.toISOString(), deadline_at: deadline, max_attempts: 3,
+      ...(ids ? { agent_video_ids: ids } : {}) });
+    const id = randomUUID(), dueAt = due.length ? new Date(Math.min(...due.map(k => new Date(k.due_at).getTime()))) : now;
+    const row = (await client.query(`INSERT INTO m1.plans(plan_id,run_id,workspace_id,request_id,request_hash,channel_id,source_mode,fixture_id,
+      required_domains,status,frozen_input,input_hash,workflow_id,deadline_at,plan_kind,update_trigger,update_due_at,created_at,updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,'youtube',NULL,$7,'QUEUED',$8,$9,$10,$11,'UPDATE',$12,$13,$14,$14) RETURNING *`,
+      [id, randomUUID(), workspace, manual?.request_id ?? randomUUID(), manual?.requestHash ?? contentHash(frozen), channelId, domains, frozen,
+        contentHash(frozen), `m1/${workspace}/${id}`, deadline, manual ? 'MANUAL' : 'SCHEDULED', dueAt, now])).rows[0]!;
+    await client.query('INSERT INTO m1.domains(plan_id,domain) SELECT $1,unnest($2::text[])', [id, domains]);
+    await client.query('UPDATE m1.channels SET latest_plan_id=$3,latest_plan_revision=$4,updated_at=$5 WHERE workspace_id=$1 AND channel_id=$2', [workspace, channelId, id, row.source_revision, now]);
+    await client.query('UPDATE m1.channel_clocks SET last_scheduled_at=$4 WHERE workspace_id=$1 AND channel_id=$2 AND clock=ANY($3::text[])', [workspace, channelId, domains, now]);
+    await client.query("INSERT INTO m1.intents(intent_id,plan_id,kind) VALUES($1,$2,'START')", [randomUUID(), id]);
+    if (units) {
+      await client.query('UPDATE m1.data_api_budget SET reserved_units=reserved_units+$3 WHERE workspace_id=$1 AND quota_day=$2', [workspace, budget.day, units]);
+      await client.query('INSERT INTO m1.plan_api_reservations(plan_id,workspace_id,quota_day,remaining) VALUES($1,$2,$3,$4)', [id, workspace, budget.day, units]);
+    }
+    return toPlan(row);
+  }
+  /** One idempotent permit per actual external API request, shared by all Worker replicas. */
+  async dataApiPermit(principal: Principal, raw: unknown, now = new Date()): Promise<DataApiPermit> {
+    requireRole(principal, 'worker');
+    const command = DataApiPermitRequestSchema.parse(raw);
+    return this.tx(async client => {
+      const plan = await this.planRow(client, principal, command.plan_id, true);
+      if (plan.source_mode !== 'youtube') throw new StoreError('DOMAIN_NOT_REQUIRED', 'Fixture plans do not call the Data API');
+      if (plan.execution_epoch !== command.execution_epoch) throw new StoreError('STALE_EXECUTION', 'Execution no longer owns this plan');
+      if (plan.input_hash !== command.input_hash) throw new StoreError('INPUT_MISMATCH', 'Frozen input differs');
+      if (terminal(plan.status)) throw new StoreError('PLAN_TERMINAL', 'Plan no longer accepts API calls');
+      if (new Date(plan.deadline_at).getTime() <= now.getTime()) throw new StoreError('BUDGET_EXHAUSTED', 'Plan deadline reached');
+      // Dates as text: node-postgres reads a date as local midnight, which shifts the day off UTC hosts.
+      const reservation = (await client.query('SELECT remaining,quota_day::text AS quota_day FROM m1.plan_api_reservations WHERE plan_id=$1 FOR UPDATE', [plan.plan_id])).rows[0];
+      const budget = await apiBudget(client, principal.workspace_id, now, true);
+      const old = (await client.query('SELECT plan_id,quota_day::text AS quota_day FROM m1.data_api_permits WHERE workspace_id=$1 AND request_id=$2', [principal.workspace_id, command.request_id])).rows[0];
+      if (old && old.plan_id !== plan.plan_id) throw new StoreError('CONFLICT', 'Permit identity belongs to another plan');
+      if (old && old.quota_day !== budget.day) throw new StoreError('CONFLICT', 'Permit belongs to a previous quota day');
+      const reserved = reservation && reservation.quota_day === budget.day && reservation.remaining > 0;
+      const granted = !!old || (reserved ? budget.used < this.updateLimits.api_daily_limit : budget.used + budget.reserved < this.updateLimits.api_daily_limit);
+      if (granted && !old) {
+        await client.query('INSERT INTO m1.data_api_permits(workspace_id,request_id,plan_id,quota_day,granted_at) VALUES($1,$2,$3,$4,$5)', [principal.workspace_id, command.request_id, plan.plan_id, budget.day, now]);
+        await client.query('UPDATE m1.data_api_budget SET used_units=used_units+1,reserved_units=reserved_units-$3 WHERE workspace_id=$1 AND quota_day=$2', [principal.workspace_id, budget.day, reserved ? 1 : 0]);
+        if (reserved) await client.query('UPDATE m1.plan_api_reservations SET remaining=remaining-1 WHERE plan_id=$1', [plan.plan_id]);
+      }
+      return { granted, quota_day: budget.day, reset_at: budget.reset_at, used_units: budget.used + (granted && !old ? 1 : 0), limit: this.updateLimits.api_daily_limit };
     });
   }
   async getInput(principal: Principal, id: string): Promise<PlanInput> {
@@ -348,6 +480,7 @@ export class Store {
     const clocks = ['managed','paused'].includes(channel.management_state) ? (await client.query('SELECT * FROM m1.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 AND clock=ANY($3::text[])',[channel.workspace_id,channel.channel_id,CLOCK_NAMES])).rows : [];
     const order = (c: string) => CLOCK_NAMES.indexOf(c as ClockName);
     return { state:channel.management_state ?? null, version:channel.management_version ?? 0, changed_at:channel.management_changed_at ? iso(channel.management_changed_at) : null,
+      auto_domains:this.updateLimits.enabled ? CLOCK_NAMES.filter(d => this.updateLimits.auto_domains.includes(d)) : [],
       clocks:clocks.sort((a,b) => order(a.clock)-order(b.clock)).map(k => ({ clock:k.clock, due_at:iso(k.due_at), retry_at:k.retry_at ? iso(k.retry_at) : null, next_due_at:iso(k.retry_at ?? k.due_at),
         interval_days:k.interval_days, reasons:k.reasons?.length ? k.reasons : [k.reason], policy_version:k.policy_version, last_success_at:k.last_success_at ? iso(k.last_success_at) : null,
         last_attempt_at:k.last_attempt_at ? iso(k.last_attempt_at) : null, last_plan_id:k.last_plan_id ?? null, override_days:k.override_days ?? null })) };
@@ -382,6 +515,7 @@ export class Store {
    * first completion of an unmanaged channel puts it under management. Removed channels: untouched.
    */
   private async settleClocks(client: PoolClient, plan: QueryResultRow, status: 'COMPLETED' | 'FAILED' | 'CANCELLED'): Promise<void> {
+    await releaseApiReservation(client, plan.plan_id);
     if ((plan.frozen_input as FrozenInput).source_mode !== 'youtube') return;
     const channel = (await client.query('SELECT management_state,about,agent FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[plan.workspace_id,plan.channel_id])).rows[0];
     if (!channel || channel.management_state === 'removed') return;
@@ -423,7 +557,9 @@ export class Store {
   }
   /** Current facts of this plan's channel and available target videos, in target order. */
   private async agentSnapshot(client: PoolClient | Pool, row: QueryResultRow): Promise<AgentInput> {
-    const targets = await this.videoTargets(client,row) ?? [];
+    const frozen = row.frozen_input as FrozenInput;
+    const targets = frozen.source_mode === 'youtube' && !frozen.required_domains.includes('VIDEO')
+      ? frozen.agent_video_ids ?? [] : await this.videoTargets(client,row) ?? [];
     const channel = (await client.query('SELECT about FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2',[row.workspace_id,row.channel_id])).rows[0];
     if (!channel?.about) throw new StoreError('DOMAIN_INCOMPLETE','Channel facts are missing');
     const rows = await client.query('SELECT video_id,data FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND video_id=ANY($3::text[])',[row.workspace_id,row.channel_id,targets]);

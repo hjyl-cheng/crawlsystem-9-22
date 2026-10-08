@@ -118,6 +118,14 @@ export function createActivities(options: ActivityOptions) {
   }
   const submitOnce = async (ref: WorkflowInput, value: PlanInput, submission: Submission, deadline: number) =>
     value.receipts.some(r => r.submission_id === submission.submission_id) ? undefined : api.submit(submission, { deadline, signal: Context.current().cancellationSignal });
+  const permit = (ref: WorkflowInput, scope: TraceScope, deadline: number) => async () => {
+    const result = await api.dataApiPermit({ request_id: randomUUID(), plan_id: ref.plan_id, execution_epoch: ref.execution_epoch, input_hash: ref.input_hash },
+      { deadline, signal: Context.current().cancellationSignal, traceparent: scope.traceparent });
+    if (!result.granted) {
+      await event(ref, scope, 'WAITING', 'API_QUOTA', `Data API daily budget exhausted; resets ${result.reset_at}`, null, 'BUDGET_EXHAUSTED');
+      throw new ExecutionApiError('BUDGET_EXHAUSTED', false);
+    }
+  };
 
   return {
     /** YouTube ABOUT: About page through a proxy plus exact counts from the Data API. */
@@ -127,7 +135,7 @@ export function createActivities(options: ActivityOptions) {
         const done = () => ({ plan_id: ref.plan_id, status: value.plan.status });
         if (terminal(value.plan.status) || !input.required_domains.includes('ABOUT') || value.domains.find(d => d.domain === 'ABOUT')?.state === 'APPLIED') return done();
         await event(ref, scope, 'STARTED', 'ABOUT', `Collecting channel ${input.channel_id}`, 'ABOUT');
-        const channel = await youtube().dataApi.channel(input.channel_id);
+        const channel = await youtube().dataApi.channel(input.channel_id, permit(ref, scope, descriptor.deadlineAt));
         if (!channel) throw new ExecutionApiError('NOT_FOUND', false);
         const about = await withProxy(ref, scope, descriptor.deadlineAt, async fetcher => aboutPage(await session(fetcher), input.channel_id));
         const receipt = await submitOnce(ref, value, submissionOf(ref, 'ABOUT', 'about:channel', toChannelFacts(channel, about, new Date().toISOString()), true), descriptor.deadlineAt);
@@ -143,7 +151,7 @@ export function createActivities(options: ActivityOptions) {
         if (!input.required_domains.includes('VIDEO') || terminal(value.plan.status)) return { batches: 0, status: value.plan.status };
         if (!value.video_targets) {
           const windowStart = new Date(Date.parse(input.reference_time) - input.scope.max_age_days * 86_400_000).toISOString();
-          const listed = await youtube().dataApi.recentUploads(`UU${input.channel_id.slice(2)}`, windowStart, input.scope.video_limit);
+          const listed = await youtube().dataApi.recentUploads(`UU${input.channel_id.slice(2)}`, windowStart, input.scope.video_limit, permit(ref, scope, descriptor.deadlineAt));
           const manifest = { kind: 'targets', channel_id: input.channel_id, video_ids: listed.ids, listed_at: new Date().toISOString(), window_start: windowStart, exhausted: listed.exhausted, source: 'data_api:playlistItems' };
           await submitOnce(ref, value, submissionOf(ref, 'VIDEO', 'video:targets', manifest, listed.ids.length === 0), descriptor.deadlineAt);
           await event(ref, scope, 'PROGRESS', 'TARGETS', `Frozen ${listed.ids.length} video targets since ${windowStart.slice(0, 10)}${listed.exhausted ? '' : ' (limit reached)'}`, 'VIDEO');
@@ -160,7 +168,7 @@ export function createActivities(options: ActivityOptions) {
         const key = `video:batch:${index}`, last = (index + 1) * VIDEO_BATCH >= targets.length;
         if (terminal(value.plan.status) || !batch.length || value.receipts.some(r => r.logical_batch_key === key)) return { status: value.plan.status };
         const observed = new Date().toISOString();
-        const facts = await youtube().dataApi.videos(batch);
+        const facts = await youtube().dataApi.videos(batch, permit(ref, scope, descriptor.deadlineAt));
         const byId = new Map(facts.map(v => [v.id, v]));
         const items: VideoItem[] = await withProxy(ref, scope, descriptor.deadlineAt, async fetcher => {
           const yt = await session(fetcher);

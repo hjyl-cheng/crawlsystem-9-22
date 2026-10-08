@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test, expect, type Page } from '@playwright/test';
-import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView } from '@crawlsystem/contracts';
-import { detailFixture, channelFixture, workerFixture, errorFixture } from './fixtures.js';
+import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView, type UpdateChannel } from '@crawlsystem/contracts';
+import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
-  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false };
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[] };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -37,6 +37,9 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     }
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
     if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status, management_state: null, next_due_at: null, clocks: [] }] : [], next_cursor: null });
+    if (path === '/v1/updates/summary') return json(updateSummaryFixture(state.updates));
+    if (path === '/v1/updates') return json({ items: state.updates, next_cursor: null });
+    if (path.endsWith('/update') && method === 'POST') { state.updateRequests.push(route.request().postDataJSON()); return json(detailFixture().plan); }
     if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan, state.managed));
     if (path === '/v1/console/accounts') return json({ observed_at: '2026-09-23T08:00:00.000Z', source: 'DATABASE', items: [
       { username: 'fixture', subject: 'browser-fixture', role: state.role === 'reader' ? 'reader' : 'operator', status: 'ACTIVE', created_at: '2026-09-20T02:00:00.000Z', updated_at: '2026-09-20T02:00:00.000Z', active_sessions: 1, latest_session_at: '2026-09-23T07:55:00.000Z' },
@@ -306,16 +309,22 @@ test('full collection shows backend plan statistics next to the real plan list',
   await expect(page.getByText('固定样本测试计划（联调与故障测试用，不计入统计）', { exact: false })).toBeVisible();
   await expect(page.getByLabel('预览示例数据'), 'real plan data offers no design sample').toHaveCount(0);
 });
-test('update collection shows no figures until the sample preview is switched on, and has no Clock menu', async ({ page }) => {
-  await mock(page); await login(page, '/update');
+test('update collection shows the real scheduler figures and has no sample preview or Clock menu', async ({ page }) => {
+  const state = await mock(page); await login(page, '/update');
   await expect(page.getByRole('heading', { name: '更新采集', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: '主导航' }).getByText('Clock 调度')).toHaveCount(0);
   await expect(page.getByText('尚无更新任务', { exact: true })).toBeVisible();
-  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
-  await expect(page.locator('.discover-kpi strong').first()).toHaveText('256');
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('0');
+  await expect(page.getByLabel('预览示例数据'), 'real data only').toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  state.updates = [updateChannelFixture()];
+  await page.locator('.update-page .dashboard-heading').getByRole('button', { name: '刷新' }).click();
+  const row = page.locator('.task-list tbody tr').first();
+  await expect(row).toContainText('等待 Data API 配额'); await expect(row).toContainText('频道资料');
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('1');
+  await row.getByRole('button', { name: '立即更新' }).click();
+  await expect.poll(() => state.updateRequests.length).toBe(1);
+  expect(state.updateRequests[0]).toMatchObject({ expected_version: 3, domains: ['ABOUT'] });
 });
 test('agent tasks show only the real waiting-plan count until the sample preview is switched on', async ({ page }) => {
   await mock(page, detailFixture({ status: 'WAITING', required_domains: ['ABOUT', 'VIDEO', 'AGENT'] }, ['ABOUT', 'VIDEO'])); await login(page, '/agent');
@@ -374,6 +383,7 @@ test('the update policy shows each next update with an automatic interval choice
     const rows = panel.locator('.clock-rows li');
     await expect(rows).toHaveCount(3);
     await expect(rows.locator('.clock-name')).toHaveText(['频道资料', '视频与评论', 'Agent 画像']);
+    await expect(panel.getByText('到时间后系统会自动更新频道资料；视频与评论、Agent 画像暂不自动更新，需要时在“更新采集”页点“立即更新”。')).toBeVisible();
     await expect(rows.locator('.clock-next').first()).toContainText('下次');
     for (const next of await rows.locator('.clock-next').allInnerTexts()) assert.doesNotMatch(next, /每\s*\d+\s*天/, 'no interval shown');
     await expect(rows.locator('.clock-next').first()).toHaveAttribute('title', /^上次更新：.+\n为什么是这个时间：第一次采集资料；第一次采集，按发布节奏 1 天后再看$/);

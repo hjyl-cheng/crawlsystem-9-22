@@ -12,7 +12,8 @@ export class DataApi {
   constructor(private key: string, private fetcher: typeof fetch = fetch, private base = 'https://www.googleapis.com/youtube/v3') {
     if (!/^[A-Za-z0-9_-]{20,64}$/.test(key)) throw new Error('Invalid YouTube Data API key');
   }
-  private async get<T>(path: string, params: Record<string, string>): Promise<T> {
+  private async get<T>(path: string, params: Record<string, string>, beforeRequest?: () => Promise<void>): Promise<T> {
+    await beforeRequest?.();
     const url = new URL(`${this.base}/${path}`);
     for (const [k, v] of Object.entries({ ...params, key: this.key })) url.searchParams.set(k, v);
     let response: Response;
@@ -29,16 +30,16 @@ export class DataApi {
     if (response.status >= 500) throw new DataApiError('unavailable', reason);
     throw new DataApiError('invalid', reason);
   }
-  async channel(id: string): Promise<ApiChannel | null> {
-    const body = await this.get<{ items?: ApiChannel[] }>('channels', { part: 'snippet,statistics,contentDetails,brandingSettings', id, maxResults: '1' });
+  async channel(id: string, beforeRequest?: () => Promise<void>): Promise<ApiChannel | null> {
+    const body = await this.get<{ items?: ApiChannel[] }>('channels', { part: 'snippet,statistics,contentDetails,brandingSettings', id, maxResults: '1' }, beforeRequest);
     return body.items?.[0] ?? null;
   }
   /** Newest uploads published at/after windowStart, at most `limit`, in upload-playlist order. */
-  async recentUploads(uploadsPlaylist: string, windowStart: string, limit: number): Promise<{ ids: string[]; exhausted: boolean }> {
+  async recentUploads(uploadsPlaylist: string, windowStart: string, limit: number, beforeRequest?: () => Promise<void>): Promise<{ ids: string[]; exhausted: boolean }> {
     const ids: string[] = []; let page: string | undefined;
     for (let i = 0; i < 20; i++) {
       const body = await this.get<{ items?: { contentDetails: { videoId: string; videoPublishedAt?: string } }[]; nextPageToken?: string }>('playlistItems',
-        { part: 'contentDetails', playlistId: uploadsPlaylist, maxResults: '50', ...(page ? { pageToken: page } : {}) });
+        { part: 'contentDetails', playlistId: uploadsPlaylist, maxResults: '50', ...(page ? { pageToken: page } : {}) }, beforeRequest);
       for (const item of body.items ?? []) {
         const published = item.contentDetails.videoPublishedAt;
         // Items without a publish time (e.g. private) are skipped; older items end the window.
@@ -52,10 +53,10 @@ export class DataApi {
     }
     return { ids, exhausted: false };
   }
-  async videos(ids: string[]): Promise<ApiVideo[]> {
+  async videos(ids: string[], beforeRequest?: () => Promise<void>): Promise<ApiVideo[]> {
     if (!ids.length) return [];
     if (ids.length > 50) throw new Error('At most 50 videos per call');
-    const body = await this.get<{ items?: ApiVideo[] }>('videos', { part: 'snippet,contentDetails,statistics,status,liveStreamingDetails', id: ids.join(','), maxResults: '50' });
+    const body = await this.get<{ items?: ApiVideo[] }>('videos', { part: 'snippet,contentDetails,statistics,status,liveStreamingDetails', id: ids.join(','), maxResults: '50' }, beforeRequest);
     return body.items ?? [];
   }
 }

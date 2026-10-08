@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ApiRoutes, CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema, LoginSchema } from '@crawlsystem/contracts';
+import { ApiRoutes, CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema, LoginSchema, UpdateStateSchema } from '@crawlsystem/contracts';
 import { requireRole, StoreError } from '@crawlsystem/store';
 import { createServer, pagination, planId, sourceMode, type ServerOptions } from '@crawlsystem/http';
 import { authenticate } from '@crawlsystem/http/auth';
@@ -60,9 +60,16 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.get('/v1/channels',async request=>{const q=pagination(request.query);return store.listChannels(request.principal,q.limit,q.offset,q.sourceMode);});
   app.get(ApiRoutes.plansSummary,async request=>store.plansSummary(request.principal,sourceMode(request.query)));
   app.get(ApiRoutes.completeness,async request=>store.completeness(request.principal,sourceMode(request.query)));
+  app.get(ApiRoutes.updatesSummary,async request=>(await store.updates(request.principal,1)).summary);
+  app.get(ApiRoutes.updates,async request=>{
+    const q=pagination(request.query), filter=z.object({state:UpdateStateSchema.optional(),search:z.string().max(160).optional()}).parse(request.query);
+    return (await store.updates(request.principal,q.limit,q.offset,filter)).page;
+  });
+  app.post(ApiRoutes.dataApiPermit,{bodyLimit:2048},async request=>store.dataApiPermit(request.principal,request.body));
   app.get('/v1/channels/:id',async request=>store.getChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id));
   app.post('/v1/channels/:id/management',{bodyLimit:1024},async request=>store.manageChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));
   app.post('/v1/channels/:id/clock-override',{bodyLimit:1024},async request=>store.overrideClock(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));
+  app.post('/v1/channels/:id/update',{bodyLimit:2048},async request=>store.updateChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));
   app.post('/v1/workers/heartbeat',async request=>store.heartbeat(request.principal,HeartbeatSchema.parse(request.body)));
   app.get(ApiRoutes.proxies,async request=>proxies().overview(request.principal));
   app.post(ApiRoutes.proxyImport,{bodyLimit:262144},async request=>proxies().importProxies(request.principal,request.body));

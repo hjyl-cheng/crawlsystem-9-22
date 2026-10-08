@@ -134,6 +134,9 @@ const FixtureFrozenSchema = z.strictObject({
 });
 const YoutubeFrozenSchema = z.strictObject({
   schema_version: z.literal(CONTRACT_VERSION), source_mode: z.literal('youtube'), channel_id: YoutubeChannelIdSchema,
+  plan_kind: z.literal('UPDATE').optional(),
+  /** Existing videos frozen at creation for an Agent-only update. */
+  agent_video_ids: z.array(YoutubeVideoIdSchema).max(100).optional(),
   required_domains: UniqueDomains, scope: z.strictObject({ video_limit: z.number().int().min(1).max(100), max_age_days: z.number().int().min(1).max(3650),
     comments_per_video: z.number().int().min(0).max(100), comment_sort: z.literal('TOP_COMMENTS') }),
   reference_time: Timestamp, deadline_at: Timestamp, max_attempts: z.number().int().min(1).max(10),
@@ -163,7 +166,7 @@ export const SubmissionSchema = z.discriminatedUnion('domain', [
 export type Submission = z.infer<typeof SubmissionSchema>;
 export interface Receipt { schema_version: typeof CONTRACT_VERSION; submission_id: string; plan_id: string; logical_batch_key: string; domain: Domain; payload_hash: string; state: 'APPLIED'; applied_at: string; }
 export interface DomainResult { domain: Domain; state: 'PENDING' | 'APPLIED'; completed_at: string | null; }
-export interface Plan { plan_id: string; run_id: string; workspace_id: string; channel_id: string; source_revision: number; source_mode: SourceMode; fixture_id: string | null; required_domains: Domain[]; status: PlanStatus; version: number; execution_epoch: number; input_hash: string; workflow_id: string; created_at: string; updated_at: string; finished_at: string | null; deadline_at: string; publication_status: 'NOT_ENABLED'; }
+export interface Plan { plan_id: string; run_id: string; workspace_id: string; channel_id: string; source_revision: number; source_mode: SourceMode; fixture_id: string | null; plan_kind?: 'FULL' | 'UPDATE'; required_domains: Domain[]; status: PlanStatus; version: number; execution_epoch: number; input_hash: string; workflow_id: string; created_at: string; updated_at: string; finished_at: string | null; deadline_at: string; publication_status: 'NOT_ENABLED'; }
 export interface PlanInput { plan: Plan; input: FrozenInput; domains: DomainResult[]; receipts: Receipt[]; trace_context?: string; video_targets?: string[]; }
 export const CancelPlanSchema = z.strictObject({ command_id: z.uuid(), expected_version: z.number().int().positive() });
 export const ErrorCodeSchema = z.enum(['INVALID_REQUEST','UNAUTHENTICATED','FORBIDDEN','NOT_FOUND','CONFLICT','STALE_EXECUTION','PLAN_TERMINAL','INPUT_MISMATCH','TARGET_MISMATCH','DOMAIN_INCOMPLETE','DOMAIN_NOT_REQUIRED','DEPENDENCY_NOT_IMPLEMENTED','BUDGET_EXHAUSTED','UNAVAILABLE','INTERNAL_ERROR']);
@@ -191,7 +194,9 @@ export interface ChannelClock {
   /** Interval an operator pinned for this channel and domain, replacing the policy; null = automatic. */
   override_days: number | null;
 }
-export interface ChannelManagement { state: ManagementState | null; version: number; changed_at: string | null; clocks: ChannelClock[]; }
+export interface ChannelManagement { state: ManagementState | null; version: number; changed_at: string | null; clocks: ChannelClock[];
+  /** Clocks the scheduler acts on by itself; the others wait for a manual update. */
+  auto_domains: Domain[]; }
 export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; management_state: ManagementState | null; next_due_at: string | null;
   /** The three clocks in brief (managed and paused channels; empty otherwise). */
   clocks: Pick<ChannelClock, 'clock' | 'next_due_at' | 'interval_days' | 'retry_at' | 'override_days'>[]; }
@@ -230,6 +235,7 @@ export const DomainResultSchema: z.ZodType<DomainResult> = z.strictObject({ doma
 export const PlanSchema: z.ZodType<Plan> = z.strictObject({
   plan_id: z.uuid(), run_id: z.uuid(), workspace_id: IdSchema, channel_id: IdSchema, source_revision: z.number().int().positive(),
   source_mode: SourceModeSchema, fixture_id: z.string().nullable(), required_domains: UniqueDomains, status: PlanStatusSchema,
+  plan_kind: z.enum(['FULL', 'UPDATE']).optional(),
   version: z.number().int().positive(), execution_epoch: z.number().int().positive(), input_hash: Hash, workflow_id: z.string(),
   created_at: Timestamp, updated_at: Timestamp, finished_at: Timestamp.nullable(), deadline_at: Timestamp, publication_status: z.literal('NOT_ENABLED'),
 });
@@ -241,7 +247,7 @@ export const ManagementStateSchema = z.enum(['managed', 'paused', 'removed']);
 export const ChannelClockSchema: z.ZodType<ChannelClock> = z.strictObject({ clock: z.enum(CLOCK_NAMES), due_at: Timestamp, retry_at: Timestamp.nullable(), next_due_at: Timestamp,
   interval_days: z.number().int().min(1).max(365), reasons: z.array(z.string().min(1).max(80)).max(30), policy_version: z.string().max(40),
   last_success_at: Timestamp.nullable(), last_attempt_at: Timestamp.nullable(), last_plan_id: z.uuid().nullable(), override_days: z.number().int().min(1).max(365).nullable() });
-export const ChannelManagementSchema: z.ZodType<ChannelManagement> = z.strictObject({ state: ManagementStateSchema.nullable(), version: z.number().int().nonnegative(), changed_at: Timestamp.nullable(), clocks: z.array(ChannelClockSchema).max(3) });
+export const ChannelManagementSchema: z.ZodType<ChannelManagement> = z.strictObject({ state: ManagementStateSchema.nullable(), version: z.number().int().nonnegative(), changed_at: Timestamp.nullable(), clocks: z.array(ChannelClockSchema).max(3), auto_domains: z.array(DomainSchema).max(3) });
 /** Operator command: manage (or re-manage) seeds fresh clocks; pause keeps them; resume continues; remove stops updates. */
 export const ChannelManagementCommandSchema = z.strictObject({ action: z.enum(['manage', 'pause', 'resume', 'remove']), expected_version: z.number().int().nonnegative() });
 export type ChannelManagementCommand = z.infer<typeof ChannelManagementCommandSchema>;
@@ -293,6 +299,7 @@ export const ConsoleAccountListSchema: z.ZodType<ConsoleAccountList> = z.strictO
 });
 export const pageSchema = <T extends z.ZodType>(item: T) => z.strictObject({ items: z.array(item).max(100), next_cursor: z.string().nullable() });
 export const ApiRoutes = {
+  updates: '/v1/updates', updatesSummary: '/v1/updates/summary', dataApiPermit: '/v1/data-api/permit',
   session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', consoleAccounts: '/v1/console/accounts', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', proxies: '/v1/proxies', proxyImport: '/v1/proxies/import', proxySync: '/v1/proxy-manager/sync', proxySources: '/v1/proxy-sources',
   proxySource: (id: string) => `/v1/proxy-sources/${encodeURIComponent(id)}`,
@@ -306,6 +313,7 @@ export const ApiRoutes = {
   channel: (id: string) => `/v1/channels/${encodeURIComponent(id)}`,
   channelManagement: (id: string) => `/v1/channels/${encodeURIComponent(id)}/management`,
   channelClockOverride: (id: string) => `/v1/channels/${encodeURIComponent(id)}/clock-override`,
+  channelUpdate: (id: string) => `/v1/channels/${encodeURIComponent(id)}/update`,
 } as const;
 
 // ---- Proxy Control (M2 step 2): central inventory and coarse assignment; the
@@ -400,3 +408,34 @@ export const ProxySourceViewSchema: z.ZodType<ProxySourceView> = z.strictObject(
   next_fetch_at: Timestamp, last_fetched_at: NullableTime, last_status: z.enum(['ok', 'not_modified', 'error']).nullable(), last_error: z.string().nullable(),
   last_count: z.number().int().nullable(), last_added: z.number().int().nullable(), last_retired: z.number().int().nullable(), active_proxies: Tally, retired_proxies: Tally,
 });
+
+export const UpdateLimitsSchema = z.strictObject({
+  enabled: z.boolean().default(true),
+  /** Domains the scheduler updates by itself (M3-D5: About only until incremental Video and Agent updates exist); any domain can still be updated manually. */
+  auto_domains: z.array(DomainSchema).max(3).refine(a => new Set(a).size === a.length, 'duplicate domains').default(['ABOUT']),
+  max_active_plans: z.number().int().min(1).max(100).default(2),
+  max_agent_plans: z.number().int().min(1).max(100).default(1),
+  daily_plan_limit: z.number().int().min(1).max(100000).default(100),
+  api_daily_limit: z.number().int().min(1).max(1000000).default(10000),
+});
+export type UpdateLimits = z.infer<typeof UpdateLimitsSchema>;
+export const ChannelUpdateSchema = z.strictObject({ request_id: z.uuid(), expected_version: z.number().int().nonnegative(), domains: UniqueDomains.optional() });
+export type ChannelUpdate = z.infer<typeof ChannelUpdateSchema>;
+export const DataApiPermitRequestSchema = z.strictObject({ request_id: z.uuid(), plan_id: z.uuid(), execution_epoch: z.number().int().positive(), input_hash: Hash });
+export const DataApiPermitSchema = z.strictObject({ granted: z.boolean(), quota_day: z.iso.date(), reset_at: Timestamp, used_units: Count, limit: Count });
+export type DataApiPermit = z.infer<typeof DataApiPermitSchema>;
+export const UpdateStateSchema = z.enum(['scheduled', 'due', 'queued', 'running', 'completed', 'failed']);
+export const UpdateWaitSchema = z.enum(['scheduler_disabled', 'manual_only', 'active_plan', 'concurrency', 'agent_capacity', 'daily_plans', 'api_quota', 'attempted_today']);
+export const UpdateChannelSchema = z.strictObject({
+  channel_id: YoutubeChannelIdSchema, title: z.string().nullable(), country: z.string().nullable(), management_version: Count,
+  state: UpdateStateSchema, due_domains: z.array(DomainSchema).max(3), due_at: Timestamp.nullable(), last_success_at: Timestamp.nullable(),
+  waiting_reason: UpdateWaitSchema.nullable(), active_plan_id: z.uuid().nullable(), plan: PlanSchema.nullable(), event: StoredEventSchema.nullable(),
+});
+export type UpdateChannel = z.infer<typeof UpdateChannelSchema>;
+export const UpdateSummarySchema = z.strictObject({
+  observed_at: Timestamp, limits: UpdateLimitsSchema, last_scan_at: Timestamp.nullable(),
+  managed: Count, due: Count, overdue: Count, queued: Count, running: Count, completed_24h: Count, failed_24h: Count,
+  daily_plans: Count, api_quota_day: z.iso.date(), api_used_units: Count, api_reserved_units: Count, api_reset_at: Timestamp,
+  waiting: z.array(z.strictObject({ reason: UpdateWaitSchema, channels: Count })).max(8),
+});
+export type UpdateSummary = z.infer<typeof UpdateSummarySchema>;

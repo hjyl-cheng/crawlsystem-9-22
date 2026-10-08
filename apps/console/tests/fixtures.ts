@@ -1,6 +1,6 @@
 // Explicit browser-test fixtures. Never imported by the application.
 import { randomUUID } from 'node:crypto';
-import { CONTRACT_VERSION, PlanSchema, PlanDetailSchema, ReceiptSchema, WorkerSchema, StoredEventSchema, ChannelDetailSchema, type Plan, type Domain } from '@crawlsystem/contracts';
+import { CONTRACT_VERSION, PlanSchema, PlanDetailSchema, ReceiptSchema, WorkerSchema, StoredEventSchema, ChannelDetailSchema, UpdateChannelSchema, UpdateSummarySchema, type Plan, type Domain, type UpdateChannel } from '@crawlsystem/contracts';
 import { createFrozenFixture, fixtureChannel, fixtureVideo } from '@crawlsystem/contracts/fixtures';
 import { contentHash, fixtureSubmission } from '@crawlsystem/contracts/hash';
 
@@ -29,6 +29,18 @@ export function channelFixture(plan: Plan, managed = false) {
     policy_version: 'v16-rule-7', retry_at: null, reasons, last_success_at: timestamp, last_attempt_at: timestamp, last_plan_id: plan.plan_id, override_days: null });
   const management = managed ? { state: 'managed', version: 3, changed_at: timestamp, clocks: [
     clock('ABOUT', 1, 1, ['about_baseline', 'about_cold_start_cadence_1d']), clock('VIDEO', 3, 3, ['active_irregular_channel', 'automatic_video_min_interval']),
-    clock('AGENT', 180, 188, ['agent_semantic_baseline', 'agent_forward_load_spread'])] } : { state: null, version: 0, changed_at: null, clocks: [] };
+    clock('AGENT', 180, 188, ['agent_semantic_baseline', 'agent_forward_load_spread'])], auto_domains: ['ABOUT'] } : { state: null, version: 0, changed_at: null, clocks: [], auto_domains: ['ABOUT'] };
   return ChannelDetailSchema.parse({ channel_id: fixtureChannel.channel_id, title: fixtureChannel.title, source_mode: managed ? 'youtube' : 'fixture', updated_at: timestamp, latest_plan_id: plan.plan_id, about: fixtureChannel, videos: [fixtureVideo], agent: null, latest_plan: plan, management });
+}
+/** A managed channel whose About is due and waits for Data API quota. */
+export function updateChannelFixture(): UpdateChannel {
+  return UpdateChannelSchema.parse({ channel_id: 'UCupdatefixture000000001', title: '更新测试频道', country: 'US', management_version: 3, state: 'due', due_domains: ['ABOUT'],
+    due_at: '2026-09-22T00:00:00.000Z', last_success_at: timestamp, waiting_reason: 'api_quota', active_plan_id: null, plan: null, event: null });
+}
+/** Scheduler figures for the given rows (only due rows exist in these fixtures). */
+export function updateSummaryFixture(rows: UpdateChannel[]) {
+  return UpdateSummarySchema.parse({ observed_at: timestamp, limits: { enabled: true, max_active_plans: 2, max_agent_plans: 1, daily_plan_limit: 100, api_daily_limit: 10000 },
+    last_scan_at: timestamp, managed: rows.length, due: rows.length, overdue: rows.length, queued: 0, running: 0, completed_24h: 0, failed_24h: 0, daily_plans: 0,
+    api_quota_day: '2026-09-23', api_used_units: 9998, api_reserved_units: 0, api_reset_at: '2026-09-24T07:00:00.000Z',
+    waiting: rows.length ? [{ reason: 'api_quota', channels: rows.length }] : [] });
 }

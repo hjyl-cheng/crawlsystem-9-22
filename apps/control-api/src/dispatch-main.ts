@@ -11,11 +11,12 @@ import { CredentialBox } from '@crawlsystem/store/credentials';
 import { refreshReferences } from '@crawlsystem/store/feature-clocks';
 import { fetchProxySource } from './proxy-source-fetch.ts';
 import { temporalOptions } from './temporal-config.ts';
+import { updateLimits } from './update-config.ts';
 function required(name:string):string {const value=process.env[name];if(!value)throw new Error(`${name} is required`);return value;}
 // The real Temporal adapter is linked statically; there is no mock workflow fallback.
 const starter=await createWorkflowStarter(temporalOptions());
 const tracing=new RequestTracing('intent-dispatcher',record=>process.stdout.write(JSON.stringify({time:new Date().toISOString(),...record})+'\n'),Number(process.env.TRACE_SAMPLE_RATIO??'0.1'));
-const pool=createPool(),dispatcher=new IntentDispatcher(new Store(pool),starter,required('M1_WORKSPACE_ID'),tracing);
+const pool=createPool(),store=new Store(pool,updateLimits()),dispatcher=new IntentDispatcher(store,starter,required('M1_WORKSPACE_ID'),tracing);
 let stopping=false;process.once('SIGINT',()=>{stopping=true;});process.once('SIGTERM',()=>{stopping=true;});
 // Renewed mTLS files: exit cleanly (intents are leased) and let Kubernetes restart us.
 watchTlsFiles(process.env,()=>{process.stderr.write('Temporal client certificate changed; restarting\n');stopping=true;});
@@ -44,9 +45,18 @@ async function refreshClockReferences(){
   if(done)process.stdout.write(JSON.stringify({time:new Date().toISOString(),event:'clock_reference_refresh',...done})+'\n');
 }
 try {
+  let nextUpdateScan=0;
   while(!stopping) {
     if(alive)writeFileSync(alive,String(Date.now()));
-    try {await refreshSources();await refreshClockReferences();const worked=await dispatcher.tick();if(!worked)await setTimeout(1000);}
+    try {
+      await refreshSources();await refreshClockReferences();
+      if(Date.now()>=nextUpdateScan){
+        const plans=await store.scheduleUpdates(required('M1_WORKSPACE_ID'));
+        nextUpdateScan=Date.now()+30_000;
+        if(plans.length)process.stdout.write(JSON.stringify({time:new Date().toISOString(),event:'updates_scheduled',plan_ids:plans.map(p=>p.plan_id)})+'\n');
+      }
+      const worked=await dispatcher.tick();if(!worked)await setTimeout(1000);
+    }
     catch {process.stderr.write('Dispatcher dependency unavailable; durable intents retained\n');await setTimeout(3000);}
   }
 } finally {await tracing.close();await starter.close();await pool.end();}

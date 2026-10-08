@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { UpdateSummarySchema, UpdateChannelSchema, ChannelUpdateSchema, type ChannelUpdate } from '@crawlsystem/contracts';
 import {
   ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,
   ChannelListItemSchema, ChannelDetailSchema, ChannelManagementSchema, ChannelManagementCommandSchema, ChannelClockOverrideSchema, CompletenessSchema, ConsoleAccountListSchema, PlansSummarySchema, WorkerSchema, StoredEventSchema,
@@ -82,6 +83,9 @@ export class ControlApi {
   }
 
   session = (signal?: AbortSignal) => this.request(ApiRoutes.session, SessionSchema, signal);
+  updatesSummary = (signal?: AbortSignal) => this.request(ApiRoutes.updatesSummary, UpdateSummarySchema, signal);
+  updates = (cursor = '0', state = '', search = '', signal?: AbortSignal) => this.request(`${ApiRoutes.updates}?${new URLSearchParams({ limit: '20', cursor, ...(state ? { state } : {}), ...(search ? { search } : {}) })}`, pageSchema(UpdateChannelSchema), signal);
+  updateChannel = (id: string, body: ChannelUpdate, signal?: AbortSignal) => this.request(ApiRoutes.channelUpdate(id), PlanSchema, signal, ChannelUpdateSchema.parse(body));
   login = (body: Login, signal?: AbortSignal) => this.request(ApiRoutes.login, SessionSchema, signal, LoginSchema.parse(body));
   logout = (signal?: AbortSignal) => this.request(ApiRoutes.logout, LogoutSchema, signal, {});
   plans = (cursor = '0', status?: PlanStatus, limit = 20, signal?: AbortSignal, sourceMode: SourceMode = 'youtube') => this.request(`${ApiRoutes.plans}?${new URLSearchParams({ limit: String(limit), cursor, source_mode: sourceMode, ...(status ? { status } : {}) })}`, pageSchema(PlanSchema), signal);

@@ -6,6 +6,14 @@ import { ErrorBox } from '../ui.js';
 import { clockLabels, clockReasonText, clockState, dueIn } from '../presentation.js';
 import './clock-policy.css';
 
+/** Which parts are updated by themselves when due; the rest waits for "立即更新" on the update page. */
+function autoNote(auto: readonly ClockName[]): string {
+  const names = (list: readonly ClockName[]) => list.map(c => clockLabels[c]).join('、');
+  const manual = (['ABOUT', 'VIDEO', 'AGENT'] as const).filter(c => !auto.includes(c));
+  if (!auto.length) return '自动调度已暂停：到时间后不会自动更新，需要时在“更新采集”页点“立即更新”。';
+  if (!manual.length) return '到时间后系统会自动更新这个频道。';
+  return `到时间后系统会自动更新${names(auto)}；${names(manual)}暂不自动更新，需要时在“更新采集”页点“立即更新”。`;
+}
 /** Interval choices offered to operators; "auto" lets the policy decide. */
 const choices: [string, string][] = [['auto', '自动（推荐）'], ['1', '每天'], ['3', '每 3 天'], ['7', '每周'], ['14', '每 2 周'], ['30', '每月'], ['90', '每 3 个月'], ['180', '每半年']];
 const day = (iso: string) => new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' }).format(new Date(iso));
@@ -46,7 +54,7 @@ export default function ClockPolicy({ channel, operator, onChanged }: { channel:
         </select>}
       </li>;
     })}</ul>}
-    <p className="detail-note">{on ? '到时间后系统会自动更新这个频道（自动执行功能即将上线）。'
+    <p className="detail-note">{on ? autoNote(m.auto_domains)
       : m.state === 'paused' ? '已关闭：到时间也不会自动更新，数据都保留，随时可以重新打开。'
       : '未开启自动更新。打开后，系统会按上面的频率定期更新这个频道。'}</p>
   </div>;

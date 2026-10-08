@@ -57,3 +57,15 @@ test('Data API listing stops at the window or the limit, pages through results, 
   const quota = new DataApi('AIzaTEST_key_0123456789abcdef', (async () => Response.json({ error: { errors: [{ reason: 'quotaExceeded' }] } }, { status: 403 })) as unknown as typeof fetch);
   await assert.rejects(quota.channel('UCx'), (e: unknown) => e instanceof DataApiError && e.kind === 'quota' && !e.message.includes('AIza'));
 });
+test('every Data API request waits for its quota permit, and a refused permit sends nothing', async () => {
+  let requests = 0, permits = 0;
+  const fetcher = (async (url: URL) => { requests += 1; return Response.json(url.pathname.endsWith('playlistItems')
+    ? (url.searchParams.get('pageToken') ? { items: [] } : { items: [{ contentDetails: { videoId: 'a', videoPublishedAt: '2026-09-20T00:00:00Z' } }], nextPageToken: 'P2' })
+    : { items: [] }); }) as unknown as typeof fetch;
+  const api = new DataApi('AIzaTEST_key_0123456789abcdef', fetcher), permit = async () => { permits += 1; };
+  await api.channel('UCx', permit); await api.recentUploads('UUx', '2026-06-26T12:00:00.000Z', 30, permit); await api.videos(['a'], permit);
+  assert.deepEqual([permits, requests], [4, 4], 'one permit per request, the second listing page included');
+  const refused = async () => { throw new Error('BUDGET_EXHAUSTED'); };
+  await assert.rejects(api.channel('UCx', refused), /BUDGET_EXHAUSTED/);
+  assert.equal(requests, 4, 'no request without a permit');
+});
