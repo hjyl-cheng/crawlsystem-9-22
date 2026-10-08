@@ -72,10 +72,14 @@ data:
     \    action: replace\n    regex: ([^:]+)(?::\\d+)?;(\\d+)\n    replacement: $1:$2\n\
     \    target_label: __address__\n  - source_labels:\n    - __meta_kubernetes_namespace\n\
     \    target_label: namespace\n  - source_labels:\n    - __meta_kubernetes_pod_name\n\
-    \    target_label: pod\n- job_name: kafka-brokers\n  kubernetes_sd_configs:\n\
-    \  - role: pod\n    namespaces:\n      names:\n      - kafka\n  relabel_configs:\n\
-    \  - source_labels:\n    - __meta_kubernetes_pod_label_strimzi_io_name\n    regex:\
-    \ crawler-kafka-kafka\n    action: keep\n  - source_labels:\n    - __meta_kubernetes_pod_container_port_number\n\
+    \    target_label: pod\n  metric_relabel_configs:\n  - source_labels:\n    - taskqueue\n\
+    \    regex: (crawlsystem_.*)?\n    target_label: __tmp_keep_buckets\n    replacement:\
+    \ '1'\n    action: replace\n  - source_labels:\n    - __name__\n    - __tmp_keep_buckets\n\
+    \    regex: .+_bucket;\n    action: drop\n  - regex: __tmp_keep_buckets\n    action:\
+    \ labeldrop\n- job_name: kafka-brokers\n  kubernetes_sd_configs:\n  - role: pod\n\
+    \    namespaces:\n      names:\n      - kafka\n  relabel_configs:\n  - source_labels:\n\
+    \    - __meta_kubernetes_pod_label_strimzi_io_name\n    regex: crawler-kafka-kafka\n\
+    \    action: keep\n  - source_labels:\n    - __meta_kubernetes_pod_container_port_number\n\
     \    regex: '9404'\n    action: keep\n  - source_labels:\n    - __meta_kubernetes_pod_name\n\
     \    target_label: pod\n- job_name: kafka-exporter\n  kubernetes_sd_configs:\n\
     \  - role: pod\n    namespaces:\n      names:\n      - kafka\n  relabel_configs:\n\
