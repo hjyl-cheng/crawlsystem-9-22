@@ -1,0 +1,113 @@
+{
+  "result": "PASSED",
+  "checked_at": "2026-10-08T06:33:43.442Z",
+  "revision": "ffb1c11a094d9e250a8a3cdfc664d53b3a756675",
+  "channel": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+  "plan_id": "8a1fe187-9b82-4b1f-bf4f-ad8619ea61a6",
+  "scope": {
+    "video_limit": 30,
+    "max_age_days": 90,
+    "comments_per_video": 20,
+    "comment_sort": "TOP_COMMENTS"
+  },
+  "duration_seconds": 39,
+  "targets": 30,
+  "batches": 3,
+  "receipts": [
+    "about:channel",
+    "video:targets",
+    "video:batch:0",
+    "video:batch:1",
+    "video:batch:2",
+    "agent:profile:e248bcb12ed404c4"
+  ],
+  "worker_pods": {
+    "before": "c0e1a6d2-20e1-4875-893b-40eea665bfbe",
+    "after": "68902c54-57bb-467f-8ef4-55adf646332c"
+  },
+  "event_workers": [
+    "execution-worker-0"
+  ],
+  "events": [
+    {
+      "at": "2026-10-08T06:33:04.853Z",
+      "kind": "STARTED",
+      "phase": "ABOUT",
+      "message": "Collecting channel UC_x5XG1OV2P6uZZ5FSM9Ttw"
+    },
+    {
+      "at": "2026-10-08T06:33:07.219Z",
+      "kind": "PROGRESS",
+      "phase": "ABOUT",
+      "message": "APPLIED receipt=45fc99cb-1cec-8b34-b228-0adfa65e42e2"
+    },
+    {
+      "at": "2026-10-08T06:33:07.570Z",
+      "kind": "PROGRESS",
+      "phase": "TARGETS",
+      "message": "Frozen 30 video targets since 2026-07-10 (limit reached)"
+    },
+    {
+      "at": "2026-10-08T06:33:13.603Z",
+      "kind": "PROGRESS",
+      "phase": "VIDEO",
+      "message": "Batch 1/3: 10 videos; receipt=58e1358a-150d-884a-b5e1-a797ffcdd6d3"
+    },
+    {
+      "at": "2026-10-08T06:33:16.997Z",
+      "kind": "PROGRESS",
+      "phase": "VIDEO",
+      "message": "Batch 2/3: 10 videos; receipt=42d0ce43-dc6a-83f3-933f-a97ce00df4f8"
+    },
+    {
+      "at": "2026-10-08T06:33:26.938Z",
+      "kind": "PROGRESS",
+      "phase": "VIDEO",
+      "message": "Batch 3/3: 10 videos; receipt=2a4eecc1-e676-812b-aae9-4f682ad8b686"
+    },
+    {
+      "at": "2026-10-08T06:33:27.057Z",
+      "kind": "STARTED",
+      "phase": "AGENT",
+      "message": "Profiling the collected channel facts with the local models"
+    },
+    {
+      "at": "2026-10-08T06:33:27.125Z",
+      "kind": "ERROR",
+      "phase": "AGENT",
+      "message": "UNAVAILABLE; retryable=true; attempt=1"
+    },
+    {
+      "at": "2026-10-08T06:33:32.197Z",
+      "kind": "STARTED",
+      "phase": "AGENT",
+      "message": "Profiling the collected channel facts with the local models"
+    },
+    {
+      "at": "2026-10-08T06:33:32.300Z",
+      "kind": "ERROR",
+      "phase": "AGENT",
+      "message": "UNAVAILABLE; retryable=true; attempt=2"
+    },
+    {
+      "at": "2026-10-08T06:33:42.350Z",
+      "kind": "STARTED",
+      "phase": "AGENT",
+      "message": "Profiling the collected channel facts with the local models"
+    },
+    {
+      "at": "2026-10-08T06:33:42.717Z",
+      "kind": "PROGRESS",
+      "phase": "AGENT",
+      "message": "APPLIED 30 videos profiled by qy-channel-profile:agent-free-v0.7-identity-evidence:agent-free-20260813-v0.5-field-routing-deployment:bootstrap-shadow-v2.3-grok-audience-shape; receipt=65f1adc6-382a-8c87-a8eb-ca356cf7555f"
+    }
+  ],
+  "temporary_public_proxies": false,
+  "checks": [
+    "52 usable proxies bound to the Worker node s2",
+    "Worker Pod replaced during collection (c0e1a6d2 → 68902c54); 1/3 batches applied before replacement",
+    "AGENT reported \"UNAVAILABLE; retryable=true; attempt=1\" while the Profile Agent was down; plan stayed RUNNING",
+    "plan COMPLETED in 39s: ABOUT, VIDEO, AGENT applied; 6 receipts, each logical batch once; 30 targets frozen once",
+    "channel data: 30 videos (0 unavailable, 28 with Top comments); profile Tech / English, input e248bcb12ed4"
+  ]
+}
