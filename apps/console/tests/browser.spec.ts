@@ -1,9 +1,10 @@
+import assert from 'node:assert/strict';
 import { test, expect, type Page } from '@playwright/test';
 import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView } from '@crawlsystem/contracts';
 import { detailFixture, channelFixture, workerFixture, errorFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
-  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false };
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -36,7 +37,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     }
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
     if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status, management_state: null, next_due_at: null, clocks: [] }] : [], next_cursor: null });
-    if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan));
+    if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan, state.managed));
     if (path === '/v1/console/accounts') return json({ observed_at: '2026-09-23T08:00:00.000Z', source: 'DATABASE', items: [
       { username: 'fixture', subject: 'browser-fixture', role: state.role === 'reader' ? 'reader' : 'operator', status: 'ACTIVE', created_at: '2026-09-20T02:00:00.000Z', updated_at: '2026-09-20T02:00:00.000Z', active_sessions: 1, latest_session_at: '2026-09-23T07:55:00.000Z' },
       { username: 'fixture-reader', subject: 'browser-fixture-reader', role: 'reader', status: 'DISABLED', created_at: '2026-09-21T02:00:00.000Z', updated_at: '2026-09-22T02:00:00.000Z', active_sessions: 0, latest_session_at: null }] });
@@ -362,6 +363,32 @@ test('channel management lists real channel facts and shows the selected channel
   await expect(page.locator('.channel-detail').getByText('固定样本频道不参与自动更新。')).toBeVisible();
   await expect(page.locator('.channel-detail').getByText('未接入')).toHaveCount(0);
   await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
+});
+test('the update policy shows each next update with an automatic interval choice, without sideways scrolling', async ({ page }) => {
+  const state = await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); state.managed = true;
+  await login(page, '/channels');
+  for (const [width, height] of [[1366, 768], [390, 844]] as const) {
+    await page.setViewportSize({ width, height }); await page.goto('/channels');
+    const panel = page.locator('.channel-detail');
+    await panel.getByRole('tab', { name: '更新策略' }).click();
+    const rows = panel.locator('.clock-rows li');
+    await expect(rows).toHaveCount(3);
+    await expect(rows.locator('.clock-name')).toHaveText(['频道资料', '视频与评论', 'Agent 画像']);
+    await expect(rows.locator('.clock-next').first()).toContainText('下次');
+    for (const next of await rows.locator('.clock-next').allInnerTexts()) assert.doesNotMatch(next, /每\s*\d+\s*天/, 'no interval shown');
+    await expect(rows.locator('.clock-next').first()).toHaveAttribute('title', /^上次更新：.+\n为什么是这个时间：第一次采集资料；第一次采集，按发布节奏 1 天后再看$/);
+    const box = (await panel.boundingBox())!;
+    for (const label of ['频道资料', '视频与评论', 'Agent 画像']) {
+      const select = panel.getByLabel(`${label}更新间隔`);
+      await expect(select).toHaveValue('auto');
+      await expect(select.locator('option:checked')).toHaveText('自动（推荐）');
+      const own = (await select.boundingBox())!;
+      assert.ok(own.x >= box.x && own.x + own.width <= box.x + box.width + 0.5, `${label} choice inside the panel at ${width}px`);
+    }
+    const overflow = await panel.evaluate(element => [...element.querySelectorAll('*'), element].some(e => e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== 'visible'));
+    assert.equal(overflow, false, `nothing scrolls sideways at ${width}px`);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `page fits at ${width}px`);
+  }
 });
 test('IP resource management replaces three proxy menus and reports the real proxy status of Workers', async ({ page }) => {
   const state = await mock(page); state.workers = [{ worker_id: 'w1', server_id: 'n1', build_version: 'v1', accepting_work: true, capacity: 1, running_plan_ids: [], last_heartbeat_at: '2026-09-23T08:00:00.000Z', stale: false, proxy_status: 'NOT_CONFIGURED' }];

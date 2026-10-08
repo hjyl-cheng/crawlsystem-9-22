@@ -12,7 +12,8 @@ const day = (iso: string) => new Intl.DateTimeFormat('zh-CN', { month: 'long', d
 
 /**
  * A channel's update policy in plain terms: an on/off switch for automatic updates, and per kind of
- * data how often, when next, when last, plus an interval choice for operators. Reasons stay in tooltips.
+ * data when it is next updated, plus an interval choice for operators. The last update and the
+ * reasons stay in the tooltip; rows wrap instead of scrolling sideways in the narrow side panel.
  */
 export default function ClockPolicy({ channel, operator, onChanged }: { channel: ChannelDetail; operator: boolean; onChanged: () => void }) {
   const { api } = useAuth();
@@ -33,19 +34,18 @@ export default function ClockPolicy({ channel, operator, onChanged }: { channel:
       <button role="switch" aria-checked={on} aria-label="自动更新" className={`switch ${on ? 'on' : ''}`} disabled={!operator || busy} onClick={() => void toggle()}><i/></button>
       <small>{on ? '已开启' : '已关闭'}</small></div>
     {error && <ErrorBox error={error}/>}
-    {m.clocks.length > 0 && <table className="clock-table"><tbody>{m.clocks.map(c => {
+    {m.clocks.length > 0 && <ul className="clock-rows">{m.clocks.map(c => {
       const s = clockState(c, m.state), pinned = c.override_days !== null;
-      return <tr key={c.clock}>
-        <th>{clockLabels[c.clock]}</th>
-        <td title={pinned ? '人工指定的间隔' : `为什么是这个间隔：${clockReasonText(c.reasons)}`}>每 {c.interval_days} 天</td>
-        <td>下次 {day(c.next_due_at)}{on && (s.tone === 'muted' ? <small>（{dueIn(c.next_due_at)}）</small> : <em className={s.tone}>{s.tone === 'bad' ? '已过期' : '今天'}</em>)}</td>
-        <td className="muted">上次 {c.last_success_at ? day(c.last_success_at) : '—'}</td>
-        {operator && <td><select aria-label={`${clockLabels[c.clock]}更新间隔`} value={pinned ? String(c.override_days) : 'auto'} disabled={busy} onChange={e => void pin(c.clock, e.target.value)}>
+      const tip = `上次更新：${c.last_success_at ? day(c.last_success_at) : '还没有'}\n为什么是这个时间：${pinned ? '人工指定的间隔' : clockReasonText(c.reasons)}`;
+      return <li key={c.clock}>
+        <span className="clock-name">{clockLabels[c.clock]}</span>
+        <span className="clock-next" title={tip}>下次 {day(c.next_due_at)}{on && (s.tone === 'muted' ? <small>（{dueIn(c.next_due_at)}）</small> : <em className={s.tone}>{s.tone === 'bad' ? '已过期' : '今天'}</em>)}</span>
+        {operator && <select aria-label={`${clockLabels[c.clock]}更新间隔`} value={pinned ? String(c.override_days) : 'auto'} disabled={busy} onChange={e => void pin(c.clock, e.target.value)}>
           {choices.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           {pinned && !choices.some(([value]) => value === String(c.override_days)) && <option value={String(c.override_days)}>每 {c.override_days} 天</option>}
-        </select></td>}
-      </tr>;
-    })}</tbody></table>}
+        </select>}
+      </li>;
+    })}</ul>}
     <p className="detail-note">{on ? '到时间后系统会自动更新这个频道（自动执行功能即将上线）。'
       : m.state === 'paused' ? '已关闭：到时间也不会自动更新，数据都保留，随时可以重新打开。'
       : '未开启自动更新。打开后，系统会按上面的频率定期更新这个频道。'}</p>

@@ -5,13 +5,13 @@
 .clock-policy .switch.on { background: #11c38c; }
 .clock-policy .switch.on i { left: 18px; }
 .clock-policy .switch:disabled { cursor: not-allowed; opacity: .7; }
-.clock-policy .clock-table { width: 100%; border-collapse: collapse; font-size: var(--fs-meta); }
-.clock-policy .clock-table th { text-align: left; font-weight: 500; color: #193257; white-space: nowrap; }
-.clock-policy .clock-table th, .clock-policy .clock-table td { padding: 7px 6px 7px 0; border-bottom: 1px solid #eef3f9; white-space: nowrap; }
-.clock-policy .clock-table td.muted, .clock-policy .clock-table small { color: #7a8ca8; }
-.clock-policy .clock-table td[title] { cursor: help; text-decoration: underline dotted #b6c2d3; text-underline-offset: 3px; }
-.clock-policy .clock-table em { margin-left: 6px; padding: 0 5px; border-radius: 4px; font-style: normal; }
-.clock-policy .clock-table em.bad { background: #ffecea; color: #c2413a; }
-.clock-policy .clock-table em.warn { background: #fff4dc; color: #95600a; }
-.clock-policy .clock-table select { height: 24px; font-size: var(--fs-meta); }
-.clock-policy.off .clock-table { opacity: .55; }
+.clock-policy .clock-rows { margin: 0; padding: 0; list-style: none; font-size: var(--fs-meta); }
+.clock-policy .clock-rows li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 10px; padding: 7px 0; border-bottom: 1px solid #eef3f9; }
+.clock-policy .clock-name { font-weight: 500; color: #193257; white-space: nowrap; }
+.clock-policy .clock-next { min-width: 0; color: #193257; cursor: help; text-decoration: underline dotted #b6c2d3; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.clock-policy .clock-next small { color: #7a8ca8; }
+.clock-policy .clock-next em { margin-left: 6px; padding: 0 5px; border-radius: 4px; font-style: normal; white-space: nowrap; }
+.clock-policy .clock-next em.bad { background: #ffecea; color: #c2413a; }
+.clock-policy .clock-next em.warn { background: #fff4dc; color: #95600a; }
+.clock-policy .clock-rows select { height: 24px; max-width: 100%; font-size: var(--fs-meta); }
+.clock-policy.off .clock-rows { opacity: .55; }
