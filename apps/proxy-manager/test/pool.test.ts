@@ -121,3 +121,10 @@ test('proxies in trial are probed more often than qualified ones', () => {
   advance(240_000);
   assert.deepEqual(pool.probeCandidates(300_000, 10, 60_000).map(a => a.proxy_id).sort(), [P1, P2]);
 });
+test('a proxy one pass away from qualifying is checked before never-checked ones', () => {
+  const P3 = '00000000-0000-4000-8000-000000000003';
+  const { pool, advance } = setup([assignment(P1), assignment(P2, { host: '192.0.2.2' }), assignment(P3, { host: '192.0.2.3' })], { qualified: false });
+  pool.probed(P3, true, null);
+  advance(60_001);
+  assert.deepEqual(pool.probeCandidates(300_000, 2, 60_000).map(a => a.proxy_id), [P3, P1]);
+});

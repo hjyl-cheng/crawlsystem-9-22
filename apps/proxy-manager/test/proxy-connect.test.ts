@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { classifyYoutubePage, connectViaProxy, httpsProxyTls, INSECURE_TLS_FRAGMENT, probeYoutubeContent, ProxyConnectError } from '@crawlsystem/execution-client/proxy-connect';
+import { classifyYoutubePage, connectViaProxy, httpsProxyTls, INSECURE_TLS_FRAGMENT, probeYoutubeContent, ProxyConnectError, proxyPort } from '@crawlsystem/execution-client/proxy-connect';
 
 // Servers are unref'd so lingering tunnels never keep the test process alive.
 const listen = (server: Server) => new Promise<number>(resolve => server.listen(0, '127.0.0.1', () => { server.unref(); resolve((server.address() as AddressInfo).port); }));
@@ -113,4 +113,11 @@ test('an HTTPS proxy with a self-signed certificate is reachable only through an
   const echoed = await new Promise<string>(resolve => { socket.once('data', d => resolve(d.toString())); socket.write('ping'); });
   socket.destroy();
   assert.equal(echoed, 'ping');
+});
+test('a proxy on its scheme default port keeps that port (URLs drop it)', () => {
+  assert.equal(new URL('https://198.51.100.7:443').port, '', 'the WHATWG URL quirk this guards against');
+  assert.equal(proxyPort(new URL('https://198.51.100.7:443#insecure-tls')), 443);
+  assert.equal(proxyPort(new URL('http://198.51.100.7:80')), 80);
+  assert.equal(proxyPort(new URL('socks5://198.51.100.7:1080')), 1080);
+  assert.equal(proxyPort(new URL('https://198.51.100.7:9002')), 9002);
 });

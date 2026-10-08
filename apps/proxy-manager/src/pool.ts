@@ -118,11 +118,15 @@ export class ProxyPool {
     const now = this.now();
     for (const lease of [...this.leases.values()]) if (lease.expires_at <= now) this.release(lease.lease_id, 'timeout', undefined, 'lease_expired');
   }
-  /** Proxies due for an active check: idle and never checked, or not checked for `everyMs` (`trialEveryMs` while in trial). */
+  /**
+   * Proxies due for an active check: idle and never checked, or not checked for `everyMs` (`trialEveryMs` while in trial).
+   * Proxies one pass away from qualifying go first, so usable ones join quickly even in a large new pool; then oldest check first.
+   */
   probeCandidates(everyMs: number, limit: number, trialEveryMs = everyMs): ProxyAssignment[] {
     const now = this.now();
+    const rank = (a: ProxyAssignment) => { const h = this.state(a.proxy_id); return !h.qualified && h.trialPasses > 0 ? 0 : 1; };
     return [...this.assignments.values()].filter(a => { const h = this.state(a.proxy_id); return h.inflight === 0 && h.cooldownUntil <= now && (h.probedAt === null || now - h.probedAt >= (h.qualified ? everyMs : trialEveryMs)); })
-      .sort((x, y) => (this.state(x.proxy_id).probedAt ?? 0) - (this.state(y.proxy_id).probedAt ?? 0)).slice(0, limit);
+      .sort((x, y) => rank(x) - rank(y) || (this.state(x.proxy_id).probedAt ?? 0) - (this.state(y.proxy_id).probedAt ?? 0)).slice(0, limit);
   }
   /** Observations for the central sync; unobserved proxies are omitted (Control shows them as unknown). */
   observations() {

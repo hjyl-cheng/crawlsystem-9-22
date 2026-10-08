@@ -21,6 +21,10 @@ function reader(socket: Socket) {
   return { read: (n: number) => new Promise<Buffer>((resolve, reject) => { if (closed) return reject(closed); waiting = { n, resolve, reject }; pump(); }),
     done: () => { socket.off('data', onData); socket.off('end', onEnd); socket.off('error', onError); socket.off('close', onClose); if (buffer.length) socket.unshift(buffer); } };
 }
+/** The proxy's port; WHATWG URLs drop a scheme's default (https:443, http:80), which must not become 0. */
+export function proxyPort(proxy: URL): number {
+  return Number(proxy.port) || (proxy.protocol === 'https:' ? 443 : proxy.protocol === 'http:' ? 80 : 1080);
+}
 function openTcp(host: string, port: number, signal: AbortSignal): Promise<Socket> {
   return new Promise((resolve, reject) => {
     const socket = tcpConnect({ host, port });
@@ -31,7 +35,7 @@ function openTcp(host: string, port: number, signal: AbortSignal): Promise<Socke
   });
 }
 async function socks5(proxy: URL, host: string, port: number, signal: AbortSignal): Promise<Socket> {
-  const socket = await openTcp(proxy.hostname.replace(/^\[|\]$/g, ''), Number(proxy.port), signal);
+  const socket = await openTcp(proxy.hostname.replace(/^\[|\]$/g, ''), proxyPort(proxy), signal);
   const abort = () => socket.destroy(new ProxyConnectError('timeout', 'SOCKS5 handshake timed out'));
   signal.addEventListener('abort', abort, { once: true });
   const r = reader(socket);
@@ -69,7 +73,7 @@ export function httpsProxyTls(proxy: URL): { host: string; servername?: string; 
   return { host, ...(isIP(host) ? {} : { servername: host }), rejectUnauthorized: !insecure };
 }
 async function httpConnect(proxy: URL, host: string, port: number, signal: AbortSignal): Promise<Socket> {
-  const raw = await openTcp(proxy.hostname.replace(/^\[|\]$/g, ''), Number(proxy.port), signal);
+  const raw = await openTcp(proxy.hostname.replace(/^\[|\]$/g, ''), proxyPort(proxy), signal);
   const socket: Socket = proxy.protocol === 'https:' ? await new Promise<TLSSocket>((resolve, reject) => {
     const tls = tlsConnect({ socket: raw, ...httpsProxyTls(proxy) }, () => resolve(tls)); tls.once('error', () => reject(new ProxyConnectError('proxy_unreachable', 'Proxy TLS failed')));
   }) : raw;
