@@ -13,5 +13,5 @@
 .clock-policy .clock-next em { margin-left: 6px; padding: 0 5px; border-radius: 4px; font-style: normal; white-space: nowrap; }
 .clock-policy .clock-next em.bad { background: #ffecea; color: #c2413a; }
 .clock-policy .clock-next em.warn { background: #fff4dc; color: #95600a; }
-.clock-policy .clock-rows select { height: 24px; max-width: 100%; font-size: var(--fs-meta); }
+.clock-policy .clock-rows select { height: 24px; max-width: 100%; padding: 2px 8px; font-size: var(--fs-meta); }
 .clock-policy.off .clock-rows { opacity: .55; }

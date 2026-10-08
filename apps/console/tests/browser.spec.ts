@@ -382,6 +382,14 @@ test('the update policy shows each next update with an automatic interval choice
       const select = panel.getByLabel(`${label}更新间隔`);
       await expect(select).toHaveValue('auto');
       await expect(select.locator('option:checked')).toHaveText('自动（推荐）');
+      const textSpace = await select.evaluate(element => {
+        const style = getComputedStyle(element);
+        return {
+          available: element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+          needed: parseFloat(style.fontSize),
+        };
+      });
+      assert.ok(textSpace.available >= textSpace.needed, `${label} selected text fits vertically at ${width}px`);
       const own = (await select.boundingBox())!;
       assert.ok(own.x >= box.x && own.x + own.width <= box.x + box.width + 0.5, `${label} choice inside the panel at ${width}px`);
     }
