@@ -8,6 +8,7 @@ import { RequestTracing } from '@crawlsystem/http/tracing';
 import { IntentDispatcher } from './dispatcher.ts';
 import { ProxyStore } from '@crawlsystem/store/proxies';
 import { CredentialBox } from '@crawlsystem/store/credentials';
+import { refreshReferences } from '@crawlsystem/store/feature-clocks';
 import { fetchProxySource } from './proxy-source-fetch.ts';
 import { temporalOptions } from './temporal-config.ts';
 function required(name:string):string {const value=process.env[name];if(!value)throw new Error(`${name} is required`);return value;}
@@ -34,10 +35,18 @@ async function refreshSources(){
     process.stdout.write(JSON.stringify({time:new Date().toISOString(),event:'proxy_source_refresh',source_id:claim.source_id,status:result.status,...applied})+'\n');
   }
 }
+// Update clocks rank growth against the day's cross-channel distributions: built once per UTC day.
+let nextReferenceCheck=0;
+async function refreshClockReferences(){
+  if(Date.now()<nextReferenceCheck)return;
+  nextReferenceCheck=Date.now()+600_000;
+  const done=await refreshReferences(pool,required('M1_WORKSPACE_ID'));
+  if(done)process.stdout.write(JSON.stringify({time:new Date().toISOString(),event:'clock_reference_refresh',...done})+'\n');
+}
 try {
   while(!stopping) {
     if(alive)writeFileSync(alive,String(Date.now()));
-    try {await refreshSources();const worked=await dispatcher.tick();if(!worked)await setTimeout(1000);}
+    try {await refreshSources();await refreshClockReferences();const worked=await dispatcher.tick();if(!worked)await setTimeout(1000);}
     catch {process.stderr.write('Dispatcher dependency unavailable; durable intents retained\n');await setTimeout(3000);}
   }
 } finally {await tracing.close();await starter.close();await pool.end();}

@@ -3,7 +3,7 @@ import type { ChannelDetail, ClockName } from '@crawlsystem/contracts';
 import { ApiFailure } from '../api.js';
 import { useAuth } from '../auth.js';
 import { ErrorBox } from '../ui.js';
-import { clockLabels, clockReasonLabels, clockState, dueIn } from '../presentation.js';
+import { clockLabels, clockReasonText, clockState, dueIn } from '../presentation.js';
 import './clock-policy.css';
 
 /** Interval choices offered to operators; "auto" lets the policy decide. */
@@ -37,7 +37,7 @@ export default function ClockPolicy({ channel, operator, onChanged }: { channel:
       const s = clockState(c, m.state), pinned = c.override_days !== null;
       return <tr key={c.clock}>
         <th>{clockLabels[c.clock]}</th>
-        <td title={pinned ? '人工指定的间隔' : `为什么是这个间隔：${clockReasonLabels[c.reason]}`}>每 {c.interval_days} 天</td>
+        <td title={pinned ? '人工指定的间隔' : `为什么是这个间隔：${clockReasonText(c.reasons)}`}>每 {c.interval_days} 天</td>
         <td>下次 {day(c.next_due_at)}{on && (s.tone === 'muted' ? <small>（{dueIn(c.next_due_at)}）</small> : <em className={s.tone}>{s.tone === 'bad' ? '已过期' : '今天'}</em>)}</td>
         <td className="muted">上次 {c.last_success_at ? day(c.last_success_at) : '—'}</td>
         {operator && <td><select aria-label={`${clockLabels[c.clock]}更新间隔`} value={pinned ? String(c.override_days) : 'auto'} disabled={busy} onChange={e => void pin(c.clock, e.target.value)}>

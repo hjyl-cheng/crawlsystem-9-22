@@ -3,9 +3,11 @@ import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import { CONTRACT_VERSION, WORKER_STALE_SECONDS, TraceparentSchema, FrozenInputSchema, YoutubeVideoIdSchema, isVideoUnavailable, type AgentInput, type VideoItem, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
   type Principal, type Role, type ErrorCode, type Plan, type PlanInput, type PlanDetail, type Domain, type DomainResult, type FrozenInput, type CreatePlan, type Submission, type Receipt,
   type Page, type Completeness, type PlansSummary, type PlanStatus, type ChannelSummary, type ChannelListItem, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput, type SourceMode,
-  ChannelManagementCommandSchema, ChannelClockOverrideSchema, CLOCK_NAMES, CLOCK_POLICY_VERSION, REFRESH_INTERVAL_DAYS, decideClock, type ChannelManagement, type ClockFacts, type ClockName, type ClockReason } from '@crawlsystem/contracts';
+  ChannelManagementCommandSchema, ChannelClockOverrideSchema, CLOCK_NAMES, type AgentResult, type ChannelFacts, type ChannelManagement, type ClockName } from '@crawlsystem/contracts';
 import { agentInputHash, contentHash, submissionHash } from '@crawlsystem/contracts/hash';
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
+import { instantFromDate, type ClockKind, type Observation } from '@crawlsystem/feature-clock';
+import { aboutObservation, agentObservation, applyObservations, loadClocks, videoObservation, writeClocks, type ClockActivity } from './feature-clocks.ts';
 
 export class StoreError extends Error {
   constructor(public code: ErrorCode, message: string, public status = 409, public retryable = false) { super(message); }
@@ -318,18 +320,13 @@ export class Store {
       const to = { manage:'managed', pause:'paused', resume:'managed', remove:'removed' }[command.action];
       const now = (await client.query(`UPDATE m1.channels SET management_state=$3,management_version=management_version+1,management_changed_at=clock_timestamp()
         WHERE workspace_id=$1 AND channel_id=$2 RETURNING management_changed_at`,[principal.workspace_id,channelId,to])).rows[0]!.management_changed_at as Date;
-      if (command.action === 'manage') {
-        // Facts collected before management count as each clock's last success (shown as "上次").
-        const videos = (await client.query(`SELECT max((data->>'observed_at')::timestamptz) AS at FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND data->>'observed_at' IS NOT NULL`,[principal.workspace_id,channelId])).rows[0]!.at as Date | null;
-        const seen = { ABOUT:row.about?.observed_at ?? null, VIDEO:videos ? iso(videos) : null, AGENT:row.agent?.observed_at ?? null } as Record<ClockName,string|null>;
-        await this.seedClocks(client,principal.workspace_id,channelId,now,'manual_manage',null,[],seen);
-      }
+      if (command.action === 'manage') await this.seedClocks(client,principal.workspace_id,channelId,now,true);
       return this.management(client,{...row,management_state:to,management_version:row.management_version+1,management_changed_at:now});
     });
   }
   /**
-   * Pin one clock's interval (or return it to the policy). The next normal run moves to the last success
-   * (or now) plus the new interval; a pending retry later than that is dropped. Bumps the management version.
+   * Pin one clock's interval (or return it to the policy). A pinned clock is due its interval after
+   * its last success (or today); returning it to the policy restores the policy's day. Bumps the management version.
    */
   async overrideClock(principal: Principal, channelId: string, raw: unknown): Promise<ChannelManagement> {
     requireRole(principal,'operator');
@@ -339,16 +336,9 @@ export class Store {
       if (!channel) throw new StoreError('NOT_FOUND','Channel not found',404);
       if (channel.management_version !== command.expected_version) throw new StoreError('CONFLICT','Channel management changed; refresh before editing');
       if (!['managed','paused'].includes(channel.management_state)) throw new StoreError('CONFLICT','Only managed or paused channels have update clocks');
-      const clock = (await client.query('SELECT * FROM m1.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 AND clock=$3 FOR UPDATE',[principal.workspace_id,channelId,command.clock])).rows[0];
-      if (!clock) throw new StoreError('NOT_FOUND','Clock not found',404);
-      const now = (await client.query('SELECT clock_timestamp() AS now')).rows[0]!.now as Date;
-      const latest = (await client.query(`SELECT max((data->>'published_at')::timestamptz) AS at FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND data->>'published_at' IS NOT NULL`,[principal.workspace_id,channelId])).rows[0]!.at as Date | null;
-      const facts: ClockFacts = { latestPublishedAt:latest ? iso(latest) : null, newVideosFound:null, emptyDiscoveryRuns:clock.empty_runs };
-      const d = decideClock(command.clock,clock.last_success_at ? 'success' : 'first',facts,now,command.interval_days);
-      await client.query(`UPDATE m1.channel_clocks SET override_days=$4::int,interval_days=$5::int,reason=$6,policy_version=$7,
-          due_at=coalesce(last_success_at,due_at-(interval_days*interval '1 day'))+($5::int*interval '1 day'),
-          retry_at=CASE WHEN retry_at > coalesce(last_success_at,due_at-(interval_days*interval '1 day'))+($5::int*interval '1 day') THEN NULL ELSE retry_at END,updated_at=clock_timestamp()
-        WHERE workspace_id=$1 AND channel_id=$2 AND clock=$3`,[principal.workspace_id,channelId,command.clock,command.interval_days,d.interval_days,d.reason,CLOCK_POLICY_VERSION]);
+      const pinned = await client.query('UPDATE m1.channel_clocks SET override_days=$4::int,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2 AND clock=$3',[principal.workspace_id,channelId,command.clock,command.interval_days]);
+      if (!pinned.rowCount) throw new StoreError('NOT_FOUND','Clock not found',404);
+      await this.seedClocks(client,principal.workspace_id,channelId,(await client.query('SELECT clock_timestamp() AS now')).rows[0]!.now as Date);
       const updated = (await client.query('UPDATE m1.channels SET management_version=management_version+1 WHERE workspace_id=$1 AND channel_id=$2 RETURNING *',[principal.workspace_id,channelId])).rows[0]!;
       return this.management(client,updated);
     });
@@ -359,63 +349,70 @@ export class Store {
     const order = (c: string) => CLOCK_NAMES.indexOf(c as ClockName);
     return { state:channel.management_state ?? null, version:channel.management_version ?? 0, changed_at:channel.management_changed_at ? iso(channel.management_changed_at) : null,
       clocks:clocks.sort((a,b) => order(a.clock)-order(b.clock)).map(k => ({ clock:k.clock, due_at:iso(k.due_at), retry_at:k.retry_at ? iso(k.retry_at) : null, next_due_at:iso(k.retry_at ?? k.due_at),
-        interval_days:k.interval_days, reason:k.reason as ClockReason, policy_version:k.policy_version, last_success_at:k.last_success_at ? iso(k.last_success_at) : null,
-        last_attempt_at:k.last_attempt_at ? iso(k.last_attempt_at) : null, last_plan_id:k.last_plan_id ?? null, refresh_due_at:k.clock === 'VIDEO' && k.refresh_due_at ? iso(k.refresh_due_at) : null, override_days:k.override_days ?? null })) };
-  }
-  /** Fresh clocks for a channel entering management (first collection or operator command); `applied` clocks record this plan as their success. */
-  private async seedClocks(client: PoolClient, workspaceId: string, channelId: string, now: Date, reason: ClockReason, planId: string | null, applied: ClockName[] = [], seen: Partial<Record<ClockName,string|null>> = {}): Promise<void> {
-    for (const clock of CLOCK_NAMES) {
-      const ran = planId !== null && applied.includes(clock), lastSuccess = ran ? now : seen[clock] ? new Date(seen[clock]!) : null;
-      const decision = decideClock(clock,'first',{latestPublishedAt:null,newVideosFound:null,emptyDiscoveryRuns:0},now);
-      // The recent-video refresh restarts its own period with the clocks (first collection covered the scope).
-      await client.query(`INSERT INTO m1.channel_clocks(workspace_id,channel_id,clock,due_at,retry_at,interval_days,reason,policy_version,last_success_at,last_attempt_at,last_plan_id,empty_runs,refresh_due_at)
-        VALUES($1,$2,$3,$4::timestamptz+($5*interval '1 day'),NULL,$5,$6,$7,$8,$8,$9,0,CASE WHEN $3='VIDEO' THEN $4::timestamptz+($10*interval '1 day') END)
-        ON CONFLICT(workspace_id,channel_id,clock) DO UPDATE SET retry_at=NULL,refresh_due_at=EXCLUDED.refresh_due_at,
-          -- A pinned interval survives re-management.
-          due_at=$4::timestamptz+(coalesce(m1.channel_clocks.override_days,EXCLUDED.interval_days)*interval '1 day'),interval_days=coalesce(m1.channel_clocks.override_days,EXCLUDED.interval_days),
-          reason=CASE WHEN m1.channel_clocks.override_days IS NULL THEN EXCLUDED.reason ELSE 'manual_override' END,
-          policy_version=EXCLUDED.policy_version,last_success_at=coalesce(EXCLUDED.last_success_at,m1.channel_clocks.last_success_at),last_attempt_at=coalesce(EXCLUDED.last_attempt_at,m1.channel_clocks.last_attempt_at),
-          last_plan_id=coalesce(EXCLUDED.last_plan_id,m1.channel_clocks.last_plan_id),empty_runs=0,updated_at=clock_timestamp()`,
-        [workspaceId,channelId,clock,now,decision.interval_days,reason,CLOCK_POLICY_VERSION,lastSuccess,ran ? planId : null,REFRESH_INTERVAL_DAYS]);
-    }
+        interval_days:k.interval_days, reasons:k.reasons?.length ? k.reasons : [k.reason], policy_version:k.policy_version, last_success_at:k.last_success_at ? iso(k.last_success_at) : null,
+        last_attempt_at:k.last_attempt_at ? iso(k.last_attempt_at) : null, last_plan_id:k.last_plan_id ?? null, override_days:k.override_days ?? null })) };
   }
   /**
-   * A real plan ended (inside its transaction). The first completion of an unmanaged channel puts it
-   * under management with fresh clocks. For a managed or paused channel, each required domain advances
-   * its clocks if applied, or schedules only a retry if not (the normal period stays). Removed: untouched.
+   * Write a channel's clocks from the legacy engine's own state. Without one, or when (re-)managing,
+   * the engine starts over from what is stored: the About, videos and Agent profile applied as the
+   * channel's first observations (facts collected while it was removed included).
+   */
+  private async seedClocks(client: PoolClient, workspaceId: string, channelId: string, now: Date, restart = false): Promise<void> {
+    if (restart) await client.query('DELETE FROM m1.channel_feature_state WHERE workspace_id=$1 AND channel_id=$2',[workspaceId,channelId]);
+    let stored = await loadClocks(client,workspaceId,channelId);
+    const activity: ClockActivity = { planId:null, succeeded:{}, attempted:{} };
+    if (!stored?.snapshot.clock) {
+      const channel = (await client.query('SELECT about,agent FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2',[workspaceId,channelId])).rows[0]!;
+      const videos = (await client.query('SELECT data FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2',[workspaceId,channelId])).rows.map(r => r.data as VideoItem);
+      const observations: Observation[] = [];
+      if (channel.about) observations.push(aboutObservation(channel.about as ChannelFacts));
+      if (videos.length) observations.push(videoObservation(Math.max(...videos.map(v => Date.parse(v.observed_at))) * 1000,videos));
+      if (channel.agent) observations.push(agentObservation(channel.agent as AgentResult));
+      observations.sort((a,b) => a.observed_at - b.observed_at);
+      // Facts collected before management count as each clock's last success (shown as "上次").
+      for (const o of observations) activity.succeeded[o.kind] = new Date(Math.floor(o.observed_at / 1000));
+      stored = await applyObservations(client,workspaceId,channelId,stored,observations);
+    }
+    await writeClocks(client,workspaceId,channelId,stored,activity,now);
+  }
+  /**
+   * A real plan ended (inside its transaction). Its required domains are applied to the channel's
+   * clocks as legacy observations: an applied domain moves its clock by the policy; a domain that was
+   * not applied changes nothing, so its clock stays due and the next cycle takes it up again. The
+   * first completion of an unmanaged channel puts it under management. Removed channels: untouched.
    */
   private async settleClocks(client: PoolClient, plan: QueryResultRow, status: 'COMPLETED' | 'FAILED' | 'CANCELLED'): Promise<void> {
     if ((plan.frozen_input as FrozenInput).source_mode !== 'youtube') return;
-    const channel = (await client.query('SELECT management_state FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[plan.workspace_id,plan.channel_id])).rows[0];
+    const channel = (await client.query('SELECT management_state,about,agent FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[plan.workspace_id,plan.channel_id])).rows[0];
     if (!channel || channel.management_state === 'removed') return;
+    if (channel.management_state === null && status !== 'COMPLETED') return;
     const now = (await client.query('SELECT clock_timestamp() AS now')).rows[0]!.now as Date;
-    const applied = new Set((await client.query("SELECT domain FROM m1.domains WHERE plan_id=$1 AND state='APPLIED'",[plan.plan_id])).rows.map(r => r.domain as Domain));
-    if (channel.management_state === null) {
-      if (status !== 'COMPLETED') return;
-      await client.query("UPDATE m1.channels SET management_state='managed',management_version=management_version+1,management_changed_at=$3 WHERE workspace_id=$1 AND channel_id=$2",[plan.workspace_id,plan.channel_id,now]);
-      return this.seedClocks(client,plan.workspace_id,plan.channel_id,now,'first_collection',plan.plan_id,[...applied]);
-    }
-    const latest = (await client.query(`SELECT max((data->>'published_at')::timestamptz) AS at FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND data->>'published_at' IS NOT NULL`,[plan.workspace_id,plan.channel_id])).rows[0]!.at as Date | null;
-    const clocks = new Map((await client.query('SELECT clock,empty_runs,override_days FROM m1.channel_clocks WHERE workspace_id=$1 AND channel_id=$2',[plan.workspace_id,plan.channel_id])).rows.map(r => [r.clock as ClockName, r as { empty_runs: number; override_days: number | null }]));
-    for (const clock of plan.required_domains as ClockName[]) {
-      // New-video counts arrive with incremental discovery (M3 step 3); until then they are unknown.
-      const facts: ClockFacts = { latestPublishedAt:latest ? iso(latest) : null, newVideosFound:null, emptyDiscoveryRuns:clocks.get(clock)?.empty_runs ?? 0 };
-      const pinned = clocks.get(clock)?.override_days ?? null;
-      if (applied.has(clock)) {
-        const d = decideClock(clock,'success',facts,now,pinned);
-        // Video plans so far collect the whole frozen scope, so an applied VIDEO also refreshed the recent videos.
-        await client.query(`INSERT INTO m1.channel_clocks(workspace_id,channel_id,clock,due_at,interval_days,reason,policy_version,last_success_at,last_attempt_at,last_plan_id,refresh_due_at)
-          VALUES($1,$2,$3,$4::timestamptz+($5*interval '1 day'),$5,$6,$7,$4,$4,$8,CASE WHEN $3='VIDEO' THEN $4::timestamptz+($10*interval '1 day') END)
-          ON CONFLICT(workspace_id,channel_id,clock) DO UPDATE SET due_at=EXCLUDED.due_at,retry_at=NULL,interval_days=EXCLUDED.interval_days,reason=EXCLUDED.reason,policy_version=EXCLUDED.policy_version,refresh_due_at=EXCLUDED.refresh_due_at,
-            last_success_at=EXCLUDED.last_success_at,last_attempt_at=EXCLUDED.last_attempt_at,last_plan_id=EXCLUDED.last_plan_id,
-            empty_runs=CASE WHEN $3='VIDEO' AND $9::int IS NOT NULL THEN CASE WHEN $9::int=0 THEN m1.channel_clocks.empty_runs+1 ELSE 0 END ELSE m1.channel_clocks.empty_runs END,updated_at=clock_timestamp()`,
-          [plan.workspace_id,plan.channel_id,clock,now,d.interval_days,d.reason,CLOCK_POLICY_VERSION,plan.plan_id,facts.newVideosFound,REFRESH_INTERVAL_DAYS]);
-      } else {
-        const d = decideClock(clock,'failure',facts,now,pinned);
-        await client.query(`UPDATE m1.channel_clocks SET retry_at=$4::timestamptz+($5*interval '1 day'),reason=$6,policy_version=$7,last_attempt_at=$4,last_plan_id=$8,updated_at=clock_timestamp()
-          WHERE workspace_id=$1 AND channel_id=$2 AND clock=$3`,[plan.workspace_id,plan.channel_id,clock,now,d.interval_days,d.reason,CLOCK_POLICY_VERSION,plan.plan_id]);
+    const completed = new Map((await client.query("SELECT domain,completed_at FROM m1.domains WHERE plan_id=$1 AND state='APPLIED'",[plan.plan_id])).rows.map(r => [r.domain as Domain, r.completed_at as Date]));
+    const activity: ClockActivity = { planId:plan.plan_id, succeeded:{}, attempted:{} }, observations: Observation[] = [];
+    for (const domain of CLOCK_NAMES.filter(d => (plan.required_domains as Domain[]).includes(d))) {
+      const kind = domain.toLowerCase() as ClockKind, at = completed.get(domain);
+      if (!at) {
+        observations.push({ kind, observed_at:instantFromDate(now), outcome:'failed', facts:null });
+        activity.attempted[kind] = now;
+        continue;
       }
+      if (domain === 'ABOUT') observations.push(aboutObservation(channel.about as ChannelFacts));
+      if (domain === 'AGENT') observations.push(agentObservation(channel.agent as AgentResult));
+      if (domain === 'VIDEO') {
+        // First seen: applied by this plan and by no earlier plan of the channel.
+        const firstSeen = (await client.query(`SELECT v.data FROM m1.plan_items i JOIN m1.videos v ON v.workspace_id=$2 AND v.channel_id=$3 AND v.video_id=i.item_id
+          WHERE i.plan_id=$1 AND i.domain='VIDEO' AND NOT EXISTS (SELECT 1 FROM m1.plan_items e JOIN m1.plans p ON p.plan_id=e.plan_id
+            WHERE e.domain='VIDEO' AND e.item_id=i.item_id AND p.workspace_id=$2 AND p.channel_id=$3 AND p.source_revision<$4)
+          ORDER BY i.item_id`,[plan.plan_id,plan.workspace_id,plan.channel_id,plan.source_revision])).rows.map(r => r.data as VideoItem);
+        observations.push(videoObservation(instantFromDate(at),firstSeen));
+      }
+      activity.succeeded[kind] = at;
     }
+    if (channel.management_state === null) {
+      await client.query("UPDATE m1.channels SET management_state='managed',management_version=management_version+1,management_changed_at=$3 WHERE workspace_id=$1 AND channel_id=$2",[plan.workspace_id,plan.channel_id,now]);
+    }
+    const stored = await applyObservations(client,plan.workspace_id,plan.channel_id,await loadClocks(client,plan.workspace_id,plan.channel_id),observations);
+    await writeClocks(client,plan.workspace_id,plan.channel_id,stored,activity,now);
   }
   /** Frozen VIDEO targets: fixed at creation for fixtures, the first accepted manifest for YouTube. */
   private async videoTargets(client: PoolClient | Pool, row: QueryResultRow): Promise<string[] | null> {

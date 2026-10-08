@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { CLOCK_NAMES, CLOCK_REASONS, OVERRIDE_DAYS, type ClockName, type ClockReason } from './clocks.ts';
-export { CLOCK_NAMES, CLOCK_REASONS, CLOCK_POLICY_VERSION, OVERRIDE_DAYS, REFRESH_INTERVAL_DAYS, decideClock, refreshDue, type ClockName, type ClockReason, type ClockFacts } from './clocks.ts';
+import { CLOCK_NAMES, OVERRIDE_DAYS, type ClockName } from './clocks.ts';
+export { CLOCK_NAMES, CLOCK_POLICY_VERSION, OVERRIDE_DAYS, MANUAL_OVERRIDE_REASON, BOOTSTRAP_BASELINE_REASON, type ClockName } from './clocks.ts';
 
 export const CONTRACT_VERSION = 'm1.v1' as const;
 // One Workflow for every plan; it branches on the frozen input's source_mode.
@@ -181,10 +181,13 @@ export interface ChannelSummary { channel_id: string; title: string | null; sour
 /** Management of a channel's updates (M3): managed channels have update clocks; paused ones keep them; removed ones are left alone. */
 export type ManagementState = 'managed' | 'paused' | 'removed';
 export interface ChannelClock {
-  clock: ClockName; due_at: string; retry_at: string | null; next_due_at: string; interval_days: number; reason: ClockReason; policy_version: string;
+  clock: ClockName; due_at: string; next_due_at: string; interval_days: number; policy_version: string;
+  /** Always null since the legacy algorithm: a failed run leaves the clock due, so the next cycle picks it up again. */
+  retry_at: string | null;
+  /** The legacy policy's reason codes for the current due day, most significant last (see clocks.ts). */
+  reasons: string[];
+  /** When this domain was last applied, attempted (failures included), and by which plan. */
   last_success_at: string | null; last_attempt_at: string | null; last_plan_id: string | null;
-  /** VIDEO only: from this time a Video run also refreshes the recent videos' counts (null for other clocks). */
-  refresh_due_at: string | null;
   /** Interval an operator pinned for this channel and domain, replacing the policy; null = automatic. */
   override_days: number | null;
 }
@@ -236,8 +239,8 @@ export const PlanDetailSchema: z.ZodType<PlanDetail> = z.strictObject({ plan: Pl
 export const ChannelSummarySchema: z.ZodType<ChannelSummary> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid() });
 export const ManagementStateSchema = z.enum(['managed', 'paused', 'removed']);
 export const ChannelClockSchema: z.ZodType<ChannelClock> = z.strictObject({ clock: z.enum(CLOCK_NAMES), due_at: Timestamp, retry_at: Timestamp.nullable(), next_due_at: Timestamp,
-  interval_days: z.number().int().min(1).max(365), reason: z.enum(CLOCK_REASONS), policy_version: z.string().max(40),
-  last_success_at: Timestamp.nullable(), last_attempt_at: Timestamp.nullable(), last_plan_id: z.uuid().nullable(), refresh_due_at: Timestamp.nullable(), override_days: z.number().int().min(1).max(365).nullable() });
+  interval_days: z.number().int().min(1).max(365), reasons: z.array(z.string().min(1).max(80)).max(30), policy_version: z.string().max(40),
+  last_success_at: Timestamp.nullable(), last_attempt_at: Timestamp.nullable(), last_plan_id: z.uuid().nullable(), override_days: z.number().int().min(1).max(365).nullable() });
 export const ChannelManagementSchema: z.ZodType<ChannelManagement> = z.strictObject({ state: ManagementStateSchema.nullable(), version: z.number().int().nonnegative(), changed_at: Timestamp.nullable(), clocks: z.array(ChannelClockSchema).max(3) });
 /** Operator command: manage (or re-manage) seeds fresh clocks; pause keeps them; resume continues; remove stops updates. */
 export const ChannelManagementCommandSchema = z.strictObject({ action: z.enum(['manage', 'pause', 'resume', 'remove']), expected_version: z.number().int().nonnegative() });
