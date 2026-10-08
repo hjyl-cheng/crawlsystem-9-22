@@ -131,6 +131,22 @@ test('manual updates require operator/version checks and replay one identity wit
   await reject(() => t.store.updateChannel(t.op, item.channel, { ...command, request_id: randomUUID() }), 'CONFLICT');
 });
 
+test('re-profiling unchanged facts is a new Agent observation, compared with the last profile', async () => {
+  const t = setup(), item = await seed(t, []);
+  const { diagnostics: _diagnostics, ...profile } = model;
+  const profileOnce = async () => {
+    const version = (await t.store.getChannel(t.reader, item.channel)).management.version;
+    const plan = await t.store.updateChannel(t.op, item.channel, { request_id: randomUUID(), expected_version: version, domains: ['AGENT'] });
+    const snapshot = await t.store.agentInput(t.worker, plan.plan_id);
+    await t.store.apply(t.worker, submission(plan, 'AGENT', { channel_id: item.channel, input_hash: snapshot.input_hash, ...profile }));
+    return (await t.store.getChannel(t.reader, item.channel)).management.clocks.find(c => c.clock === 'AGENT')!;
+  };
+  assert.ok((await profileOnce()).reasons.includes('agent_semantic_baseline'));
+  const again = await profileOnce();
+  assert.ok(again.reasons.includes('agent_semantic_continuous_interval'), again.reasons.join(','));
+  assert.equal(again.interval_days, 365, 'the same profile again: no change, the longest interval');
+});
+
 test('domains left out of auto_domains stay due for a manual update; by default all three are automatic', async () => {
   assert.deepEqual(UpdateLimitsSchema.parse({}).auto_domains, ['ABOUT', 'VIDEO', 'AGENT']);
   const t = setup({ auto_domains: ['ABOUT', 'VIDEO'] }), now = new Date();

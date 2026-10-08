@@ -75,12 +75,14 @@ export function videoObservation(observedAt: Instant, firstSeen: readonly VideoI
 /**
  * An Agent profile as the legacy extended Agent payload: topics are the categories and tags,
  * evidence the cited evidence and sources (fingerprinted), the version the model and taxonomy.
+ * The profile's own time is its input snapshot's; a plan passes when it applied the profile, so a
+ * re-profile of unchanged facts is still a new observation.
  */
-export function agentObservation(agent: AgentResult): Observation {
+export function agentObservation(agent: AgentResult, observedAt: Instant = parseInstant(agent.observed_at)): Observation {
   const facts = agent.facts, categories = facts.channel_categories.value, tags = facts.channel_tags.value.tags;
   const evidence = Object.values(facts).flatMap(fact => [...fact.evidence, ...fact.source_urls]);
   const topics = [...new Set([`l1:${casefold(categories.level_1)}`, ...categories.level_2.map(item => `l2:${casefold(item)}`), ...tags.map(tag => `tag:${casefold(tag)}`)])];
-  return { kind: 'agent', observed_at: parseInstant(agent.observed_at), outcome: 'complete', facts: {
+  return { kind: 'agent', observed_at: observedAt, outcome: 'complete', facts: {
     output_hash: contentHash(facts),
     category_level_1: categories.level_1,
     category_level_2: categories.level_2,

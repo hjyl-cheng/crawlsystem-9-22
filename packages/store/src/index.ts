@@ -613,7 +613,7 @@ export class Store {
         continue;
       }
       if (domain === 'ABOUT') observations.push(aboutObservation(channel.about as ChannelFacts));
-      if (domain === 'AGENT') observations.push(agentObservation(channel.agent as AgentResult));
+      if (domain === 'AGENT') observations.push(agentObservation(channel.agent as AgentResult, instantFromDate(at)));
       if (domain === 'VIDEO') {
         // First seen: applied by this plan and by no earlier plan of the channel.
         const firstSeen = (await client.query(`SELECT v.data FROM m1.plan_items i JOIN m1.videos v ON v.workspace_id=$2 AND v.channel_id=$3 AND v.video_id=i.item_id
