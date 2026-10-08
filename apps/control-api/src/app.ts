@@ -61,6 +61,7 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.get(ApiRoutes.plansSummary,async request=>store.plansSummary(request.principal,sourceMode(request.query)));
   app.get(ApiRoutes.completeness,async request=>store.completeness(request.principal,sourceMode(request.query)));
   app.get('/v1/channels/:id',async request=>store.getChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id));
+  app.post('/v1/channels/:id/management',{bodyLimit:1024},async request=>store.manageChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));
   app.post('/v1/workers/heartbeat',async request=>store.heartbeat(request.principal,HeartbeatSchema.parse(request.body)));
   app.get(ApiRoutes.proxies,async request=>proxies().overview(request.principal));
   app.post(ApiRoutes.proxyImport,{bodyLimit:262144},async request=>proxies().importProxies(request.principal,request.body));

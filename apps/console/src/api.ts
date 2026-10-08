@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import {
   ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,
-  ChannelListItemSchema, ChannelDetailSchema, CompletenessSchema, ConsoleAccountListSchema, PlansSummarySchema, WorkerSchema, StoredEventSchema,
+  ChannelListItemSchema, ChannelDetailSchema, ChannelManagementSchema, ChannelManagementCommandSchema, CompletenessSchema, ConsoleAccountListSchema, PlansSummarySchema, WorkerSchema, StoredEventSchema,
   ReceiptSchema, CreatePlanSchema, CancelPlanSchema, LoginSchema, LogoutSchema, pageSchema, ProxyOverviewSchema, ProxyImportSchema, ProxyUpdateSchema, ProxyViewSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySourceViewSchema,
-  type CreatePlan, type ProxyImport, type ProxySourceCreate, type ErrorCode, type PlanStatus, type SourceMode, type Login,
+  type ChannelManagementCommand, type CreatePlan, type ProxyImport, type ProxySourceCreate, type ErrorCode, type PlanStatus, type SourceMode, type Login,
 } from '@crawlsystem/contracts';
 
 const messages: Record<ErrorCode, string> = {
@@ -93,6 +93,7 @@ export class ControlApi {
   completeness = (signal?: AbortSignal) => this.request(ApiRoutes.completeness, CompletenessSchema, signal);
   consoleAccounts = (signal?: AbortSignal) => this.request(ApiRoutes.consoleAccounts, ConsoleAccountListSchema, signal);
   channel = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.channel(id), ChannelDetailSchema, signal);
+  manageChannel = (id: string, body: ChannelManagementCommand, signal?: AbortSignal) => this.request(ApiRoutes.channelManagement(id), ChannelManagementSchema, signal, ChannelManagementCommandSchema.parse(body));
   workers = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.workers}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(WorkerSchema), signal);
   errors = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.errors}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(StoredEventSchema), signal);
   receipt = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.receipt(id), ReceiptSchema, signal);

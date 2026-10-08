@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { CLOCK_NAMES, CLOCK_REASONS, type ClockName, type ClockReason } from './clocks.ts';
+export { CLOCK_NAMES, CLOCK_REASONS, CLOCK_POLICY_VERSION, clocksOf, decideClock, type ClockName, type ClockReason, type ClockFacts } from './clocks.ts';
 
 export const CONTRACT_VERSION = 'm1.v1' as const;
 // One Workflow for every plan; it branches on the frozen input's source_mode.
@@ -176,8 +178,15 @@ export interface Worker extends Heartbeat { last_heartbeat_at: string; stale: bo
 export interface PlanDetail extends PlanInput { events: StoredEvent[]; }
 export interface ChannelSummary { channel_id: string; title: string | null; source_mode: SourceMode; updated_at: string; latest_plan_id: string; }
 /** A channel row for list pages: the summary plus current facts cheap to read in one query. */
-export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; }
-export interface ChannelDetail extends ChannelSummary { about: ChannelFacts | null; videos: VideoItem[]; agent: AgentResult | null; latest_plan: Plan; }
+/** Management of a channel's updates (M3): managed channels have update clocks; paused ones keep them; removed ones are left alone. */
+export type ManagementState = 'managed' | 'paused' | 'removed';
+export interface ChannelClock {
+  clock: ClockName; due_at: string; retry_at: string | null; next_due_at: string; interval_days: number; reason: ClockReason; policy_version: string;
+  last_success_at: string | null; last_attempt_at: string | null; last_plan_id: string | null;
+}
+export interface ChannelManagement { state: ManagementState | null; version: number; changed_at: string | null; clocks: ChannelClock[]; }
+export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; management_state: ManagementState | null; next_due_at: string | null; }
+export interface ChannelDetail extends ChannelSummary { about: ChannelFacts | null; videos: VideoItem[]; agent: AgentResult | null; latest_plan: Plan; management: ChannelManagement; }
 export interface Page<T> { items: T[]; next_cursor: string | null; }
 /** Workspace-wide plan statistics for the full-collection page. Counts are over
  * all plans unless named *_24h (rolling 24 hours at the server clock). domains
@@ -217,8 +226,16 @@ export const PlanInputSchema: z.ZodType<PlanInput> = z.strictObject({ plan: Plan
 export const StoredEventSchema: z.ZodType<StoredEvent> = ExecutionEventSchema.extend({ plan_id: z.uuid(), created_at: Timestamp });
 export const PlanDetailSchema: z.ZodType<PlanDetail> = z.strictObject({ plan: PlanSchema, input: FrozenInputSchema, domains: z.array(DomainResultSchema).max(3), receipts: z.array(ReceiptSchema).max(300), trace_context: TraceparentSchema.optional(), video_targets: z.array(IdSchema).max(100).optional(), events: z.array(StoredEventSchema).max(100) });
 export const ChannelSummarySchema: z.ZodType<ChannelSummary> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid() });
-export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoItemSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema });
-export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema });
+export const ManagementStateSchema = z.enum(['managed', 'paused', 'removed']);
+export const ChannelClockSchema: z.ZodType<ChannelClock> = z.strictObject({ clock: z.enum(CLOCK_NAMES), due_at: Timestamp, retry_at: Timestamp.nullable(), next_due_at: Timestamp,
+  interval_days: z.number().int().min(1).max(365), reason: z.enum(CLOCK_REASONS), policy_version: z.string().max(40),
+  last_success_at: Timestamp.nullable(), last_attempt_at: Timestamp.nullable(), last_plan_id: z.uuid().nullable() });
+export const ChannelManagementSchema: z.ZodType<ChannelManagement> = z.strictObject({ state: ManagementStateSchema.nullable(), version: z.number().int().nonnegative(), changed_at: Timestamp.nullable(), clocks: z.array(ChannelClockSchema).max(4) });
+/** Operator command: manage (or re-manage) seeds fresh clocks; pause keeps them; resume continues; remove stops updates. */
+export const ChannelManagementCommandSchema = z.strictObject({ action: z.enum(['manage', 'pause', 'resume', 'remove']), expected_version: z.number().int().nonnegative() });
+export type ChannelManagementCommand = z.infer<typeof ChannelManagementCommandSchema>;
+export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoItemSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema, management: ChannelManagementSchema });
+export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema, management_state: ManagementStateSchema.nullable(), next_due_at: Timestamp.nullable() });
 export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.literal('NOT_CONFIGURED') });
 export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, server_id: IdSchema.optional(), contract_version: z.literal(CONTRACT_VERSION) });
 // Kubernetes ServiceAccount token exchange: subject is the Pod, server_id the node reported by TokenReview.
@@ -271,6 +288,7 @@ export const ApiRoutes = {
   events: (id: string) => `/v1/plans/${encodeURIComponent(id)}/events`,
   receipt: (id: string) => `/v1/receipts/${encodeURIComponent(id)}`,
   channel: (id: string) => `/v1/channels/${encodeURIComponent(id)}`,
+  channelManagement: (id: string) => `/v1/channels/${encodeURIComponent(id)}/management`,
 } as const;
 
 // ---- Proxy Control (M2 step 2): central inventory and coarse assignment; the

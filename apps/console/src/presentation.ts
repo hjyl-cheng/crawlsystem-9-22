@@ -1,4 +1,4 @@
-import type { Domain, ErrorCode, PlanStatus, Plan, Role } from '@crawlsystem/contracts';
+import type { ClockName, ClockReason, Domain, ErrorCode, ManagementState, PlanStatus, Plan, Role } from '@crawlsystem/contracts';
 
 export const planLabels: Record<PlanStatus, string> = {
   QUEUED: '等待执行', RUNNING: '执行中', WAITING: '等待依赖', COMPLETED: '本轮已完成', CANCELLED: '已取消', FAILED: '执行失败',
@@ -18,4 +18,17 @@ export const number = (value?: number | null): string => value == null ? '未知
 export const shortId = (value: string) => value.length > 20 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
 export const planPath = (id: string) => `/plans/${encodeURIComponent(id)}`;
 export const channelPath = (id: string) => `/channels/${encodeURIComponent(id)}`;
+// M3 update clocks: what each clock covers and why it is due when it is.
+export const clockLabels: Record<ClockName, string> = { ABOUT: '频道资料', DISCOVERY: '新视频发现', REFRESH: '近期视频刷新', AGENT: 'Agent 画像' };
+export const clockReasonLabels: Record<ClockReason, string> = {
+  first_collection: '首次采集后的初始间隔', manual_manage: '手动纳管后的初始间隔', baseline: '常规间隔',
+  active_publishing: '近 14 天有发布，缩短为 3 天', new_video_active: '有新视频且近期活跃，缩短为 3 天',
+  discovery_empty_backoff: '连续未发现新视频，逐步放慢', retry_after_failure: '上次未完成，安排重试（不推进常规周期）',
+};
+export const managementLabels: Record<ManagementState | 'none', string> = { managed: '持续更新中', paused: '已暂停', removed: '已移出纳管', none: '未纳管' };
+/** "3 天后" / "5 小时后" / "已到期", relative to now. */
+export const dueIn = (value: string, now = Date.now()): string => {
+  const hours = (Date.parse(value) - now) / 3_600_000;
+  return hours <= 0 ? '已到期' : hours < 48 ? `${Math.ceil(hours)} 小时后` : `${Math.round(hours / 24)} 天后`;
+};
 export const receiptPath = (id: string) => `/receipts/${encodeURIComponent(id)}`;

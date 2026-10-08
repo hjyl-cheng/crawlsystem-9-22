@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { isVideoUnavailable, type ChannelFacts, type ChannelDetail, type VideoFacts, type VideoUnavailable, type AgentResult } from '@crawlsystem/contracts';
+import { isVideoUnavailable, type ChannelFacts, type ChannelDetail, type ChannelManagementCommand, type VideoFacts, type VideoUnavailable, type AgentResult } from '@crawlsystem/contracts';
+import { ApiFailure } from '../api.js';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
-import { Badge, Empty, Fields, PageHeading, Panel, PlanBadge, ResourceView, SafeLink, SampleBadge } from '../ui.js';
-import { number, planPath, time } from '../presentation.js';
+import { Badge, Empty, ErrorBox, Fields, PageHeading, Panel, PlanBadge, ResourceView, SafeLink, SampleBadge } from '../ui.js';
+import { clockLabels, clockReasonLabels, dueIn, managementLabels, number, planPath, time } from '../presentation.js';
 
 const metricLabels: Record<ChannelFacts['subscriber_count']['status'], string> = { exact: '精确值', estimated: '估算值', empty: '合法空值', unavailable: '不可获得', unresolved: '尚未解析', disabled: '已关闭' };
 function Metric({ label, metric }: { label: string; metric: ChannelFacts['subscriber_count'] }) {
@@ -35,10 +37,41 @@ const estimateReasons: Record<string, string> = {
   fallback_only_candidate_models_below_gate: '模型未达上线门槛，使用规则与先验估计',
 };
 const agentLabels: Record<keyof AgentResult['facts'], string> = { country: '国家 / 地区', creator_gender: '创作者性别 / 团队类型', creator_age_range: '创作者年龄', creator_language: '创作者语言', audience_region: '受众地区分布', audience_language: '受众语言分布', audience_age_gender: '受众年龄 / 性别', active_subscriber_ratio: '活跃订阅者比例', channel_tags: '频道标签', channel_categories: '频道分类' };
-function Content({ channel }: { channel: ChannelDetail }) {
+const managementActions: Record<string, [ChannelManagementCommand['action'], string][]> = {
+  none: [['manage', '纳入持续更新']], removed: [['manage', '重新纳入']], managed: [['pause', '暂停'], ['remove', '移出纳管']], paused: [['resume', '恢复'], ['remove', '移出纳管']],
+};
+/** M3 update clocks: when each part of the channel is next due, and why. */
+function Management({ channel, operator, onChanged }: { channel: ChannelDetail; operator: boolean; onChanged: () => void }) {
+  const { api } = useAuth();
+  const m = channel.management, state = m.state ?? 'none';
+  const [busy, setBusy] = useState(false), [error, setError] = useState<ApiFailure>();
+  async function run(action: ChannelManagementCommand['action']) {
+    setBusy(true); setError(undefined);
+    try { await api.manageChannel(channel.channel_id, { action, expected_version: m.version }); onChanged(); }
+    catch (cause) { setError(cause instanceof ApiFailure ? cause : new ApiFailure('操作失败，请刷新后重试')); }
+    finally { setBusy(false); }
+  }
+  const actions = channel.source_mode === 'youtube' ? managementActions[state]! : [];
+  return <Panel title="持续更新" extra={<span className="inline"><Badge>{managementLabels[state]}</Badge>{operator && actions.map(([action, label]) =>
+      <button key={action} className="button" disabled={busy} onClick={() => void run(action)}>{label}</button>)}</span>}>
+    {error && <ErrorBox error={error}/>}
+    {m.clocks.length ? <>
+      <div className="notice">每类数据各自到期：到期后自动创建只含到期部分的更新计划（调度器在 M3 第 2 步上线，此前到期不会自动执行）。{state === 'paused' ? '已暂停：到期也不会创建更新计划。' : ''}</div>
+      <div className="table-scroll"><table><thead><tr><th>数据</th><th>下次更新</th><th>常规间隔</th><th>原因</th><th>上次成功</th></tr></thead><tbody>
+        {m.clocks.map(c => <tr key={c.clock}><td>{clockLabels[c.clock]}</td>
+          <td>{time(c.next_due_at)}<small className="cell-note">{dueIn(c.next_due_at)}{c.retry_at ? '（重试）' : ''}</small></td>
+          <td className="num">{c.interval_days} 天</td><td>{clockReasonLabels[c.reason]}</td>
+          <td>{c.last_success_at ? time(c.last_success_at) : '—'}{c.last_plan_id && <small className="cell-note"><Link to={planPath(c.last_plan_id)}>最近计划</Link></small>}</td></tr>)}
+      </tbody></table></div>
+      <p className="fine-print">策略版本 {m.clocks[0]!.policy_version}{m.changed_at ? ` · 状态变更于 ${time(m.changed_at)}` : ''}</p>
+    </> : <Empty title={state === 'removed' ? '已移出纳管' : '尚未纳入持续更新'}>{channel.source_mode !== 'youtube' ? '固定样本频道不参与持续更新。' : state === 'removed' ? '移出后不再自动更新，可重新纳入。' : '首次采集完成后自动纳入；也可以手动纳入。'}</Empty>}
+  </Panel>;
+}
+function Content({ channel, operator, onChanged }: { channel: ChannelDetail; operator: boolean; onChanged: () => void }) {
   const { about, agent } = channel;
   return <><div className="plan-summary"><div className="inline"><SampleBadge/><strong>{channel.title ?? channel.channel_id}</strong></div><Link className="button" to={planPath(channel.latest_plan_id)}>查看最近计划 →</Link></div>
     <div className="notice">这里展示当前已入库数据，可能来自之前的计划。最近一轮状态：<PlanBadge status={channel.latest_plan.status}/>。本轮领域结果请进入对应 Plan 核对。</div>
+    <Management channel={channel} operator={operator} onChanged={onChanged}/>
     <Panel title="频道基础资料">{about ? <><div className="channel-intro"><span className="channel-avatar">{about.title.slice(0, 1)}</span><div><h2>{about.title}</h2><p>{about.handle ?? 'Handle 尚未提供'} · <SafeLink href={about.channel_url}>访问频道</SafeLink></p></div></div><div className="metrics-grid three"><Metric label="订阅数" metric={about.subscriber_count}/><Metric label="总播放量" metric={about.total_view_count}/><Metric label="视频总量" metric={about.total_video_count}/></div><Fields rows={[
       ['频道身份', about.channel_id], ['简介', about.about_description ?? about.summary ?? '尚未提供'], ['国家 / 地区', about.country ?? '尚未提供'], ['国家来源', about.country_source ?? '尚未提供'], ['注册日期', about.joined_at ?? about.joined_date_text ?? '尚未提供'], ['关键词', about.keywords.join('、') || '已返回空列表'], ['已认证', nullableBoolean(about.is_verified)], ['商务邮箱入口', nullableBoolean(about.youtube_business_email_available)], ['数据来源', about.source], ['采集时间', time(about.observed_at)], ['外部链接', about.external_links.length ? about.external_links.map(link => <div key={link.url}><SafeLink href={link.url}>{link.title || link.url}</SafeLink></div>) : '已返回空列表'],
     ]}/></> : <Empty title="基础资料尚未入库">创建计划不代表数据已经可用。</Empty>}</Panel>
@@ -48,7 +81,7 @@ function Content({ channel }: { channel: ChannelDetail }) {
   </>;
 }
 export default function ChannelDetailPage() {
-  const { id = '' } = useParams(); const { api } = useAuth();
+  const { id = '' } = useParams(); const { api, session } = useAuth();
   const resource = useResource(`channel:${id}`, signal => api.channel(id, signal));
-  return <><PageHeading title="频道详情" description="查看当前资料、视频、评论及其来源与采集时间。"><Link className="button" to="/channels">返回频道列表</Link></PageHeading><ResourceView resource={resource}>{channel => <Content channel={channel}/>}</ResourceView></>;
+  return <><PageHeading title="频道详情" description="查看当前资料、视频、评论及其来源与采集时间。"><Link className="button" to="/channels">返回频道列表</Link></PageHeading><ResourceView resource={resource}>{channel => <Content channel={channel} operator={session.role === 'operator'} onChanged={resource.refresh}/>}</ResourceView></>;
 }

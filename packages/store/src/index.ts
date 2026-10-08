@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import { CONTRACT_VERSION, WORKER_STALE_SECONDS, TraceparentSchema, FrozenInputSchema, YoutubeVideoIdSchema, isVideoUnavailable, type AgentInput, type VideoItem, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
   type Principal, type Role, type ErrorCode, type Plan, type PlanInput, type PlanDetail, type Domain, type DomainResult, type FrozenInput, type CreatePlan, type Submission, type Receipt,
-  type Page, type Completeness, type PlansSummary, type PlanStatus, type ChannelSummary, type ChannelListItem, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput, type SourceMode } from '@crawlsystem/contracts';
+  type Page, type Completeness, type PlansSummary, type PlanStatus, type ChannelSummary, type ChannelListItem, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput, type SourceMode,
+  ChannelManagementCommandSchema, CLOCK_NAMES, CLOCK_POLICY_VERSION, clocksOf, decideClock, type ChannelManagement, type ClockFacts, type ClockName, type ClockReason } from '@crawlsystem/contracts';
 import { agentInputHash, contentHash, submissionHash } from '@crawlsystem/contracts/hash';
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
 
@@ -199,6 +200,7 @@ export class Store {
       const waiting = frozen.source_mode === 'fixture' && remaining.rows.every(r => r.domain === 'AGENT');
       await client.query('UPDATE m1.plans SET status=$2,version=version+1,updated_at=clock_timestamp(),finished_at=CASE WHEN $3 THEN clock_timestamp() ELSE NULL END WHERE plan_id=$1',[input.plan_id,completed ? 'COMPLETED' : waiting ? 'WAITING' : 'RUNNING',completed]);
       if (completed) await client.query("INSERT INTO m1.obligations(plan_id,kind) VALUES($1,'FIXTURE_PLAN_SETTLED') ON CONFLICT DO NOTHING",[input.plan_id]);
+      if (completed) await this.settleClocks(client,row,'COMPLETED');
       return receipt;
     });
   }
@@ -220,6 +222,7 @@ export class Store {
       await client.query('INSERT INTO m1.commands(workspace_id,command_id,plan_id,command_hash,result) VALUES($1,$2,$3,$4,$5)',[principal.workspace_id,command.command_id,planId,hash,plan]);
       await client.query("UPDATE m1.intents SET state='SKIPPED' WHERE plan_id=$1 AND kind='START' AND state='PENDING'",[planId]);
       await client.query("INSERT INTO m1.intents(intent_id,plan_id,kind) VALUES($1,$2,'CANCEL') ON CONFLICT DO NOTHING",[randomUUID(),planId]);
+      await this.settleClocks(client,row,'CANCELLED');
       return plan;
     });
   }
@@ -254,6 +257,7 @@ export class Store {
         await client.query("UPDATE m1.plans SET status='FAILED',version=version+1,execution_epoch=execution_epoch+1,updated_at=clock_timestamp(),finished_at=clock_timestamp() WHERE plan_id=$1",[planId]);
         await client.query("UPDATE m1.intents SET state='SKIPPED' WHERE plan_id=$1 AND kind='START' AND state='PENDING'",[planId]);
         await client.query("INSERT INTO m1.intents(intent_id,plan_id,kind) VALUES($1,$2,'CANCEL') ON CONFLICT DO NOTHING",[randomUUID(),planId]);
+        await this.settleClocks(client,row,'FAILED');
       }
       if (!terminal(row.status) && ['STARTED','WAITING'].includes(input.kind)) {
         const status = input.kind === 'WAITING' ? 'WAITING' : 'RUNNING';
@@ -276,12 +280,14 @@ export class Store {
     requireRole(principal,'reader','operator');
     // Country and subscribers come from the current About facts; stored_videos counts this workspace's video rows.
     const rows = await this.pool.query(`SELECT c.*, p.status AS latest_plan_status, p.source_mode,
-        (SELECT count(*)::int FROM m1.videos v WHERE v.workspace_id=c.workspace_id AND v.channel_id=c.channel_id) AS stored_videos
+        (SELECT count(*)::int FROM m1.videos v WHERE v.workspace_id=c.workspace_id AND v.channel_id=c.channel_id) AS stored_videos,
+        (SELECT min(coalesce(k.retry_at,k.due_at)) FROM m1.channel_clocks k WHERE k.workspace_id=c.workspace_id AND k.channel_id=c.channel_id) AS next_due_at
       FROM m1.channels c JOIN m1.plans p ON p.plan_id=c.latest_plan_id
       WHERE c.workspace_id=$1 AND p.source_mode=$4 ORDER BY c.updated_at DESC,c.channel_id LIMIT $2 OFFSET $3`,[principal.workspace_id,limit+1,offset,mode]);
     return page(rows.rows.map(r => ({channel_id:r.channel_id,title:r.about?.title ?? null,source_mode:r.source_mode,updated_at:iso(r.updated_at),latest_plan_id:r.latest_plan_id,
       country:r.about?.country ?? null, subscriber_count:typeof r.about?.subscriber_count?.value === 'number' ? r.about.subscriber_count.value : null,
-      stored_videos:r.stored_videos, latest_plan_status:r.latest_plan_status})),limit,offset);
+      stored_videos:r.stored_videos, latest_plan_status:r.latest_plan_status, management_state:r.management_state ?? null,
+      next_due_at:r.management_state === 'managed' && r.next_due_at ? iso(r.next_due_at) : null})),limit,offset);
   }
   async getChannel(principal: Principal, channelId: string): Promise<ChannelDetail> {
     requireRole(principal,'reader','operator');
@@ -289,7 +295,86 @@ export class Store {
     if (!row) throw new StoreError('NOT_FOUND','Channel not found',404);
     const videos = await this.pool.query('SELECT data FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 ORDER BY video_id LIMIT 100',[principal.workspace_id,channelId]);
     const latest = toPlan(await this.planRow(this.pool,principal,row.latest_plan_id));
-    return {channel_id:channelId,title:row.about?.title ?? null,source_mode:latest.source_mode,updated_at:iso(row.updated_at),latest_plan_id:row.latest_plan_id,about:row.about,videos:videos.rows.map(r=>r.data as VideoItem),agent:row.agent ?? null,latest_plan:latest};
+    return {channel_id:channelId,title:row.about?.title ?? null,source_mode:latest.source_mode,updated_at:iso(row.updated_at),latest_plan_id:row.latest_plan_id,about:row.about,videos:videos.rows.map(r=>r.data as VideoItem),agent:row.agent ?? null,latest_plan:latest,
+      management:await this.management(this.pool,row)};
+  }
+  /** Operator command on a real channel's management (see ChannelManagementCommandSchema). */
+  async manageChannel(principal: Principal, channelId: string, raw: unknown): Promise<ChannelManagement> {
+    requireRole(principal,'operator');
+    const command = ChannelManagementCommandSchema.parse(raw);
+    return this.tx(async client => {
+      const row = (await client.query('SELECT c.*, p.source_mode FROM m1.channels c JOIN m1.plans p ON p.plan_id=c.latest_plan_id WHERE c.workspace_id=$1 AND c.channel_id=$2 FOR UPDATE OF c',[principal.workspace_id,channelId])).rows[0];
+      if (!row) throw new StoreError('NOT_FOUND','Channel not found',404);
+      if (row.management_version !== command.expected_version) throw new StoreError('CONFLICT','Channel management changed; refresh before editing');
+      if (row.source_mode !== 'youtube') throw new StoreError('INVALID_REQUEST','Only real channels can be managed',400);
+      const from = row.management_state as string | null;
+      const allowed: Record<string, (string | null)[]> = { manage:[null,'removed'], pause:['managed'], resume:['paused'], remove:['managed','paused'] };
+      if (!allowed[command.action]!.includes(from)) throw new StoreError('CONFLICT',`Cannot ${command.action} a channel that is ${from ?? 'not managed'}`);
+      if (command.action === 'manage' && !row.about) throw new StoreError('DOMAIN_INCOMPLETE','Collect the channel once before managing it');
+      const to = { manage:'managed', pause:'paused', resume:'managed', remove:'removed' }[command.action];
+      const now = (await client.query(`UPDATE m1.channels SET management_state=$3,management_version=management_version+1,management_changed_at=clock_timestamp()
+        WHERE workspace_id=$1 AND channel_id=$2 RETURNING management_changed_at`,[principal.workspace_id,channelId,to])).rows[0]!.management_changed_at as Date;
+      if (command.action === 'manage') await this.seedClocks(client,principal.workspace_id,channelId,now,'manual_manage',null);
+      return this.management(client,{...row,management_state:to,management_version:row.management_version+1,management_changed_at:now});
+    });
+  }
+  private async management(client: PoolClient | Pool, channel: QueryResultRow): Promise<ChannelManagement> {
+    // A removed channel's clocks are stale history; only managed and paused channels show them.
+    const clocks = ['managed','paused'].includes(channel.management_state) ? (await client.query('SELECT * FROM m1.channel_clocks WHERE workspace_id=$1 AND channel_id=$2',[channel.workspace_id,channel.channel_id])).rows : [];
+    const order = (c: string) => CLOCK_NAMES.indexOf(c as ClockName);
+    return { state:channel.management_state ?? null, version:channel.management_version ?? 0, changed_at:channel.management_changed_at ? iso(channel.management_changed_at) : null,
+      clocks:clocks.sort((a,b) => order(a.clock)-order(b.clock)).map(k => ({ clock:k.clock, due_at:iso(k.due_at), retry_at:k.retry_at ? iso(k.retry_at) : null, next_due_at:iso(k.retry_at ?? k.due_at),
+        interval_days:k.interval_days, reason:k.reason as ClockReason, policy_version:k.policy_version, last_success_at:k.last_success_at ? iso(k.last_success_at) : null,
+        last_attempt_at:k.last_attempt_at ? iso(k.last_attempt_at) : null, last_plan_id:k.last_plan_id ?? null })) };
+  }
+  /** Fresh clocks for a channel entering management (first collection or operator command); `applied` clocks record this plan as their success. */
+  private async seedClocks(client: PoolClient, workspaceId: string, channelId: string, now: Date, reason: ClockReason, planId: string | null, applied: ClockName[] = []): Promise<void> {
+    for (const clock of CLOCK_NAMES) {
+      const ran = planId !== null && applied.includes(clock);
+      const decision = decideClock(clock,'first',{latestPublishedAt:null,newVideosFound:null,emptyDiscoveryRuns:0},now);
+      await client.query(`INSERT INTO m1.channel_clocks(workspace_id,channel_id,clock,due_at,retry_at,interval_days,reason,policy_version,last_success_at,last_attempt_at,last_plan_id,empty_runs)
+        VALUES($1,$2,$3,$4::timestamptz+($5*interval '1 day'),NULL,$5,$6,$7,$8,$8,$9,0)
+        ON CONFLICT(workspace_id,channel_id,clock) DO UPDATE SET due_at=EXCLUDED.due_at,retry_at=NULL,interval_days=EXCLUDED.interval_days,reason=EXCLUDED.reason,
+          policy_version=EXCLUDED.policy_version,last_success_at=coalesce(EXCLUDED.last_success_at,m1.channel_clocks.last_success_at),last_attempt_at=coalesce(EXCLUDED.last_attempt_at,m1.channel_clocks.last_attempt_at),
+          last_plan_id=coalesce(EXCLUDED.last_plan_id,m1.channel_clocks.last_plan_id),empty_runs=0,updated_at=clock_timestamp()`,
+        [workspaceId,channelId,clock,now,decision.interval_days,reason,CLOCK_POLICY_VERSION,ran ? now : null,ran ? planId : null]);
+    }
+  }
+  /**
+   * A real plan ended (inside its transaction). The first completion of an unmanaged channel puts it
+   * under management with fresh clocks. For a managed or paused channel, each required domain advances
+   * its clocks if applied, or schedules only a retry if not (the normal period stays). Removed: untouched.
+   */
+  private async settleClocks(client: PoolClient, plan: QueryResultRow, status: 'COMPLETED' | 'FAILED' | 'CANCELLED'): Promise<void> {
+    if ((plan.frozen_input as FrozenInput).source_mode !== 'youtube') return;
+    const channel = (await client.query('SELECT management_state FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[plan.workspace_id,plan.channel_id])).rows[0];
+    if (!channel || channel.management_state === 'removed') return;
+    const now = (await client.query('SELECT clock_timestamp() AS now')).rows[0]!.now as Date;
+    const applied = new Set((await client.query("SELECT domain FROM m1.domains WHERE plan_id=$1 AND state='APPLIED'",[plan.plan_id])).rows.map(r => r.domain as Domain));
+    if (channel.management_state === null) {
+      if (status !== 'COMPLETED') return;
+      await client.query("UPDATE m1.channels SET management_state='managed',management_version=management_version+1,management_changed_at=$3 WHERE workspace_id=$1 AND channel_id=$2",[plan.workspace_id,plan.channel_id,now]);
+      return this.seedClocks(client,plan.workspace_id,plan.channel_id,now,'first_collection',plan.plan_id,[...applied].flatMap(clocksOf));
+    }
+    const latest = (await client.query(`SELECT max((data->>'published_at')::timestamptz) AS at FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND data->>'published_at' IS NOT NULL`,[plan.workspace_id,plan.channel_id])).rows[0]!.at as Date | null;
+    const clocks = new Map((await client.query('SELECT clock,empty_runs FROM m1.channel_clocks WHERE workspace_id=$1 AND channel_id=$2',[plan.workspace_id,plan.channel_id])).rows.map(r => [r.clock as ClockName, r.empty_runs as number]));
+    for (const domain of plan.required_domains as Domain[]) for (const clock of clocksOf(domain)) {
+      // New-video counts arrive with incremental discovery (M3 step 3); until then they are unknown.
+      const facts: ClockFacts = { latestPublishedAt:latest ? iso(latest) : null, newVideosFound:null, emptyDiscoveryRuns:clocks.get(clock) ?? 0 };
+      if (applied.has(domain)) {
+        const d = decideClock(clock,'success',facts,now);
+        await client.query(`INSERT INTO m1.channel_clocks(workspace_id,channel_id,clock,due_at,interval_days,reason,policy_version,last_success_at,last_attempt_at,last_plan_id)
+          VALUES($1,$2,$3,$4::timestamptz+($5*interval '1 day'),$5,$6,$7,$4,$4,$8)
+          ON CONFLICT(workspace_id,channel_id,clock) DO UPDATE SET due_at=EXCLUDED.due_at,retry_at=NULL,interval_days=EXCLUDED.interval_days,reason=EXCLUDED.reason,policy_version=EXCLUDED.policy_version,
+            last_success_at=EXCLUDED.last_success_at,last_attempt_at=EXCLUDED.last_attempt_at,last_plan_id=EXCLUDED.last_plan_id,
+            empty_runs=CASE WHEN $3='DISCOVERY' AND $9::int IS NOT NULL THEN CASE WHEN $9::int=0 THEN m1.channel_clocks.empty_runs+1 ELSE 0 END ELSE m1.channel_clocks.empty_runs END,updated_at=clock_timestamp()`,
+          [plan.workspace_id,plan.channel_id,clock,now,d.interval_days,d.reason,CLOCK_POLICY_VERSION,plan.plan_id,facts.newVideosFound]);
+      } else {
+        const d = decideClock(clock,'failure',facts,now);
+        await client.query(`UPDATE m1.channel_clocks SET retry_at=$4::timestamptz+($5*interval '1 day'),reason=$6,policy_version=$7,last_attempt_at=$4,last_plan_id=$8,updated_at=clock_timestamp()
+          WHERE workspace_id=$1 AND channel_id=$2 AND clock=$3`,[plan.workspace_id,plan.channel_id,clock,now,d.interval_days,d.reason,CLOCK_POLICY_VERSION,plan.plan_id]);
+      }
+    }
   }
   /** Frozen VIDEO targets: fixed at creation for fixtures, the first accepted manifest for YouTube. */
   private async videoTargets(client: PoolClient | Pool, row: QueryResultRow): Promise<string[] | null> {
@@ -354,6 +439,7 @@ export class Store {
         await client.query("UPDATE m1.plans SET status='FAILED',version=version+1,execution_epoch=execution_epoch+1,finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE plan_id=$1",[row.plan_id]);
         await client.query("UPDATE m1.intents SET state='SKIPPED' WHERE plan_id=$1 AND kind='START' AND state='PENDING'",[row.plan_id]);
         await client.query("INSERT INTO m1.intents(intent_id,plan_id,kind) VALUES($1,$2,'CANCEL') ON CONFLICT DO NOTHING",[randomUUID(),row.plan_id]);
+        await this.settleClocks(client,row,'FAILED');
       }
       return rows.rowCount ?? 0;
     });

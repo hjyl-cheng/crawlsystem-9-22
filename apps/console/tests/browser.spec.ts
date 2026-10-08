@@ -35,7 +35,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       return json({ items: matches && url.searchParams.get('cursor') !== '20' ? [state.detail!.plan] : [], next_cursor: state.pageTwo && url.searchParams.get('cursor') === '0' ? '20' : null });
     }
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
-    if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status }] : [], next_cursor: null });
+    if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status, management_state: null, next_due_at: null }] : [], next_cursor: null });
     if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan));
     if (path === '/v1/console/accounts') return json({ observed_at: '2026-09-23T08:00:00.000Z', source: 'DATABASE', items: [
       { username: 'fixture', subject: 'browser-fixture', role: state.role === 'reader' ? 'reader' : 'operator', status: 'ACTIVE', created_at: '2026-09-20T02:00:00.000Z', updated_at: '2026-09-20T02:00:00.000Z', active_sessions: 1, latest_session_at: '2026-09-23T07:55:00.000Z' },

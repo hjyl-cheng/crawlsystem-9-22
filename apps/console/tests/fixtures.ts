@@ -23,5 +23,5 @@ export function errorFixture(planId: string) {
   return StoredEventSchema.parse({ event_id: randomUUID(), plan_id: planId, execution_epoch: 1, worker_id: 'fixture-worker', phase: 'fixture-ingest', kind: 'ERROR', domain: 'VIDEO', message: '测试专用：视频结果提交失败', error_code: 'UNAVAILABLE', created_at: timestamp });
 }
 export function channelFixture(plan: Plan) {
-  return ChannelDetailSchema.parse({ channel_id: fixtureChannel.channel_id, title: fixtureChannel.title, source_mode: 'fixture', updated_at: timestamp, latest_plan_id: plan.plan_id, about: fixtureChannel, videos: [fixtureVideo], agent: null, latest_plan: plan });
+  return ChannelDetailSchema.parse({ channel_id: fixtureChannel.channel_id, title: fixtureChannel.title, source_mode: 'fixture', updated_at: timestamp, latest_plan_id: plan.plan_id, about: fixtureChannel, videos: [fixtureVideo], agent: null, latest_plan: plan, management: { state: null, version: 0, changed_at: null, clocks: [] } });
 }

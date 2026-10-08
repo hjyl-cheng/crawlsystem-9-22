@@ -5,7 +5,7 @@ import type { ChannelListItem } from '@crawlsystem/contracts';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
 import { Empty, Pagination, PlanBadge, ResourceView, SafeLink, usePagination } from '../ui.js';
-import { channelPath, number, planPath, time } from '../presentation.js';
+import { channelPath, dueIn, managementLabels, number, planPath, time } from '../presentation.js';
 import './overview.css';
 import './discover.css';
 import './channels.css';
@@ -78,7 +78,7 @@ export default function Channels() {
             <tbody>{page.items.map((ch: ChannelListItem) => <tr key={ch.channel_id} className={ch.channel_id === current ? 'selected' : ''} onClick={() => setSelected(ch.channel_id)} aria-selected={ch.channel_id === current}>
               <td><div className="channel-cell"><Avatar title={ch.title ?? ch.channel_id}/><div><b>{ch.title ?? '基础资料待入库'}</b><small className="mono">{ch.channel_id}</small></div></div></td>
               <td>{ch.country ?? <span className="text-muted">尚未提供</span>}</td><td className="num">{subscribers(ch.subscriber_count)}</td><td className="num">{ch.stored_videos}</td><td>{short(ch.updated_at)}</td>
-              <td className="text-muted" title={NOT_CONNECTED}>—</td><td><PlanBadge status={ch.latest_plan_status}/></td><td className="row-actions"><Link to={channelPath(ch.channel_id)} onClick={event => event.stopPropagation()}>详情</Link></td>
+              <td>{ch.next_due_at ? <>{short(ch.next_due_at)}<small className="cell-note">{dueIn(ch.next_due_at)}</small></> : <span className="text-muted">{managementLabels[ch.management_state ?? 'none']}</span>}</td><td><PlanBadge status={ch.latest_plan_status}/></td><td className="row-actions"><Link to={channelPath(ch.channel_id)} onClick={event => event.stopPropagation()}>详情</Link></td>
             </tr>)}</tbody></table></div> : <Empty title="尚无频道记录">创建采集计划后，可在这里查看频道。</Empty>}<Pagination cursor={paging.cursor} next={page.next_cursor} count={page.items.length} go={paging.go}/></>}</ResourceView>
       </section>
       {current ? <RealDetail key={current} id={current}/> : <section className="panel channel-detail"><Empty title="选择频道查看详情">{resource.loading ? '正在查询…' : '暂无频道'}</Empty></section>}
