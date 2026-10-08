@@ -117,6 +117,57 @@ test('a subscription source adds, spreads, retires after N misses, restores, and
   // Test sources share the preview database: leave them disabled so nothing ever fetches them.
   await store.updateSource(p.operator, source.source_id, { expected_version: failed.version, enabled: false });
 });
+test('a proxy its server reports failed is retired as unhealthy and withheld at once; enabling clears it', async () => {
+  const p = people();
+  await store.importProxies(p.operator, { entries: [entry('198.51.100.40'), entry('198.51.100.41')] });
+  const [x, y] = (await store.overview(p.operator)).items;
+  await store.update(p.operator, x!.proxy_id, { expected_version: x!.version, server_id: 'a1' });
+  await store.update(p.operator, y!.proxy_id, { expected_version: y!.version, server_id: 'a1' });
+  const synced = await store.sync(p.nodeA, report(1, [observation(x!.proxy_id, 1, 5, 5, 'failed'), observation(y!.proxy_id, 1, 0, 0, 'trial')]));
+  assert.deepEqual(synced.assignments.map(a => a.host), ['198.51.100.41']);
+  const overview = await store.overview(p.reader);
+  const byHost = Object.fromEntries(overview.items.map(i => [i.host, i]));
+  const retired = byHost['198.51.100.40']!;
+  assert.equal(retired.retired, true); assert.equal(retired.retire_reason, 'unhealthy'); assert.equal(retired.server_id, null); assert.equal(retired.state, 'disabled');
+  assert.equal(byHost['198.51.100.41']!.state, 'trial'); assert.equal(byHost['198.51.100.41']!.retire_reason, null); assert.equal(overview.by_state.trial, 1);
+  // A late report of the old generation neither revives nor double-counts it.
+  await store.sync(p.nodeA, report(2, [observation(x!.proxy_id, 1, 9, 9, 'healthy')]));
+  assert.equal((await store.overview(p.reader)).items.find(i => i.host === '198.51.100.40')!.retired, true);
+  const back = await store.update(p.operator, x!.proxy_id, { expected_version: retired.version, enabled: true });
+  assert.equal(back.retired, false); assert.equal(back.retire_reason, null); assert.equal(back.enabled, true);
+});
+test('a subscription offers an unhealthy endpoint again only after the quarantine; missing ones carry their own reason', async () => {
+  const p = people();
+  const source = await store.createSource(p.operator, { name: 'free http', url: `https://lists.example.test/${randomUUID()}.txt`, protocol: 'http', provider: 'Public', group: 'Public HTTP', retire_after_misses: 2, server_ids: ['a1'] });
+  const refresh = async (body: string) => { await pool.query('UPDATE m1.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]); const c = await store.claimDueSource(120, p.operator.workspace_id); assert.ok(c); return store.applySourceFetch(c, { status: 'ok', body }); };
+  const list = '192.0.2.50:8080\n192.0.2.51:8080';
+  await refresh(list);
+  const bad = (await store.overview(p.reader)).items.find(i => i.host === '192.0.2.50')!;
+  await store.sync(p.nodeA, report(1, [observation(bad.proxy_id, 1, 9, 9, 'failed')]));
+  assert.deepEqual(await refresh(list), { added: 0, retired: 0, restored: 0, assigned: 0, count: 2 }, 'still listed, but in quarantine');
+  await pool.query(`UPDATE m1.proxies SET retired_at=clock_timestamp()-interval '25 hours' WHERE workspace_id=$1 AND proxy_id=$2`, [p.operator.workspace_id, bad.proxy_id]);
+  assert.deepEqual(await refresh(list), { added: 0, retired: 0, restored: 1, assigned: 1, count: 2 });
+  const again = (await store.overview(p.reader)).items.find(i => i.host === '192.0.2.50')!;
+  assert.equal(again.retired, false); assert.equal(again.server_id, 'a1'); assert.equal(again.state, 'unknown', 'a new generation: its server starts a new trial');
+  await refresh('192.0.2.50:8080');
+  assert.equal((await refresh('192.0.2.50:8080')).retired, 1);
+  assert.equal((await store.overview(p.reader)).items.find(i => i.host === '192.0.2.51')!.retire_reason, 'source_missing');
+  const view = (await store.listSources(p.reader))[0]!;
+  await store.updateSource(p.operator, source.source_id, { expected_version: view.version, enabled: false });
+});
+test('a server holds at most 500 enabled proxies, so a sync always fits the contract', async () => {
+  const p = people();
+  await store.importProxies(p.operator, { entries: Array.from({ length: 500 }, (_, i) => entry(`10.77.${i >> 8}.${i & 255}`)) });
+  await pool.query(`UPDATE m1.proxies SET server_id='a1', generation=1 WHERE workspace_id=$1`, [p.operator.workspace_id]);
+  await store.importProxies(p.operator, { entries: [entry('10.78.0.1')] });
+  const extra = (await store.overview(p.reader)).items.find(i => i.host === '10.78.0.1')!;
+  await rejects(() => store.update(p.operator, extra.proxy_id, { expected_version: extra.version, server_id: 'a1' }), 'BUDGET_EXHAUSTED');
+  assert.equal((await store.overview(p.reader)).items.find(i => i.host === '10.78.0.1')!.server_id, null, 'the assignment rolled back');
+  assert.equal((await store.sync(p.nodeA, report(1, []))).assignments.length, 500);
+  await pool.query(`UPDATE m1.proxies SET enabled=false WHERE workspace_id=$1 AND host='10.77.0.0'`, [p.operator.workspace_id]);
+  const bound = await store.update(p.operator, extra.proxy_id, { expected_version: extra.version, server_id: 'a1' });
+  assert.equal(bound.server_id, 'a1', 'a disabled endpoint frees its slot');
+});
 test('only disabled proxies can be deleted, with a version check', async () => {
   const p = people();
   await store.importProxies(p.operator, { entries: [entry('203.0.113.77')] });

@@ -72,7 +72,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       const body = route.request().postDataJSON() as { entries: { protocol: 'http'; host: string; port: number; username: string | null; provider: string; group: string; country_code: string | null; kind: 'static'; max_concurrency: number; password: string | null }[] };
       state.imports.push(body);
       for (const e of body.entries) state.proxies.push({ proxy_id: crypto.randomUUID(), protocol: e.protocol, host: e.host, port: e.port, username: e.username, has_password: e.password !== null, provider: e.provider, group: e.group,
-        country_code: e.country_code, kind: e.kind, max_concurrency: e.max_concurrency, enabled: true, version: 1, server_id: null, source: null, retired: false, state: 'unassigned', cooldown_until: null, last_success_at: null, last_failure_at: null,
+        country_code: e.country_code, kind: e.kind, max_concurrency: e.max_concurrency, enabled: true, version: 1, server_id: null, source: null, retired: false, retire_reason: null, state: 'unassigned', cooldown_until: null, last_success_at: null, last_failure_at: null,
         last_error: null, requests_today: 0, failures_today: 0, latency_ms: null, observed_at: null, created_at: '2026-09-24T08:00:00.000Z', updated_at: '2026-09-24T08:00:00.000Z' });
       return json({ created: body.entries.length, updated: 0 });
     }
@@ -85,7 +85,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       return json(proxy);
     }
     if (path === '/v1/proxies') {
-      const by_state = { healthy: 0, degraded: 0, cooldown: 0, failed: 0, disabled: 0, unassigned: 0, unknown: 0 }; for (const p of state.proxies) by_state[p.state]++;
+      const by_state = { healthy: 0, trial: 0, degraded: 0, cooldown: 0, failed: 0, disabled: 0, unassigned: 0, unknown: 0 }; for (const p of state.proxies) by_state[p.state]++;
       const providers = [...new Set(state.proxies.map(p => p.provider))].map(name => ({ name, count: state.proxies.filter(p => p.provider === name).length, requests_today: 0, failures_today: 0 }));
       const groups = [...new Set(state.proxies.map(p => p.group))].map(name => ({ name, count: state.proxies.filter(p => p.group === name).length }));
       return json({ observed_at: '2026-09-24T08:00:00.000Z', items: state.proxies, items_total: state.proxies.length, by_state, providers, groups, requests_today: 0, failures_today: 0, availability_7d: [] });

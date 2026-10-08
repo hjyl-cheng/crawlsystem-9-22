@@ -1,5 +1,6 @@
 import { connect as tcpConnect, type Socket } from 'node:net';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
+import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
 
 // Tunnel a TCP connection to host:port through an HTTP(S) CONNECT or SOCKS5 proxy.
 // Shared by the Proxy Manager's health checks and the collector's HTTP client, so
@@ -104,4 +105,59 @@ export async function probeProxy(proxyUrl: string, { host = 'www.youtube.com', p
     socket?.destroy();
     return { ok: false, error: error instanceof ProxyConnectError ? error.kind : 'probe_error' };
   }
+}
+/** A fetch whose every connection is tunnelled through `proxyUrl` (TLS to the target on top). */
+export function proxiedFetch(proxyUrl: string): { fetch: typeof fetch; close: () => Promise<void> } {
+  const agent = new Agent({ connections: 4, connectTimeout: 15_000, connect: (options, callback) => {
+    const port = Number(options.port) || (options.protocol === 'https:' ? 443 : 80);
+    connectViaProxy(proxyUrl, options.hostname, port, AbortSignal.timeout(15_000)).then(socket => {
+      if (options.protocol !== 'https:') return callback(null, socket);
+      const tls = tlsConnect({ socket, servername: options.servername || options.hostname, ALPNProtocols: ['http/1.1'] }, () => callback(null, tls));
+      tls.once('error', error => callback(error, null));
+    }, (error: ProxyConnectError) => callback(error, null));
+  } } as Agent.Options);
+  // Callers (youtubei.js) may pass a Request built by Node's own fetch; undici's fetch does not
+  // accept another realm's Request, so it is unpacked into URL + init first.
+  const f = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    if (typeof input === 'object' && 'url' in input && !(input instanceof URL)) {
+      const request = input as Request;
+      const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
+      init = { method: request.method, headers: request.headers, body, redirect: request.redirect, signal: request.signal, ...init };
+      input = request.url;
+    }
+    return undiciFetch(input as never, { ...(init as object), dispatcher: agent as Dispatcher } as never);
+  }) as unknown as typeof fetch;
+  return { fetch: f, close: () => agent.close() };
+}
+
+// Content probe: a connectable proxy is not necessarily one YouTube serves data to. The probe
+// loads a public channel page through the same proxied fetch the collector uses and accepts it
+// only if the page carries channel data and no bot check or rate-limit interstitial.
+export type ContentProbeResult = { ok: true; latency_ms: number } | { ok: false; error: string; blocked: boolean };
+const PROBE_URL = 'https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw/about';
+const PROBE_HEADERS = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36',
+  'accept-language': 'en-US,en;q=0.9', cookie: 'SOCS=CAI' }; // SOCS skips the EU consent interstitial, which is not a block
+/** Classify a YouTube page response; `blocked` marks YouTube refusing this egress (bot check, rate limit), not a proxy fault. */
+export function classifyYoutubePage(status: number, location: string, body: string): { ok: true } | { ok: false; error: string; blocked: boolean } {
+  if (status === 429 || /google\.[a-z.]+\/sorry/i.test(location)) return { ok: false, error: 'blocked_429', blocked: true };
+  if (status >= 300 && status < 400) return { ok: false, error: /consent\./i.test(location) ? 'consent_redirect' : `redirect_${status}`, blocked: false };
+  if (status === 403) return { ok: false, error: 'http_403', blocked: true };
+  if (status !== 200) return { ok: false, error: `http_${status}`, blocked: false };
+  if (/confirm you(?:'|’|&#39;|\\u0027)re not a bot|unusual traffic from your computer/i.test(body)) return { ok: false, error: 'bot_check', blocked: true };
+  if (!body.includes('ytInitialData')) return { ok: false, error: 'no_data', blocked: false };
+  return { ok: true };
+}
+export async function probeYoutubeContent(proxyUrl: string, { url = PROBE_URL, timeoutMs = 20_000 } = {}): Promise<ContentProbeResult> {
+  const started = Date.now(), transport = proxiedFetch(proxyUrl);
+  try {
+    const response = await transport.fetch(url, { headers: PROBE_HEADERS, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
+    const body = response.status === 200 ? await response.text() : (await response.body?.cancel(), '');
+    const verdict = classifyYoutubePage(response.status, response.headers.get('location') ?? '', body);
+    return verdict.ok ? { ok: true, latency_ms: Date.now() - started } : verdict;
+  } catch (error) {
+    const cause = (error as { cause?: unknown }).cause;
+    if (cause instanceof ProxyConnectError) return { ok: false, error: cause.kind, blocked: false };
+    const name = (error as Error).name;
+    return { ok: false, error: name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'probe_error', blocked: false };
+  } finally { await transport.close().catch(() => {}); }
 }

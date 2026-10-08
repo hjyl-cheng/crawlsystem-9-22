@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
-import { ProxyImportSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySyncRequestSchema, ProxyUpdateSchema, type Principal, type ProxyAssignment, type ProxyOverview, type ProxySourceView, type ProxyState, type ProxySyncResponse, type ProxyView } from '@crawlsystem/contracts';
+import { MAX_PROXIES_PER_SERVER, ProxyImportSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySyncRequestSchema, ProxyUpdateSchema, type Principal, type ProxyAssignment, type ProxyOverview, type ProxySourceView, type ProxyState, type ProxySyncResponse, type ProxyView } from '@crawlsystem/contracts';
 import { StoreError, requireRole } from './index.ts';
 import type { CredentialBox } from './credentials.ts';
 
 const LEASE_SECONDS = 300;           // a server must re-sync within this window or stop using its proxies
 const OBSERVATION_FRESH_SECONDS = 180; // older reports show as unknown, never as healthy
 const INVENTORY_LIMIT = 5000;
+const UNHEALTHY_QUARANTINE_HOURS = 24; // a subscription may offer an unhealthy-retired endpoint for a new trial after this
 const iso = (value: Date | string | null) => value === null ? null : new Date(value).toISOString();
 const context = (workspace: string, proxyId: string) => `proxy:${workspace}:${proxyId}`;
 
@@ -65,7 +66,7 @@ export class ProxyStore {
       WHERE p.workspace_id=$1 ORDER BY p.retired_at NULLS FIRST, (p.server_id IS NULL), p.group_name, p.host, p.port LIMIT $3`, [principal.workspace_id, OBSERVATION_FRESH_SECONDS, INVENTORY_LIMIT])).rows;
     const items = rows.map(r => this.view(r));
     const tally = <K extends string>(keys: K[]) => Object.fromEntries(keys.map(k => [k, 0])) as Record<K, number>;
-    const by_state = tally(['healthy', 'degraded', 'cooldown', 'failed', 'disabled', 'unassigned', 'unknown'] as ProxyState[]);
+    const by_state = tally(['healthy', 'trial', 'degraded', 'cooldown', 'failed', 'disabled', 'unassigned', 'unknown'] as ProxyState[]);
     const providers = new Map<string, { name: string; count: number; requests_today: number; failures_today: number }>(), groups = new Map<string, number>();
     for (const item of items) {
       by_state[item.state]++;
@@ -87,7 +88,7 @@ export class ProxyStore {
     const state: ProxyState = !r.enabled ? 'disabled' : !r.server_id ? 'unassigned' : current ? r.observed_state : 'unknown';
     return { proxy_id: r.proxy_id, protocol: r.protocol, host: r.host, port: r.port, username: r.username, has_password: r.credential !== null,
       provider: r.provider, group: r.group_name, country_code: r.country_code, kind: r.kind, max_concurrency: r.max_concurrency, enabled: r.enabled, version: r.version,
-      server_id: r.server_id, source: r.source_name ?? null, retired: r.retired_at != null, state, cooldown_until: current ? iso(r.cooldown_until) : null, last_success_at: iso(r.last_success_at ?? null), last_failure_at: iso(r.last_failure_at ?? null),
+      server_id: r.server_id, source: r.source_name ?? null, retired: r.retired_at != null, retire_reason: r.retired_at != null ? r.retire_reason ?? 'source_missing' : null, state, cooldown_until: current ? iso(r.cooldown_until) : null, last_success_at: iso(r.last_success_at ?? null), last_failure_at: iso(r.last_failure_at ?? null),
       last_error: r.last_error ?? null, requests_today: Number(r.requests_today), failures_today: Number(r.failures_today), latency_ms: current ? r.latency_ms ?? null : null,
       observed_at: iso(r.observed_at ?? null), created_at: iso(r.created_at)!, updated_at: iso(r.updated_at)! };
   }
@@ -100,10 +101,12 @@ export class ProxyStore {
       if (!row) throw new StoreError('NOT_FOUND', 'Proxy not found', 404);
       if (row.version !== change.expected_version) throw new StoreError('CONFLICT', 'Proxy changed; refresh before editing');
       const reassign = change.server_id !== undefined && change.server_id !== row.server_id;
-      await client.query(`UPDATE m1.proxies SET enabled=coalesce($3,enabled), retired_at=CASE WHEN $3 IS NOT NULL THEN NULL ELSE retired_at END, server_id=CASE WHEN $4 THEN $5 ELSE server_id END,
+      await client.query(`UPDATE m1.proxies SET enabled=coalesce($3,enabled), retired_at=CASE WHEN $3 IS NOT NULL THEN NULL ELSE retired_at END,
+          retire_reason=CASE WHEN $3 IS NOT NULL THEN NULL ELSE retire_reason END, server_id=CASE WHEN $4 THEN $5 ELSE server_id END,
           generation=generation+CASE WHEN $4 THEN 1 ELSE 0 END, lease_expires_at=CASE WHEN $4 THEN NULL ELSE lease_expires_at END,
           version=version+1, updated_at=clock_timestamp() WHERE workspace_id=$1 AND proxy_id=$2`,
         [principal.workspace_id, proxyId, change.enabled ?? null, reassign, change.server_id ?? null]);
+      await assertServerCapacity(client, principal.workspace_id, proxyId);
       const updated = (await client.query(`SELECT p.*, NULL AS observed_state, 0::bigint AS requests_today, 0::bigint AS failures_today, (SELECT name FROM m1.proxy_sources s WHERE s.workspace_id=p.workspace_id AND s.source_id=p.source_id) AS source_name FROM m1.proxies p WHERE workspace_id=$1 AND proxy_id=$2`, [principal.workspace_id, proxyId])).rows[0]!;
       return this.view(updated);
     });
@@ -140,12 +143,19 @@ export class ProxyStore {
             last_success_at=EXCLUDED.last_success_at,last_failure_at=EXCLUDED.last_failure_at,last_error=EXCLUDED.last_error,requests_total=EXCLUDED.requests_total,failures_total=EXCLUDED.failures_total,
             latency_ms=EXCLUDED.latency_ms,node_boot_id=EXCLUDED.node_boot_id,report_sequence=EXCLUDED.report_sequence,observed_at=EXCLUDED.observed_at,reported_at=clock_timestamp()`,
           [principal.workspace_id, o.proxy_id, server, o.generation, o.state, o.cooldown_until, o.last_success_at, o.last_failure_at, o.last_error, o.requests_total, o.failures_total, o.latency_ms, report.node_boot_id, report.report_sequence, report.observed_at]);
+        // `failed`: three cooldowns on this server without a success in between. Retire it so the
+        // slot goes to another endpoint; a subscription may offer it again after the quarantine.
+        if (o.state === 'failed') await client.query(`UPDATE m1.proxies SET enabled=false, retired_at=clock_timestamp(), retire_reason='unhealthy', server_id=NULL, generation=generation+1,
+            lease_expires_at=NULL, version=version+1, updated_at=clock_timestamp() WHERE workspace_id=$1 AND proxy_id=$2 AND server_id=$3 AND generation=$4 AND enabled`,
+          [principal.workspace_id, o.proxy_id, server, o.generation]);
         if (requests || failures) await client.query(`INSERT INTO m1.proxy_daily(workspace_id,proxy_id,day,requests,failures) VALUES($1,$2,(clock_timestamp() AT TIME ZONE 'UTC')::date,$3,$4)
           ON CONFLICT (workspace_id,proxy_id,day) DO UPDATE SET requests=m1.proxy_daily.requests+EXCLUDED.requests, failures=m1.proxy_daily.failures+EXCLUDED.failures`, [principal.workspace_id, o.proxy_id, requests, failures]);
       }
       await client.query(`DELETE FROM m1.proxy_daily WHERE workspace_id=$1 AND day < (clock_timestamp() AT TIME ZONE 'UTC')::date - 8`, [principal.workspace_id]);
-      const lease = (await client.query(`UPDATE m1.proxies SET lease_expires_at=clock_timestamp()+($3*interval '1 second') WHERE workspace_id=$1 AND server_id=$2 AND enabled
-        RETURNING proxy_id, generation, protocol, host, port, username, credential, kind, max_concurrency, lease_expires_at`, [principal.workspace_id, server, LEASE_SECONDS])).rows;
+      // Assignment enforces the cap; the limit here only keeps a sync response within the contract.
+      const lease = (await client.query(`UPDATE m1.proxies SET lease_expires_at=clock_timestamp()+($3*interval '1 second')
+        WHERE (workspace_id, proxy_id) IN (SELECT workspace_id, proxy_id FROM m1.proxies WHERE workspace_id=$1 AND server_id=$2 AND enabled ORDER BY created_at, proxy_id LIMIT $4)
+        RETURNING proxy_id, generation, protocol, host, port, username, credential, kind, max_concurrency, lease_expires_at`, [principal.workspace_id, server, LEASE_SECONDS, MAX_PROXIES_PER_SERVER])).rows;
       const expires = lease[0]?.lease_expires_at ?? (await client.query(`SELECT clock_timestamp()+($1*interval '1 second') AS t`, [LEASE_SECONDS])).rows[0]!.t;
       const assignments: ProxyAssignment[] = lease.map(r => ({ proxy_id: r.proxy_id, generation: Number(r.generation), protocol: r.protocol, host: r.host, port: r.port, username: r.username,
         password: r.credential === null ? null : this.sealer().open(r.credential, context(principal.workspace_id, r.proxy_id)), kind: r.kind, max_concurrency: r.max_concurrency }));
@@ -210,7 +220,8 @@ export class ProxyStore {
       if (result.status === 'not_modified') { await finish('not_modified', {}); return { added: 0, retired: 0, restored: 0, assigned: 0, count: source.last_count ?? 0 }; }
       const parsed = parseProxyList(result.body, source.protocol);
       if (!parsed.entries.length) { await finish('error', { error: `No valid endpoints (${parsed.invalid} invalid lines)`, retryMinutes: Math.min(10, source.interval_minutes) }); return { added: 0, retired: 0, restored: 0, assigned: 0, count: 0 }; }
-      const all = (await client.query('SELECT proxy_id, protocol, lower(host) AS host, port, coalesce(username,\'\') AS username, source_id, enabled, retired_at, source_misses FROM m1.proxies WHERE workspace_id=$1', [claim.workspace_id])).rows;
+      const all = (await client.query(`SELECT proxy_id, protocol, lower(host) AS host, port, coalesce(username,'') AS username, source_id, enabled, retired_at, source_misses,
+          retire_reason='unhealthy' AND retired_at > clock_timestamp()-($2*interval '1 hour') AS quarantined FROM m1.proxies WHERE workspace_id=$1`, [claim.workspace_id, UNHEALTHY_QUARANTINE_HOURS])).rows;
       const key = (e: { protocol: string; host: string; port: number; username: string | null }) => `${e.protocol}|${e.host.toLowerCase()}|${e.port}|${e.username ?? ''}`;
       const byKey = new Map(all.map(r => [key(r), r]));
       const seen = new Set<string>();
@@ -220,7 +231,7 @@ export class ProxyStore {
         seen.add(k);
         if (existing) {
           if (existing.source_id !== claim.source_id) continue; // manual or another source owns it
-          if (existing.retired_at) { restored++; await client.query('UPDATE m1.proxies SET enabled=true, retired_at=NULL, source_misses=0, version=version+1, updated_at=clock_timestamp() WHERE workspace_id=$1 AND proxy_id=$2', [claim.workspace_id, existing.proxy_id]); }
+          if (existing.retired_at && !existing.quarantined) { restored++; await client.query('UPDATE m1.proxies SET enabled=true, retired_at=NULL, retire_reason=NULL, source_misses=0, version=version+1, updated_at=clock_timestamp() WHERE workspace_id=$1 AND proxy_id=$2', [claim.workspace_id, existing.proxy_id]); }
           else if (existing.source_misses) await client.query('UPDATE m1.proxies SET source_misses=0 WHERE workspace_id=$1 AND proxy_id=$2', [claim.workspace_id, existing.proxy_id]);
           continue;
         }
@@ -235,17 +246,18 @@ export class ProxyStore {
         const misses = row.source_misses + 1;
         const retire = misses >= source.retire_after_misses && !row.retired_at && row.enabled;
         if (retire) retired++;
-        await client.query(`UPDATE m1.proxies SET source_misses=$3${retire ? ", enabled=false, retired_at=clock_timestamp(), server_id=NULL, generation=generation+1, lease_expires_at=NULL, version=version+1, updated_at=clock_timestamp()" : ''}
+        await client.query(`UPDATE m1.proxies SET source_misses=$3${retire ? ", enabled=false, retired_at=clock_timestamp(), retire_reason='source_missing', server_id=NULL, generation=generation+1, lease_expires_at=NULL, version=version+1, updated_at=clock_timestamp()" : ''}
           WHERE workspace_id=$1 AND proxy_id=$2`, [claim.workspace_id, row.proxy_id, misses]);
       }
-      // Spread this source's unassigned, enabled endpoints over its servers, least-loaded first.
+      // Spread this source's unassigned, enabled endpoints over its servers, least-loaded first, up to the per-server cap.
       let assigned = 0;
       if (source.server_ids.length) {
         const load = new Map<string, number>((source.server_ids as string[]).map(s => [s, 0]));
-        for (const r of (await client.query('SELECT server_id, count(*)::int AS n FROM m1.proxies WHERE workspace_id=$1 AND server_id=ANY($2::text[]) GROUP BY server_id', [claim.workspace_id, source.server_ids])).rows) load.set(r.server_id, r.n);
+        for (const r of (await client.query('SELECT server_id, count(*)::int AS n FROM m1.proxies WHERE workspace_id=$1 AND server_id=ANY($2::text[]) AND enabled GROUP BY server_id', [claim.workspace_id, source.server_ids])).rows) load.set(r.server_id, r.n);
         const pending = (await client.query('SELECT proxy_id FROM m1.proxies WHERE workspace_id=$1 AND source_id=$2 AND enabled AND server_id IS NULL ORDER BY created_at, proxy_id', [claim.workspace_id, claim.source_id])).rows;
         for (const r of pending) {
-          const [server] = [...load].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))[0]!;
+          const [server, n] = [...load].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))[0]!;
+          if (n >= MAX_PROXIES_PER_SERVER) break; // every server is full; the rest wait for retired slots
           await client.query('UPDATE m1.proxies SET server_id=$3, generation=generation+1, lease_expires_at=NULL, version=version+1, updated_at=clock_timestamp() WHERE workspace_id=$1 AND proxy_id=$2', [claim.workspace_id, r.proxy_id, server]);
           load.set(server, load.get(server)! + 1); assigned++;
         }
@@ -280,4 +292,10 @@ export function parseProxyList(body: string, protocol: 'http' | 'https' | 'socks
     } catch { invalid++; }
   }
   return { entries: [...entries.values()], invalid };
+}
+/** A server may hold at most MAX_PROXIES_PER_SERVER enabled endpoints (checked after the change, inside its transaction). */
+async function assertServerCapacity(client: PoolClient, workspaceId: string, proxyId: string): Promise<void> {
+  const row = (await client.query(`SELECT count(*)::int AS n FROM m1.proxies WHERE workspace_id=$1 AND enabled
+      AND server_id=(SELECT server_id FROM m1.proxies WHERE workspace_id=$1 AND proxy_id=$2)`, [workspaceId, proxyId])).rows[0]!;
+  if (row.n > MAX_PROXIES_PER_SERVER) throw new StoreError('BUDGET_EXHAUSTED', `A server can hold at most ${MAX_PROXIES_PER_SERVER} enabled proxies`);
 }

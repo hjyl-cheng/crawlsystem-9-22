@@ -275,7 +275,8 @@ export const ApiRoutes = {
 
 // ---- Proxy Control (M2 step 2): central inventory and coarse assignment; the
 // node-local Proxy Manager does per-request selection, concurrency and cooldown.
-export const ProxyStateSchema = z.enum(['healthy', 'degraded', 'cooldown', 'failed', 'disabled', 'unassigned', 'unknown']);
+// trial: assigned but not yet qualified by content probes, so not leased to Workers.
+export const ProxyStateSchema = z.enum(['healthy', 'trial', 'degraded', 'cooldown', 'failed', 'disabled', 'unassigned', 'unknown']);
 export type ProxyState = z.infer<typeof ProxyStateSchema>;
 const Host = z.string().min(1).max(253).regex(/^[A-Za-z0-9.:\[\]-]+$/);
 const GroupName = z.string().trim().min(1).max(80);
@@ -288,10 +289,12 @@ export const ProxyImportEntrySchema = z.strictObject({
 });
 export const ProxyImportSchema = z.strictObject({ entries: z.array(ProxyImportEntrySchema).min(1).max(500) });
 export type ProxyImport = z.infer<typeof ProxyImportSchema>;
+/** Why Control retired an endpoint: gone from its subscription, or failed repeatedly on its server. */
+export type ProxyRetireReason = 'source_missing' | 'unhealthy';
 export interface ProxyView {
   proxy_id: string; protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; has_password: boolean;
   provider: string; group: string; country_code: string | null; kind: 'static' | 'rotating'; max_concurrency: number; enabled: boolean; version: number;
-  server_id: string | null; source: string | null; retired: boolean; state: ProxyState; cooldown_until: string | null; last_success_at: string | null; last_failure_at: string | null; last_error: string | null;
+  server_id: string | null; source: string | null; retired: boolean; retire_reason: ProxyRetireReason | null; state: ProxyState; cooldown_until: string | null; last_success_at: string | null; last_failure_at: string | null; last_error: string | null;
   requests_today: number; failures_today: number; latency_ms: number | null; observed_at: string | null; created_at: string; updated_at: string;
 }
 export interface ProxyOverview {
@@ -304,7 +307,7 @@ const NullableTime = Timestamp.nullable();
 export const ProxyViewSchema: z.ZodType<ProxyView> = z.strictObject({
   proxy_id: z.uuid(), protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: z.number().int(), username: z.string().nullable(), has_password: z.boolean(),
   provider: z.string(), group: z.string(), country_code: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int(), enabled: z.boolean(), version: z.number().int().positive(),
-  server_id: IdSchema.nullable(), source: z.string().nullable(), retired: z.boolean(), state: ProxyStateSchema, cooldown_until: NullableTime, last_success_at: NullableTime, last_failure_at: NullableTime, last_error: z.string().max(120).nullable(),
+  server_id: IdSchema.nullable(), source: z.string().nullable(), retired: z.boolean(), retire_reason: z.enum(['source_missing', 'unhealthy']).nullable(), state: ProxyStateSchema, cooldown_until: NullableTime, last_success_at: NullableTime, last_failure_at: NullableTime, last_error: z.string().max(120).nullable(),
   requests_today: z.number().int().nonnegative(), failures_today: z.number().int().nonnegative(), latency_ms: z.number().int().nonnegative().nullable(), observed_at: NullableTime, created_at: Timestamp, updated_at: Timestamp,
 });
 const Tally = z.number().int().nonnegative();
@@ -317,22 +320,24 @@ export const ProxyOverviewSchema: z.ZodType<ProxyOverview> = z.strictObject({
 });
 export const ProxyUpdateSchema = z.strictObject({ expected_version: z.number().int().positive(), enabled: z.boolean().optional(), server_id: IdSchema.nullable().optional() })
   .refine(u => u.enabled !== undefined || u.server_id !== undefined, 'nothing to update');
+/** Upper bound of endpoints assigned to one server; sync requests and responses carry at most this many. */
+export const MAX_PROXIES_PER_SERVER = 500;
 /** Proxy Manager sync: report observed state, receive this server's assignments (with credentials) and renewed leases. */
 export const ProxyObservationSchema = z.strictObject({
-  proxy_id: z.uuid(), generation: z.number().int().nonnegative(), state: z.enum(['healthy', 'degraded', 'cooldown', 'failed']),
+  proxy_id: z.uuid(), generation: z.number().int().nonnegative(), state: z.enum(['healthy', 'trial', 'degraded', 'cooldown', 'failed']),
   cooldown_until: NullableTime, last_success_at: NullableTime, last_failure_at: NullableTime, last_error: z.string().max(120).nullable(),
   requests_total: Tally, failures_total: Tally, latency_ms: z.number().int().nonnegative().max(600_000).nullable(),
 });
 export const ProxySyncRequestSchema = z.strictObject({
   node_boot_id: z.string().regex(/^[A-Za-z0-9-]{8,64}$/), report_sequence: z.number().int().nonnegative(),
-  observed_at: Timestamp, observations: z.array(ProxyObservationSchema).max(500),
+  observed_at: Timestamp, observations: z.array(ProxyObservationSchema).max(MAX_PROXIES_PER_SERVER),
 });
 export type ProxySyncRequest = z.infer<typeof ProxySyncRequestSchema>;
 export interface ProxyAssignment { proxy_id: string; generation: number; protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null; kind: 'static' | 'rotating'; max_concurrency: number; }
 export interface ProxySyncResponse { server_id: string; lease_expires_at: string; assignments: ProxyAssignment[]; }
 export const ProxySyncResponseSchema: z.ZodType<ProxySyncResponse> = z.strictObject({ server_id: IdSchema, lease_expires_at: Timestamp, assignments: z.array(z.strictObject({
   proxy_id: z.uuid(), generation: z.number().int().nonnegative(), protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: z.number().int(), username: z.string().nullable(),
-  password: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int() })).max(500) });
+  password: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int() })).max(MAX_PROXIES_PER_SERVER) });
 /** Subscription source: an HTTPS URL listing endpoints (host:port or scheme://[user:pass@]host:port per line), refreshed on a schedule. */
 const SourceFields = {
   name: GroupName, url: z.url().max(2048).refine(u => u.startsWith('https://'), 'HTTPS only'),

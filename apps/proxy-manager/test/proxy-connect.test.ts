@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, connect, type AddressInfo, type Server, type Socket } from 'node:net';
-import { connectViaProxy, ProxyConnectError } from '@crawlsystem/execution-client/proxy-connect';
+import { createServer as createHttpServer } from 'node:http';
+import { classifyYoutubePage, connectViaProxy, probeYoutubeContent, ProxyConnectError } from '@crawlsystem/execution-client/proxy-connect';
 
 // Servers are unref'd so lingering tunnels never keep the test process alive.
 const listen = (server: Server) => new Promise<number>(resolve => server.listen(0, '127.0.0.1', () => { server.unref(); resolve((server.address() as AddressInfo).port); }));
@@ -58,4 +59,26 @@ test('a proxy that accepts but never answers is abandoned at the deadline instea
     for (const scheme of ['socks5', 'http']) await assert.rejects(connectViaProxy(`${scheme}://127.0.0.1:${port}`, 'localhost', 9, AbortSignal.timeout(300)), (e: unknown) => e instanceof ProxyConnectError);
     assert.ok(Date.now() - started < 2000);
   } finally { silent.close(); }
+});
+test('YouTube page classification separates blocks from proxy faults and missing data', () => {
+  assert.deepEqual(classifyYoutubePage(200, '', '<script>var ytInitialData = {};</script>'), { ok: true });
+  assert.deepEqual(classifyYoutubePage(429, '', ''), { ok: false, error: 'blocked_429', blocked: true });
+  assert.deepEqual(classifyYoutubePage(302, 'https://www.google.com/sorry/index?continue=x', ''), { ok: false, error: 'blocked_429', blocked: true });
+  assert.deepEqual(classifyYoutubePage(302, 'https://consent.youtube.com/m?continue=x', ''), { ok: false, error: 'consent_redirect', blocked: false });
+  assert.deepEqual(classifyYoutubePage(403, '', ''), { ok: false, error: 'http_403', blocked: true });
+  assert.deepEqual(classifyYoutubePage(200, '', 'ytInitialData Sign in to confirm you’re not a bot'), { ok: false, error: 'bot_check', blocked: true });
+  assert.deepEqual(classifyYoutubePage(200, '', '<html>captive portal</html>'), { ok: false, error: 'no_data', blocked: false });
+  assert.deepEqual(classifyYoutubePage(502, '', ''), { ok: false, error: 'http_502', blocked: false });
+});
+test('content probe loads the page through the proxy and reports blocks and dead proxies', async () => {
+  const pages: Record<string, [number, string]> = { '/ok': [200, 'ytInitialData = {"x":1}'], '/bot': [200, "Sign in to confirm you're not a bot"], '/limited': [429, ''] };
+  const site = createHttpServer((request, response) => { const [status, body] = pages[request.url!] ?? [404, '']; response.writeHead(status).end(body); });
+  const sitePort = await listen(site as unknown as Server), proxyPort = await listen(socksServer());
+  const via = (path: string) => probeYoutubeContent(`socks5://127.0.0.1:${proxyPort}`, { url: `http://127.0.0.1:${sitePort}${path}`, timeoutMs: 5000 });
+  const ok = await via('/ok');
+  assert.equal(ok.ok, true);
+  assert.deepEqual(await via('/bot'), { ok: false, error: 'bot_check', blocked: true });
+  assert.deepEqual(await via('/limited'), { ok: false, error: 'blocked_429', blocked: true });
+  const dead = createServer(); const deadPort = await listen(dead); dead.close();
+  assert.deepEqual(await probeYoutubeContent(`socks5://127.0.0.1:${deadPort}`, { url: `http://127.0.0.1:${sitePort}/ok`, timeoutMs: 5000 }), { ok: false, error: 'proxy_unreachable', blocked: false });
 });

@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, Download, Globe, Layers, MoreHorizontal, Plus, Radar, RefreshCw, Rss, Search, ShieldCheck, Snowflake, Trash2, Upload } from 'lucide-react';
-import type { ProxyImport, ProxyOverview, ProxySourceView, ProxyState } from '@crawlsystem/contracts';
+import type { ProxyImport, ProxyOverview, ProxyRetireReason, ProxySourceView, ProxyState } from '@crawlsystem/contracts';
 import { ApiFailure } from '../api.js';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
@@ -15,7 +15,7 @@ const NOT_CONNECTED = '该功能尚未接入';
 type IpState = ProxyState;
 interface ProxiesView {
   kpis: { total: number; providers: number; groups: number; healthy: number; healthyRate: string; cooldown: number; failed: number; requests: string };
-  ips: { id: string; ip: string; port: number; region: string; provider: string; group: string; state: IpState; success: string; latency: string; requests: number; checked: string; node: string; server: string | null; enabled: boolean; version: number }[];
+  ips: { id: string; ip: string; port: number; region: string; provider: string; group: string; state: IpState; success: string; latency: string; requests: number; checked: string; node: string; server: string | null; enabled: boolean; version: number; retired: ProxyRetireReason | null }[];
   states: { state: IpState; count: number }[];
   providers: { name: string; count: number }[];
   groups: { name: string; count: number; color: string }[];
@@ -24,11 +24,12 @@ interface ProxiesView {
 }
 // Same five states as the overview's IP panel.
 const stateMeta: Record<IpState, { label: string; tone: string; color: string }> = {
-  healthy: { label: '正常', tone: 'green', color: '#11c38c' }, degraded: { label: '降级', tone: 'amber', color: '#ffad21' }, cooldown: { label: '冷却中', tone: 'blue', color: '#3d88ff' },
+  healthy: { label: '正常', tone: 'green', color: '#11c38c' }, trial: { label: '试用中', tone: 'blue', color: '#21b9e0' }, degraded: { label: '降级', tone: 'amber', color: '#ffad21' }, cooldown: { label: '冷却中', tone: 'blue', color: '#3d88ff' },
   failed: { label: '异常', tone: 'red', color: '#ff6868' }, disabled: { label: '已停用', tone: 'slate', color: '#8398b4' },
   // Proxy Control states beyond the design: not bound to a server yet, or no fresh report from its server.
   unassigned: { label: '未绑定', tone: 'slate', color: '#b6c2d3' }, unknown: { label: '未上报', tone: 'slate', color: '#cfd8e4' },
 };
+const retiredNote: Record<ProxyRetireReason, string> = { unhealthy: '在绑定的服务器上反复失败，已自动下线；来自订阅的代理 24 小时后可重新试用', source_missing: '订阅列表中已不再出现，重新出现时自动恢复' };
 const palette = ['#11c38c', '#277cf7', '#c05cf0', '#ffad21', '#21b9e0', '#ff6868', '#8398b4'];
 const rate = (requests: number, failures: number) => requests ? `${((1 - failures / requests) * 100).toFixed(1)}%` : '—';
 const ago = (at: string) => { const s = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 1000)); return s < 60 ? `${s} 秒前` : s < 3600 ? `${Math.round(s / 60)} 分钟前` : `${Math.round(s / 3600)} 小时前`; };
@@ -39,7 +40,7 @@ function fromOverview(o: ProxyOverview): ProxiesView {
       cooldown: o.by_state.cooldown, failed: o.by_state.failed, requests: fmt(o.requests_today) },
     ips: o.items.map(p => ({ id: p.proxy_id, ip: p.host, port: p.port, region: p.country_code ?? '—', provider: p.provider, group: p.group, state: p.state,
       success: rate(p.requests_today, p.failures_today), latency: p.latency_ms === null ? '—' : `${p.latency_ms} ms`, requests: p.requests_today,
-      checked: p.observed_at ? ago(p.observed_at) : '—', node: p.server_id ?? '—', server: p.server_id, enabled: p.enabled, version: p.version })),
+      checked: p.observed_at ? ago(p.observed_at) : '—', node: p.server_id ?? '—', server: p.server_id, enabled: p.enabled, version: p.version, retired: p.retire_reason })),
     states: (Object.keys(stateMeta) as IpState[]).map(state => ({ state, count: o.by_state[state] })),
     providers: o.providers.map(p => ({ name: p.name, count: p.count })),
     groups: o.groups.map((g, i) => ({ name: g.name, count: g.count, color: palette[i % palette.length]! })),
@@ -211,7 +212,7 @@ export default function Proxies() {
           <select aria-label="全部状态" value={stateFilter} onChange={e => setStateFilter(e.target.value)} disabled={!data}><option value="">全部状态</option>{(Object.keys(stateMeta) as IpState[]).map(s => <option key={s} value={s}>{stateMeta[s].label}</option>)}</select></div>
         {data && data.ips.length ? <div className="table-scroll"><table><thead><tr><th>IP 地址</th><th className="num">端口</th><th>地区</th><th>服务商</th><th>分组</th><th>状态</th><th className="num">成功率</th><th className="num">响应时间</th><th className="num">今日请求</th><th>绑定节点</th><th>最后检测</th><th>操作</th></tr></thead>
           <tbody>{ips!.map(ip => { const m = stateMeta[ip.state]; return <tr key={ip.id ?? `${ip.ip}:${ip.port}`}><td className="mono query-term">{ip.ip}</td><td className="num">{ip.port}</td><td>{ip.region}</td><td>{ip.provider}</td><td><span className="keyword-chip">{ip.group}</span></td>
-            <td><span className={`status-chip ${m.tone}`}><i/>{m.label}</span></td><td className={`num ${ip.state === 'failed' ? 'text-red' : ''}`}>{ip.success}</td><td className="num">{ip.latency}</td><td className="num">{ip.requests ? fmt(ip.requests) : '—'}</td><td className="mono">{ip.node}</td><td>{ip.checked}</td><td className="row-actions">{operator ? <RowActions ip={ip} servers={servers} onDone={overview.refresh}/> : <><span title={NOT_CONNECTED}>检测</span><MoreHorizontal size={14}/></>}</td></tr>; })}</tbody></table></div>
+            <td>{ip.retired ? <span className="status-chip slate" title={retiredNote[ip.retired]}><i/>{ip.retired === 'unhealthy' ? '已淘汰' : '已退役'}</span> : <span className={`status-chip ${m.tone}`}><i/>{m.label}</span>}</td><td className={`num ${ip.state === 'failed' ? 'text-red' : ''}`}>{ip.success}</td><td className="num">{ip.latency}</td><td className="num">{ip.requests ? fmt(ip.requests) : '—'}</td><td className="mono">{ip.node}</td><td>{ip.checked}</td><td className="row-actions">{operator ? <RowActions ip={ip} servers={servers} onDone={overview.refresh}/> : <><span title={NOT_CONNECTED}>检测</span><MoreHorizontal size={14}/></>}</td></tr>; })}</tbody></table></div>
           : <Empty title="尚无代理 IP">{operator ? '点击“添加 IP”导入代理。导入后绑定到服务器，由该节点的本地代理管理按并发与冷却使用。' : '尚未导入代理。'}</Empty>}
         <footer className="pager">{data ? <span>共 {fmt(data.kpis.total)} 条{data.ips.length < data.kpis.total ? `，列表显示前 ${fmt(data.ips.length)} 条（已退役和未绑定排在最后）` : ''}{ips && ips.length !== data.ips.length ? `，筛选后 ${fmt(ips.length)} 条` : ''}</span> : <span>—</span>}</footer></>}
       </section>

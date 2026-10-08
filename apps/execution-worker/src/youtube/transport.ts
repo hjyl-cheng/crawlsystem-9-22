@@ -1,6 +1,5 @@
-import { connect as tlsConnect } from 'node:tls';
-import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
-import { connectViaProxy, ProxyConnectError } from '@crawlsystem/execution-client/proxy-connect';
+// The proxied fetch lives with the tunnel code so the Proxy Manager's content probe uses the same path.
+export { proxiedFetch } from '@crawlsystem/execution-client/proxy-connect';
 
 // Every scrape goes through a proxy leased from this node's Proxy Manager and is
 // released with its outcome, so the manager's concurrency, cooldown and health apply.
@@ -23,27 +22,4 @@ export class LeaseClient {
     await this.fetcher(`${this.base}/v1/release`, { method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(5000),
       body: JSON.stringify({ lease_id: lease.lease_id, outcome, ...(latencyMs !== undefined ? { latency_ms: Math.round(latencyMs) } : {}), ...(errorClass ? { error_class: errorClass } : {}) }) }).catch(() => {});
   }
-}
-/** A fetch whose every connection is tunnelled through `proxyUrl` (TLS to the target on top). */
-export function proxiedFetch(proxyUrl: string): { fetch: typeof fetch; close: () => Promise<void> } {
-  const agent = new Agent({ connections: 4, connectTimeout: 15_000, connect: (options, callback) => {
-    const port = Number(options.port) || (options.protocol === 'https:' ? 443 : 80);
-    connectViaProxy(proxyUrl, options.hostname, port, AbortSignal.timeout(15_000)).then(socket => {
-      if (options.protocol !== 'https:') return callback(null, socket);
-      const tls = tlsConnect({ socket, servername: options.servername || options.hostname, ALPNProtocols: ['http/1.1'] }, () => callback(null, tls));
-      tls.once('error', error => callback(error, null));
-    }, (error: ProxyConnectError) => callback(error, null));
-  } } as Agent.Options);
-  // Callers (youtubei.js) may pass a Request built by Node's own fetch; undici's fetch does not
-  // accept another realm's Request, so it is unpacked into URL + init first.
-  const f = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-    if (typeof input === 'object' && 'url' in input && !(input instanceof URL)) {
-      const request = input as Request;
-      const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
-      init = { method: request.method, headers: request.headers, body, redirect: request.redirect, signal: request.signal, ...init };
-      input = request.url;
-    }
-    return undiciFetch(input as never, { ...(init as object), dispatcher: agent as Dispatcher } as never);
-  }) as unknown as typeof fetch;
-  return { fetch: f, close: () => agent.close() };
 }
