@@ -57,11 +57,13 @@ test('the first completed real plan puts the channel under management with first
   const detail = await store.getChannel(p.reader, channel);
   assert.equal(detail.management.state, 'managed'); assert.equal(detail.management.version, 1);
   const c = await clocks(p, channel), at = detail.management.changed_at!;
-  assert.deepEqual(Object.keys(c), ['ABOUT', 'DISCOVERY', 'REFRESH', 'AGENT']);
-  assert.deepEqual(['ABOUT', 'DISCOVERY', 'REFRESH', 'AGENT'].map(k => daysFrom(c[k]!.due_at, at)), [7, 7, 14, 60]);
+  assert.deepEqual(Object.keys(c), ['ABOUT', 'VIDEO', 'AGENT']);
+  assert.deepEqual(['ABOUT', 'VIDEO', 'AGENT'].map(k => daysFrom(c[k]!.due_at, at)), [7, 7, 60]);
+  assert.equal(daysFrom(c.VIDEO!.refresh_due_at!, at), 14, 'the recent-video refresh has its own 14-day period');
+  assert.equal(c.ABOUT!.refresh_due_at, null); assert.equal(c.AGENT!.refresh_due_at, null);
   assert.ok(Object.values(c).every(k => k.reason === 'first_collection' && k.retry_at === null && k.next_due_at === k.due_at && k.policy_version === 'm3-v1-fixed'));
   assert.equal(c.ABOUT!.last_plan_id, plan.plan_id); assert.ok(c.ABOUT!.last_success_at);
-  assert.equal(c.DISCOVERY!.last_success_at, null, 'only collected parts record a success');
+  assert.equal(c.VIDEO!.last_success_at, null, 'only collected parts record a success');
   const listed = (await store.listChannels(p.reader)).items.find(i => i.channel_id === channel)!;
   assert.equal(listed.management_state, 'managed'); assert.equal(listed.next_due_at, c.ABOUT!.due_at);
 });
@@ -82,18 +84,21 @@ test('a plan that does not complete schedules only retries; the next success res
   assert.equal(c.ABOUT!.retry_at, null); assert.equal(c.ABOUT!.reason, 'baseline'); assert.equal(c.ABOUT!.last_plan_id, next.plan_id);
   assert.equal(daysFrom(c.ABOUT!.due_at, c.ABOUT!.last_success_at!), 7);
 });
-test('VIDEO advances discovery and refresh; a channel publishing now is checked for new videos every 3 days', async () => {
+test('an applied VIDEO restarts the Video clock and the refresh period; a channel publishing now is checked every 3 days', async () => {
   const p = people(), channel = channelId();
   await complete(p, channel, ['ABOUT', 'VIDEO'], 2);
-  assert.equal((await clocks(p, channel)).DISCOVERY!.interval_days, 7, 'first collection uses the first tiers');
+  assert.equal((await clocks(p, channel)).VIDEO!.interval_days, 7, 'first collection uses the first tiers');
   await complete(p, channel, ['VIDEO'], 2);
   const c = await clocks(p, channel);
-  assert.equal(c.DISCOVERY!.interval_days, 3); assert.equal(c.DISCOVERY!.reason, 'active_publishing');
-  assert.equal(c.REFRESH!.interval_days, 14); assert.equal(c.REFRESH!.reason, 'baseline');
+  assert.equal(c.VIDEO!.interval_days, 3); assert.equal(c.VIDEO!.reason, 'active_publishing');
+  assert.equal(daysFrom(c.VIDEO!.refresh_due_at!, c.VIDEO!.last_success_at!), 14, 'a full-scope Video run also refreshed the recent videos');
   assert.equal(c.ABOUT!.reason, 'first_collection', 'ABOUT was not required');
+  const { plan } = await start(p, channel, ['VIDEO']);
+  await store.cancel(p.operator, plan.plan_id, { command_id: randomUUID(), expected_version: plan.version });
+  assert.equal((await clocks(p, channel)).VIDEO!.refresh_due_at, c.VIDEO!.refresh_due_at, 'an unfinished Video run leaves the refresh period alone');
   const quiet = channelId();
   await complete(p, quiet, ['VIDEO'], 200); await complete(p, quiet, ['VIDEO'], 200);
-  assert.equal((await clocks(p, quiet)).DISCOVERY!.interval_days, 7);
+  assert.equal((await clocks(p, quiet)).VIDEO!.interval_days, 7);
 });
 test('operators pause, resume, remove and re-manage with a version check; removed channels are left alone', async () => {
   const p = people(), channel = channelId();
@@ -112,7 +117,7 @@ test('operators pause, resume, remove and re-manage with a version check; remove
   assert.equal((await store.getChannel(p.reader, channel)).management.state, 'removed', 'a later plan does not re-manage it');
   const again = await command('manage', 4);
   assert.equal(again.state, 'managed'); assert.equal(again.version, 5);
-  assert.ok(again.clocks.length === 4 && again.clocks.every(k => k.reason === 'manual_manage' && k.retry_at === null));
+  assert.ok(again.clocks.length === 3 && again.clocks.every(k => k.reason === 'manual_manage' && k.retry_at === null));
   const fixture = await store.createPlan(p.operator, { request_id: randomUUID(), fixture_id: 'channel-basic-v1', required_domains: ['ABOUT'] });
   await rejects(() => store.manageChannel(p.operator, fixture.channel_id, { action: 'manage', expected_version: 0 }), 'INVALID_REQUEST');
   const fresh = channelId();

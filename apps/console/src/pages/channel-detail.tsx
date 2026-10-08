@@ -56,11 +56,11 @@ function Management({ channel, operator, onChanged }: { channel: ChannelDetail; 
       <button key={action} className="button" disabled={busy} onClick={() => void run(action)}>{label}</button>)}</span>}>
     {error && <ErrorBox error={error}/>}
     {m.clocks.length ? <>
-      <div className="notice">每类数据各自到期：到期后自动创建只含到期部分的更新计划（调度器在 M3 第 2 步上线，此前到期不会自动执行）。{state === 'paused' ? '已暂停：到期也不会创建更新计划。' : ''}</div>
+      <div className="notice">频道资料、视频、Agent 三类数据各自到期：到期后自动创建只含到期部分的更新计划；视频更新时，如近期视频刷新也已到期，一并刷新播放、点赞等数据（调度器在 M3 第 2 步上线，此前到期不会自动执行）。{state === 'paused' ? '已暂停：到期也不会创建更新计划。' : ''}</div>
       <div className="table-scroll"><table><thead><tr><th>数据</th><th>下次更新</th><th>常规间隔</th><th>原因</th><th>上次成功</th></tr></thead><tbody>
         {m.clocks.map(c => <tr key={c.clock}><td>{clockLabels[c.clock]}</td>
           <td>{time(c.next_due_at)}<small className="cell-note">{dueIn(c.next_due_at)}{c.retry_at ? '（重试）' : ''}</small></td>
-          <td className="num">{c.interval_days} 天</td><td>{clockReasonLabels[c.reason]}</td>
+          <td className="num">{c.interval_days} 天</td><td>{clockReasonLabels[c.reason]}{c.refresh_due_at && <small className="cell-note">近期视频刷新：{time(c.refresh_due_at)} 起随视频更新一起执行</small>}</td>
           <td>{c.last_success_at ? time(c.last_success_at) : '—'}{c.last_plan_id && <small className="cell-note"><Link to={planPath(c.last_plan_id)}>最近计划</Link></small>}</td></tr>)}
       </tbody></table></div>
       <p className="fine-print">策略版本 {m.clocks[0]!.policy_version}{m.changed_at ? ` · 状态变更于 ${time(m.changed_at)}` : ''}</p>

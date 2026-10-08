@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CLOCK_NAMES, CLOCK_REASONS, type ClockName, type ClockReason } from './clocks.ts';
-export { CLOCK_NAMES, CLOCK_REASONS, CLOCK_POLICY_VERSION, clocksOf, decideClock, type ClockName, type ClockReason, type ClockFacts } from './clocks.ts';
+export { CLOCK_NAMES, CLOCK_REASONS, CLOCK_POLICY_VERSION, REFRESH_INTERVAL_DAYS, decideClock, refreshDue, type ClockName, type ClockReason, type ClockFacts } from './clocks.ts';
 
 export const CONTRACT_VERSION = 'm1.v1' as const;
 // One Workflow for every plan; it branches on the frozen input's source_mode.
@@ -183,6 +183,8 @@ export type ManagementState = 'managed' | 'paused' | 'removed';
 export interface ChannelClock {
   clock: ClockName; due_at: string; retry_at: string | null; next_due_at: string; interval_days: number; reason: ClockReason; policy_version: string;
   last_success_at: string | null; last_attempt_at: string | null; last_plan_id: string | null;
+  /** VIDEO only: from this time a Video run also refreshes the recent videos' counts (null for other clocks). */
+  refresh_due_at: string | null;
 }
 export interface ChannelManagement { state: ManagementState | null; version: number; changed_at: string | null; clocks: ChannelClock[]; }
 export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; management_state: ManagementState | null; next_due_at: string | null; }
@@ -229,8 +231,8 @@ export const ChannelSummarySchema: z.ZodType<ChannelSummary> = z.strictObject({ 
 export const ManagementStateSchema = z.enum(['managed', 'paused', 'removed']);
 export const ChannelClockSchema: z.ZodType<ChannelClock> = z.strictObject({ clock: z.enum(CLOCK_NAMES), due_at: Timestamp, retry_at: Timestamp.nullable(), next_due_at: Timestamp,
   interval_days: z.number().int().min(1).max(365), reason: z.enum(CLOCK_REASONS), policy_version: z.string().max(40),
-  last_success_at: Timestamp.nullable(), last_attempt_at: Timestamp.nullable(), last_plan_id: z.uuid().nullable() });
-export const ChannelManagementSchema: z.ZodType<ChannelManagement> = z.strictObject({ state: ManagementStateSchema.nullable(), version: z.number().int().nonnegative(), changed_at: Timestamp.nullable(), clocks: z.array(ChannelClockSchema).max(4) });
+  last_success_at: Timestamp.nullable(), last_attempt_at: Timestamp.nullable(), last_plan_id: z.uuid().nullable(), refresh_due_at: Timestamp.nullable() });
+export const ChannelManagementSchema: z.ZodType<ChannelManagement> = z.strictObject({ state: ManagementStateSchema.nullable(), version: z.number().int().nonnegative(), changed_at: Timestamp.nullable(), clocks: z.array(ChannelClockSchema).max(3) });
 /** Operator command: manage (or re-manage) seeds fresh clocks; pause keeps them; resume continues; remove stops updates. */
 export const ChannelManagementCommandSchema = z.strictObject({ action: z.enum(['manage', 'pause', 'resume', 'remove']), expected_version: z.number().int().nonnegative() });
 export type ChannelManagementCommand = z.infer<typeof ChannelManagementCommandSchema>;

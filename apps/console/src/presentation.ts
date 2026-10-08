@@ -19,7 +19,7 @@ export const shortId = (value: string) => value.length > 20 ? `${value.slice(0, 
 export const planPath = (id: string) => `/plans/${encodeURIComponent(id)}`;
 export const channelPath = (id: string) => `/channels/${encodeURIComponent(id)}`;
 // M3 update clocks: what each clock covers and why it is due when it is.
-export const clockLabels: Record<ClockName, string> = { ABOUT: '频道资料', DISCOVERY: '新视频发现', REFRESH: '近期视频刷新', AGENT: 'Agent 画像' };
+export const clockLabels: Record<ClockName, string> = { ABOUT: '频道资料', VIDEO: '视频与评论', AGENT: 'Agent 画像' };
 export const clockReasonLabels: Record<ClockReason, string> = {
   first_collection: '首次采集后的初始间隔', manual_manage: '手动纳管后的初始间隔', baseline: '常规间隔',
   active_publishing: '近 14 天有发布，缩短为 3 天', new_video_active: '有新视频且近期活跃，缩短为 3 天',
