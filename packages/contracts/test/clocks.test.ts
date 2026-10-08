@@ -45,3 +45,11 @@ test('the recent-video refresh rides along with a Video run once its 14 days hav
   assert.equal(refreshDue(new Date(now.getTime() + 86_400_000).toISOString(), now), false);
   assert.equal(refreshDue(null, now), true, 'never refreshed');
 });
+test('an operator-pinned interval replaces the policy; a retry never waits longer than it', () => {
+  const active = facts({ latestPublishedAt: daysAgo(1) });
+  assert.deepEqual(decideClock('VIDEO', 'success', active, now, 14), { interval_days: 14, reason: 'manual_override' }, 'even an active channel');
+  assert.deepEqual(decideClock('AGENT', 'first', facts(), now, 30), { interval_days: 30, reason: 'manual_override' });
+  assert.deepEqual(decideClock('ABOUT', 'failure', facts(), now, 1), { interval_days: 1, reason: 'retry_after_failure' });
+  assert.deepEqual(decideClock('AGENT', 'failure', facts(), now, 90), { interval_days: 14, reason: 'retry_after_failure' });
+  assert.deepEqual(decideClock('ABOUT', 'success', facts(), now, null), { interval_days: 7, reason: 'baseline' }, 'null means automatic');
+});

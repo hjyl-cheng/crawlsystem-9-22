@@ -1,0 +1,11 @@
+.clock-policy-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.clock-policy-head .status-chip { margin-right: auto; }
+.clock-policy .policy-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px 0; border-bottom: 1px solid #eef3f9; font-size: var(--fs-text); }
+.clock-policy .policy-row b { color: #193257; }
+.clock-policy .policy-row b .pinned { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: #eaf2ff; color: #2562cf; font-size: var(--fs-micro); font-weight: 500; }
+.clock-policy .policy-row span { grid-row: 2; font-size: var(--fs-meta); color: #7a8ca8; line-height: 1.5; }
+.clock-policy .policy-row em { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-style: normal; font-size: var(--fs-meta); padding: 1px 6px; border-radius: 4px; background: #eef2f7; color: #8797b0; white-space: nowrap; }
+.clock-policy .policy-row em.warn { background: #fff4dc; color: #95600a; }
+.clock-policy .policy-row em.bad { background: #ffecea; color: #c2413a; }
+.clock-policy .policy-edit { grid-row: 3; grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: var(--fs-meta); color: #7a8ca8; }
+.clock-policy .policy-edit select { height: 24px; font-size: var(--fs-meta); }

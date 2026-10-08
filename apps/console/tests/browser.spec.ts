@@ -35,7 +35,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       return json({ items: matches && url.searchParams.get('cursor') !== '20' ? [state.detail!.plan] : [], next_cursor: state.pageTwo && url.searchParams.get('cursor') === '0' ? '20' : null });
     }
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
-    if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status, management_state: null, next_due_at: null }] : [], next_cursor: null });
+    if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status, management_state: null, next_due_at: null, clocks: [] }] : [], next_cursor: null });
     if (path.startsWith('/v1/channels/') && state.detail) return json(channelFixture(state.detail.plan));
     if (path === '/v1/console/accounts') return json({ observed_at: '2026-09-23T08:00:00.000Z', source: 'DATABASE', items: [
       { username: 'fixture', subject: 'browser-fixture', role: state.role === 'reader' ? 'reader' : 'operator', status: 'ACTIVE', created_at: '2026-09-20T02:00:00.000Z', updated_at: '2026-09-20T02:00:00.000Z', active_sessions: 1, latest_session_at: '2026-09-23T07:55:00.000Z' },
@@ -52,7 +52,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       const total = state.detail ? 1 : 0, lacks = (domain: string) => required.includes(domain as never) && !applied.includes(domain as never) ? 1 : 0;
       return json({ basis: 'latest_plan_required_domains', observed_at: '2026-09-23T08:00:00.000Z', total_channels: total,
         complete: total && applied.length === required.length ? 1 : 0, partial: total && applied.length > 0 && applied.length < required.length ? 1 : 0, missing: total && applied.length === 0 ? 1 : 0,
-        missing_by_domain: { ABOUT: lacks('ABOUT'), VIDEO: lacks('VIDEO'), AGENT: lacks('AGENT') }, latest_channel_update_at: state.detail?.plan.updated_at ?? null, freshness: 'NOT_IMPLEMENTED' });
+        missing_by_domain: { ABOUT: lacks('ABOUT'), VIDEO: lacks('VIDEO'), AGENT: lacks('AGENT') }, latest_channel_update_at: state.detail?.plan.updated_at ?? null, freshness: 'NOT_IMPLEMENTED', management: { managed: 0, paused: 0, overdue: 0 } });
     }
     if (path === '/v1/proxy-sources' && method === 'POST') {
       const body = route.request().postDataJSON() as Omit<ProxySourceView, 'source_id' | 'group'> & { group: string };
@@ -357,8 +357,10 @@ test('channel management lists real channel facts and shows the selected channel
   const row = page.locator('.channels-list tbody tr').first();
   await expect(row).toContainText('M1 固定样本频道'); await expect(row).toContainText('本轮已完成');
   await expect(page.locator('.channel-detail').getByText('已入库视频', { exact: true })).toBeVisible();
+  await expect(row).toContainText('未纳管');
   await page.locator('.channel-detail').getByRole('tab', { name: '更新策略' }).click();
-  await expect(page.locator('.channel-detail').getByText('未接入').first()).toBeVisible();
+  await expect(page.locator('.channel-detail').getByText('固定样本频道不参与持续更新。')).toBeVisible();
+  await expect(page.locator('.channel-detail').getByText('未接入')).toHaveCount(0);
   await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
 });
 test('IP resource management replaces three proxy menus and reports the real proxy status of Workers', async ({ page }) => {

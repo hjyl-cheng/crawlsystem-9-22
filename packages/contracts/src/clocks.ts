@@ -8,7 +8,7 @@ import type { Domain } from './index.ts';
 export const CLOCK_POLICY_VERSION = 'm3-v1-fixed';
 export const CLOCK_NAMES = ['ABOUT', 'VIDEO', 'AGENT'] as const satisfies readonly Domain[];
 export type ClockName = typeof CLOCK_NAMES[number];
-export const CLOCK_REASONS = ['first_collection', 'manual_manage', 'baseline', 'active_publishing', 'new_video_active', 'discovery_empty_backoff', 'retry_after_failure'] as const;
+export const CLOCK_REASONS = ['first_collection', 'manual_manage', 'baseline', 'active_publishing', 'new_video_active', 'discovery_empty_backoff', 'retry_after_failure', 'manual_override'] as const;
 export type ClockReason = typeof CLOCK_REASONS[number];
 
 const FIRST_DAYS: Record<ClockName, number> = { ABOUT: 7, VIDEO: 7, AGENT: 60 };
@@ -30,15 +30,19 @@ export interface ClockFacts {
   emptyDiscoveryRuns: number;
 }
 export interface ClockDecision { interval_days: number; reason: ClockReason }
+/** Intervals an operator may pin a clock to (overriding the policy for that channel and domain). */
+export const OVERRIDE_DAYS = [1, 2, 3, 5, 7, 14, 30, 60, 90, 180, 365] as const;
 
 /**
  * first: the channel just entered management. success: this domain was applied; the normal
  * period restarts. failure: it was required but not applied; only a retry is scheduled and the
  * normal period does not advance (24.8 §5.2).
  */
-export function decideClock(clock: ClockName, outcome: 'first' | 'success' | 'failure', facts: ClockFacts, now: Date): ClockDecision {
+export function decideClock(clock: ClockName, outcome: 'first' | 'success' | 'failure', facts: ClockFacts, now: Date, overrideDays: number | null = null): ClockDecision {
+  // An operator's pinned interval replaces the policy; a retry never waits longer than that interval.
+  if (outcome === 'failure') return { interval_days: Math.min(RETRY_DAYS[clock], overrideDays ?? Infinity), reason: 'retry_after_failure' };
+  if (overrideDays !== null) return { interval_days: overrideDays, reason: 'manual_override' };
   if (outcome === 'first') return { interval_days: FIRST_DAYS[clock], reason: 'first_collection' };
-  if (outcome === 'failure') return { interval_days: RETRY_DAYS[clock], reason: 'retry_after_failure' };
   const active = facts.latestPublishedAt !== null && now.getTime() - Date.parse(facts.latestPublishedAt) <= ACTIVE_WINDOW_DAYS * 86_400_000;
   if (clock === 'ABOUT') return active && (facts.newVideosFound ?? 0) > 0 ? { interval_days: ACTIVE_DAYS, reason: 'new_video_active' } : { interval_days: BASELINE_DAYS.ABOUT, reason: 'baseline' };
   if (clock === 'VIDEO') {

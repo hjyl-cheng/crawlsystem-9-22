@@ -1,4 +1,4 @@
-import type { ClockName, ClockReason, Domain, ErrorCode, ManagementState, PlanStatus, Plan, Role } from '@crawlsystem/contracts';
+import type { ChannelClock, ClockName, ClockReason, Domain, ErrorCode, ManagementState, PlanStatus, Plan, Role } from '@crawlsystem/contracts';
 
 export const planLabels: Record<PlanStatus, string> = {
   QUEUED: '等待执行', RUNNING: '执行中', WAITING: '等待依赖', COMPLETED: '本轮已完成', CANCELLED: '已取消', FAILED: '执行失败',
@@ -24,8 +24,17 @@ export const clockReasonLabels: Record<ClockReason, string> = {
   first_collection: '首次采集后的初始间隔', manual_manage: '手动纳管后的初始间隔', baseline: '常规间隔',
   active_publishing: '近 14 天有发布，缩短为 3 天', new_video_active: '有新视频且近期活跃，缩短为 3 天',
   discovery_empty_backoff: '连续未发现新视频，逐步放慢', retry_after_failure: '上次未完成，安排重试（不推进常规周期）',
+  manual_override: '人工指定间隔',
 };
 export const managementLabels: Record<ManagementState | 'none', string> = { managed: '持续更新中', paused: '已暂停', removed: '已移出纳管', none: '未纳管' };
+/** A clock's state as in the old dashboard: 待到期 / 待重试 / 今日到期 / 逾期, or 已暂停 for a paused channel. */
+export function clockState(c: Pick<ChannelClock, 'next_due_at' | 'retry_at'>, state: ManagementState | null, now = Date.now()): { label: string; tone: 'muted' | 'warn' | 'bad' } {
+  if (state === 'paused') return { label: '已暂停', tone: 'muted' };
+  const due = Date.parse(c.next_due_at), endOfToday = new Date(now); endOfToday.setHours(24, 0, 0, 0);
+  if (due <= now) return { label: '逾期', tone: 'bad' };
+  if (due < endOfToday.getTime()) return { label: '今日到期', tone: 'warn' };
+  return c.retry_at ? { label: '待重试', tone: 'warn' } : { label: '待到期', tone: 'muted' };
+}
 /** "3 天后" / "5 小时后" / "已到期", relative to now. */
 export const dueIn = (value: string, now = Date.now()): string => {
   const hours = (Date.parse(value) - now) / 3_600_000;

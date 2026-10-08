@@ -21,3 +21,8 @@
   .channels-page .row-channels { flex: none; }
   .dashboard.channels-page .channels-list, .dashboard.channels-page .channel-detail { grid-column: 1 / -1; min-height: 360px; }
 }
+.clock-lines { display: grid; gap: 2px; }
+.clock-line { display: grid; grid-template-columns: 38px 40px auto; align-items: center; gap: 4px; font-size: var(--fs-meta); white-space: nowrap; }
+.clock-line .clock-name { color: #7a8ca8; }
+.clock-line .status-chip { justify-self: start; }
+.clock-line .status-chip:not(.red):not(.amber) { background: #eef2f7; color: #8797b0; }

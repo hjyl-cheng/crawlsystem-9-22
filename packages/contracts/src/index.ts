@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { CLOCK_NAMES, CLOCK_REASONS, type ClockName, type ClockReason } from './clocks.ts';
-export { CLOCK_NAMES, CLOCK_REASONS, CLOCK_POLICY_VERSION, REFRESH_INTERVAL_DAYS, decideClock, refreshDue, type ClockName, type ClockReason, type ClockFacts } from './clocks.ts';
+import { CLOCK_NAMES, CLOCK_REASONS, OVERRIDE_DAYS, type ClockName, type ClockReason } from './clocks.ts';
+export { CLOCK_NAMES, CLOCK_REASONS, CLOCK_POLICY_VERSION, OVERRIDE_DAYS, REFRESH_INTERVAL_DAYS, decideClock, refreshDue, type ClockName, type ClockReason, type ClockFacts } from './clocks.ts';
 
 export const CONTRACT_VERSION = 'm1.v1' as const;
 // One Workflow for every plan; it branches on the frozen input's source_mode.
@@ -185,9 +185,13 @@ export interface ChannelClock {
   last_success_at: string | null; last_attempt_at: string | null; last_plan_id: string | null;
   /** VIDEO only: from this time a Video run also refreshes the recent videos' counts (null for other clocks). */
   refresh_due_at: string | null;
+  /** Interval an operator pinned for this channel and domain, replacing the policy; null = automatic. */
+  override_days: number | null;
 }
 export interface ChannelManagement { state: ManagementState | null; version: number; changed_at: string | null; clocks: ChannelClock[]; }
-export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; management_state: ManagementState | null; next_due_at: string | null; }
+export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; management_state: ManagementState | null; next_due_at: string | null;
+  /** The three clocks in brief (managed and paused channels; empty otherwise). */
+  clocks: Pick<ChannelClock, 'clock' | 'next_due_at' | 'interval_days' | 'retry_at' | 'override_days'>[]; }
 export interface ChannelDetail extends ChannelSummary { about: ChannelFacts | null; videos: VideoItem[]; agent: AgentResult | null; latest_plan: Plan; management: ChannelManagement; }
 export interface Page<T> { items: T[]; next_cursor: string | null; }
 /** Workspace-wide plan statistics for the full-collection page. Counts are over
@@ -210,6 +214,8 @@ export interface Completeness {
   complete: number; partial: number; missing: number;
   missing_by_domain: Record<Domain, number>; latest_channel_update_at: string | null;
   freshness: 'NOT_IMPLEMENTED';
+  /** Managed (updating), paused, and managed channels with a clock past due. */
+  management: { managed: number; paused: number; overdue: number };
 }
 /** server_id is present for workload credentials (Worker, Proxy Manager): the node named by TokenReview. */
 export interface Session { subject: string; workspace_id: string; role: Role; server_id?: string; contract_version: typeof CONTRACT_VERSION; }
@@ -231,13 +237,17 @@ export const ChannelSummarySchema: z.ZodType<ChannelSummary> = z.strictObject({ 
 export const ManagementStateSchema = z.enum(['managed', 'paused', 'removed']);
 export const ChannelClockSchema: z.ZodType<ChannelClock> = z.strictObject({ clock: z.enum(CLOCK_NAMES), due_at: Timestamp, retry_at: Timestamp.nullable(), next_due_at: Timestamp,
   interval_days: z.number().int().min(1).max(365), reason: z.enum(CLOCK_REASONS), policy_version: z.string().max(40),
-  last_success_at: Timestamp.nullable(), last_attempt_at: Timestamp.nullable(), last_plan_id: z.uuid().nullable(), refresh_due_at: Timestamp.nullable() });
+  last_success_at: Timestamp.nullable(), last_attempt_at: Timestamp.nullable(), last_plan_id: z.uuid().nullable(), refresh_due_at: Timestamp.nullable(), override_days: z.number().int().min(1).max(365).nullable() });
 export const ChannelManagementSchema: z.ZodType<ChannelManagement> = z.strictObject({ state: ManagementStateSchema.nullable(), version: z.number().int().nonnegative(), changed_at: Timestamp.nullable(), clocks: z.array(ChannelClockSchema).max(3) });
 /** Operator command: manage (or re-manage) seeds fresh clocks; pause keeps them; resume continues; remove stops updates. */
 export const ChannelManagementCommandSchema = z.strictObject({ action: z.enum(['manage', 'pause', 'resume', 'remove']), expected_version: z.number().int().nonnegative() });
 export type ChannelManagementCommand = z.infer<typeof ChannelManagementCommandSchema>;
+/** Operator pins one clock's interval (one of OVERRIDE_DAYS) or returns it to the policy (null). */
+export const ChannelClockOverrideSchema = z.strictObject({ clock: z.enum(CLOCK_NAMES), interval_days: z.union([z.literal(OVERRIDE_DAYS), z.null()]), expected_version: z.number().int().nonnegative() });
+export type ChannelClockOverride = z.infer<typeof ChannelClockOverrideSchema>;
 export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoItemSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema, management: ChannelManagementSchema });
-export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema, management_state: ManagementStateSchema.nullable(), next_due_at: Timestamp.nullable() });
+export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema, management_state: ManagementStateSchema.nullable(), next_due_at: Timestamp.nullable(),
+  clocks: z.array(z.strictObject({ clock: z.enum(CLOCK_NAMES), next_due_at: Timestamp, interval_days: z.number().int().min(1).max(365), retry_at: Timestamp.nullable(), override_days: z.number().int().min(1).max(365).nullable() })).max(3) });
 export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.literal('NOT_CONFIGURED') });
 export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, server_id: IdSchema.optional(), contract_version: z.literal(CONTRACT_VERSION) });
 // Kubernetes ServiceAccount token exchange: subject is the Pod, server_id the node reported by TokenReview.
@@ -252,6 +262,7 @@ export const CompletenessSchema: z.ZodType<Completeness> = z.strictObject({
   complete: Count, partial: Count, missing: Count,
   missing_by_domain: z.strictObject({ ABOUT: Count, VIDEO: Count, AGENT: Count }), latest_channel_update_at: Timestamp.nullable(),
   freshness: z.literal('NOT_IMPLEMENTED'),
+  management: z.strictObject({ managed: Count, paused: Count, overdue: Count }),
 }).refine(c => c.complete + c.partial + c.missing === c.total_channels, 'completeness buckets must sum to total');
 export const PlansSummarySchema: z.ZodType<PlansSummary> = z.strictObject({
   observed_at: Timestamp, total: Count,
@@ -291,6 +302,7 @@ export const ApiRoutes = {
   receipt: (id: string) => `/v1/receipts/${encodeURIComponent(id)}`,
   channel: (id: string) => `/v1/channels/${encodeURIComponent(id)}`,
   channelManagement: (id: string) => `/v1/channels/${encodeURIComponent(id)}/management`,
+  channelClockOverride: (id: string) => `/v1/channels/${encodeURIComponent(id)}/clock-override`,
 } as const;
 
 // ---- Proxy Control (M2 step 2): central inventory and coarse assignment; the
