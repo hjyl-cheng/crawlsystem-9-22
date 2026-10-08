@@ -4,7 +4,7 @@ import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Wor
 import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture, agentTaskFixtures, agentSummaryFixture, dataApiSummaryFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
-  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[], agentTasks: [] as AgentTask[], dataApiCalls: false };
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[], agentTasks: [] as AgentTask[], dataApiCalls: false, channelImports: [] as unknown[] };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -37,6 +37,12 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     }
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
     if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status, management_state: null, next_due_at: null, clocks: [] }] : [], next_cursor: null });
+    if (path === '/v1/channels/import' && method === 'POST') {
+      const body = route.request().postDataJSON() as { lines: string[] }; state.channelImports.push(body);
+      const items = body.lines.map(line => line.startsWith('@') ? { line, channel_id: null, outcome: 'handle_unsupported' } : { line, channel_id: line, outcome: 'queued' });
+      return json({ items, queued: items.filter(i => i.outcome === 'queued').length });
+    }
+    if (path === '/v1/channels/imports') return json({ counts: { queued: state.channelImports.length ? 1 : 0, planned: 0, done: 0, failed: 0 }, items: [] });
     if (path === '/v1/agent/summary') return json(agentSummaryFixture(state.agentTasks));
     if (path === '/v1/agent/tasks') return json({ items: state.agentTasks, next_cursor: null });
     if (path === '/v1/data-api/summary') return json(dataApiSummaryFixture(state.dataApiCalls));
@@ -418,6 +424,24 @@ test('the update policy shows each next update with an automatic interval choice
     assert.equal(overflow, false, `nothing scrolls sideways at ${width}px`);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `page fits at ${width}px`);
   }
+});
+test('operators import channels in bulk; the queue and each line\'s outcome are shown', async ({ page }) => {
+  const state = await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await login(page, '/channels');
+  await page.getByRole('button', { name: '导入频道' }).click();
+  await page.getByLabel('频道列表').fill('UCimportfixture000000001\n@somecreator\n');
+  await expect(page.getByText('2 行', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '加入队列' }).click();
+  await expect(page.getByText('已加入队列 1 个；1 行未加入：', { exact: false })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '@handle 暂不支持，请改用频道 ID' })).toBeVisible();
+  expect(state.channelImports).toEqual([expect.objectContaining({ lines: ['UCimportfixture000000001', '@somecreator'] })]);
+  await page.getByRole('button', { name: '完成' }).click();
+  await expect(page.locator('.import-queue')).toContainText('排队 1');
+});
+test('read-only users see no import or update actions on channels', async ({ page }) => {
+  await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO']), 'reader'); await login(page, '/channels');
+  await expect(page.getByRole('heading', { name: '频道管理', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '导入频道' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '立即更新' })).toHaveCount(0);
 });
 test('IP resource management replaces three proxy menus and reports the real proxy status of Workers', async ({ page }) => {
   const state = await mock(page); state.workers = [{ worker_id: 'w1', server_id: 'n1', build_version: 'v1', accepting_work: true, capacity: 1, running_plan_ids: [], last_heartbeat_at: '2026-09-23T08:00:00.000Z', stale: false, proxy_status: 'NOT_CONFIGURED' }];

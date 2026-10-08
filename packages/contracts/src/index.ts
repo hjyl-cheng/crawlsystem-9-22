@@ -322,7 +322,7 @@ export const ConsoleAccountListSchema: z.ZodType<ConsoleAccountList> = z.strictO
 export const pageSchema = <T extends z.ZodType>(item: T) => z.strictObject({ items: z.array(item).max(100), next_cursor: z.string().nullable() });
 export const ApiRoutes = {
   updates: '/v1/updates', updatesSummary: '/v1/updates/summary', dataApiPermit: '/v1/data-api/permit', dataApiFailure: '/v1/data-api/failure', dataApiSummary: '/v1/data-api/summary',
-  agentTasks: '/v1/agent/tasks', agentSummary: '/v1/agent/summary',
+  agentTasks: '/v1/agent/tasks', agentSummary: '/v1/agent/summary', channelImport: '/v1/channels/import', channelImports: '/v1/channels/imports',
   session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', consoleAccounts: '/v1/console/accounts', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', proxies: '/v1/proxies', proxyImport: '/v1/proxies/import', proxySync: '/v1/proxy-manager/sync', proxySources: '/v1/proxy-sources',
   proxySource: (id: string) => `/v1/proxy-sources/${encodeURIComponent(id)}`,
@@ -495,3 +495,38 @@ export const AgentSummarySchema = z.strictObject({
   profiled_channels: Count, model_versions: z.array(z.strictObject({ model_version: z.string().max(400), channels: Count })).max(20),
 });
 export type AgentSummary = z.infer<typeof AgentSummarySchema>;
+
+/**
+ * A channel as people paste it: a canonical ID (UC + 22) or a /channel/ link. A handle (@name, or a
+ * /@name link) needs the Data API to resolve and is reported as such; anything else is invalid.
+ */
+export function parseChannelReference(text: string): { channel_id: string } | { handle: string } | null {
+  const value = text.trim();
+  if (/^UC[A-Za-z0-9_-]{22}$/.test(value)) return { channel_id: value };
+  if (/^@[A-Za-z0-9._-]{3,30}$/.test(value)) return { handle: value };
+  try {
+    const url = new URL(value);
+    if (!/(^|\.)youtube\.com$/.test(url.hostname)) return null;
+    const id = url.pathname.match(/^\/channel\/(UC[A-Za-z0-9_-]{22})(?:\/|$)/)?.[1];
+    if (id) return { channel_id: id };
+    const handle = url.pathname.match(/^\/(@[A-Za-z0-9._-]{3,30})(?:\/|$)/)?.[1];
+    return handle ? { handle } : null;
+  } catch { return null; }
+}
+/** Operator command: queue channels for a first collection (one per line, at most 500). */
+export const ChannelImportSchema = z.strictObject({ request_id: z.uuid(), lines: z.array(z.string().max(300)).min(1).max(500) });
+export type ChannelImport = z.infer<typeof ChannelImportSchema>;
+export const ImportOutcomeSchema = z.enum(['queued', 'already_queued', 'known', 'duplicate', 'handle_unsupported', 'invalid']);
+export const ChannelImportResultSchema = z.strictObject({
+  items: z.array(z.strictObject({ line: z.string().max(300), channel_id: IdSchema.nullable(), outcome: ImportOutcomeSchema })).max(500),
+  queued: Count,
+});
+export type ChannelImportResult = z.infer<typeof ChannelImportResultSchema>;
+/** An imported channel: queued until admitted, then planned, then done or failed with its first collection. */
+export const ImportStateSchema = z.enum(['queued', 'planned', 'done', 'failed']);
+export const ChannelImportItemSchema = z.strictObject({ channel_id: YoutubeChannelIdSchema, state: ImportStateSchema, requested_at: Timestamp, plan_id: z.uuid().nullable(), title: z.string().nullable() });
+export const ChannelImportsSchema = z.strictObject({
+  counts: z.strictObject({ queued: Count, planned: Count, done: Count, failed: Count }),
+  items: z.array(ChannelImportItemSchema).max(100),
+});
+export type ChannelImports = z.infer<typeof ChannelImportsSchema>;

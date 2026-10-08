@@ -25,3 +25,8 @@
 .next-update b { font-weight: 500; color: #193257; }
 .next-update b.text-red { color: #c2413a; }
 .next-update small { color: #7a8ca8; font-size: var(--fs-meta); }
+
+.channels-page .import-queue { margin: 0 0 14px; }
+.channels-page .import-queue small { margin-left: 6px; color: #7a8ca8; }
+.import-lines { width: 100%; min-height: 180px; font-family: var(--font-mono, monospace); font-size: 12px; resize: vertical; }
+.import-result .table-scroll { max-height: 260px; overflow-y: auto; }

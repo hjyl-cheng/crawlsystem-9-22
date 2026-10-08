@@ -4,14 +4,15 @@ import { CircleCheck, CirclePause, Download, Plus, Search, TriangleAlert, Tv } f
 import type { ChannelListItem } from '@crawlsystem/contracts';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
-import { Empty, Pagination, PlanBadge, ResourceView, SafeLink, usePagination } from '../ui.js';
+import { Empty, ErrorBox, Pagination, PlanBadge, ResourceView, SafeLink, usePagination } from '../ui.js';
 import { channelPath, dueIn, number, planPath, time } from '../presentation.js';
 import ClockPolicy from '../components/clock-policy.js';
+import ChannelImport from '../components/channel-import.js';
+import { ApiFailure } from '../api.js';
 import './overview.css';
 import './discover.css';
 import './channels.css';
 
-const SCHEDULER_PENDING = '调度器在 M3 第 2 步上线后可用';
 const fmt = (n: number) => n.toLocaleString('zh-CN');
 const short = (value: string) => new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
 const subscribers = (n: number | null) => n === null ? '—' : n >= 10_000 ? `${(n / 10_000).toFixed(n >= 100_000 ? 0 : 1)} 万` : fmt(n);
@@ -28,6 +29,14 @@ function RealDetail({ id }: { id: string }) {
   const [tab, setTab] = useState<'info' | 'policy'>('info');
   const resource = useResource(`channel-side:${id}`, signal => api.channel(id, signal), false);
   const c = resource.data, about = c?.about;
+  const [updating, setUpdating] = useState(false), [updateError, setUpdateError] = useState<ApiFailure>(), [updated, setUpdated] = useState<string>();
+  async function updateNow() {
+    if (!c) return;
+    setUpdating(true); setUpdateError(undefined); setUpdated(undefined);
+    try { setUpdated((await api.updateChannel(c.channel_id, { request_id: crypto.randomUUID(), expected_version: c.management.version, domains: ['ABOUT', 'VIDEO'] })).plan_id); resource.refresh(); }
+    catch (cause) { setUpdateError(cause instanceof ApiFailure ? cause : new ApiFailure('安排更新失败，请重试')); }
+    finally { setUpdating(false); }
+  }
   return <section className="panel channel-detail">
     <header className="detail-head"><Avatar title={c?.title ?? id} big/><div><b>{c?.title ?? '基础资料待入库'}</b><small>{about?.handle ?? id}</small></div>{about && <SafeLink href={about.channel_url}>YouTube</SafeLink>}</header>
     <div className="detail-tabs" role="tablist"><button role="tab" aria-selected={tab === 'info'} className={tab === 'info' ? 'on' : ''} onClick={() => setTab('info')}>基本信息</button><button role="tab" aria-selected={tab === 'policy'} className={tab === 'policy' ? 'on' : ''} onClick={() => setTab('policy')}>更新策略</button></div>
@@ -40,7 +49,10 @@ function RealDetail({ id }: { id: string }) {
         <dl><Row label="计划"><Link to={planPath(c.latest_plan.plan_id)} className="mono">{c.latest_plan.plan_id.slice(0, 8)}…</Link></Row><Row label="状态"><PlanBadge status={c.latest_plan.status}/></Row><Row label="Agent 画像">{c.agent ? '已入库' : '尚未执行'}</Row><Row label="发布交付">未启用</Row></dl>
       </> : <ClockPolicy channel={c} operator={session.role === 'operator'} onChanged={resource.refresh}/>}
     </div>
-    <footer className="detail-actions"><Link className="button small" to={channelPath(id)}>查看完整数据</Link><button className="button small" disabled title={SCHEDULER_PENDING}>立即更新</button></footer>
+    <footer className="detail-actions"><Link className="button small" to={channelPath(id)}>查看完整数据</Link>
+      {session.role === 'operator' && <button className="button small" disabled={!c || c.management.state !== 'managed' || updating}
+        title={c && c.management.state !== 'managed' ? '只有持续更新中的频道可以立即更新' : '立即更新频道资料、视频与评论'} onClick={() => void updateNow()}>{updating ? '正在安排…' : '立即更新'}</button>}</footer>
+    {updateError && <ErrorBox error={updateError}/>}{updated && <p className="detail-note">已安排更新，<Link to={planPath(updated)}>查看计划</Link></p>}
   </section>;
 }
 const clockShort: Record<ChannelListItem['clocks'][number]['clock'], string> = { ABOUT: '资料', VIDEO: '视频', AGENT: 'Agent 画像' };
@@ -58,10 +70,12 @@ function NextUpdates({ ch }: { ch: ChannelListItem }) {
     <small className="cell-note">{parts}</small></div>;
 }
 export default function Channels() {
-  const { api } = useAuth(); const paging = usePagination();
+  const { api, session } = useAuth(); const paging = usePagination();
   const resource = useResource(`channels:${paging.cursor}`, signal => api.channels(paging.cursor, 20, signal));
   const completeness = useResource('channels-completeness', signal => api.completeness(signal), true, 15_000);
-  const [selected, setSelected] = useState<string>();
+  const [selected, setSelected] = useState<string>(), [importing, setImporting] = useState(false);
+  const imports = useResource('channel-imports', signal => api.channelImports(signal), true, 15_000);
+  const operator = session.role === 'operator', q = imports.data?.counts;
   const realFirst = resource.data?.items[0]?.channel_id;
   const current = selected ?? realFirst;
   const c = completeness.data;
@@ -69,7 +83,7 @@ export default function Channels() {
     <header className="dashboard-heading">
       <div><h1>频道管理</h1><p>已纳管的 YouTube 频道：采集状态、数据完整性与更新计划</p>
         {completeness.updatedAt ? <span className="data-freshness"><i/>数据已同步 · {short(new Date(completeness.updatedAt).toISOString())}</span> : null}</div>
-      <div className="dashboard-period"><button className="button small" disabled title="频道导入尚未接入"><Download size={13}/>导入频道</button><button className="button small primary" disabled title="添加频道尚未接入"><Plus size={13}/>新增频道</button></div>
+      {operator && <div className="dashboard-period"><button className="button small" onClick={() => setImporting(true)}><Download size={13}/>导入频道</button><button className="button small primary" onClick={() => setImporting(true)}><Plus size={13}/>新增频道</button></div>}
     </header>
 
     <div className="discover-kpis">
@@ -78,6 +92,9 @@ export default function Channels() {
       <Kpi label="逾期未更新" tone="red" icon={<TriangleAlert size={22}/>} value={c && fmt(c.management.overdue)} foot={c ? `持续更新中 ${fmt(c.management.managed)} 个` : '—'}/>
       <Kpi label="已暂停" tone="amber" icon={<CirclePause size={22}/>} value={c && fmt(c.management.paused)} foot="暂停期间到期不会自动更新"/>
     </div>
+    {q && q.queued + q.planned + q.failed + q.done > 0 && <div className="notice import-queue" role="status">导入队列：排队 <b>{q.queued}</b> · 首次采集中 <b>{q.planned}</b> · 已完成 <b>{q.done}</b> · 失败 <b>{q.failed}</b>
+      {q.failed > 0 && <small>（失败的频道可以重新导入）</small>}</div>}
+    <ChannelImport open={importing} onOpenChange={setImporting} onImported={() => { imports.refresh(); resource.refresh(); }}/>
 
     <div className="discover-row row-channels">
       <section className="panel channels-list">

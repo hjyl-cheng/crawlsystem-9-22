@@ -73,6 +73,8 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     const q=pagination(request.query), filter=z.object({state:AgentTaskStateSchema.optional()}).parse(request.query);
     return store.agentTasks(request.principal,q.limit,q.offset,filter.state);
   });
+  app.post(ApiRoutes.channelImport,{bodyLimit:262144},async request=>store.importChannels(request.principal,request.body));
+  app.get(ApiRoutes.channelImports,async request=>store.channelImports(request.principal));
   app.get('/v1/channels/:id',async request=>store.getChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id));
   app.post('/v1/channels/:id/management',{bodyLimit:1024},async request=>store.manageChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));
   app.post('/v1/channels/:id/clock-override',{bodyLimit:1024},async request=>store.overrideClock(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));

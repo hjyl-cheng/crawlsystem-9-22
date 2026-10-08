@@ -8,6 +8,7 @@ import { agentInputHash, contentHash, submissionHash } from '@crawlsystem/contra
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
 import { instantFromDate, type ClockKind, type Observation } from '@crawlsystem/feature-clock';
 import { aboutObservation, agentObservation, applyObservations, loadClocks, videoObservation, writeClocks, type ClockActivity, type SamplingResult } from './feature-clocks.ts';
+import { ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, parseChannelReference, type ChannelImportResult, type ChannelImports } from '@crawlsystem/contracts';
 import { UpdateLimitsSchema, ChannelUpdateSchema, DataApiPermitRequestSchema, DataApiFailureReportSchema, type UpdateLimits, type DataApiPermit, type DataApiSummary, type AgentTask, type AgentSummary } from '@crawlsystem/contracts';
 import { readAgentSummary, readAgentTasks, readDataApiSummary } from './operations-view.ts';
 import { apiBudget, estimateApiUnits, releaseApiReservation, schedulerState } from './update-budget.ts';
@@ -74,8 +75,13 @@ export class Store {
       ? FrozenInputSchema.parse({ schema_version: CONTRACT_VERSION, source_mode: 'youtube', channel_id: input.channel_id, required_domains: input.required_domains,
           scope: input.scope, reference_time: now.toISOString(), deadline_at: deadline, max_attempts: 3 })
       : createFrozenFixture(input.required_domains, deadline);
+    return this.tx(client => this.insertCreatedPlan(client, principal.workspace_id, input, frozen, requestHash, planId, deadline, trace));
+  }
+  /** The rows of a newly created plan (shared by operator creation and import admission), idempotent by request id. */
+  private async insertCreatedPlan(client: PoolClient, workspace: string, input: CreatePlan, frozen: FrozenInput, requestHash: string, planId: string, deadline: string, trace: string | null): Promise<Plan> {
     const fixtureId = frozen.source_mode === 'fixture' ? frozen.fixture_id : null;
-    return this.tx(async client => {
+    const principal = { workspace_id: workspace };
+    {
       if (frozen.source_mode === 'youtube') {
         await client.query("SELECT pg_advisory_xact_lock(hashtext('channel-plan:' || $1 || ':' || $2))", [principal.workspace_id, frozen.channel_id]);
         const replay = (await client.query('SELECT * FROM m1.plans WHERE workspace_id=$1 AND request_id=$2', [principal.workspace_id, input.request_id])).rows[0];
@@ -101,7 +107,65 @@ export class Store {
         WHERE m1.channels.latest_plan_revision < EXCLUDED.latest_plan_revision`, [principal.workspace_id,frozen.channel_id,planId,row.source_revision]);
       await client.query("INSERT INTO m1.intents(intent_id,plan_id,kind) VALUES($1,$2,'START')", [randomUUID(),planId]);
       return toPlan(row);
+    }
+  }
+  /**
+   * Queue channels for a first collection (operator). Each line is a channel ID or /channel/ link; channels
+   * already collected, queued, repeated or unreadable are reported, not queued. A failed import can be queued again.
+   */
+  async importChannels(principal: Principal, raw: unknown): Promise<ChannelImportResult> {
+    requireRole(principal, 'operator');
+    const command = ChannelImportSchema.parse(raw);
+    return this.tx(async client => {
+      const items: ChannelImportResult['items'] = [], seen = new Set<string>();
+      for (const line of command.lines.map(l => l.trim()).filter(Boolean)) {
+        const ref = parseChannelReference(line);
+        if (!ref) { items.push({ line, channel_id: null, outcome: 'invalid' }); continue; }
+        if ('handle' in ref) { items.push({ line, channel_id: null, outcome: 'handle_unsupported' }); continue; }
+        const id = ref.channel_id;
+        if (seen.has(id)) { items.push({ line, channel_id: id, outcome: 'duplicate' }); continue; }
+        seen.add(id);
+        const known = (await client.query('SELECT 1 FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2 AND about IS NOT NULL', [principal.workspace_id, id])).rowCount;
+        if (known) { items.push({ line, channel_id: id, outcome: 'known' }); continue; }
+        const queued = await client.query(`INSERT INTO m1.channel_imports(workspace_id,channel_id,requested_by,request_id) VALUES($1,$2,$3,$4)
+          ON CONFLICT(workspace_id,channel_id) DO UPDATE SET state='queued',plan_id=NULL,requested_by=EXCLUDED.requested_by,request_id=EXCLUDED.request_id,requested_at=clock_timestamp(),updated_at=clock_timestamp()
+          WHERE m1.channel_imports.state='failed' RETURNING 1`, [principal.workspace_id, id, principal.subject, command.request_id]);
+        items.push({ line, channel_id: id, outcome: queued.rowCount ? 'queued' : 'already_queued' });
+      }
+      return ChannelImportResultSchema.parse({ items, queued: items.filter(i => i.outcome === 'queued').length });
     });
+  }
+  async channelImports(principal: Principal): Promise<ChannelImports> {
+    requireRole(principal, 'reader', 'operator');
+    const counts = (await this.pool.query(`SELECT count(*) FILTER(WHERE state='queued')::int AS queued,count(*) FILTER(WHERE state='planned')::int AS planned,
+      count(*) FILTER(WHERE state='done')::int AS done,count(*) FILTER(WHERE state='failed')::int AS failed FROM m1.channel_imports WHERE workspace_id=$1`, [principal.workspace_id])).rows[0]!;
+    const items = (await this.pool.query(`SELECT i.channel_id,i.state,i.requested_at,i.plan_id,c.about->>'title' AS title FROM m1.channel_imports i
+      LEFT JOIN m1.channels c USING(workspace_id,channel_id) WHERE i.workspace_id=$1
+      ORDER BY CASE i.state WHEN 'planned' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END,i.updated_at DESC,i.channel_id LIMIT 100`, [principal.workspace_id])).rows;
+    return ChannelImportsSchema.parse({ counts, items: items.map(r => ({ ...r, requested_at: iso(r.requested_at), title: r.title ?? null })) });
+  }
+  /** First collections for queued imports, while active plans and the Data API quota allow (oldest first). */
+  private async admitImports(client: PoolClient, workspace: string, now: Date): Promise<Plan[]> {
+    const plans: Plan[] = [], limits = this.updateLimits;
+    const queue = (await client.query(`SELECT channel_id FROM m1.channel_imports WHERE workspace_id=$1 AND state='queued' ORDER BY requested_at,channel_id LIMIT 10`, [workspace])).rows;
+    for (const { channel_id } of queue) {
+      const active = (await client.query("SELECT count(*)::int AS n FROM m1.plans WHERE workspace_id=$1 AND source_mode='youtube' AND status IN ('QUEUED','RUNNING','WAITING')", [workspace])).rows[0]!.n as number;
+      if (active >= limits.max_active_plans) break;
+      if ((await client.query("SELECT 1 FROM m1.plans WHERE workspace_id=$1 AND channel_id=$2 AND status IN ('QUEUED','RUNNING','WAITING')", [workspace, channel_id])).rowCount) continue;
+      const input = CreatePlanSchema.parse({ request_id: randomUUID(), source_mode: 'youtube', channel_id });
+      if (!('source_mode' in input)) continue;
+      const units = estimateApiUnits(input.required_domains, input.scope.video_limit), budget = await apiBudget(client, workspace, now, true);
+      if (budget.used + budget.reserved + units > limits.api_daily_limit) break;
+      const planId = randomUUID(), deadline = new Date(now.getTime() + 120 * 60_000).toISOString();
+      const frozen = FrozenInputSchema.parse({ schema_version: CONTRACT_VERSION, source_mode: 'youtube', channel_id, required_domains: input.required_domains,
+        scope: input.scope, reference_time: now.toISOString(), deadline_at: deadline, max_attempts: 3 });
+      const plan = await this.insertCreatedPlan(client, workspace, input, frozen, contentHash(input), planId, deadline, null);
+      await client.query('UPDATE m1.data_api_budget SET reserved_units=reserved_units+$3 WHERE workspace_id=$1 AND quota_day=$2', [workspace, budget.day, units]);
+      await client.query('INSERT INTO m1.plan_api_reservations(plan_id,workspace_id,quota_day,remaining) VALUES($1,$2,$3,$4)', [plan.plan_id, workspace, budget.day, units]);
+      await client.query("UPDATE m1.channel_imports SET state='planned',plan_id=$3,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2", [workspace, channel_id, plan.plan_id]);
+      plans.push(plan);
+    }
+    return plans;
   }
   /** Bounded scan; the workspace lock makes admission safe across dispatcher replicas. */
   async scheduleUpdates(workspaceId: string, now = new Date()): Promise<Plan[]> {
@@ -121,6 +185,8 @@ export class Store {
         const plan = await this.insertUpdate(client, workspaceId, candidate.channel_id, now);
         if (plan) plans.push(plan);
       }
+      // Imported channels take what capacity the updates left, oldest first.
+      plans.push(...await this.admitImports(client, workspaceId, now));
       return plans;
     });
   }
@@ -623,6 +689,7 @@ export class Store {
    */
   private async settleClocks(client: PoolClient, plan: QueryResultRow, status: 'COMPLETED' | 'FAILED' | 'CANCELLED'): Promise<void> {
     await releaseApiReservation(client, plan.plan_id);
+    await client.query("UPDATE m1.channel_imports SET state=$2,updated_at=clock_timestamp() WHERE plan_id=$1 AND state='planned'", [plan.plan_id, status === 'COMPLETED' ? 'done' : 'failed']);
     if ((plan.frozen_input as FrozenInput).source_mode !== 'youtube') return;
     const channel = (await client.query('SELECT management_state,about,agent FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[plan.workspace_id,plan.channel_id])).rows[0];
     if (!channel || channel.management_state === 'removed') return;
