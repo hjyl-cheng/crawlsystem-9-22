@@ -433,8 +433,8 @@ export const ProxySourceViewSchema: z.ZodType<ProxySourceView> = z.strictObject(
 
 export const UpdateLimitsSchema = z.strictObject({
   enabled: z.boolean().default(true),
-  /** Domains the scheduler updates by itself (M3-D5: About and, since incremental updates, Video; Agent after step 5); any domain can still be updated manually. */
-  auto_domains: z.array(DomainSchema).max(3).refine(a => new Set(a).size === a.length, 'duplicate domains').default(['ABOUT', 'VIDEO']),
+  /** Domains the scheduler updates by itself (M3-D5: all three since incremental Video and Agent updates); any domain can still be updated manually. */
+  auto_domains: z.array(DomainSchema).max(3).refine(a => new Set(a).size === a.length, 'duplicate domains').default(['ABOUT', 'VIDEO', 'AGENT']),
   max_active_plans: z.number().int().min(1).max(100).default(2),
   max_agent_plans: z.number().int().min(1).max(100).default(1),
   daily_plan_limit: z.number().int().min(1).max(100000).default(100),
