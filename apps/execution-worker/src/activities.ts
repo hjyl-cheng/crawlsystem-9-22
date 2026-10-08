@@ -5,7 +5,7 @@ import { ExecutionApi, ExecutionApiError, checkReceipt } from '@crawlsystem/exec
 import type { RequestTracing } from '@crawlsystem/http/tracing';
 import { CONTRACT_VERSION, type AgentResult, type Domain, type ErrorCode, type ExecutionEvent, type PlanWorkflowResult, type PlanInput, type PlanStatus, type Submission, type VideoItem, type WorkflowInput, type YoutubeFrozenInput } from '@crawlsystem/contracts';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { DataApi, DataApiError } from './youtube/data-api.ts';
+import { DataApi, DataApiError, type RequestGuard } from './youtube/data-api.ts';
 import { aboutPage, ScrapeError, session, shortsIds, topComments } from './youtube/scrape.ts';
 import { toChannelFacts, toVideoFacts, unavailableVideo } from './youtube/map.ts';
 import { LeaseClient, ProxyUnavailable, proxiedFetch, type Outcome } from './youtube/transport.ts';
@@ -120,14 +120,25 @@ export function createActivities(options: ActivityOptions) {
   }
   const submitOnce = async (ref: WorkflowInput, value: PlanInput, submission: Submission, deadline: number) =>
     value.receipts.some(r => r.submission_id === submission.submission_id) ? undefined : api.submit(submission, { deadline, signal: Context.current().cancellationSignal });
-  const permit = (ref: WorkflowInput, scope: TraceScope, deadline: number) => async () => {
-    const result = await api.dataApiPermit({ request_id: randomUUID(), plan_id: ref.plan_id, execution_epoch: ref.execution_epoch, input_hash: ref.input_hash },
-      { deadline, signal: Context.current().cancellationSignal, traceparent: scope.traceparent });
-    if (!result.granted) {
-      await event(ref, scope, 'WAITING', 'API_QUOTA', `Data API daily budget exhausted; resets ${result.reset_at}`, null, 'BUDGET_EXHAUSTED');
-      throw new ExecutionApiError('BUDGET_EXHAUSTED', false);
-    }
+  /** Data API guard: one quota permit per request (stops the plan when the day's budget is spent); failures are recorded by reason. */
+  const permit = (ref: WorkflowInput, scope: TraceScope, deadline: number): RequestGuard => {
+    const budget = () => ({ deadline, signal: Context.current().cancellationSignal, traceparent: scope.traceparent });
+    const owner = { plan_id: ref.plan_id, execution_epoch: ref.execution_epoch, input_hash: ref.input_hash };
+    return {
+      async permit(endpoint) {
+        const request_id = randomUUID(), result = await api.dataApiPermit({ request_id, ...owner, endpoint }, budget());
+        if (!result.granted) {
+          await event(ref, scope, 'WAITING', 'API_QUOTA', `Data API daily budget exhausted; resets ${result.reset_at}`, null, 'BUDGET_EXHAUSTED');
+          throw new ExecutionApiError('BUDGET_EXHAUSTED', false);
+        }
+        return request_id;
+      },
+      async failed(request_id, _endpoint, error) {
+        if (request_id) await api.dataApiFailure({ request_id, ...owner, reason: error.kind }, budget()).catch(() => undefined);
+      },
+    };
   };
+
 
   return {
     /** YouTube ABOUT: About page through a proxy plus exact counts from the Data API. */

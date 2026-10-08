@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test, expect, type Page } from '@playwright/test';
-import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView, type UpdateChannel } from '@crawlsystem/contracts';
-import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture } from './fixtures.js';
+import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView, type UpdateChannel, type AgentTask } from '@crawlsystem/contracts';
+import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture, agentTaskFixtures, agentSummaryFixture, dataApiSummaryFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
-  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[] };
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[], agentTasks: [] as AgentTask[], dataApiCalls: false };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -37,6 +37,9 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     }
     if (path.startsWith('/v1/plans/')) return state.detail ? json(state.detail) : failure(404, 'NOT_FOUND');
     if (path === '/v1/channels') return json({ items: state.detail ? [{ channel_id: state.detail.plan.channel_id, title: 'M1 固定样本频道', source_mode: 'fixture', updated_at: state.detail.plan.updated_at, latest_plan_id: state.detail.plan.plan_id, country: null, subscriber_count: 100, stored_videos: 1, latest_plan_status: state.detail.plan.status, management_state: null, next_due_at: null, clocks: [] }] : [], next_cursor: null });
+    if (path === '/v1/agent/summary') return json(agentSummaryFixture(state.agentTasks));
+    if (path === '/v1/agent/tasks') return json({ items: state.agentTasks, next_cursor: null });
+    if (path === '/v1/data-api/summary') return json(dataApiSummaryFixture(state.dataApiCalls));
     if (path === '/v1/updates/summary') return json(updateSummaryFixture(state.updates));
     if (path === '/v1/updates') return json({ items: state.updates, next_cursor: null });
     if (path.endsWith('/update') && method === 'POST') { state.updateRequests.push(route.request().postDataJSON()); return json(detailFixture().plan); }
@@ -326,29 +329,37 @@ test('update collection shows the real scheduler figures and has no sample previ
   await expect.poll(() => state.updateRequests.length).toBe(1);
   expect(state.updateRequests[0]).toMatchObject({ expected_version: 3, domains: ['ABOUT'] });
 });
-test('agent tasks show only the real waiting-plan count until the sample preview is switched on', async ({ page }) => {
-  await mock(page, detailFixture({ status: 'WAITING', required_domains: ['ABOUT', 'VIDEO', 'AGENT'] }, ['ABOUT', 'VIDEO'])); await login(page, '/agent');
+test('agent tasks list real profile steps with their state and the selected channel\'s current profile', async ({ page }) => {
+  const state = await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); state.agentTasks = agentTaskFixtures(); await login(page, '/agent');
   await expect(page.getByRole('heading', { name: 'Agent 任务', exact: true })).toBeVisible();
-  await expect(page.getByText('1 个计划的 Agent 结果未入库', { exact: false })).toBeVisible();
-  await expect(page.getByText('尚无 Agent 任务', { exact: true })).toBeVisible();
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
-  await page.getByRole('row', { name: /Web Forge/ }).click();
-  await expect(page.locator('.agent-detail').getByText('本轮未产出有效画像', { exact: false })).toBeVisible();
+  await expect(page.getByLabel('预览示例数据'), 'real data only').toHaveCount(0);
+  await expect(page.locator('.discover-kpi strong')).toHaveText(['1', '1', '1', '1']);
+  const rows = page.locator('.agent-list tbody tr');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(1)).toContainText('等待频道资料、视频与评论入库');
+  await rows.filter({ hasText: '画像已生成并入库' }).click();
+  await expect(page.locator('.agent-detail')).toContainText('到频道页查看完整画像');
+  await expect(page.locator('.agent-detail')).toContainText('这个频道还没有画像');
+  await rows.filter({ hasText: '画像已生成并入库' }).getByRole('button', { name: '重新生成' }).click();
+  await expect.poll(() => state.updateRequests.length).toBe(1);
+  expect(state.updateRequests[0]).toMatchObject({ expected_version: 2, domains: ['AGENT'] });
   await page.getByRole('tab', { name: /失败/ }).click();
-  await expect(page.locator('.agent-list tbody tr')).toHaveCount(1);
+  await expect.poll(() => state.reads.some(r => r.startsWith('/api/v1/agent/tasks') && r.includes('state=failed'))).toBe(true);
 });
-test('data API page covers collector-side external calls and shows no figures until the sample preview', async ({ page }) => {
-  await mock(page); await login(page, '/data-api');
+test('data API page shows real quota, hourly calls and failures by reason', async ({ page }) => {
+  const state = await mock(page); await login(page, '/data-api');
   await expect(page.getByRole('heading', { name: '数据 API', exact: true })).toBeVisible();
-  await expect(page.getByText('尚无接口调用', { exact: true })).toBeVisible();
-  await expect(page.getByText('调用趋势尚未接入', { exact: true })).toBeVisible();
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
-  await expect(page.locator('.endpoint-list').getByRole('cell', { name: 'channels.list', exact: true })).toBeVisible();
+  await expect(page.getByLabel('预览示例数据'), 'real data only').toHaveCount(0);
+  await expect(page.getByText('近 24 小时没有调用', { exact: true }).first()).toBeVisible();
+  state.dataApiCalls = true;
+  await page.locator('.data-api-page .dashboard-heading').getByRole('button', { name: '刷新' }).click();
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('1.2%');
+  await expect(page.locator('.endpoint-list').getByRole('cell', { name: 'videos.list', exact: true })).toBeVisible();
+  await expect(page.getByText('配额用完或请求过快').first()).toBeVisible();
   const chart = page.locator('.trend-box svg'); const box = (await chart.boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
-  await expect(page.locator('.trend-tip')).toContainText('成功');
+  await expect(page.locator('.trend-tip')).toContainText('调用');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 test('delivery treats sent as unconfirmed and shows the real completed-plan count until the sample preview', async ({ page }) => {
   await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await login(page, '/delivery');

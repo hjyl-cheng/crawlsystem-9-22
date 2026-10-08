@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { DataApiPermitRequestSchema, DataApiPermitSchema } from '@crawlsystem/contracts';
+import { DataApiFailureReportSchema, DataApiPermitRequestSchema, DataApiPermitSchema } from '@crawlsystem/contracts';
 import { z } from 'zod';
 import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, AgentInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
   ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, TemporalTokenSchema, ProxySyncRequestSchema, ProxySyncResponseSchema, type ProxySyncRequest, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
@@ -137,6 +137,8 @@ export class ExecutionApi {
   proxySync(report: ProxySyncRequest, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.proxySync, ProxySyncResponseSchema, ProxySyncRequestSchema.parse(report), budget); }
   heartbeat(value: Heartbeat, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.heartbeat, WorkerSchema, HeartbeatSchema.parse(value), budget); }
   dataApiPermit(value: unknown, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.dataApiPermit, DataApiPermitSchema, DataApiPermitRequestSchema.parse(value), budget); }
+  /** Record why a permitted Data API request failed (best effort; the console's failure breakdown). */
+  dataApiFailure(value: unknown, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.dataApiFailure, z.strictObject({ recorded: z.boolean() }), DataApiFailureReportSchema.parse(value), budget); }
   async submit(raw: Submission, budget: RequestBudget = {}): Promise<Receipt> {
     const submission = SubmissionSchema.parse(raw);
     // Read-before-write also handles a previous Activity dying after the Store commit.

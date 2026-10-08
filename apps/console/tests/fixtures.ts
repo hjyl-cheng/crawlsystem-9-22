@@ -1,6 +1,6 @@
 // Explicit browser-test fixtures. Never imported by the application.
 import { randomUUID } from 'node:crypto';
-import { CONTRACT_VERSION, PlanSchema, PlanDetailSchema, ReceiptSchema, WorkerSchema, StoredEventSchema, ChannelDetailSchema, UpdateChannelSchema, UpdateSummarySchema, type Plan, type Domain, type UpdateChannel } from '@crawlsystem/contracts';
+import { CONTRACT_VERSION, PlanSchema, PlanDetailSchema, ReceiptSchema, WorkerSchema, StoredEventSchema, ChannelDetailSchema, UpdateChannelSchema, UpdateSummarySchema, AgentTaskSchema, AgentSummarySchema, DataApiSummarySchema, type Plan, type Domain, type UpdateChannel, type AgentTask } from '@crawlsystem/contracts';
 import { createFrozenFixture, fixtureChannel, fixtureVideo } from '@crawlsystem/contracts/fixtures';
 import { contentHash, fixtureSubmission } from '@crawlsystem/contracts/hash';
 
@@ -43,4 +43,24 @@ export function updateSummaryFixture(rows: UpdateChannel[]) {
     last_scan_at: timestamp, managed: rows.length, due: rows.length, overdue: rows.length, queued: 0, running: 0, completed_24h: 0, failed_24h: 0, daily_plans: 0,
     api_quota_day: '2026-09-23', api_used_units: 9998, api_reserved_units: 0, api_reset_at: '2026-09-24T07:00:00.000Z',
     waiting: rows.length ? [{ reason: 'api_quota', channels: rows.length }] : [] });
+}
+/** One Agent task per state; the completed one belongs to a managed channel. */
+export function agentTaskFixtures(): AgentTask[] {
+  const task = (state: AgentTask['state'], extra: Partial<AgentTask> = {}) => AgentTaskSchema.parse({ plan_id: randomUUID(), channel_id: fixtureChannel.channel_id, title: `画像测试频道 ${state}`, country: 'US',
+    trigger: 'scheduled', state, waiting_on: [], created_at: timestamp, completed_at: null, finished_at: null, message: null, error_code: null, management_state: 'managed', management_version: 2, next_due_at: null, ...extra });
+  return [task('running'), task('waiting', { waiting_on: ['ABOUT', 'VIDEO'], trigger: 'first' }), task('completed', { completed_at: timestamp, next_due_at: '2027-04-14T00:00:00.000Z' }),
+    task('failed', { trigger: 'manual', message: 'Profile Agent unavailable', error_code: 'UNAVAILABLE', finished_at: timestamp })];
+}
+export function agentSummaryFixture(tasks: AgentTask[]) {
+  const count = (state: AgentTask['state']) => tasks.filter(t => t.state === state).length;
+  return AgentSummarySchema.parse({ observed_at: timestamp, waiting: count('waiting'), running: count('running'), completed_24h: count('completed'), failed_24h: count('failed'),
+    avg_seconds_24h: tasks.length ? 600 : null, profiled_channels: count('completed'), model_versions: tasks.length ? [{ model_version: 'qy-channel-profile:test', channels: 1 }] : [] });
+}
+/** Data API figures: nothing yet, or 84 calls this hour with one quota failure. */
+export function dataApiSummaryFixture(calls: boolean) {
+  const hourly = Array.from({ length: 24 }, (_, i) => ({ hour: new Date(Date.parse(timestamp) - (23 - i) * 3_600_000).toISOString(), calls: calls && i === 23 ? 84 : 0, failures: calls && i === 23 ? 1 : 0 }));
+  return DataApiSummarySchema.parse({ observed_at: timestamp, quota_day: '2026-09-23', reset_at: '2026-09-24T07:00:00.000Z', limit: 10000, used_units: calls ? 120 : 0, reserved_units: calls ? 35 : 0, hourly,
+    endpoints: calls ? [{ endpoint: 'videos', calls: 80, failures: 1 }, { endpoint: 'channels', calls: 4, failures: 0 }] : [],
+    failures_by_reason: calls ? [{ reason: 'quota', count: 1 }] : [],
+    recent_failures: calls ? [{ at: timestamp, endpoint: 'videos', reason: 'quota', plan_id: randomUUID(), channel_id: fixtureChannel.channel_id }] : [] });
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ApiRoutes, CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema, LoginSchema, UpdateStateSchema } from '@crawlsystem/contracts';
+import { AgentTaskStateSchema, ApiRoutes, CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema, LoginSchema, UpdateStateSchema } from '@crawlsystem/contracts';
 import { requireRole, StoreError } from '@crawlsystem/store';
 import { createServer, pagination, planId, sourceMode, type ServerOptions } from '@crawlsystem/http';
 import { authenticate } from '@crawlsystem/http/auth';
@@ -66,6 +66,13 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     return (await store.updates(request.principal,q.limit,q.offset,filter)).page;
   });
   app.post(ApiRoutes.dataApiPermit,{bodyLimit:2048},async request=>store.dataApiPermit(request.principal,request.body));
+  app.post(ApiRoutes.dataApiFailure,{bodyLimit:2048},async request=>store.dataApiFailure(request.principal,request.body));
+  app.get(ApiRoutes.dataApiSummary,async request=>store.dataApiSummary(request.principal));
+  app.get(ApiRoutes.agentSummary,async request=>store.agentSummary(request.principal));
+  app.get(ApiRoutes.agentTasks,async request=>{
+    const q=pagination(request.query), filter=z.object({state:AgentTaskStateSchema.optional()}).parse(request.query);
+    return store.agentTasks(request.principal,q.limit,q.offset,filter.state);
+  });
   app.get('/v1/channels/:id',async request=>store.getChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id));
   app.post('/v1/channels/:id/management',{bodyLimit:1024},async request=>store.manageChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));
   app.post('/v1/channels/:id/clock-override',{bodyLimit:1024},async request=>store.overrideClock(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));

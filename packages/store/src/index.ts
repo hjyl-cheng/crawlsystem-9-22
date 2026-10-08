@@ -8,7 +8,8 @@ import { agentInputHash, contentHash, submissionHash } from '@crawlsystem/contra
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
 import { instantFromDate, type ClockKind, type Observation } from '@crawlsystem/feature-clock';
 import { aboutObservation, agentObservation, applyObservations, loadClocks, videoObservation, writeClocks, type ClockActivity, type SamplingResult } from './feature-clocks.ts';
-import { UpdateLimitsSchema, ChannelUpdateSchema, DataApiPermitRequestSchema, type UpdateLimits, type DataApiPermit } from '@crawlsystem/contracts';
+import { UpdateLimitsSchema, ChannelUpdateSchema, DataApiPermitRequestSchema, DataApiFailureReportSchema, type UpdateLimits, type DataApiPermit, type DataApiSummary, type AgentTask, type AgentSummary } from '@crawlsystem/contracts';
+import { readAgentSummary, readAgentTasks, readDataApiSummary } from './operations-view.ts';
 import { apiBudget, estimateApiUnits, releaseApiReservation, schedulerState } from './update-budget.ts';
 import { readUpdates } from './update-view.ts';
 import { nextChangeProbability, planRecentSampling, RECENT_SAMPLING } from './recent-sampling.ts';
@@ -275,12 +276,36 @@ export class Store {
       const reserved = reservation && reservation.quota_day === budget.day && reservation.remaining > 0;
       const granted = !!old || (reserved ? budget.used < this.updateLimits.api_daily_limit : budget.used + budget.reserved < this.updateLimits.api_daily_limit);
       if (granted && !old) {
-        await client.query('INSERT INTO m1.data_api_permits(workspace_id,request_id,plan_id,quota_day,granted_at) VALUES($1,$2,$3,$4,$5)', [principal.workspace_id, command.request_id, plan.plan_id, budget.day, now]);
+        await client.query('INSERT INTO m1.data_api_permits(workspace_id,request_id,plan_id,quota_day,granted_at,endpoint) VALUES($1,$2,$3,$4,$5,$6)', [principal.workspace_id, command.request_id, plan.plan_id, budget.day, now, command.endpoint ?? null]);
         await client.query('UPDATE m1.data_api_budget SET used_units=used_units+1,reserved_units=reserved_units-$3 WHERE workspace_id=$1 AND quota_day=$2', [principal.workspace_id, budget.day, reserved ? 1 : 0]);
         if (reserved) await client.query('UPDATE m1.plan_api_reservations SET remaining=remaining-1 WHERE plan_id=$1', [plan.plan_id]);
       }
       return { granted, quota_day: budget.day, reset_at: budget.reset_at, used_units: budget.used + (granted && !old ? 1 : 0), limit: this.updateLimits.api_daily_limit };
     });
+  }
+  /** A permitted request failed: record why, once (the console's failure breakdown). */
+  async dataApiFailure(principal: Principal, raw: unknown): Promise<{ recorded: boolean }> {
+    requireRole(principal, 'worker');
+    const report = DataApiFailureReportSchema.parse(raw);
+    const plan = await this.planRow(this.pool, principal, report.plan_id);
+    if (plan.execution_epoch !== report.execution_epoch) throw new StoreError('STALE_EXECUTION', 'Execution no longer owns this plan');
+    if (plan.input_hash !== report.input_hash) throw new StoreError('INPUT_MISMATCH', 'Frozen input differs');
+    const updated = await this.pool.query('UPDATE m1.data_api_permits SET failure=$4,failed_at=clock_timestamp() WHERE workspace_id=$1 AND request_id=$2 AND plan_id=$3 AND failure IS NULL',
+      [principal.workspace_id, report.request_id, report.plan_id, report.reason]);
+    return { recorded: (updated.rowCount ?? 0) > 0 };
+  }
+  async dataApiSummary(principal: Principal, now = new Date()): Promise<DataApiSummary> {
+    requireRole(principal, 'reader', 'operator');
+    return readDataApiSummary(this.pool, principal.workspace_id, this.updateLimits.api_daily_limit, now);
+  }
+  async agentTasks(principal: Principal, limit = 20, offset = 0, state?: string): Promise<Page<AgentTask>> {
+    requireRole(principal, 'reader', 'operator');
+    const rows = await readAgentTasks(this.pool, principal.workspace_id, limit + 1, offset, state);
+    return page(rows, limit, offset);
+  }
+  async agentSummary(principal: Principal, now = new Date()): Promise<AgentSummary> {
+    requireRole(principal, 'reader', 'operator');
+    return readAgentSummary(this.pool, principal.workspace_id, now);
   }
   async getInput(principal: Principal, id: string): Promise<PlanInput> {
     // One consistent database snapshot: plan, proofs and receipts never straddle a commit.

@@ -10,13 +10,26 @@ export class DataApiError extends Error {
 /** Legacy discovery bounds: a first page and a catch-up of 50 items; without an anchor, keep the newest 30. */
 const DISCOVERY_SCAN_LIMIT = 100, DISCOVERY_GAP_KEEP = 30;
 export interface UploadDiscovery { ids: string[]; pages: number; scanned: number; matched_anchor_id: string | null; stop_reason: 'anchor_matched' | 'list_end' | 'gap_abandoned_latest_30' }
+export type DataApiEndpoint = 'channels' | 'playlistItems' | 'videos';
+/** Around each request: `permit` before sending (throws to refuse; may return the permit's id), `failed` when it fails. */
+export interface RequestGuard {
+  permit(endpoint: DataApiEndpoint): Promise<string | undefined>;
+  failed?(requestId: string | undefined, endpoint: DataApiEndpoint, error: DataApiError): Promise<void>;
+}
 export class DataApi {
   units = 0;
   constructor(private key: string, private fetcher: typeof fetch = fetch, private base = 'https://www.googleapis.com/youtube/v3') {
     if (!/^[A-Za-z0-9_-]{20,64}$/.test(key)) throw new Error('Invalid YouTube Data API key');
   }
-  private async get<T>(path: string, params: Record<string, string>, beforeRequest?: () => Promise<void>): Promise<T> {
-    await beforeRequest?.();
+  private async get<T>(path: DataApiEndpoint, params: Record<string, string>, guard?: RequestGuard): Promise<T> {
+    const requestId = await guard?.permit(path);
+    try { return await this.send<T>(path, params); }
+    catch (error) {
+      if (error instanceof DataApiError) await guard?.failed?.(requestId, path, error).catch(() => undefined);
+      throw error;
+    }
+  }
+  private async send<T>(path: DataApiEndpoint, params: Record<string, string>): Promise<T> {
     const url = new URL(`${this.base}/${path}`);
     for (const [k, v] of Object.entries({ ...params, key: this.key })) url.searchParams.set(k, v);
     let response: Response;
@@ -33,16 +46,16 @@ export class DataApi {
     if (response.status >= 500) throw new DataApiError('unavailable', reason);
     throw new DataApiError('invalid', reason);
   }
-  async channel(id: string, beforeRequest?: () => Promise<void>): Promise<ApiChannel | null> {
-    const body = await this.get<{ items?: ApiChannel[] }>('channels', { part: 'snippet,statistics,contentDetails,brandingSettings', id, maxResults: '1' }, beforeRequest);
+  async channel(id: string, guard?: RequestGuard): Promise<ApiChannel | null> {
+    const body = await this.get<{ items?: ApiChannel[] }>('channels', { part: 'snippet,statistics,contentDetails,brandingSettings', id, maxResults: '1' }, guard);
     return body.items?.[0] ?? null;
   }
   /** Newest uploads published at/after windowStart, at most `limit`, in upload-playlist order. */
-  async recentUploads(uploadsPlaylist: string, windowStart: string, limit: number, beforeRequest?: () => Promise<void>): Promise<{ ids: string[]; exhausted: boolean }> {
+  async recentUploads(uploadsPlaylist: string, windowStart: string, limit: number, guard?: RequestGuard): Promise<{ ids: string[]; exhausted: boolean }> {
     const ids: string[] = []; let page: string | undefined;
     for (let i = 0; i < 20; i++) {
       const body = await this.get<{ items?: { contentDetails: { videoId: string; videoPublishedAt?: string } }[]; nextPageToken?: string }>('playlistItems',
-        { part: 'contentDetails', playlistId: uploadsPlaylist, maxResults: '50', ...(page ? { pageToken: page } : {}) }, beforeRequest);
+        { part: 'contentDetails', playlistId: uploadsPlaylist, maxResults: '50', ...(page ? { pageToken: page } : {}) }, guard);
       for (const item of body.items ?? []) {
         const published = item.contentDetails.videoPublishedAt;
         // Items without a publish time (e.g. private) are skipped; older items end the window.
@@ -61,12 +74,12 @@ export class DataApi {
    * Up to a first page plus a catch-up of 50 items; past that without an anchor only the newest 30 are
    * kept (gap_abandoned_latest_30). Items without a publish time (private) are skipped.
    */
-  async uploadsUntilAnchor(uploadsPlaylist: string, anchorIds: readonly string[], beforeRequest?: () => Promise<void>): Promise<UploadDiscovery> {
+  async uploadsUntilAnchor(uploadsPlaylist: string, anchorIds: readonly string[], guard?: RequestGuard): Promise<UploadDiscovery> {
     const anchors = new Set(anchorIds), ids: string[] = [];
     let page: string | undefined, pages = 0;
     while (ids.length < DISCOVERY_SCAN_LIMIT) {
       const body = await this.get<{ items?: { contentDetails: { videoId: string; videoPublishedAt?: string } }[]; nextPageToken?: string }>('playlistItems',
-        { part: 'contentDetails', playlistId: uploadsPlaylist, maxResults: '50', ...(page ? { pageToken: page } : {}) }, beforeRequest);
+        { part: 'contentDetails', playlistId: uploadsPlaylist, maxResults: '50', ...(page ? { pageToken: page } : {}) }, guard);
       pages += 1;
       for (const item of body.items ?? []) {
         const id = item.contentDetails.videoId;
@@ -80,10 +93,10 @@ export class DataApi {
     }
     return { ids: ids.slice(0, DISCOVERY_GAP_KEEP), pages, scanned: ids.length, matched_anchor_id: null, stop_reason: 'gap_abandoned_latest_30' };
   }
-  async videos(ids: string[], beforeRequest?: () => Promise<void>): Promise<ApiVideo[]> {
+  async videos(ids: string[], guard?: RequestGuard): Promise<ApiVideo[]> {
     if (!ids.length) return [];
     if (ids.length > 50) throw new Error('At most 50 videos per call');
-    const body = await this.get<{ items?: ApiVideo[] }>('videos', { part: 'snippet,contentDetails,statistics,status,liveStreamingDetails', id: ids.join(','), maxResults: '50' }, beforeRequest);
+    const body = await this.get<{ items?: ApiVideo[] }>('videos', { part: 'snippet,contentDetails,statistics,status,liveStreamingDetails', id: ids.join(','), maxResults: '50' }, guard);
     return body.items ?? [];
   }
 }

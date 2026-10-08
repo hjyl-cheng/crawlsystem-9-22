@@ -62,10 +62,10 @@ test('every Data API request waits for its quota permit, and a refused permit se
   const fetcher = (async (url: URL) => { requests += 1; return Response.json(url.pathname.endsWith('playlistItems')
     ? (url.searchParams.get('pageToken') ? { items: [] } : { items: [{ contentDetails: { videoId: 'a', videoPublishedAt: '2026-09-20T00:00:00Z' } }], nextPageToken: 'P2' })
     : { items: [] }); }) as unknown as typeof fetch;
-  const api = new DataApi('AIzaTEST_key_0123456789abcdef', fetcher), permit = async () => { permits += 1; };
+  const api = new DataApi('AIzaTEST_key_0123456789abcdef', fetcher), permit = { async permit() { permits += 1; return undefined; } };
   await api.channel('UCx', permit); await api.recentUploads('UUx', '2026-06-26T12:00:00.000Z', 30, permit); await api.videos(['a'], permit);
   assert.deepEqual([permits, requests], [4, 4], 'one permit per request, the second listing page included');
-  const refused = async () => { throw new Error('BUDGET_EXHAUSTED'); };
+  const refused = { async permit(): Promise<undefined> { throw new Error('BUDGET_EXHAUSTED'); } };
   await assert.rejects(api.channel('UCx', refused), /BUDGET_EXHAUSTED/);
   assert.equal(requests, 4, 'no request without a permit');
 });
@@ -80,4 +80,11 @@ test('incremental discovery stops at the newest known video, at the end of the u
   const many = Array.from({ length: 150 }, (_, i) => `x${i}`);
   const gap = await new DataApi(key, fetcherOf({ '': page(many.slice(0, 50), 'P2'), P2: page(many.slice(50, 100), 'P3'), P3: page(many.slice(100), 'P4') })).uploadsUntilAnchor('UUx', ['never-seen']);
   assert.deepEqual([gap.ids, gap.pages, gap.scanned, gap.stop_reason], [many.slice(0, 30), 2, 100, 'gap_abandoned_latest_30']);
+});
+test('a failed Data API request is reported with its permit and reason', async () => {
+  const failures: unknown[] = [];
+  const guard = { async permit() { return 'permit-1'; }, async failed(id: string | undefined, endpoint: string, error: DataApiError) { failures.push([id, endpoint, error.kind]); } };
+  const api = new DataApi('AIzaTEST_key_0123456789abcdef', (async () => Response.json({ error: { errors: [{ reason: 'quotaExceeded' }] } }, { status: 403 })) as unknown as typeof fetch);
+  await assert.rejects(api.channel('UCx', guard), (e: unknown) => e instanceof DataApiError && e.kind === 'quota');
+  assert.deepEqual(failures, [['permit-1', 'channels', 'quota']]);
 });

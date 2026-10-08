@@ -321,7 +321,8 @@ export const ConsoleAccountListSchema: z.ZodType<ConsoleAccountList> = z.strictO
 });
 export const pageSchema = <T extends z.ZodType>(item: T) => z.strictObject({ items: z.array(item).max(100), next_cursor: z.string().nullable() });
 export const ApiRoutes = {
-  updates: '/v1/updates', updatesSummary: '/v1/updates/summary', dataApiPermit: '/v1/data-api/permit',
+  updates: '/v1/updates', updatesSummary: '/v1/updates/summary', dataApiPermit: '/v1/data-api/permit', dataApiFailure: '/v1/data-api/failure', dataApiSummary: '/v1/data-api/summary',
+  agentTasks: '/v1/agent/tasks', agentSummary: '/v1/agent/summary',
   session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', consoleAccounts: '/v1/console/accounts', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', proxies: '/v1/proxies', proxyImport: '/v1/proxies/import', proxySync: '/v1/proxy-manager/sync', proxySources: '/v1/proxy-sources',
   proxySource: (id: string) => `/v1/proxy-sources/${encodeURIComponent(id)}`,
@@ -443,7 +444,22 @@ export const UpdateLimitsSchema = z.strictObject({
 export type UpdateLimits = z.infer<typeof UpdateLimitsSchema>;
 export const ChannelUpdateSchema = z.strictObject({ request_id: z.uuid(), expected_version: z.number().int().nonnegative(), domains: UniqueDomains.optional() });
 export type ChannelUpdate = z.infer<typeof ChannelUpdateSchema>;
-export const DataApiPermitRequestSchema = z.strictObject({ request_id: z.uuid(), plan_id: z.uuid(), execution_epoch: z.number().int().positive(), input_hash: Hash });
+/** Data API endpoints the Worker calls. */
+export const DATA_API_ENDPOINTS = ['channels', 'playlistItems', 'videos'] as const;
+export const DataApiPermitRequestSchema = z.strictObject({ request_id: z.uuid(), plan_id: z.uuid(), execution_epoch: z.number().int().positive(), input_hash: Hash,
+  endpoint: z.enum(DATA_API_ENDPOINTS).optional() });
+/** Why a permitted Data API request failed (the Worker's DataApiError kinds). */
+export const DATA_API_FAILURES = ['quota', 'forbidden', 'not_found', 'invalid', 'unavailable'] as const;
+export const DataApiFailureReportSchema = z.strictObject({ request_id: z.uuid(), plan_id: z.uuid(), execution_epoch: z.number().int().positive(), input_hash: Hash, reason: z.enum(DATA_API_FAILURES) });
+export const DataApiSummarySchema = z.strictObject({
+  observed_at: Timestamp, quota_day: z.iso.date(), reset_at: Timestamp, limit: Count, used_units: Count, reserved_units: Count,
+  /** The last 24 hours, oldest first. */
+  hourly: z.array(z.strictObject({ hour: Timestamp, calls: Count, failures: Count })).max(25),
+  endpoints: z.array(z.strictObject({ endpoint: z.string().max(40), calls: Count, failures: Count })).max(10),
+  failures_by_reason: z.array(z.strictObject({ reason: z.enum(DATA_API_FAILURES), count: Count })).max(5),
+  recent_failures: z.array(z.strictObject({ at: Timestamp, endpoint: z.string().max(40).nullable(), reason: z.enum(DATA_API_FAILURES), plan_id: z.uuid(), channel_id: IdSchema })).max(20),
+});
+export type DataApiSummary = z.infer<typeof DataApiSummarySchema>;
 export const DataApiPermitSchema = z.strictObject({ granted: z.boolean(), quota_day: z.iso.date(), reset_at: Timestamp, used_units: Count, limit: Count });
 export type DataApiPermit = z.infer<typeof DataApiPermitSchema>;
 export const UpdateStateSchema = z.enum(['scheduled', 'due', 'queued', 'running', 'completed', 'failed']);
@@ -461,3 +477,21 @@ export const UpdateSummarySchema = z.strictObject({
   waiting: z.array(z.strictObject({ reason: UpdateWaitSchema, channels: Count })).max(8),
 });
 export type UpdateSummary = z.infer<typeof UpdateSummarySchema>;
+
+/** Agent tasks: the AGENT domain of each real plan that requires it. */
+export const AgentTaskStateSchema = z.enum(['waiting', 'running', 'completed', 'failed']);
+export const AgentTaskSchema = z.strictObject({
+  plan_id: z.uuid(), channel_id: IdSchema, title: z.string().nullable(), country: z.string().nullable(),
+  /** first: the first collection; scheduled or manual: an update. */
+  trigger: z.enum(['first', 'scheduled', 'manual']), state: AgentTaskStateSchema,
+  /** Domains of the same plan the Agent waits for. */
+  waiting_on: z.array(DomainSchema).max(2), created_at: Timestamp, completed_at: Timestamp.nullable(), finished_at: Timestamp.nullable(),
+  message: z.string().max(1000).nullable(), error_code: ErrorCodeSchema.nullable(),
+  management_state: ManagementStateSchema.nullable(), management_version: Count, next_due_at: Timestamp.nullable(),
+});
+export type AgentTask = z.infer<typeof AgentTaskSchema>;
+export const AgentSummarySchema = z.strictObject({
+  observed_at: Timestamp, waiting: Count, running: Count, completed_24h: Count, failed_24h: Count, avg_seconds_24h: z.number().nonnegative().nullable(),
+  profiled_channels: Count, model_versions: z.array(z.strictObject({ model_version: z.string().max(400), channels: Count })).max(20),
+});
+export type AgentSummary = z.infer<typeof AgentSummarySchema>;
