@@ -15,7 +15,7 @@ const NOT_CONNECTED = '该功能尚未接入';
 type IpState = ProxyState;
 interface ProxiesView {
   kpis: { total: number; providers: number; groups: number; healthy: number; healthyRate: string; cooldown: number; failed: number; requests: string };
-  ips: { id: string; ip: string; port: number; region: string; provider: string; group: string; state: IpState; success: string; latency: string; requests: number; checked: string; node: string; server: string | null; enabled: boolean; version: number; retired: ProxyRetireReason | null }[];
+  ips: { id: string; ip: string; port: number; region: string; provider: string; group: string; state: IpState; success: string; latency: string; requests: number; checked: string; node: string; server: string | null; enabled: boolean; version: number; retired: ProxyRetireReason | null; insecure: boolean }[];
   states: { state: IpState; count: number }[];
   providers: { name: string; count: number }[];
   groups: { name: string; count: number; color: string }[];
@@ -40,7 +40,7 @@ function fromOverview(o: ProxyOverview): ProxiesView {
       cooldown: o.by_state.cooldown, failed: o.by_state.failed, requests: fmt(o.requests_today) },
     ips: o.items.map(p => ({ id: p.proxy_id, ip: p.host, port: p.port, region: p.country_code ?? '—', provider: p.provider, group: p.group, state: p.state,
       success: rate(p.requests_today, p.failures_today), latency: p.latency_ms === null ? '—' : `${p.latency_ms} ms`, requests: p.requests_today,
-      checked: p.observed_at ? ago(p.observed_at) : '—', node: p.server_id ?? '—', server: p.server_id, enabled: p.enabled, version: p.version, retired: p.retire_reason })),
+      checked: p.observed_at ? ago(p.observed_at) : '—', node: p.server_id ?? '—', server: p.server_id, enabled: p.enabled, version: p.version, retired: p.retire_reason, insecure: p.tls_insecure })),
     states: (Object.keys(stateMeta) as IpState[]).map(state => ({ state, count: o.by_state[state] })),
     providers: o.providers.map(p => ({ name: p.name, count: p.count })),
     groups: o.groups.map((g, i) => ({ name: g.name, count: g.count, color: palette[i % palette.length]! })),
@@ -88,12 +88,13 @@ function SourceForm({ servers, onDone }: { servers: string[]; onDone: () => void
   const { api } = useAuth();
   const [form, setForm] = useState({ name: '', url: '', protocol: 'socks5' as 'http' | 'https' | 'socks5', provider: '', group: '', country: '', interval: 60, misses: 3, concurrency: 2 });
   const [chosen, setChosen] = useState<string[]>([]), [busy, setBusy] = useState(false), [error, setError] = useState<ApiFailure>(), [done, setDone] = useState<string>();
+  const [insecure, setInsecure] = useState(false);
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [key]: ['interval', 'misses', 'concurrency'].includes(key) ? Number(e.target.value) : e.target.value });
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError(undefined);
     try {
       const source = await api.createProxySource({ name: form.name.trim(), url: form.url.trim(), protocol: form.protocol, provider: form.provider.trim(), group: form.group.trim(),
-        country_code: form.country.trim().toUpperCase() || null, interval_minutes: form.interval, retire_after_misses: form.misses, max_concurrency: form.concurrency, server_ids: chosen });
+        country_code: form.country.trim().toUpperCase() || null, interval_minutes: form.interval, retire_after_misses: form.misses, max_concurrency: form.concurrency, server_ids: chosen, allow_insecure_tls: insecure });
       setDone(`已添加“${source.name}”，后台将在 1 分钟内首次拉取。`); onDone();
     } catch (cause) { setError(cause instanceof ApiFailure ? cause : new ApiFailure('添加失败，请核对后重试')); }
     finally { setBusy(false); }
@@ -101,8 +102,9 @@ function SourceForm({ servers, onDone }: { servers: string[]; onDone: () => void
   return <form className="proxy-import" onSubmit={submit}>
     <div className="proxy-import-fields two">
       <label>名称<input aria-label="来源名称" required value={form.name} onChange={set('name')} disabled={busy}/></label>
-      <label>列表地址（HTTPS）<input aria-label="来源地址" required type="url" placeholder="https://…/socks5.txt" value={form.url} onChange={set('url')} disabled={busy}/></label>
+      <label>列表地址（HTTPS）<input aria-label="来源地址" required type="url" placeholder="https://…/socks5.txt 或 Clash 订阅" value={form.url} onChange={set('url')} disabled={busy}/></label>
     </div>
+    <small className="cell-note">支持每行一个代理的列表，或 Clash 订阅（只取其中不带账号密码的 http / https / socks5 节点）。</small>
     <div className="proxy-import-fields">
       <label>默认协议<select aria-label="默认协议" value={form.protocol} onChange={set('protocol')} disabled={busy}><option value="socks5">socks5</option><option value="http">http</option><option value="https">https</option></select></label>
       <label>服务商<input aria-label="来源服务商" required value={form.provider} onChange={set('provider')} disabled={busy}/></label>
@@ -114,6 +116,7 @@ function SourceForm({ servers, onDone }: { servers: string[]; onDone: () => void
     </div>
     <fieldset className="server-choice" disabled={busy}><legend>新 IP 自动平均分配到（不选则保持未绑定）</legend>
       {servers.length ? servers.map(server => <label key={server} className="checkbox-row"><input type="checkbox" checked={chosen.includes(server)} onChange={e => setChosen(e.target.checked ? [...chosen, server] : chosen.filter(s => s !== server))}/>{server}</label>) : <small>尚无运行 Worker 的服务器</small>}</fieldset>
+    <label className="checkbox-row"><input type="checkbox" aria-label="允许跳过代理证书检查" checked={insecure} onChange={e => setInsecure(e.target.checked)} disabled={busy}/>允许跳过代理证书检查（仅限列表标记了 skip-cert-verify、且不带账号密码的 HTTPS 代理；到 YouTube 的加密照常校验）</label>
     {error && <ErrorBox error={error}/>}{done && <div className="notice" role="status">{done}</div>}
     <div className="dialog-actions"><button className="button primary" disabled={busy}><Rss size={14}/>{busy ? '正在添加…' : '添加来源'}</button></div></form>;
 }
@@ -211,7 +214,7 @@ export default function Proxies() {
         <div className="list-tools ip-filters"><label className="list-search" htmlFor="ip-search"><Search size={13}/><input id="ip-search" placeholder="搜索 IP、分组、服务商…" value={query} onChange={e => setQuery(e.target.value)} disabled={!data}/></label>
           <select aria-label="全部状态" value={stateFilter} onChange={e => setStateFilter(e.target.value)} disabled={!data}><option value="">全部状态</option>{(Object.keys(stateMeta) as IpState[]).map(s => <option key={s} value={s}>{stateMeta[s].label}</option>)}</select></div>
         {data && data.ips.length ? <div className="table-scroll"><table><thead><tr><th>IP 地址</th><th className="num">端口</th><th>地区</th><th>服务商</th><th>分组</th><th>状态</th><th className="num">成功率</th><th className="num">响应时间</th><th className="num">今日请求</th><th>绑定节点</th><th>最后检测</th><th>操作</th></tr></thead>
-          <tbody>{ips!.map(ip => { const m = stateMeta[ip.state]; return <tr key={ip.id ?? `${ip.ip}:${ip.port}`}><td className="mono query-term">{ip.ip}</td><td className="num">{ip.port}</td><td>{ip.region}</td><td>{ip.provider}</td><td><span className="keyword-chip">{ip.group}</span></td>
+          <tbody>{ips!.map(ip => { const m = stateMeta[ip.state]; return <tr key={ip.id ?? `${ip.ip}:${ip.port}`}><td className="mono query-term">{ip.ip}{ip.insecure && <small className="cell-note" title="该 HTTPS 代理自身的证书未校验；不带凭据，经它到 YouTube 的加密照常校验">证书未校验</small>}</td><td className="num">{ip.port}</td><td>{ip.region}</td><td>{ip.provider}</td><td><span className="keyword-chip">{ip.group}</span></td>
             <td>{ip.retired ? <span className="status-chip slate" title={retiredNote[ip.retired]}><i/>{ip.retired === 'unhealthy' ? '已淘汰' : '已退役'}</span> : <span className={`status-chip ${m.tone}`}><i/>{m.label}</span>}</td><td className={`num ${ip.state === 'failed' ? 'text-red' : ''}`}>{ip.success}</td><td className="num">{ip.latency}</td><td className="num">{ip.requests ? fmt(ip.requests) : '—'}</td><td className="mono">{ip.node}</td><td>{ip.checked}</td><td className="row-actions">{operator ? <RowActions ip={ip} servers={servers} onDone={overview.refresh}/> : <><span title={NOT_CONNECTED}>检测</span><MoreHorizontal size={14}/></>}</td></tr>; })}</tbody></table></div>
           : <Empty title="尚无代理 IP">{operator ? '点击“添加 IP”导入代理。导入后绑定到服务器，由该节点的本地代理管理按并发与冷却使用。' : '尚未导入代理。'}</Empty>}
         <footer className="pager">{data ? <span>共 {fmt(data.kpis.total)} 条{data.ips.length < data.kpis.total ? `，列表显示前 ${fmt(data.ips.length)} 条（已退役和未绑定排在最后）` : ''}{ips && ips.length !== data.ips.length ? `，筛选后 ${fmt(ips.length)} 条` : ''}</span> : <span>—</span>}</footer></>}

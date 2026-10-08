@@ -155,6 +155,26 @@ test('a subscription offers an unhealthy endpoint again only after the quarantin
   const view = (await store.listSources(p.reader))[0]!;
   await store.updateSource(p.operator, source.source_id, { expected_version: view.version, enabled: false });
 });
+test('a Clash source imports credential-free entries; skip-cert-verify ones need the opt-in, and the node receives the flag', async () => {
+  const p = people();
+  const clash = (hosts: [string, string][]) => 'mixed-port: 7890\nproxies:\n' + hosts.map(([host, extra]) => `- name: ${host}\n  server: ${host}\n  port: 9002\n${extra}`).join('');
+  const insecure = '  type: http\n  tls: true\n  skip-cert-verify: true\n', socks = '  type: socks5\n', withAccount = '  type: http\n  username: shared\n  password: secret\n';
+  const body = clash([['192.0.2.60', insecure], ['192.0.2.61', socks], ['192.0.2.62', withAccount]]);
+  const refresh = async (sourceId: string, text: string) => { await pool.query('UPDATE m1.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [sourceId]); const c = await store.claimDueSource(120, p.operator.workspace_id); assert.ok(c); return store.applySourceFetch(c, { status: 'ok', body: text }); };
+  const strict = await store.createSource(p.operator, { name: 'clash strict', url: `https://lists.example.test/${randomUUID()}.yaml`, protocol: 'http', provider: 'Public', group: 'Clash', server_ids: ['a1'] });
+  assert.equal(strict.allow_insecure_tls, false);
+  assert.deepEqual(await refresh(strict.source_id, body), { added: 1, retired: 0, restored: 0, assigned: 1, count: 1 }, 'only the socks5 entry without the opt-in');
+  const open = await store.createSource(p.operator, { name: 'clash open', url: `https://lists.example.test/${randomUUID()}.yaml`, protocol: 'http', provider: 'Public', group: 'Clash', server_ids: ['a1'], allow_insecure_tls: true });
+  assert.equal(open.allow_insecure_tls, true);
+  assert.deepEqual(await refresh(open.source_id, body), { added: 1, retired: 0, restored: 0, assigned: 1, count: 2 }, 'the socks5 entry already belongs to the first source');
+  const items = Object.fromEntries((await store.overview(p.reader)).items.map(i => [i.host, i]));
+  assert.deepEqual(Object.keys(items).sort(), ['192.0.2.60', '192.0.2.61'], 'the entry with an account is never imported');
+  assert.equal(items['192.0.2.60']!.protocol, 'https'); assert.equal(items['192.0.2.60']!.tls_insecure, true); assert.equal(items['192.0.2.61']!.tls_insecure, false);
+  const assignments = Object.fromEntries((await store.sync(p.nodeA, report(1, []))).assignments.map(a => [a.host, a]));
+  assert.equal(assignments['192.0.2.60']!.tls_insecure, true); assert.equal(assignments['192.0.2.60']!.password, null); assert.equal(assignments['192.0.2.61']!.tls_insecure, false);
+  await assert.rejects(() => pool.query(`UPDATE m1.proxies SET username='u' WHERE workspace_id=$1 AND host='192.0.2.60'`, [p.operator.workspace_id]), /proxies_tls_insecure/, 'the schema keeps credentials off unverified hops');
+  for (const view of await store.listSources(p.reader)) await store.updateSource(p.operator, view.source_id, { expected_version: view.version, enabled: false });
+});
 test('a server holds at most 500 enabled proxies, so a sync always fits the contract', async () => {
   const p = people();
   await store.importProxies(p.operator, { entries: Array.from({ length: 500 }, (_, i) => entry(`10.77.${i >> 8}.${i & 255}`)) });

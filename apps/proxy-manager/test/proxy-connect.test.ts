@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, connect, type AddressInfo, type Server, type Socket } from 'node:net';
 import { createServer as createHttpServer } from 'node:http';
-import { classifyYoutubePage, connectViaProxy, probeYoutubeContent, ProxyConnectError } from '@crawlsystem/execution-client/proxy-connect';
+import { createServer as createTlsServer } from 'node:tls';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { classifyYoutubePage, connectViaProxy, httpsProxyTls, INSECURE_TLS_FRAGMENT, probeYoutubeContent, ProxyConnectError } from '@crawlsystem/execution-client/proxy-connect';
 
 // Servers are unref'd so lingering tunnels never keep the test process alive.
 const listen = (server: Server) => new Promise<number>(resolve => server.listen(0, '127.0.0.1', () => { server.unref(); resolve((server.address() as AddressInfo).port); }));
@@ -81,4 +86,31 @@ test('content probe loads the page through the proxy and reports blocks and dead
   assert.deepEqual(await via('/limited'), { ok: false, error: 'blocked_429', blocked: true });
   const dead = createServer(); const deadPort = await listen(dead); dead.close();
   assert.deepEqual(await probeYoutubeContent(`socks5://127.0.0.1:${deadPort}`, { url: `http://127.0.0.1:${sitePort}/ok`, timeoutMs: 5000 }), { ok: false, error: 'proxy_unreachable', blocked: false });
+});
+test('HTTPS proxy certificates are verified unless the URL is marked insecure and carries no credentials', () => {
+  assert.deepEqual(httpsProxyTls(new URL('https://198.51.100.7:9002')), { host: '198.51.100.7', rejectUnauthorized: true }, 'no SNI for an IP');
+  assert.deepEqual(httpsProxyTls(new URL(`https://198.51.100.7:9002${INSECURE_TLS_FRAGMENT}`)), { host: '198.51.100.7', rejectUnauthorized: false });
+  assert.deepEqual(httpsProxyTls(new URL(`https://u:p@198.51.100.7:9002${INSECURE_TLS_FRAGMENT}`)), { host: '198.51.100.7', rejectUnauthorized: true }, 'credentials never cross an unverified hop');
+  assert.deepEqual(httpsProxyTls(new URL('https://proxy.example.test:443#other')), { host: 'proxy.example.test', servername: 'proxy.example.test', rejectUnauthorized: true });
+});
+test('an HTTPS proxy with a self-signed certificate is reachable only through an insecure, credential-free URL', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'proxy-tls-'));
+  try { execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-days', '1', '-subj', '/CN=proxy.example.test',
+    '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'cert.pem')], { stdio: 'ignore' }); }
+  catch { rmSync(dir, { recursive: true, force: true }); return t.skip('openssl unavailable'); }
+  const proxy = createTlsServer({ key: readFileSync(join(dir, 'key.pem')), cert: readFileSync(join(dir, 'cert.pem')) }, client => {
+    client.once('data', head => {
+      const port = Number(/^CONNECT [^:]+:(\d+)/.exec(head.toString('latin1'))?.[1]);
+      const upstream = connect(port, '127.0.0.1', () => { client.write('HTTP/1.1 200 Connection established\r\n\r\n'); client.pipe(upstream).pipe(client); });
+    });
+  });
+  rmSync(dir, { recursive: true, force: true });
+  const proxyPort = await listen(proxy as unknown as Server), echoPort = await listen(echoServer());
+  const through = (url: string) => connectViaProxy(url, '127.0.0.1', echoPort, AbortSignal.timeout(5000));
+  await assert.rejects(through(`https://127.0.0.1:${proxyPort}`), (e: unknown) => e instanceof ProxyConnectError && e.kind === 'proxy_unreachable');
+  await assert.rejects(through(`https://u:p@127.0.0.1:${proxyPort}${INSECURE_TLS_FRAGMENT}`), (e: unknown) => e instanceof ProxyConnectError);
+  const socket = await through(`https://127.0.0.1:${proxyPort}${INSECURE_TLS_FRAGMENT}`);
+  const echoed = await new Promise<string>(resolve => { socket.once('data', d => resolve(d.toString())); socket.write('ping'); });
+  socket.destroy();
+  assert.equal(echoed, 'ping');
 });

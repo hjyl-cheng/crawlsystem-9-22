@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ProxyPool, proxyUrl, type Lease } from '../src/pool.ts';
 import type { ProxyAssignment } from '@crawlsystem/contracts';
 
-const assignment = (id: string, extra: Partial<ProxyAssignment> = {}): ProxyAssignment => ({ proxy_id: id, generation: 1, protocol: 'socks5', host: '192.0.2.1', port: 1080, username: null, password: null, kind: 'static', max_concurrency: 2, ...extra });
+const assignment = (id: string, extra: Partial<ProxyAssignment> = {}): ProxyAssignment => ({ proxy_id: id, generation: 1, protocol: 'socks5', host: '192.0.2.1', port: 1080, username: null, password: null, kind: 'static', max_concurrency: 2, tls_insecure: false, ...extra });
 const P1 = '00000000-0000-4000-8000-000000000001', P2 = '00000000-0000-4000-8000-000000000002';
 /** Two passing content probes in a row qualify a proxy for leasing (latency left unset). */
 const qualify = (pool: ProxyPool, id: string) => { pool.probed(id, true, null); pool.probed(id, true, null); };
@@ -64,6 +64,11 @@ test('reassignment (new generation) resets health; unobserved proxies are not re
   assert.deepEqual(pool.observations().map(o => [o.state, o.generation, o.latency_ms]), [['trial', 2, 250]], 'a new generation starts a new trial');
   pool.probed(P1, true, 240);
   assert.deepEqual(pool.observations().map(o => o.state), ['healthy']);
+});
+test('only a credential-free HTTPS assignment marked insecure gets the insecure fragment', () => {
+  assert.equal(proxyUrl(assignment('x', { protocol: 'https', port: 9002, tls_insecure: true })), 'https://192.0.2.1:9002#insecure-tls');
+  assert.equal(proxyUrl(assignment('x', { protocol: 'https', port: 9002, tls_insecure: true, username: 'u', password: 'p' })), 'https://u:p@192.0.2.1:9002');
+  assert.equal(proxyUrl(assignment('x', { protocol: 'socks5', tls_insecure: true })), 'socks5://192.0.2.1:1080');
 });
 test('proxy URLs carry encoded credentials and bracket IPv6 hosts', () => {
   assert.equal(proxyUrl(assignment('x', { protocol: 'http', username: 'a@b', password: 'p:w' })), 'http://a%40b:p%3Aw@192.0.2.1:1080');

@@ -1,4 +1,4 @@
-import { connect as tcpConnect, type Socket } from 'node:net';
+import { connect as tcpConnect, isIP, type Socket } from 'node:net';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
 import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
 
@@ -55,10 +55,23 @@ async function socks5(proxy: URL, host: string, port: number, signal: AbortSigna
   } catch (error) { socket.destroy(); throw error instanceof ProxyConnectError ? error : new ProxyConnectError('protocol', 'SOCKS5 handshake failed'); }
   finally { r.done(); signal.removeEventListener('abort', abort); }
 }
+/** Marks an HTTPS proxy URL whose own certificate is not verified (see httpsProxyTls). */
+export const INSECURE_TLS_FRAGMENT = '#insecure-tls';
+/**
+ * TLS options for the hop to an HTTPS proxy. Its certificate is verified unless the URL carries
+ * INSECURE_TLS_FRAGMENT and no credentials, so nothing secret crosses an unverified hop; the
+ * TLS to the target inside the tunnel is verified either way. IP hosts get no SNI.
+ */
+export function httpsProxyTls(proxy: URL): { host: string; servername?: string; rejectUnauthorized: boolean } {
+  const host = proxy.hostname.replace(/^\[|\]$/g, '');
+  const insecure = proxy.hash === INSECURE_TLS_FRAGMENT && !proxy.username && !proxy.password;
+  // `host` is what the certificate is checked against; SNI may only carry a name, never an IP.
+  return { host, ...(isIP(host) ? {} : { servername: host }), rejectUnauthorized: !insecure };
+}
 async function httpConnect(proxy: URL, host: string, port: number, signal: AbortSignal): Promise<Socket> {
   const raw = await openTcp(proxy.hostname.replace(/^\[|\]$/g, ''), Number(proxy.port), signal);
   const socket: Socket = proxy.protocol === 'https:' ? await new Promise<TLSSocket>((resolve, reject) => {
-    const tls = tlsConnect({ socket: raw, servername: proxy.hostname }, () => resolve(tls)); tls.once('error', () => reject(new ProxyConnectError('proxy_unreachable', 'Proxy TLS failed')));
+    const tls = tlsConnect({ socket: raw, ...httpsProxyTls(proxy) }, () => resolve(tls)); tls.once('error', () => reject(new ProxyConnectError('proxy_unreachable', 'Proxy TLS failed')));
   }) : raw;
   const abort = () => socket.destroy(new ProxyConnectError('timeout', 'CONNECT timed out'));
   signal.addEventListener('abort', abort, { once: true });

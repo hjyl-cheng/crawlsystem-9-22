@@ -88,7 +88,7 @@ export class ProxyStore {
     const state: ProxyState = !r.enabled ? 'disabled' : !r.server_id ? 'unassigned' : current ? r.observed_state : 'unknown';
     return { proxy_id: r.proxy_id, protocol: r.protocol, host: r.host, port: r.port, username: r.username, has_password: r.credential !== null,
       provider: r.provider, group: r.group_name, country_code: r.country_code, kind: r.kind, max_concurrency: r.max_concurrency, enabled: r.enabled, version: r.version,
-      server_id: r.server_id, source: r.source_name ?? null, retired: r.retired_at != null, retire_reason: r.retired_at != null ? r.retire_reason ?? 'source_missing' : null, state, cooldown_until: current ? iso(r.cooldown_until) : null, last_success_at: iso(r.last_success_at ?? null), last_failure_at: iso(r.last_failure_at ?? null),
+      server_id: r.server_id, source: r.source_name ?? null, retired: r.retired_at != null, retire_reason: r.retired_at != null ? r.retire_reason ?? 'source_missing' : null, tls_insecure: r.tls_insecure === true, state, cooldown_until: current ? iso(r.cooldown_until) : null, last_success_at: iso(r.last_success_at ?? null), last_failure_at: iso(r.last_failure_at ?? null),
       last_error: r.last_error ?? null, requests_today: Number(r.requests_today), failures_today: Number(r.failures_today), latency_ms: current ? r.latency_ms ?? null : null,
       observed_at: iso(r.observed_at ?? null), created_at: iso(r.created_at)!, updated_at: iso(r.updated_at)! };
   }
@@ -155,10 +155,10 @@ export class ProxyStore {
       // Assignment enforces the cap; the limit here only keeps a sync response within the contract.
       const lease = (await client.query(`UPDATE m1.proxies SET lease_expires_at=clock_timestamp()+($3*interval '1 second')
         WHERE (workspace_id, proxy_id) IN (SELECT workspace_id, proxy_id FROM m1.proxies WHERE workspace_id=$1 AND server_id=$2 AND enabled ORDER BY created_at, proxy_id LIMIT $4)
-        RETURNING proxy_id, generation, protocol, host, port, username, credential, kind, max_concurrency, lease_expires_at`, [principal.workspace_id, server, LEASE_SECONDS, MAX_PROXIES_PER_SERVER])).rows;
+        RETURNING proxy_id, generation, protocol, host, port, username, credential, kind, max_concurrency, tls_insecure, lease_expires_at`, [principal.workspace_id, server, LEASE_SECONDS, MAX_PROXIES_PER_SERVER])).rows;
       const expires = lease[0]?.lease_expires_at ?? (await client.query(`SELECT clock_timestamp()+($1*interval '1 second') AS t`, [LEASE_SECONDS])).rows[0]!.t;
       const assignments: ProxyAssignment[] = lease.map(r => ({ proxy_id: r.proxy_id, generation: Number(r.generation), protocol: r.protocol, host: r.host, port: r.port, username: r.username,
-        password: r.credential === null ? null : this.sealer().open(r.credential, context(principal.workspace_id, r.proxy_id)), kind: r.kind, max_concurrency: r.max_concurrency }));
+        password: r.credential === null ? null : this.sealer().open(r.credential, context(principal.workspace_id, r.proxy_id)), kind: r.kind, max_concurrency: r.max_concurrency, tls_insecure: r.tls_insecure === true }));
       return { server_id: server, lease_expires_at: iso(expires)!, assignments };
     });
   }
@@ -176,9 +176,9 @@ export class ProxyStore {
     const count = (await this.pool.query('SELECT count(*)::int AS n FROM m1.proxy_sources WHERE workspace_id=$1', [principal.workspace_id])).rows[0]!.n as number;
     if (count >= 50) throw new StoreError('BUDGET_EXHAUSTED', 'At most 50 proxy sources per workspace');
     try {
-      const row = (await this.pool.query(`INSERT INTO m1.proxy_sources(workspace_id,source_id,name,url,protocol,provider,group_name,country_code,kind,max_concurrency,interval_minutes,retire_after_misses,server_ids)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *, 0 AS active_proxies, 0 AS retired_proxies`, [principal.workspace_id, randomUUID(), input.name, input.url, input.protocol, input.provider,
-        input.group, input.country_code, input.kind, input.max_concurrency, input.interval_minutes, input.retire_after_misses, input.server_ids])).rows[0]!;
+      const row = (await this.pool.query(`INSERT INTO m1.proxy_sources(workspace_id,source_id,name,url,protocol,provider,group_name,country_code,kind,max_concurrency,interval_minutes,retire_after_misses,server_ids,allow_insecure_tls)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *, 0 AS active_proxies, 0 AS retired_proxies`, [principal.workspace_id, randomUUID(), input.name, input.url, input.protocol, input.provider,
+        input.group, input.country_code, input.kind, input.max_concurrency, input.interval_minutes, input.retire_after_misses, input.server_ids, input.allow_insecure_tls])).rows[0]!;
       return sourceView(row);
     } catch (error) {
       if ((error as { code?: string }).code === '23505') throw new StoreError('CONFLICT', 'This source URL is already registered');
@@ -219,14 +219,17 @@ export class ProxyStore {
       if (result.status === 'error') { await finish('error', { error: result.error.slice(0, 200), retryMinutes: Math.min(10, source.interval_minutes) }); return { added: 0, retired: 0, restored: 0, assigned: 0, count: 0 }; }
       if (result.status === 'not_modified') { await finish('not_modified', {}); return { added: 0, retired: 0, restored: 0, assigned: 0, count: source.last_count ?? 0 }; }
       const parsed = parseProxyList(result.body, source.protocol);
-      if (!parsed.entries.length) { await finish('error', { error: `No valid endpoints (${parsed.invalid} invalid lines)`, retryMinutes: Math.min(10, source.interval_minutes) }); return { added: 0, retired: 0, restored: 0, assigned: 0, count: 0 }; }
+      // Endpoints that need their certificate check skipped are used only if the source opted in.
+      const listed = parsed.entries.filter(e => !e.tls_insecure || source.allow_insecure_tls);
+      const skipped = parsed.skipped + parsed.entries.length - listed.length;
+      if (!listed.length) { await finish('error', { error: `No usable endpoints (${parsed.invalid} invalid, ${skipped} skipped)`, retryMinutes: Math.min(10, source.interval_minutes) }); return { added: 0, retired: 0, restored: 0, assigned: 0, count: 0 }; }
       const all = (await client.query(`SELECT proxy_id, protocol, lower(host) AS host, port, coalesce(username,'') AS username, source_id, enabled, retired_at, source_misses,
           retire_reason='unhealthy' AND retired_at > clock_timestamp()-($2*interval '1 hour') AS quarantined FROM m1.proxies WHERE workspace_id=$1`, [claim.workspace_id, UNHEALTHY_QUARANTINE_HOURS])).rows;
       const key = (e: { protocol: string; host: string; port: number; username: string | null }) => `${e.protocol}|${e.host.toLowerCase()}|${e.port}|${e.username ?? ''}`;
       const byKey = new Map(all.map(r => [key(r), r]));
       const seen = new Set<string>();
       let added = 0, restored = 0, retired = 0, total = all.length;
-      for (const entry of parsed.entries) {
+      for (const entry of listed) {
         const k = key(entry), existing = byKey.get(k);
         seen.add(k);
         if (existing) {
@@ -237,9 +240,9 @@ export class ProxyStore {
         }
         if (total >= INVENTORY_LIMIT) break;
         const proxyId = randomUUID();
-        await client.query(`INSERT INTO m1.proxies(workspace_id,proxy_id,protocol,host,port,username,credential,provider,group_name,country_code,kind,max_concurrency,source_id)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [claim.workspace_id, proxyId, entry.protocol, entry.host, entry.port, entry.username,
-          entry.password === null ? null : this.sealer().seal(entry.password, context(claim.workspace_id, proxyId)), source.provider, source.group_name, source.country_code, source.kind, source.max_concurrency, claim.source_id]);
+        await client.query(`INSERT INTO m1.proxies(workspace_id,proxy_id,protocol,host,port,username,credential,provider,group_name,country_code,kind,max_concurrency,source_id,tls_insecure)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, [claim.workspace_id, proxyId, entry.protocol, entry.host, entry.port, entry.username,
+          entry.password === null ? null : this.sealer().seal(entry.password, context(claim.workspace_id, proxyId)), source.provider, source.group_name, source.country_code, source.kind, source.max_concurrency, claim.source_id, entry.tls_insecure]);
         added++; total++;
       }
       for (const row of all.filter(r => r.source_id === claim.source_id && !seen.has(key(r)))) {
@@ -262,8 +265,8 @@ export class ProxyStore {
           load.set(server, load.get(server)! + 1); assigned++;
         }
       }
-      await finish('ok', { count: parsed.entries.length, added, retired, etag: result.etag ?? null });
-      return { added, retired, restored, assigned, count: parsed.entries.length };
+      await finish('ok', { count: listed.length, added, retired, etag: result.etag ?? null });
+      return { added, retired, restored, assigned, count: listed.length };
     });
   }
 }
@@ -272,26 +275,102 @@ export interface SourceClaim { workspace_id: string; source_id: string; url: str
 export type SourceFetchResult = { status: 'ok'; body: string; etag?: string | null } | { status: 'not_modified' } | { status: 'error'; error: string };
 function sourceView(r: QueryResultRow): ProxySourceView {
   return { source_id: r.source_id, name: r.name, url: r.url, protocol: r.protocol, provider: r.provider, group: r.group_name, country_code: r.country_code, kind: r.kind,
-    max_concurrency: r.max_concurrency, interval_minutes: r.interval_minutes, retire_after_misses: r.retire_after_misses, server_ids: r.server_ids, enabled: r.enabled, version: r.version,
+    max_concurrency: r.max_concurrency, interval_minutes: r.interval_minutes, retire_after_misses: r.retire_after_misses, server_ids: r.server_ids, allow_insecure_tls: r.allow_insecure_tls === true, enabled: r.enabled, version: r.version,
     next_fetch_at: iso(r.next_fetch_at)!, last_fetched_at: iso(r.last_fetched_at ?? null), last_status: r.last_status ?? null, last_error: r.last_error ?? null,
     last_count: r.last_count ?? null, last_added: r.last_added ?? null, last_retired: r.last_retired ?? null, active_proxies: Number(r.active_proxies ?? 0), retired_proxies: Number(r.retired_proxies ?? 0) };
 }
-/** Lines: host:port, or scheme://[user:pass@]host:port; blanks and # comments ignored. Duplicates collapse. */
-export function parseProxyList(body: string, protocol: 'http' | 'https' | 'socks5'): { entries: { protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null }[]; invalid: number } {
-  const entries = new Map<string, { protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null }>();
-  let invalid = 0;
+type ListedProxy = { protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null; tls_insecure: boolean };
+const HOST_PATTERN = /^[A-Za-z0-9.:\[\]-]{1,253}$/;
+/**
+ * A subscription body: a Clash/Mihomo config (its `proxies:` list) or plain lines of host:port or
+ * scheme://[user:pass@]host:port (blanks and # comments ignored). Duplicates collapse; `skipped`
+ * counts Clash entries of other protocols or with credentials (public lists carry shared
+ * accounts, which are not imported).
+ */
+export function parseProxyList(body: string, protocol: 'http' | 'https' | 'socks5'): { entries: ListedProxy[]; invalid: number; skipped: number } {
+  const entries = new Map<string, ListedProxy>();
+  const add = (entry: ListedProxy) => entries.set(`${entry.protocol}|${entry.host.toLowerCase()}|${entry.port}|${entry.username ?? ''}`, entry);
+  let invalid = 0, skipped = 0;
+  const clash = clashProxies(body);
+  if (clash) {
+    for (const item of clash) {
+      const type = item.type?.toLowerCase(), port = Number(item.port), host = item.server ?? '';
+      if (type !== 'http' && type !== 'socks5') { skipped++; continue; }
+      if (item.username || item.password) { skipped++; continue; }
+      if (!HOST_PATTERN.test(host) || !Number.isInteger(port) || port < 1 || port > 65535) { invalid++; continue; }
+      const tls = type === 'http' && isTrue(item.tls);
+      add({ protocol: tls ? 'https' : type, host, port, username: null, password: null, tls_insecure: tls && isTrue(item['skip-cert-verify']) });
+    }
+    return { entries: [...entries.values()], invalid, skipped };
+  }
   for (const raw of body.split(/\r?\n/).slice(0, 20_000)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
     try {
       const url = new URL(line.includes('://') ? line : `${protocol}://${line}`);
       const scheme = url.protocol.slice(0, -1), port = Number(url.port);
-      if (!['http', 'https', 'socks5'].includes(scheme) || !Number.isInteger(port) || port < 1 || port > 65535 || !/^[A-Za-z0-9.:\[\]-]{1,253}$/.test(url.hostname) || url.pathname.length > 1) { invalid++; continue; }
-      const entry = { protocol: scheme as 'http', host: url.hostname, port, username: url.username ? decodeURIComponent(url.username) : null, password: url.password ? decodeURIComponent(url.password) : null };
-      entries.set(`${entry.protocol}|${entry.host.toLowerCase()}|${port}|${entry.username ?? ''}`, entry);
+      if (!['http', 'https', 'socks5'].includes(scheme) || !Number.isInteger(port) || port < 1 || port > 65535 || !HOST_PATTERN.test(url.hostname) || url.pathname.length > 1) { invalid++; continue; }
+      add({ protocol: scheme as 'http', host: url.hostname, port, username: url.username ? decodeURIComponent(url.username) : null, password: url.password ? decodeURIComponent(url.password) : null, tls_insecure: false });
     } catch { invalid++; }
   }
-  return { entries: [...entries.values()], invalid };
+  return { entries: [...entries.values()], invalid, skipped };
+}
+const isTrue = (value: string | undefined) => value !== undefined && /^(true|yes|on)$/i.test(value);
+/**
+ * The scalar fields of each item in a Clash config's top-level `proxies:` list, block or flow
+ * style; null when the body has no such list. Nested maps (ws-opts, plugin-opts, …) are not
+ * descended into; only the item's own keys are read. Enough for proxy lists, not a YAML parser.
+ */
+function clashProxies(body: string): Record<string, string>[] | null {
+  const lines = body.split(/\r?\n/).slice(0, 200_000);
+  const start = lines.findIndex(l => /^proxies:\s*(#.*)?$/.test(l));
+  if (start < 0) return null;
+  const items: Record<string, string>[] = [];
+  let item: Record<string, string> | null = null, dashIndent = -1, keyIndent = -1;
+  for (const raw of lines.slice(start + 1)) {
+    const text = raw.trimEnd();
+    if (!text.trim() || text.trim().startsWith('#')) continue;
+    const indent = text.length - text.trimStart().length;
+    if (indent === 0 && !text.startsWith('-')) break; // next top-level key
+    const dash = /^(\s*)-\s+(.*)$/.exec(text) ?? /^(\s*)-$/.exec(text);
+    if (dash && (dashIndent < 0 || dash[1]!.length === dashIndent)) {
+      dashIndent = dash[1]!.length; item = {}; items.push(item);
+      const rest = dash[2] ?? '';
+      keyIndent = text.length - rest.length;
+      if (rest.startsWith('{')) Object.assign(item, flowMap(rest));
+      else if (rest) assignScalar(item, rest);
+      continue;
+    }
+    if (item && keyIndent < 0) keyIndent = indent;
+    if (item && indent === keyIndent) assignScalar(item, text.trim());
+  }
+  return items;
+}
+function assignScalar(target: Record<string, string>, text: string) {
+  const m = /^([A-Za-z0-9_-]+):(?:\s+(.*))?$/.exec(text);
+  if (!m || m[2] === undefined || /^(null|Null|NULL|~)(\s+#.*)?$/.test(m[2].trim())) return; // YAML null: no value
+  target[m[1]!] = unquote(m[2]);
+}
+function unquote(value: string): string {
+  const v = value.trim();
+  if (v.startsWith('"') || v.startsWith("'")) { const end = v.indexOf(v[0]!, 1); return end > 0 ? v.slice(1, end) : v.slice(1); }
+  return v.replace(/\s+#.*$/, '').trim();
+}
+/** `{a: 1, b: "x, y", c: {d: 2}}` → top-level scalars only. */
+function flowMap(text: string): Record<string, string> {
+  const inner = text.slice(1, text.lastIndexOf('}') > 0 ? text.lastIndexOf('}') : undefined), out: Record<string, string> = {};
+  let depth = 0, quote = '', part = '';
+  const flush = () => { if (depth === 0) assignScalar(out, part.trim()); part = ''; };
+  for (const ch of inner) {
+    if (quote) { if (ch === quote) quote = ''; part += ch; continue; }
+    if (ch === '"' || ch === "'") { quote = ch; part += ch; continue; }
+    if (ch === '{' || ch === '[') depth++;
+    if (ch === '}' || ch === ']') depth--;
+    if (ch === ',' && depth === 0) { flush(); continue; }
+    part += ch;
+  }
+  flush();
+  return out;
 }
 /** A server may hold at most MAX_PROXIES_PER_SERVER enabled endpoints (checked after the change, inside its transaction). */
 async function assertServerCapacity(client: PoolClient, workspaceId: string, proxyId: string): Promise<void> {

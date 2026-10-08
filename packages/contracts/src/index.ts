@@ -294,7 +294,7 @@ export type ProxyRetireReason = 'source_missing' | 'unhealthy';
 export interface ProxyView {
   proxy_id: string; protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; has_password: boolean;
   provider: string; group: string; country_code: string | null; kind: 'static' | 'rotating'; max_concurrency: number; enabled: boolean; version: number;
-  server_id: string | null; source: string | null; retired: boolean; retire_reason: ProxyRetireReason | null; state: ProxyState; cooldown_until: string | null; last_success_at: string | null; last_failure_at: string | null; last_error: string | null;
+  server_id: string | null; source: string | null; retired: boolean; retire_reason: ProxyRetireReason | null; tls_insecure: boolean; state: ProxyState; cooldown_until: string | null; last_success_at: string | null; last_failure_at: string | null; last_error: string | null;
   requests_today: number; failures_today: number; latency_ms: number | null; observed_at: string | null; created_at: string; updated_at: string;
 }
 export interface ProxyOverview {
@@ -307,7 +307,7 @@ const NullableTime = Timestamp.nullable();
 export const ProxyViewSchema: z.ZodType<ProxyView> = z.strictObject({
   proxy_id: z.uuid(), protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: z.number().int(), username: z.string().nullable(), has_password: z.boolean(),
   provider: z.string(), group: z.string(), country_code: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int(), enabled: z.boolean(), version: z.number().int().positive(),
-  server_id: IdSchema.nullable(), source: z.string().nullable(), retired: z.boolean(), retire_reason: z.enum(['source_missing', 'unhealthy']).nullable(), state: ProxyStateSchema, cooldown_until: NullableTime, last_success_at: NullableTime, last_failure_at: NullableTime, last_error: z.string().max(120).nullable(),
+  server_id: IdSchema.nullable(), source: z.string().nullable(), retired: z.boolean(), retire_reason: z.enum(['source_missing', 'unhealthy']).nullable(), tls_insecure: z.boolean(), state: ProxyStateSchema, cooldown_until: NullableTime, last_success_at: NullableTime, last_failure_at: NullableTime, last_error: z.string().max(120).nullable(),
   requests_today: z.number().int().nonnegative(), failures_today: z.number().int().nonnegative(), latency_ms: z.number().int().nonnegative().nullable(), observed_at: NullableTime, created_at: Timestamp, updated_at: Timestamp,
 });
 const Tally = z.number().int().nonnegative();
@@ -333,11 +333,12 @@ export const ProxySyncRequestSchema = z.strictObject({
   observed_at: Timestamp, observations: z.array(ProxyObservationSchema).max(MAX_PROXIES_PER_SERVER),
 });
 export type ProxySyncRequest = z.infer<typeof ProxySyncRequestSchema>;
-export interface ProxyAssignment { proxy_id: string; generation: number; protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null; kind: 'static' | 'rotating'; max_concurrency: number; }
+/** `tls_insecure`: an HTTPS proxy whose own certificate is not verified (only credential-free endpoints; the tunnelled TLS to the target is always verified). */
+export interface ProxyAssignment { proxy_id: string; generation: number; protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null; kind: 'static' | 'rotating'; max_concurrency: number; tls_insecure: boolean; }
 export interface ProxySyncResponse { server_id: string; lease_expires_at: string; assignments: ProxyAssignment[]; }
 export const ProxySyncResponseSchema: z.ZodType<ProxySyncResponse> = z.strictObject({ server_id: IdSchema, lease_expires_at: Timestamp, assignments: z.array(z.strictObject({
   proxy_id: z.uuid(), generation: z.number().int().nonnegative(), protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: z.number().int(), username: z.string().nullable(),
-  password: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int() })).max(MAX_PROXIES_PER_SERVER) });
+  password: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int(), tls_insecure: z.boolean() })).max(MAX_PROXIES_PER_SERVER) });
 /** Subscription source: an HTTPS URL listing endpoints (host:port or scheme://[user:pass@]host:port per line), refreshed on a schedule. */
 const SourceFields = {
   name: GroupName, url: z.url().max(2048).refine(u => u.startsWith('https://'), 'HTTPS only'),
@@ -345,6 +346,8 @@ const SourceFields = {
   kind: z.enum(['static', 'rotating']).default('static'), max_concurrency: z.number().int().min(1).max(64).default(2),
   interval_minutes: z.number().int().min(10).max(1440).default(60), retire_after_misses: z.number().int().min(1).max(20).default(3),
   server_ids: z.array(IdSchema).max(20).default([]),
+  // Opt-in: HTTPS proxies the list marks skip-cert-verify (Clash) are used without verifying the proxy's own certificate.
+  allow_insecure_tls: z.boolean().default(false),
 };
 export const ProxySourceCreateSchema = z.strictObject(SourceFields);
 export type ProxySourceCreate = z.input<typeof ProxySourceCreateSchema>;
@@ -352,13 +355,13 @@ export const ProxySourceUpdateSchema = z.strictObject({ expected_version: z.numb
   interval_minutes: SourceFields.interval_minutes.unwrap().optional(), server_ids: z.array(IdSchema).max(20).optional(), refresh_now: z.literal(true).optional() });
 export interface ProxySourceView {
   source_id: string; name: string; url: string; protocol: 'http' | 'https' | 'socks5'; provider: string; group: string; country_code: string | null; kind: 'static' | 'rotating';
-  max_concurrency: number; interval_minutes: number; retire_after_misses: number; server_ids: string[]; enabled: boolean; version: number;
+  max_concurrency: number; interval_minutes: number; retire_after_misses: number; server_ids: string[]; allow_insecure_tls: boolean; enabled: boolean; version: number;
   next_fetch_at: string; last_fetched_at: string | null; last_status: 'ok' | 'not_modified' | 'error' | null; last_error: string | null;
   last_count: number | null; last_added: number | null; last_retired: number | null; active_proxies: number; retired_proxies: number;
 }
 export const ProxySourceViewSchema: z.ZodType<ProxySourceView> = z.strictObject({
   source_id: z.uuid(), name: z.string(), url: z.string(), protocol: z.enum(['http', 'https', 'socks5']), provider: z.string(), group: z.string(), country_code: z.string().nullable(), kind: z.enum(['static', 'rotating']),
-  max_concurrency: z.number().int(), interval_minutes: z.number().int(), retire_after_misses: z.number().int(), server_ids: z.array(IdSchema), enabled: z.boolean(), version: z.number().int().positive(),
+  max_concurrency: z.number().int(), interval_minutes: z.number().int(), retire_after_misses: z.number().int(), server_ids: z.array(IdSchema), allow_insecure_tls: z.boolean(), enabled: z.boolean(), version: z.number().int().positive(),
   next_fetch_at: Timestamp, last_fetched_at: NullableTime, last_status: z.enum(['ok', 'not_modified', 'error']).nullable(), last_error: z.string().nullable(),
   last_count: z.number().int().nullable(), last_added: z.number().int().nullable(), last_retired: z.number().int().nullable(), active_proxies: Tally, retired_proxies: Tally,
 });
