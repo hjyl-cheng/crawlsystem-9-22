@@ -29,7 +29,7 @@ export function channelFixture(plan: Plan, managed = false) {
     policy_version: 'v16-rule-7', retry_at: null, reasons, last_success_at: timestamp, last_attempt_at: timestamp, last_plan_id: plan.plan_id, override_days: null });
   const management = managed ? { state: 'managed', version: 3, changed_at: timestamp, clocks: [
     clock('ABOUT', 1, 1, ['about_baseline', 'about_cold_start_cadence_1d']), clock('VIDEO', 3, 3, ['active_irregular_channel', 'automatic_video_min_interval']),
-    clock('AGENT', 180, 188, ['agent_semantic_baseline', 'agent_forward_load_spread'])], auto_domains: ['ABOUT'] } : { state: null, version: 0, changed_at: null, clocks: [], auto_domains: ['ABOUT'] };
+    clock('AGENT', 180, 188, ['agent_semantic_baseline', 'agent_forward_load_spread'])], auto_domains: ['ABOUT', 'VIDEO'] } : { state: null, version: 0, changed_at: null, clocks: [], auto_domains: ['ABOUT', 'VIDEO'] };
   return ChannelDetailSchema.parse({ channel_id: fixtureChannel.channel_id, title: fixtureChannel.title, source_mode: managed ? 'youtube' : 'fixture', updated_at: timestamp, latest_plan_id: plan.plan_id, about: fixtureChannel, videos: [fixtureVideo], agent: null, latest_plan: plan, management });
 }
 /** A managed channel whose About is due and waits for Data API quota. */

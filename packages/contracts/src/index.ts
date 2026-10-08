@@ -137,6 +137,10 @@ const YoutubeFrozenSchema = z.strictObject({
   plan_kind: z.literal('UPDATE').optional(),
   /** Existing videos frozen at creation for an Agent-only update. */
   agent_video_ids: z.array(YoutubeVideoIdSchema).max(100).optional(),
+  /** Incremental Video (UPDATE): the newest known videos, newest first; the upload scan stops at the first one it meets. */
+  discovery_anchor_ids: z.array(YoutubeVideoIdSchema).max(20).optional(),
+  /** Incremental Video (UPDATE): recent known videos whose counts are re-read, chosen at creation as the legacy planner does. */
+  recent_sampling: z.strictObject({ video_ids: z.array(YoutubeVideoIdSchema).max(50), stale_ratio: z.number().min(0).max(1), candidate_count: z.number().int().nonnegative() }).optional(),
   required_domains: UniqueDomains, scope: z.strictObject({ video_limit: z.number().int().min(1).max(100), max_age_days: z.number().int().min(1).max(3650),
     comments_per_video: z.number().int().min(0).max(100), comment_sort: z.literal('TOP_COMMENTS') }),
   reference_time: Timestamp, deadline_at: Timestamp, max_attempts: z.number().int().min(1).max(10),
@@ -152,6 +156,24 @@ export const VideoTargetManifestSchema = z.strictObject({
   window_start: Timestamp, exhausted: z.boolean(), source: z.string().min(1).max(120),
 }).refine(m => new Set(m.video_ids).size === m.video_ids.length, 'duplicate video targets');
 export type VideoTargetManifest = z.infer<typeof VideoTargetManifestSchema>;
+/** Discovery stop reasons: an anchor met, the upload list ended, or the catch-up limit hit and only the newest 30 kept. */
+export const DISCOVERY_STOP_REASONS = ['anchor_matched', 'list_end', 'gap_abandoned_latest_30'] as const;
+/** Incremental Video (UPDATE): the uploads newer than the first anchor met; they become the plan's video targets. */
+export const VideoDiscoveryManifestSchema = z.strictObject({
+  kind: z.literal('discovery'), channel_id: IdSchema, video_ids: z.array(YoutubeVideoIdSchema).max(30), listed_at: Timestamp,
+  scanned_count: z.number().int().nonnegative().max(1000), pages: z.number().int().nonnegative().max(100),
+  matched_anchor_id: YoutubeVideoIdSchema.nullable(), stop_reason: z.enum(DISCOVERY_STOP_REASONS), source: z.string().min(1).max(120),
+}).refine(m => new Set(m.video_ids).size === m.video_ids.length, 'duplicate video targets')
+  .refine(m => (m.stop_reason === 'anchor_matched') === (m.matched_anchor_id !== null), 'anchor match disagrees with stop reason');
+export type VideoDiscoveryManifest = z.infer<typeof VideoDiscoveryManifestSchema>;
+const SampleCount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable();
+/** Incremental Video (UPDATE): current counts of the frozen recent videos; ones the API no longer returns are missing. */
+export const VideoSamplesSchema = z.strictObject({
+  kind: z.literal('samples'), observed_at: Timestamp, source: z.string().min(1).max(120),
+  items: z.array(z.strictObject({ video_id: YoutubeVideoIdSchema, view_count: SampleCount, like_count: SampleCount, comment_count: SampleCount })).max(50),
+  missing_video_ids: z.array(YoutubeVideoIdSchema).max(50),
+}).refine(s => { const ids = [...s.items.map(i => i.video_id), ...s.missing_video_ids]; return new Set(ids).size === ids.length; }, 'duplicate sampled videos');
+export type VideoSamples = z.infer<typeof VideoSamplesSchema>;
 export const VideoBatchSchema = z.strictObject({ kind: z.literal('videos'), items: z.array(VideoItemSchema).max(10) })
   .refine(b => new Set(b.items.map(i => i.source_content_id)).size === b.items.length, 'duplicate video identities');
 /** Agent input snapshot: this plan's channel facts and available target videos, as stored now. */
@@ -160,7 +182,7 @@ export const AgentInputSchema: z.ZodType<AgentInput> = z.strictObject({ plan_id:
 const SubmissionCommon = { schema_version: z.literal(CONTRACT_VERSION), submission_id: z.uuid(), plan_id: z.uuid(), execution_epoch: z.number().int().positive(), input_hash: Hash, logical_batch_key: IdSchema, domain_complete: z.boolean(), payload_hash: Hash };
 export const SubmissionSchema = z.discriminatedUnion('domain', [
   z.strictObject({ ...SubmissionCommon, domain: z.literal('ABOUT'), payload: ChannelFactsSchema }),
-  z.strictObject({ ...SubmissionCommon, domain: z.literal('VIDEO'), payload: z.union([VideoTargetManifestSchema, VideoBatchSchema]) }),
+  z.strictObject({ ...SubmissionCommon, domain: z.literal('VIDEO'), payload: z.union([VideoTargetManifestSchema, VideoDiscoveryManifestSchema, VideoBatchSchema, VideoSamplesSchema]) }),
   z.strictObject({ ...SubmissionCommon, domain: z.literal('AGENT'), payload: AgentResultSchema }),
 ]);
 export type Submission = z.infer<typeof SubmissionSchema>;
@@ -411,8 +433,8 @@ export const ProxySourceViewSchema: z.ZodType<ProxySourceView> = z.strictObject(
 
 export const UpdateLimitsSchema = z.strictObject({
   enabled: z.boolean().default(true),
-  /** Domains the scheduler updates by itself (M3-D5: About only until incremental Video and Agent updates exist); any domain can still be updated manually. */
-  auto_domains: z.array(DomainSchema).max(3).refine(a => new Set(a).size === a.length, 'duplicate domains').default(['ABOUT']),
+  /** Domains the scheduler updates by itself (M3-D5: About and, since incremental updates, Video; Agent after step 5); any domain can still be updated manually. */
+  auto_domains: z.array(DomainSchema).max(3).refine(a => new Set(a).size === a.length, 'duplicate domains').default(['ABOUT', 'VIDEO']),
   max_active_plans: z.number().int().min(1).max(100).default(2),
   max_agent_plans: z.number().int().min(1).max(100).default(1),
   daily_plan_limit: z.number().int().min(1).max(100000).default(100),

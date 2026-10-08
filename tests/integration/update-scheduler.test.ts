@@ -131,17 +131,17 @@ test('manual updates require operator/version checks and replay one identity wit
   await reject(() => t.store.updateChannel(t.op, item.channel, { ...command, request_id: randomUUID() }), 'CONFLICT');
 });
 
-test('by default only About is updated by itself; other due parts wait for a manual update', async () => {
+test('by default About and Video are updated by themselves; a due Agent waits for a manual update', async () => {
   const t = setup(), now = new Date();
-  const both = await seed(t, ['ABOUT', 'VIDEO', 'AGENT'], now), videoOnly = await seed(t, ['VIDEO'], now);
+  const all = await seed(t, ['ABOUT', 'VIDEO', 'AGENT'], now), agentOnly = await seed(t, ['AGENT'], now);
   const plans = await t.store.scheduleUpdates(t.op.workspace_id, now);
-  assert.deepEqual(plans.map(p => [p.channel_id, p.required_domains]), [[both.channel, ['ABOUT']]], 'About alone, never Video or Agent');
-  const waiting = (await t.store.updates(t.reader)).page.items.find(c => c.channel_id === videoOnly.channel)!;
-  assert.deepEqual([waiting.state, waiting.waiting_reason, waiting.due_domains], ['due', 'manual_only', ['VIDEO']]);
-  assert.deepEqual((await t.store.getChannel(t.reader, videoOnly.channel)).management.auto_domains, ['ABOUT']);
-  const version = (await t.store.getChannel(t.reader, videoOnly.channel)).management.version;
-  const manual = await t.store.updateChannel(t.op, videoOnly.channel, { request_id: randomUUID(), expected_version: version });
-  assert.deepEqual(manual.required_domains, ['VIDEO'], 'a manual update takes what is due');
+  assert.deepEqual(plans.map(p => [p.channel_id, p.required_domains]), [[all.channel, ['ABOUT', 'VIDEO']]], 'never the Agent');
+  const waiting = (await t.store.updates(t.reader)).page.items.find(c => c.channel_id === agentOnly.channel)!;
+  assert.deepEqual([waiting.state, waiting.waiting_reason, waiting.due_domains], ['due', 'manual_only', ['AGENT']]);
+  assert.deepEqual((await t.store.getChannel(t.reader, agentOnly.channel)).management.auto_domains, ['ABOUT', 'VIDEO']);
+  const version = (await t.store.getChannel(t.reader, agentOnly.channel)).management.version;
+  const manual = await t.store.updateChannel(t.op, agentOnly.channel, { request_id: randomUUID(), expected_version: version });
+  assert.deepEqual(manual.required_domains, ['AGENT'], 'a manual update takes what is due');
   const off = setup({ enabled: false });
-  assert.deepEqual((await off.store.getChannel(t.reader, both.channel)).management.auto_domains, [], 'nothing is automatic while the scheduler is off');
+  assert.deepEqual((await off.store.getChannel(t.reader, all.channel)).management.auto_domains, [], 'nothing is automatic while the scheduler is off');
 });

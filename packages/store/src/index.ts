@@ -3,14 +3,15 @@ import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import { CONTRACT_VERSION, WORKER_STALE_SECONDS, TraceparentSchema, FrozenInputSchema, YoutubeVideoIdSchema, isVideoUnavailable, type AgentInput, type VideoItem, SubmissionSchema, CreatePlanSchema, CancelPlanSchema, HeartbeatSchema, ExecutionEventSchema,
   type Principal, type Role, type ErrorCode, type Plan, type PlanInput, type PlanDetail, type Domain, type DomainResult, type FrozenInput, type CreatePlan, type Submission, type Receipt,
   type Page, type Completeness, type PlansSummary, type PlanStatus, type ChannelSummary, type ChannelListItem, type ChannelDetail, type Worker, type Heartbeat, type ExecutionEvent, type StoredEvent, type WorkflowInput, type SourceMode,
-  ChannelManagementCommandSchema, ChannelClockOverrideSchema, CLOCK_NAMES, type AgentResult, type ChannelFacts, type ChannelManagement, type ClockName } from '@crawlsystem/contracts';
+  ChannelManagementCommandSchema, ChannelClockOverrideSchema, CLOCK_NAMES, type AgentResult, type ChannelFacts, type ChannelManagement, type ClockName, type VideoFacts, type VideoSamples } from '@crawlsystem/contracts';
 import { agentInputHash, contentHash, submissionHash } from '@crawlsystem/contracts/hash';
 import { createFrozenFixture } from '@crawlsystem/contracts/fixtures';
 import { instantFromDate, type ClockKind, type Observation } from '@crawlsystem/feature-clock';
-import { aboutObservation, agentObservation, applyObservations, loadClocks, videoObservation, writeClocks, type ClockActivity } from './feature-clocks.ts';
+import { aboutObservation, agentObservation, applyObservations, loadClocks, videoObservation, writeClocks, type ClockActivity, type SamplingResult } from './feature-clocks.ts';
 import { UpdateLimitsSchema, ChannelUpdateSchema, DataApiPermitRequestSchema, type UpdateLimits, type DataApiPermit } from '@crawlsystem/contracts';
 import { apiBudget, estimateApiUnits, releaseApiReservation, schedulerState } from './update-budget.ts';
 import { readUpdates } from './update-view.ts';
+import { nextChangeProbability, planRecentSampling, RECENT_SAMPLING } from './recent-sampling.ts';
 
 export class StoreError extends Error {
   constructor(public code: ErrorCode, message: string, public status = 409, public retryable = false) { super(message); }
@@ -27,6 +28,8 @@ export function toPlan(row: QueryResultRow): Plan {
 }
 function page<T>(rows: T[], limit: number, offset: number): Page<T> { return { items: rows.slice(0, limit), next_cursor: rows.length > limit ? String(offset + limit) : null }; }
 const terminal = (status: string) => ['COMPLETED','CANCELLED','FAILED'].includes(status);
+/** A count the source resolved (exact or estimated), else null. */
+const resolvedCount = (metric: { value: number | null; status: string }) => ['exact', 'estimated'].includes(metric.status) ? metric.value : null;
 export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; trace_context?: string; }
 
 export class Store {
@@ -171,10 +174,11 @@ export class Store {
     const ids = domains.includes('AGENT') && !domains.includes('VIDEO') ? (await client.query(`SELECT video_id FROM m1.videos
       WHERE workspace_id=$1 AND channel_id=$2 AND NOT coalesce((data->>'unavailable')::boolean,false)
       ORDER BY data->>'published_at' DESC NULLS LAST,video_id LIMIT $3`, [workspace, channelId, previous.scope.video_limit])).rows.map(r => r.video_id as string) : undefined;
+    const incremental = domains.includes('VIDEO') ? await this.incrementalVideoInput(client, workspace, channelId, now) : {};
     const deadline = new Date(now.getTime() + 120 * 60_000).toISOString();
     const frozen = FrozenInputSchema.parse({ schema_version: CONTRACT_VERSION, source_mode: 'youtube', plan_kind: 'UPDATE', channel_id: channelId,
       required_domains: domains, scope: previous.scope, reference_time: now.toISOString(), deadline_at: deadline, max_attempts: 3,
-      ...(ids ? { agent_video_ids: ids } : {}) });
+      ...(ids ? { agent_video_ids: ids } : {}), ...incremental });
     const id = randomUUID(), dueAt = due.length ? new Date(Math.min(...due.map(k => new Date(k.due_at).getTime()))) : now;
     const row = (await client.query(`INSERT INTO m1.plans(plan_id,run_id,workspace_id,request_id,request_hash,channel_id,source_mode,fixture_id,
       required_domains,status,frozen_input,input_hash,workflow_id,deadline_at,plan_kind,update_trigger,update_due_at,created_at,updated_at)
@@ -190,6 +194,66 @@ export class Store {
       await client.query('INSERT INTO m1.plan_api_reservations(plan_id,workspace_id,quota_day,remaining) VALUES($1,$2,$3,$4)', [id, workspace, budget.day, units]);
     }
     return toPlan(row);
+  }
+  /**
+   * Re-read counts of the frozen recent videos (legacy applyRecentSampling): each stored video takes the new
+   * counts, its change probability learns from the difference, and the plan records what changed for the clocks.
+   */
+  private async applySamples(client: PoolClient, workspace: string, row: QueryResultRow, frozen: FrozenInput, samples: VideoSamples, submissionId: string, targets: string[] | null): Promise<void> {
+    const planned = frozen.source_mode === 'youtube' ? frozen.recent_sampling?.video_ids ?? null : null;
+    if (planned === null) throw new StoreError('TARGET_MISMATCH','Recent videos are re-read only by incremental updates');
+    if (!targets) throw new StoreError('TARGET_MISMATCH','Discover new videos before re-reading recent ones');
+    const reported = [...samples.items.map(i => i.video_id), ...samples.missing_video_ids];
+    if (reported.length !== planned.length || reported.some(id => !planned.includes(id))) throw new StoreError('TARGET_MISMATCH','Re-read videos differ from the frozen ones');
+    if ((await client.query('SELECT 1 FROM m1.plan_video_samples WHERE plan_id=$1',[row.plan_id])).rowCount) throw new StoreError('CONFLICT','Recent videos were already re-read for this plan');
+    const stored = new Map((await client.query('SELECT video_id,data,change_probability FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND video_id=ANY($3::text[]) FOR UPDATE',
+      [workspace, row.channel_id, planned])).rows.map(r => [r.video_id as string, r]));
+    const facts = { selected_count: planned.length, success_count: 0, failure_count: samples.missing_video_ids.length, comparable_view_count: 0, view_changed_count: 0, view_delta_total: 0, engagement_changed_count: 0 };
+    for (const item of samples.items) {
+      const current = stored.get(item.video_id);
+      if (!current || isVideoUnavailable(current.data as VideoItem)) { facts.failure_count += 1; continue; }
+      const data = current.data as VideoFacts;
+      const before = { view_count: resolvedCount(data.view_count), like_count: resolvedCount(data.like_count), comment_count: resolvedCount(data.comment_count) };
+      const after = { view_count: item.view_count, like_count: item.like_count, comment_count: data.comments_disabled ? before.comment_count : item.comment_count };
+      facts.success_count += 1;
+      if (before.view_count !== null && after.view_count !== null) {
+        facts.comparable_view_count += 1;
+        facts.view_delta_total += after.view_count - before.view_count;
+        if (after.view_count !== before.view_count) facts.view_changed_count += 1;
+      }
+      if ((before.like_count !== null && after.like_count !== null && before.like_count !== after.like_count)
+        || (before.comment_count !== null && after.comment_count !== null && before.comment_count !== after.comment_count)) facts.engagement_changed_count += 1;
+      const metric = (value: number | null, previous: VideoFacts['view_count']) => value === null ? previous : { value, status: 'exact' as const, source: samples.source, observed_at: samples.observed_at };
+      const next: VideoFacts = { ...data, view_count: metric(after.view_count, data.view_count), like_count: metric(after.like_count, data.like_count), comment_count: metric(after.comment_count, data.comment_count) };
+      await client.query('UPDATE m1.videos SET data=$4,stats_observed_at=$5,change_probability=$6,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2 AND video_id=$3',
+        [workspace, row.channel_id, item.video_id, next, samples.observed_at, nextChangeProbability(before, after, current.change_probability)]);
+    }
+    await client.query('INSERT INTO m1.plan_video_samples(plan_id,submission_id,facts) VALUES($1,$2,$3)', [row.plan_id, submissionId, facts]);
+  }
+  /** Discovery stop reason and Recent Sampling counts of an incremental update; undefined for a first collection. */
+  private async incrementalVideoResult(client: PoolClient, plan: QueryResultRow, at: Date): Promise<{ stop_reason: string; sampling: SamplingResult } | undefined> {
+    const frozen = plan.frozen_input as FrozenInput;
+    if (frozen.source_mode !== 'youtube' || frozen.plan_kind !== 'UPDATE') return undefined;
+    const manifest = (await client.query('SELECT manifest FROM m1.plan_video_targets WHERE plan_id=$1',[plan.plan_id])).rows[0]?.manifest;
+    const facts = (await client.query('SELECT facts FROM m1.plan_video_samples WHERE plan_id=$1',[plan.plan_id])).rows[0]?.facts
+      ?? { selected_count: 0, success_count: 0, failure_count: 0, comparable_view_count: 0, view_changed_count: 0, view_delta_total: 0, engagement_changed_count: 0 };
+    // The recent pool after this run: known videos published in the last 30 days (legacy recent_count).
+    const recent = (await client.query(`SELECT count(*)::int AS n FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND NOT coalesce((data->>'unavailable')::boolean,false)
+      AND (data->>'published_at')::timestamptz >= ($3::date - $4::int)::timestamp AT TIME ZONE 'UTC'`,[plan.workspace_id,plan.channel_id,at.toISOString().slice(0,10),RECENT_SAMPLING.recentWindowDays])).rows[0]!.n as number;
+    return { stop_reason: manifest?.stop_reason ?? 'anchor_matched', sampling: { ...facts, recent_count: recent, stale_ratio: frozen.recent_sampling?.stale_ratio ?? 0 } };
+  }
+  /**
+   * What an incremental Video update freezes (legacy loadDiscoveryAnchors and Recent Sampling): the 20 newest
+   * known videos as discovery anchors, and the recent known videos the legacy planner picks for a re-read.
+   */
+  private async incrementalVideoInput(client: PoolClient, workspace: string, channelId: string, now: Date) {
+    const known = `FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND NOT coalesce((data->>'unavailable')::boolean,false) AND data->>'published_at' IS NOT NULL`;
+    const anchors = (await client.query(`SELECT video_id ${known} ORDER BY (data->>'published_at')::timestamptz DESC,video_id LIMIT 20`, [workspace, channelId])).rows.map(r => r.video_id as string);
+    const recent = (await client.query(`SELECT video_id,(data->>'published_at')::timestamptz AS published_at,coalesce(stats_observed_at,(data->>'observed_at')::timestamptz) AS stats_observed_at,change_probability
+      ${known} AND (data->>'published_at')::timestamptz >= ($3::date - $4::int)::timestamp AT TIME ZONE 'UTC'`, [workspace, channelId, now.toISOString().slice(0, 10), RECENT_SAMPLING.recentWindowDays])).rows;
+    const plan = planRecentSampling(recent.map(r => ({ video_id: r.video_id, published_at: new Date(r.published_at).getTime(),
+      stats_observed_at: r.stats_observed_at ? new Date(r.stats_observed_at).getTime() : null, change_probability: r.change_probability })), now.getTime());
+    return { discovery_anchor_ids: anchors, recent_sampling: { video_ids: plan.video_ids, stale_ratio: plan.stale_ratio, candidate_count: plan.candidate_count } };
   }
   /** One idempotent permit per actual external API request, shared by all Worker replicas. */
   async dataApiPermit(principal: Principal, raw: unknown, now = new Date()): Promise<DataApiPermit> {
@@ -286,15 +350,29 @@ export class Store {
         expected = [row.channel_id];
       } else if (input.domain === 'VIDEO') {
         const targets = await this.videoTargets(client,row);
+        const incremental = frozen.source_mode === 'youtube' && frozen.plan_kind === 'UPDATE';
         if (input.payload.kind === 'targets') {
           const manifest = input.payload;
           if (frozen.source_mode !== 'youtube') throw new StoreError('TARGET_MISMATCH','Fixture targets are frozen at creation');
+          if (incremental) throw new StoreError('TARGET_MISMATCH','An update discovers new videos instead of listing a window');
           if (targets) throw new StoreError('CONFLICT','Video targets are already frozen for this plan');
           const windowStart = new Date(Date.parse(frozen.reference_time) - frozen.scope.max_age_days * 86_400_000).toISOString();
           if (manifest.channel_id !== row.channel_id || manifest.video_ids.length > frozen.scope.video_limit || manifest.window_start !== windowStart
             || manifest.video_ids.some(id => !YoutubeVideoIdSchema.safeParse(id).success)) throw new StoreError('TARGET_MISMATCH','Target manifest is outside the frozen scope');
           await client.query('INSERT INTO m1.plan_video_targets(plan_id,submission_id,manifest) VALUES($1,$2,$3)',[input.plan_id,input.submission_id,manifest]);
           expected = manifest.video_ids;
+        } else if (input.payload.kind === 'discovery') {
+          // Incremental discovery: the uploads above the first anchor met become this plan's targets.
+          const manifest = input.payload, anchors = frozen.source_mode === 'youtube' ? frozen.discovery_anchor_ids ?? [] : [];
+          if (!incremental) throw new StoreError('TARGET_MISMATCH','Discovery belongs to incremental updates');
+          if (targets) throw new StoreError('CONFLICT','Video targets are already frozen for this plan');
+          if (manifest.channel_id !== row.channel_id || (manifest.matched_anchor_id !== null && !anchors.includes(manifest.matched_anchor_id))
+            || manifest.video_ids.some(id => anchors.includes(id))) throw new StoreError('TARGET_MISMATCH','Discovery is outside the frozen anchors');
+          await client.query('INSERT INTO m1.plan_video_targets(plan_id,submission_id,manifest) VALUES($1,$2,$3)',[input.plan_id,input.submission_id,manifest]);
+          expected = manifest.video_ids;
+        } else if (input.payload.kind === 'samples') {
+          await this.applySamples(client, principal.workspace_id, row, frozen, input.payload, input.submission_id, targets);
+          expected = targets ?? [];
         } else {
           if (!targets) throw new StoreError('TARGET_MISMATCH','Video targets must be frozen before video results');
           for (const video of input.payload.items) {
@@ -323,6 +401,10 @@ export class Store {
         const items = await client.query('SELECT item_id FROM m1.plan_items WHERE plan_id=$1 AND domain=$2',[input.plan_id,input.domain]);
         const applied = new Set(items.rows.map(r => r.item_id));
         if (expected.some(id => !applied.has(id))) throw new StoreError('DOMAIN_INCOMPLETE','Required frozen targets are missing');
+        // An incremental Video update is complete only once its recent videos were re-read too.
+        const sampled = frozen.source_mode === 'youtube' && (frozen.recent_sampling?.video_ids.length ?? 0) > 0;
+        if (input.domain === 'VIDEO' && sampled && !(await client.query('SELECT 1 FROM m1.plan_video_samples WHERE plan_id=$1',[input.plan_id])).rowCount)
+          throw new StoreError('DOMAIN_INCOMPLETE','Recent videos have not been re-read');
         await client.query("UPDATE m1.domains SET state='APPLIED',completed_at=clock_timestamp() WHERE plan_id=$1 AND domain=$2",[input.plan_id,input.domain]);
       }
       const now = (await client.query('SELECT clock_timestamp() AS now')).rows[0]!.now as Date;
@@ -538,7 +620,7 @@ export class Store {
           WHERE i.plan_id=$1 AND i.domain='VIDEO' AND NOT EXISTS (SELECT 1 FROM m1.plan_items e JOIN m1.plans p ON p.plan_id=e.plan_id
             WHERE e.domain='VIDEO' AND e.item_id=i.item_id AND p.workspace_id=$2 AND p.channel_id=$3 AND p.source_revision<$4)
           ORDER BY i.item_id`,[plan.plan_id,plan.workspace_id,plan.channel_id,plan.source_revision])).rows.map(r => r.data as VideoItem);
-        observations.push(videoObservation(instantFromDate(at),firstSeen));
+        observations.push(videoObservation(instantFromDate(at),firstSeen,await this.incrementalVideoResult(client,plan,at)));
       }
       activity.succeeded[kind] = at;
     }
@@ -558,8 +640,12 @@ export class Store {
   /** Current facts of this plan's channel and available target videos, in target order. */
   private async agentSnapshot(client: PoolClient | Pool, row: QueryResultRow): Promise<AgentInput> {
     const frozen = row.frozen_input as FrozenInput;
-    const targets = frozen.source_mode === 'youtube' && !frozen.required_domains.includes('VIDEO')
-      ? frozen.agent_video_ids ?? [] : await this.videoTargets(client,row) ?? [];
+    // An update's Video targets are only its new videos; its Agent reads the newest stored videos, as a first collection does.
+    const targets = frozen.source_mode === 'youtube' && !frozen.required_domains.includes('VIDEO') ? frozen.agent_video_ids ?? []
+      : frozen.source_mode === 'youtube' && frozen.plan_kind === 'UPDATE' ? (await client.query(`SELECT video_id FROM m1.videos
+          WHERE workspace_id=$1 AND channel_id=$2 AND NOT coalesce((data->>'unavailable')::boolean,false)
+          ORDER BY (data->>'published_at')::timestamptz DESC NULLS LAST,video_id LIMIT $3`,[row.workspace_id,row.channel_id,frozen.scope.video_limit])).rows.map(r => r.video_id as string)
+      : await this.videoTargets(client,row) ?? [];
     const channel = (await client.query('SELECT about FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2',[row.workspace_id,row.channel_id])).rows[0];
     if (!channel?.about) throw new StoreError('DOMAIN_INCOMPLETE','Channel facts are missing');
     const rows = await client.query('SELECT video_id,data FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND video_id=ANY($3::text[])',[row.workspace_id,row.channel_id,targets]);

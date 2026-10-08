@@ -44,22 +44,31 @@ export function aboutObservation(about: ChannelFacts): Observation {
   } };
 }
 
+/** What an incremental update's Recent Sampling found (m1.plan_video_samples plus the pool at settlement). */
+export interface SamplingResult {
+  recent_count: number; stale_ratio: number; selected_count: number; success_count: number; failure_count: number;
+  comparable_view_count: number; view_changed_count: number; engagement_changed_count: number;
+}
+
 /**
- * A Video run as legacy Discovery: the videos it saw for the first time. Recent Sampling (re-reading
- * known videos' counts) arrives with M3 step 3; until then it is skipped, which the legacy policy
- * answers by bringing the Video clock back within 7 days.
+ * A Video run as legacy observation: Discovery is the videos seen for the first time. An incremental
+ * update also re-read recent videos (Recent Sampling); a first collection did not, which the legacy
+ * policy answers as a skipped phase (the Video clock comes back within 7 days).
  */
-export function videoObservation(observedAt: Instant, firstSeen: readonly VideoItem[]): Observation {
-  return { kind: 'video', observed_at: observedAt, outcome: 'partial', facts: {
-    discovery_outcome: 'complete',
-    discovery: {
-      first_seen: firstSeen.map(video => ({ published_at: isVideoUnavailable(video) || video.published_at === null ? null : parseInstant(video.published_at) })),
-      first_seen_count: firstSeen.length,
-      detail_success_count: firstSeen.filter(video => !isVideoUnavailable(video)).length,
-      stop_reason: 'frozen_manifest',
-    },
-    recent_sampling_outcome: 'skipped',
-    recent_sampling: null,
+export function videoObservation(observedAt: Instant, firstSeen: readonly VideoItem[], update?: { stop_reason: string; sampling: SamplingResult }): Observation {
+  const discovery = {
+    first_seen: firstSeen.map(video => ({ published_at: isVideoUnavailable(video) || video.published_at === null ? null : parseInstant(video.published_at) })),
+    first_seen_count: firstSeen.length,
+    detail_success_count: firstSeen.filter(video => !isVideoUnavailable(video)).length,
+    stop_reason: update?.stop_reason ?? 'frozen_manifest',
+  };
+  if (!update) return { kind: 'video', observed_at: observedAt, outcome: 'partial', facts: { discovery_outcome: 'complete', discovery, recent_sampling_outcome: 'skipped', recent_sampling: null } };
+  const s = update.sampling;
+  const sampling = s.failure_count === 0 ? 'complete' : s.success_count > 0 ? 'partial' : 'failed';
+  return { kind: 'video', observed_at: observedAt, outcome: sampling === 'complete' ? 'complete' : 'partial', facts: {
+    discovery_outcome: 'complete', discovery, recent_sampling_outcome: sampling,
+    recent_sampling: { recent_count: s.recent_count, stale_ratio: s.stale_ratio, selected_count: s.selected_count, success_count: s.success_count,
+      comparable_view_count: s.comparable_view_count, view_changed_count: s.view_changed_count, engagement_changed_count: s.engagement_changed_count },
   } };
 }
 

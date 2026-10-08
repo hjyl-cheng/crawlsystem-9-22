@@ -19,7 +19,7 @@ case "${1:-}" in
   lockfile) command=(npm install --package-lock-only --ignore-scripts --offline --no-audit --no-fund) ;;
   install) command=(npm ci --offline --no-audit --no-fund) ;;
   typecheck) heap_mib=800; command=(node node_modules/typescript/bin/tsc --noEmit) ;;
-  unit) command=(node --import tsx --test --test-concurrency=1 packages/contracts/test/*.test.ts packages/feature-clock/test/*.test.ts packages/http/test/*.test.ts apps/control-api/test/*.test.ts apps/console/tests/*.test.ts packages/execution-client/test/*.test.ts apps/execution-worker/test/*.test.ts apps/proxy-manager/test/*.test.ts) ;;
+  unit) command=(node --import tsx --test --test-concurrency=1 packages/contracts/test/*.test.ts packages/feature-clock/test/*.test.ts packages/store/test/*.test.ts packages/http/test/*.test.ts apps/control-api/test/*.test.ts apps/console/tests/*.test.ts packages/execution-client/test/*.test.ts apps/execution-worker/test/*.test.ts apps/proxy-manager/test/*.test.ts) ;;
   execution-build) command=(npm run build:execution) ;;
   images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts) ;;
   execution-temporal) command=(npm run test:temporal) ;;

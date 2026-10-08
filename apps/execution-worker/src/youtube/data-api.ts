@@ -7,6 +7,9 @@ export class DataApiError extends Error {
   constructor(readonly kind: 'quota' | 'forbidden' | 'not_found' | 'invalid' | 'unavailable', readonly reason: string) { super(`Data API ${kind}: ${reason}`); this.name = 'DataApiError'; }
   get retryable() { return this.kind === 'unavailable'; }
 }
+/** Legacy discovery bounds: a first page and a catch-up of 50 items; without an anchor, keep the newest 30. */
+const DISCOVERY_SCAN_LIMIT = 100, DISCOVERY_GAP_KEEP = 30;
+export interface UploadDiscovery { ids: string[]; pages: number; scanned: number; matched_anchor_id: string | null; stop_reason: 'anchor_matched' | 'list_end' | 'gap_abandoned_latest_30' }
 export class DataApi {
   units = 0;
   constructor(private key: string, private fetcher: typeof fetch = fetch, private base = 'https://www.googleapis.com/youtube/v3') {
@@ -52,6 +55,30 @@ export class DataApi {
       page = body.nextPageToken;
     }
     return { ids, exhausted: false };
+  }
+  /**
+   * Incremental discovery (legacy incremental scan): uploads newest first until the first known anchor.
+   * Up to a first page plus a catch-up of 50 items; past that without an anchor only the newest 30 are
+   * kept (gap_abandoned_latest_30). Items without a publish time (private) are skipped.
+   */
+  async uploadsUntilAnchor(uploadsPlaylist: string, anchorIds: readonly string[], beforeRequest?: () => Promise<void>): Promise<UploadDiscovery> {
+    const anchors = new Set(anchorIds), ids: string[] = [];
+    let page: string | undefined, pages = 0;
+    while (ids.length < DISCOVERY_SCAN_LIMIT) {
+      const body = await this.get<{ items?: { contentDetails: { videoId: string; videoPublishedAt?: string } }[]; nextPageToken?: string }>('playlistItems',
+        { part: 'contentDetails', playlistId: uploadsPlaylist, maxResults: '50', ...(page ? { pageToken: page } : {}) }, beforeRequest);
+      pages += 1;
+      for (const item of body.items ?? []) {
+        const id = item.contentDetails.videoId;
+        if (anchors.has(id)) return { ids, pages, scanned: ids.length, matched_anchor_id: id, stop_reason: 'anchor_matched' };
+        if (!item.contentDetails.videoPublishedAt || ids.includes(id)) continue;
+        ids.push(id);
+        if (ids.length >= DISCOVERY_SCAN_LIMIT) break;
+      }
+      if (!body.nextPageToken) return { ids, pages, scanned: ids.length, matched_anchor_id: null, stop_reason: 'list_end' };
+      page = body.nextPageToken;
+    }
+    return { ids: ids.slice(0, DISCOVERY_GAP_KEEP), pages, scanned: ids.length, matched_anchor_id: null, stop_reason: 'gap_abandoned_latest_30' };
   }
   async videos(ids: string[], beforeRequest?: () => Promise<void>): Promise<ApiVideo[]> {
     if (!ids.length) return [];

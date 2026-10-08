@@ -87,6 +87,8 @@ export function createActivities(options: ActivityOptions) {
     return { ...body, payload_hash: submissionHash(body as never) } as Submission;
   };
   const youtube = () => { if (!options.youtube) throw new ExecutionApiError('DEPENDENCY_NOT_IMPLEMENTED', false); return options.youtube; };
+  /** An incremental update ends its Video domain with the recent-video re-read when it has videos to re-read. */
+  const resamples = (input: YoutubeFrozenInput) => input.plan_kind === 'UPDATE' && (input.recent_sampling?.video_ids.length ?? 0) > 0;
   const youtubeInput = (value: PlanInput): YoutubeFrozenInput => { if (value.input.source_mode !== 'youtube') throw new ExecutionApiError('INPUT_MISMATCH', false); return value.input; };
   /** Run scraping work through a leased proxy, waiting (visibly, within the deadline) while this node has none free. */
   async function withProxy<T>(ref: WorkflowInput, scope: TraceScope, deadline: number, work: (fetcher: typeof fetch) => Promise<T>): Promise<T> {
@@ -149,6 +151,16 @@ export function createActivities(options: ActivityOptions) {
         let value = await read(ref, scope, descriptor.deadlineAt);
         const input = youtubeInput(value);
         if (!input.required_domains.includes('VIDEO') || terminal(value.plan.status)) return { batches: 0, status: value.plan.status };
+        if (!value.video_targets && input.plan_kind === 'UPDATE') {
+          // Incremental update: only uploads above the newest known videos (legacy discovery anchors).
+          const found = await youtube().dataApi.uploadsUntilAnchor(`UU${input.channel_id.slice(2)}`, input.discovery_anchor_ids ?? [], permit(ref, scope, descriptor.deadlineAt));
+          const manifest = { kind: 'discovery', channel_id: input.channel_id, video_ids: found.ids, listed_at: new Date().toISOString(), scanned_count: found.scanned,
+            pages: found.pages, matched_anchor_id: found.matched_anchor_id, stop_reason: found.stop_reason, source: 'data_api:playlistItems' };
+          await submitOnce(ref, value, submissionOf(ref, 'VIDEO', 'video:discovery', manifest, found.ids.length === 0 && !resamples(input)), descriptor.deadlineAt);
+          const how = { anchor_matched: 'reached the newest known video', list_end: 'reached the end of the uploads', gap_abandoned_latest_30: 'too many new uploads; kept the newest 30' }[found.stop_reason];
+          await event(ref, scope, 'PROGRESS', 'DISCOVERY', `Found ${found.ids.length} new videos (${how})`, 'VIDEO');
+          value = await read(ref, scope, descriptor.deadlineAt);
+        }
         if (!value.video_targets) {
           const windowStart = new Date(Date.parse(input.reference_time) - input.scope.max_age_days * 86_400_000).toISOString();
           const listed = await youtube().dataApi.recentUploads(`UU${input.channel_id.slice(2)}`, windowStart, input.scope.video_limit, permit(ref, scope, descriptor.deadlineAt));
@@ -183,9 +195,28 @@ export function createActivities(options: ActivityOptions) {
           }
           return out;
         });
-        const receipt = await submitOnce(ref, value, submissionOf(ref, 'VIDEO', key, { kind: 'videos', items }, last), descriptor.deadlineAt);
+        const receipt = await submitOnce(ref, value, submissionOf(ref, 'VIDEO', key, { kind: 'videos', items }, last && !resamples(input)), descriptor.deadlineAt);
         const missing = items.filter(i => 'unavailable' in i).length;
         await event(ref, scope, 'PROGRESS', 'VIDEO', `Batch ${index + 1}/${Math.ceil(targets.length / VIDEO_BATCH)}: ${items.length - missing} videos${missing ? `, ${missing} unavailable` : ''}; receipt=${receipt?.submission_id ?? 'existing'}`, 'VIDEO');
+        return { status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
+      });
+    },
+    /** Incremental update: re-read the frozen recent videos' counts from the Data API (no proxy; comments are not re-read). */
+    async sampleRecentVideos(ref: WorkflowInput, descriptor: ExecutionDescriptor): Promise<{ status: PlanStatus }> {
+      return collect(ref, 'SAMPLING', async scope => {
+        const value = await read(ref, scope, descriptor.deadlineAt), input = youtubeInput(value), key = 'video:samples';
+        const ids = input.recent_sampling?.video_ids ?? [];
+        if (terminal(value.plan.status) || !input.required_domains.includes('VIDEO') || !ids.length || value.receipts.some(r => r.logical_batch_key === key)) return { status: value.plan.status };
+        const observed = new Date().toISOString();
+        const byId = new Map((await youtube().dataApi.videos(ids, permit(ref, scope, descriptor.deadlineAt))).map(v => [v.id, v]));
+        const count = (text?: string) => text !== undefined && /^\d+$/.test(text) ? Number(text) : null;
+        const items = ids.filter(id => byId.get(id)?.snippet.channelId === input.channel_id).map(id => {
+          const stats = byId.get(id)!.statistics ?? {};
+          return { video_id: id, view_count: count(stats.viewCount), like_count: count(stats.likeCount), comment_count: count(stats.commentCount) };
+        });
+        const missing = ids.filter(id => !items.some(item => item.video_id === id));
+        const receipt = await submitOnce(ref, value, submissionOf(ref, 'VIDEO', key, { kind: 'samples', observed_at: observed, source: 'data_api:videos', items, missing_video_ids: missing }, true), descriptor.deadlineAt);
+        await event(ref, scope, 'PROGRESS', 'SAMPLING', `Re-read ${items.length} recent videos${missing.length ? `, ${missing.length} no longer available` : ''}; receipt=${receipt?.submission_id ?? 'existing'}`, 'VIDEO');
         return { status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
       });
     },

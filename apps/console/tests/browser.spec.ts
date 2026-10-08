@@ -383,7 +383,7 @@ test('the update policy shows each next update with an automatic interval choice
     const rows = panel.locator('.clock-rows li');
     await expect(rows).toHaveCount(3);
     await expect(rows.locator('.clock-name')).toHaveText(['频道资料', '视频与评论', 'Agent 画像']);
-    await expect(panel.getByText('到时间后系统会自动更新频道资料；视频与评论、Agent 画像暂不自动更新，需要时在“更新采集”页点“立即更新”。')).toBeVisible();
+    await expect(panel.getByText('到时间后系统会自动更新频道资料、视频与评论；Agent 画像暂不自动更新，需要时在“更新采集”页点“立即更新”。')).toBeVisible();
     await expect(rows.locator('.clock-next').first()).toContainText('下次');
     for (const next of await rows.locator('.clock-next').allInnerTexts()) assert.doesNotMatch(next, /每\s*\d+\s*天/, 'no interval shown');
     await expect(rows.locator('.clock-next').first()).toHaveAttribute('title', /^上次更新：.+\n为什么是这个时间：第一次采集资料；第一次采集，按发布节奏 1 天后再看$/);

@@ -69,3 +69,15 @@ test('every Data API request waits for its quota permit, and a refused permit se
   await assert.rejects(api.channel('UCx', refused), /BUDGET_EXHAUSTED/);
   assert.equal(requests, 4, 'no request without a permit');
 });
+test('incremental discovery stops at the newest known video, at the end of the uploads, or keeps the newest 30 after 100', async () => {
+  const page = (ids: string[], next?: string) => ({ items: ids.map(id => ({ contentDetails: { videoId: id, videoPublishedAt: id === 'private' ? undefined : '2026-10-01T00:00:00Z' } })), ...(next ? { nextPageToken: next } : {}) });
+  const fetcherOf = (pages: Record<string, unknown>) => (async (url: URL) => Response.json(pages[url.searchParams.get('pageToken') ?? ''])) as unknown as typeof fetch;
+  const key = 'AIzaTEST_key_0123456789abcdef';
+  const anchored = await new DataApi(key, fetcherOf({ '': page(['n1', 'private', 'n2', 'known', 'older']) })).uploadsUntilAnchor('UUx', ['known', 'other']);
+  assert.deepEqual(anchored, { ids: ['n1', 'n2'], pages: 1, scanned: 2, matched_anchor_id: 'known', stop_reason: 'anchor_matched' });
+  const ended = await new DataApi(key, fetcherOf({ '': page(['a', 'b'], 'P2'), P2: page(['c']) })).uploadsUntilAnchor('UUx', []);
+  assert.deepEqual(ended, { ids: ['a', 'b', 'c'], pages: 2, scanned: 3, matched_anchor_id: null, stop_reason: 'list_end' });
+  const many = Array.from({ length: 150 }, (_, i) => `x${i}`);
+  const gap = await new DataApi(key, fetcherOf({ '': page(many.slice(0, 50), 'P2'), P2: page(many.slice(50, 100), 'P3'), P3: page(many.slice(100), 'P4') })).uploadsUntilAnchor('UUx', ['never-seen']);
+  assert.deepEqual([gap.ids, gap.pages, gap.scanned, gap.stop_reason], [many.slice(0, 30), 2, 100, 'gap_abandoned_latest_30']);
+});

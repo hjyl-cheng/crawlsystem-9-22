@@ -32,6 +32,8 @@ export async function channelPlanWorkflow(ref: WorkflowInput): Promise<PlanWorkf
         const targets = await collector.listTargets(ref, descriptor);
         status = targets.status;
         for (let index = 0; index < targets.batches && !settled(status); index++) status = (await collector.collectVideoBatch(ref, descriptor, index)).status;
+        // Recorded before M3 step 3: no update re-read recent videos.
+        if (!settled(status) && patched('m3-recent-sampling')) status = (await collector.sampleRecentVideos(ref, descriptor)).status;
       }
       if (settled(status) || !descriptor.requiresAgent) return { plan_id: ref.plan_id, status: status as PlanWorkflowResult['status'] };
       if (patched('m2-agent-profile')) {
