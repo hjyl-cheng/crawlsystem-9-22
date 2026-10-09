@@ -366,12 +366,21 @@ export interface ProxyView {
   provider: string; group: string; country_code: string | null; kind: 'static' | 'rotating'; max_concurrency: number; enabled: boolean; version: number;
   server_id: string | null; source: string | null; retired: boolean; retire_reason: ProxyRetireReason | null; tls_insecure: boolean; state: ProxyState; cooldown_until: string | null; last_success_at: string | null; last_failure_at: string | null; last_error: string | null;
   requests_today: number; failures_today: number; latency_ms: number | null; observed_at: string | null; created_at: string; updated_at: string;
+  /** Exit as YouTube sees it, checked through the proxy after import and periodically (`country_code` is the operator's declaration). */
+  exit_country: string | null; exit_ip: string | null; exit_checked_at: string | null; exit_check: ProxyExitCheck; exit_check_error: string | null;
 }
+export type ProxyExitCheck = 'pending' | 'ok' | 'failed';
+/** A proxy endpoint as stored and assigned (credentials already decrypted). */
+export interface ProxyEndpoint { protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null; tls_insecure: boolean }
+/** One exit check through a proxy: the country and IP YouTube saw, or a short error code. */
+export type ProxyExitResult = { ok: true; country: string; ip: string | null } | { ok: false; error: string };
 export interface ProxyOverview {
   observed_at: string; items: ProxyView[]; items_total: number;
   by_state: Record<ProxyState, number>; providers: { name: string; count: number; requests_today: number; failures_today: number }[];
   groups: { name: string; count: number }[]; requests_today: number; failures_today: number;
   availability_7d: { day: string; requests: number; failures: number }[];
+  /** Proxies by detected exit country (null: not detected yet or the check failed). */
+  exit_countries: { country: string | null; count: number }[];
 }
 const NullableTime = Timestamp.nullable();
 export const ProxyViewSchema: z.ZodType<ProxyView> = z.strictObject({
@@ -379,6 +388,8 @@ export const ProxyViewSchema: z.ZodType<ProxyView> = z.strictObject({
   provider: z.string(), group: z.string(), country_code: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int(), enabled: z.boolean(), version: z.number().int().positive(),
   server_id: IdSchema.nullable(), source: z.string().nullable(), retired: z.boolean(), retire_reason: z.enum(['source_missing', 'unhealthy']).nullable(), tls_insecure: z.boolean(), state: ProxyStateSchema, cooldown_until: NullableTime, last_success_at: NullableTime, last_failure_at: NullableTime, last_error: z.string().max(120).nullable(),
   requests_today: z.number().int().nonnegative(), failures_today: z.number().int().nonnegative(), latency_ms: z.number().int().nonnegative().nullable(), observed_at: NullableTime, created_at: Timestamp, updated_at: Timestamp,
+  exit_country: z.string().regex(/^[A-Z]{2}$/).nullable(), exit_ip: z.string().max(64).nullable(), exit_checked_at: NullableTime,
+  exit_check: z.enum(['pending', 'ok', 'failed']), exit_check_error: z.string().max(40).nullable(),
 });
 const Tally = z.number().int().nonnegative();
 export const ProxyOverviewSchema: z.ZodType<ProxyOverview> = z.strictObject({
@@ -387,6 +398,7 @@ export const ProxyOverviewSchema: z.ZodType<ProxyOverview> = z.strictObject({
   providers: z.array(z.strictObject({ name: z.string(), count: Tally, requests_today: Tally, failures_today: Tally })).max(200),
   groups: z.array(z.strictObject({ name: z.string(), count: Tally })).max(200), requests_today: Tally, failures_today: Tally,
   availability_7d: z.array(z.strictObject({ day: z.iso.date(), requests: Tally, failures: Tally })).max(7),
+  exit_countries: z.array(z.strictObject({ country: z.string().regex(/^[A-Z]{2}$/).nullable(), count: Tally })).max(250),
 });
 export const ProxyUpdateSchema = z.strictObject({ expected_version: z.number().int().positive(), enabled: z.boolean().optional(), server_id: IdSchema.nullable().optional() })
   .refine(u => u.enabled !== undefined || u.server_id !== undefined, 'nothing to update');

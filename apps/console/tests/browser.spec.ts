@@ -92,7 +92,8 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       state.imports.push(body);
       for (const e of body.entries) state.proxies.push({ proxy_id: crypto.randomUUID(), protocol: e.protocol, host: e.host, port: e.port, username: e.username, has_password: e.password !== null, provider: e.provider, group: e.group,
         country_code: e.country_code, kind: e.kind, max_concurrency: e.max_concurrency, enabled: true, version: 1, server_id: null, source: null, retired: false, retire_reason: null, tls_insecure: false, state: 'unassigned', cooldown_until: null, last_success_at: null, last_failure_at: null,
-        last_error: null, requests_today: 0, failures_today: 0, latency_ms: null, observed_at: null, created_at: '2026-09-24T08:00:00.000Z', updated_at: '2026-09-24T08:00:00.000Z' });
+        last_error: null, requests_today: 0, failures_today: 0, latency_ms: null, observed_at: null, created_at: '2026-09-24T08:00:00.000Z', updated_at: '2026-09-24T08:00:00.000Z',
+        exit_country: null, exit_ip: null, exit_checked_at: null, exit_check: 'pending', exit_check_error: null });
       return json({ created: body.entries.length, updated: 0 });
     }
     if (path.startsWith('/v1/proxies/') && method === 'POST') {
@@ -107,7 +108,9 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       const by_state = { healthy: 0, trial: 0, degraded: 0, cooldown: 0, failed: 0, disabled: 0, unassigned: 0, unknown: 0 }; for (const p of state.proxies) by_state[p.state]++;
       const providers = [...new Set(state.proxies.map(p => p.provider))].map(name => ({ name, count: state.proxies.filter(p => p.provider === name).length, requests_today: 0, failures_today: 0 }));
       const groups = [...new Set(state.proxies.map(p => p.group))].map(name => ({ name, count: state.proxies.filter(p => p.group === name).length }));
-      return json({ observed_at: '2026-09-24T08:00:00.000Z', items: state.proxies, items_total: state.proxies.length, by_state, providers, groups, requests_today: 0, failures_today: 0, availability_7d: [] });
+      const countries = new Map<string | null, number>(); for (const p of state.proxies) countries.set(p.exit_country, (countries.get(p.exit_country) ?? 0) + 1);
+      return json({ observed_at: '2026-09-24T08:00:00.000Z', items: state.proxies, items_total: state.proxies.length, by_state, providers, groups, requests_today: 0, failures_today: 0, availability_7d: [],
+        exit_countries: [...countries].map(([country, count]) => ({ country, count })) });
     }
     if (path === '/v1/workers') return json({ items: state.workers, next_cursor: null });
     if (path === '/v1/errors') return json({ items: state.errors, next_cursor: null });
@@ -477,6 +480,26 @@ test('IP resource management replaces three proxy menus and reports the real pro
   await expect(page.getByText('1 个 Worker 尚未使用代理', { exact: false })).toBeVisible();
   await expect(page.getByText('尚无代理 IP', { exact: true })).toBeVisible();
   await expect(page.getByLabel('预览示例数据'), 'real inventory pages offer no design sample').toHaveCount(0);
+});
+test('proxies show the exit country YouTube detected, pending and failed checks, and filter by country', async ({ page }) => {
+  const state = await mock(page);
+  const proxy = (host: string, exit: Partial<ProxyView>): ProxyView => ({ proxy_id: crypto.randomUUID(), protocol: 'https', host, port: 443, username: null, has_password: false, provider: 'free', group: 'g1',
+    country_code: null, kind: 'static', max_concurrency: 2, enabled: true, version: 1, server_id: null, source: null, retired: false, retire_reason: null, tls_insecure: false, state: 'unassigned',
+    cooldown_until: null, last_success_at: null, last_failure_at: null, last_error: null, requests_today: 0, failures_today: 0, latency_ms: null, observed_at: null,
+    created_at: '2026-10-09T08:00:00.000Z', updated_at: '2026-10-09T08:00:00.000Z', exit_country: null, exit_ip: null, exit_checked_at: null, exit_check: 'pending', exit_check_error: null, ...exit });
+  state.proxies = [proxy('1.1.1.1', { exit_country: 'BR', exit_ip: '200.1.2.3', exit_checked_at: '2026-10-09T08:00:00.000Z', exit_check: 'ok', country_code: 'US' }),
+    proxy('2.2.2.2', { exit_country: 'BR', exit_ip: '200.1.2.4', exit_checked_at: '2026-10-09T08:00:00.000Z', exit_check: 'ok' }),
+    proxy('3.3.3.3', { exit_check: 'failed', exit_checked_at: '2026-10-09T08:00:00.000Z', exit_check_error: 'timeout' }), proxy('4.4.4.4', {})];
+  await login(page, '/proxies');
+  const row = (ip: string) => page.locator('tbody tr', { hasText: ip });
+  await expect(row('1.1.1.1')).toContainText('巴西 BR');
+  await expect(row('1.1.1.1').locator('td[title*="200.1.2.3"]')).toHaveAttribute('title', /导入时申报 US/);
+  await expect(row('3.3.3.3')).toContainText('检测失败'); await expect(row('4.4.4.4')).toContainText('检测中');
+  await expect(page.locator('section', { hasText: '出口国家' }).first()).toContainText('巴西');
+  await page.getByLabel('出口国家').selectOption('BR');
+  await expect(page.locator('tbody tr', { hasText: /\d+\.\d+\.\d+\.\d+/ })).toHaveCount(2);
+  await page.getByLabel('出口国家').selectOption('none');
+  await expect(row('3.3.3.3')).toBeVisible(); await expect(row('1.1.1.1')).toHaveCount(0);
 });
 test('worker management merges the node menus and shows real heartbeats with servers derived from them', async ({ page }) => {
   const state = await mock(page); state.workers = [workerFixture()]; await login(page, '/workers');

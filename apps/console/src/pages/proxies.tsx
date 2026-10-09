@@ -15,11 +15,12 @@ const NOT_CONNECTED = '该功能尚未接入';
 type IpState = ProxyState;
 interface ProxiesView {
   kpis: { total: number; providers: number; groups: number; healthy: number; healthyRate: string; cooldown: number; failed: number; requests: string };
-  ips: { id: string; ip: string; port: number; region: string; provider: string; group: string; state: IpState; success: string; latency: string; requests: number; checked: string; node: string; server: string | null; enabled: boolean; version: number; retired: ProxyRetireReason | null; insecure: boolean }[];
+  ips: { id: string; ip: string; port: number; region: string; regionTone: string; regionHint: string; country: string | null; provider: string; group: string; state: IpState; success: string; latency: string; requests: number; checked: string; node: string; server: string | null; enabled: boolean; version: number; retired: ProxyRetireReason | null; insecure: boolean }[];
   states: { state: IpState; count: number }[];
   providers: { name: string; count: number }[];
   groups: { name: string; count: number; color: string }[];
   providerStats: { name: string; ips: number; availability: string; requests: string }[];
+  countries: { code: string | null; label: string; count: number }[];
   trend: { day: string; value: number }[];
 }
 // Same five states as the overview's IP panel.
@@ -38,14 +39,28 @@ function fromOverview(o: ProxyOverview): ProxiesView {
   const total = o.items_total, healthy = o.by_state.healthy;
   return { kpis: { total, providers: o.providers.length, groups: o.groups.length, healthy, healthyRate: total ? `${(healthy / total * 100).toFixed(1)}%` : '—',
       cooldown: o.by_state.cooldown, failed: o.by_state.failed, requests: fmt(o.requests_today) },
-    ips: o.items.map(p => ({ id: p.proxy_id, ip: p.host, port: p.port, region: p.country_code ?? '—', provider: p.provider, group: p.group, state: p.state,
+    ips: o.items.map(p => ({ id: p.proxy_id, ip: p.host, port: p.port, ...exitRegion(p), country: p.exit_country, provider: p.provider, group: p.group, state: p.state,
       success: rate(p.requests_today, p.failures_today), latency: p.latency_ms === null ? '—' : `${p.latency_ms} ms`, requests: p.requests_today,
       checked: p.observed_at ? ago(p.observed_at) : '—', node: p.server_id ?? '—', server: p.server_id, enabled: p.enabled, version: p.version, retired: p.retire_reason, insecure: p.tls_insecure })),
     states: (Object.keys(stateMeta) as IpState[]).map(state => ({ state, count: o.by_state[state] })),
     providers: o.providers.map(p => ({ name: p.name, count: p.count })),
     groups: o.groups.map((g, i) => ({ name: g.name, count: g.count, color: palette[i % palette.length]! })),
     providerStats: o.providers.map(p => ({ name: p.name, ips: p.count, availability: rate(p.requests_today, p.failures_today), requests: fmt(p.requests_today) })),
-    trend: o.availability_7d.filter(d => d.requests > 0).map(d => ({ day: d.day.slice(5), value: Math.round((1 - d.failures / d.requests) * 1000) / 10 })) };
+    trend: o.availability_7d.filter(d => d.requests > 0).map(d => ({ day: d.day.slice(5), value: Math.round((1 - d.failures / d.requests) * 1000) / 10 })),
+    countries: o.exit_countries.map(c => ({ code: c.country, label: c.country ? countryName(c.country) : '未测出', count: c.count })) };
+}
+const regionNames = (() => { try { return new Intl.DisplayNames(['zh-CN'], { type: 'region' }); } catch { return null; } })();
+/** "巴西" for BR; the code itself when the browser has no name for it. */
+export const countryName = (code: string) => { try { return regionNames?.of(code) ?? code; } catch { return code; } };
+const exitErrors: Record<string, string> = { timeout: '超时', network: '网络错误', unrecognised_response: 'YouTube 返回无法识别', proxy_proxy_unreachable: '代理连不上',
+  proxy_proxy_refused: '代理拒绝连接', proxy_proxy_auth: '代理认证失败', proxy_timeout: '代理超时', proxy_protocol: '代理协议错误' };
+/** The exit country YouTube detected through the proxy (checked after import, rechecked weekly); the declared one only as a hint. */
+function exitRegion(p: ProxyOverview['items'][number]) {
+  const declared = p.country_code && p.country_code !== p.exit_country ? `；导入时申报 ${p.country_code}` : '';
+  if (p.exit_check === 'ok') return { region: `${countryName(p.exit_country!)} ${p.exit_country}`, regionTone: '',
+    regionHint: `YouTube 识别的出口国家；出口 IP ${p.exit_ip ?? '未知'}${p.exit_checked_at ? `，${ago(p.exit_checked_at)}检测` : ''}${declared}` };
+  if (p.exit_check === 'pending') return { region: '检测中', regionTone: 'muted', regionHint: `导入后自动检测出口国家${declared}` };
+  return { region: '检测失败', regionTone: 'text-red', regionHint: `${exitErrors[p.exit_check_error ?? ''] ?? p.exit_check_error ?? '检测失败'}，稍后自动重试${declared}` };
 }
 /** One endpoint per line: scheme://[user:password@]host:port. Passwords stay in this form and the request body only. */
 export function parseProxyLines(text: string, common: Omit<ProxyImport['entries'][number], 'protocol' | 'host' | 'port' | 'username' | 'password'>): ProxyImport['entries'] {
@@ -77,7 +92,7 @@ function ImportForm({ onDone }: { onDone: () => void }) {
       <div className="proxy-import-fields">
         <label>服务商<input aria-label="服务商" required value={provider} onChange={e => setProvider(e.target.value)} disabled={busy}/></label>
         <label>分组<input aria-label="分组" required value={group} onChange={e => setGroup(e.target.value)} disabled={busy}/></label>
-        <label>国家代码<input aria-label="国家代码" maxLength={2} placeholder="US" value={country} onChange={e => setCountry(e.target.value)} disabled={busy}/></label>
+        <label>申报国家（可不填，导入后自动检测出口国家）<input aria-label="国家代码" maxLength={2} placeholder="可不填" value={country} onChange={e => setCountry(e.target.value)} disabled={busy}/></label>
         <label>类型<select aria-label="类型" value={kind} onChange={e => setKind(e.target.value as 'static')} disabled={busy}><option value="static">固定出口</option><option value="rotating">轮换端点</option></select></label>
         <label>单 IP 并发<input aria-label="单 IP 并发" type="number" min={1} max={64} value={concurrency} onChange={e => setConcurrency(Number(e.target.value))} disabled={busy}/></label>
       </div>
@@ -109,7 +124,7 @@ function SourceForm({ servers, onDone }: { servers: string[]; onDone: () => void
       <label>默认协议<select aria-label="默认协议" value={form.protocol} onChange={set('protocol')} disabled={busy}><option value="socks5">socks5</option><option value="http">http</option><option value="https">https</option></select></label>
       <label>服务商<input aria-label="来源服务商" required value={form.provider} onChange={set('provider')} disabled={busy}/></label>
       <label>分组<input aria-label="来源分组" required value={form.group} onChange={set('group')} disabled={busy}/></label>
-      <label>国家代码<input aria-label="来源国家代码" maxLength={2} value={form.country} onChange={set('country')} disabled={busy}/></label>
+      <label>申报国家（可不填，自动检测）<input aria-label="来源国家代码" maxLength={2} value={form.country} onChange={set('country')} disabled={busy}/></label>
       <label>单 IP 并发<input aria-label="来源单 IP 并发" type="number" min={1} max={64} value={form.concurrency} onChange={set('concurrency')} disabled={busy}/></label>
       <label>刷新间隔（分钟）<input aria-label="刷新间隔" type="number" min={10} max={1440} value={form.interval} onChange={set('interval')} disabled={busy}/></label>
       <label>连续缺失几次后退役<input aria-label="退役阈值" type="number" min={1} max={20} value={form.misses} onChange={set('misses')} disabled={busy}/></label>
@@ -176,7 +191,7 @@ export default function Proxies() {
   const { api, session } = useAuth();
   const operator = session.role === 'operator';
   const overview = useResource('proxies', signal => api.proxies(signal), true, 15_000);
-  const [importing, setImporting] = useState(false), [addingSource, setAddingSource] = useState(false), [tab, setTab] = useState<Tab>('ips'), [query, setQuery] = useState(''), [stateFilter, setStateFilter] = useState('');
+  const [importing, setImporting] = useState(false), [addingSource, setAddingSource] = useState(false), [tab, setTab] = useState<Tab>('ips'), [query, setQuery] = useState(''), [stateFilter, setStateFilter] = useState(''), [countryFilter, setCountryFilter] = useState('');
   const sources = useResource('proxy-sources', signal => api.proxySources(signal), true, 30_000);
   // Real fact today: registered Workers report their proxy status (fixture runs use none).
   const workers = useResource('proxies-workers', signal => api.workers('0', 20, signal), true, 15_000);
@@ -184,7 +199,7 @@ export default function Proxies() {
   const data = useMemo(() => overview.data && fromOverview(overview.data), [overview.data]);
   // Candidate servers for binding: nodes that already run Workers, plus current bindings.
   const servers = [...new Set(workers.data?.items.map(w => w.server_id) ?? [])];
-  const ips = data?.ips.filter(ip => (!stateFilter || ip.state === stateFilter) && (!query || `${ip.ip} ${ip.group} ${ip.provider}`.toLowerCase().includes(query.trim().toLowerCase())));
+  const ips = data?.ips.filter(ip => (!stateFilter || ip.state === stateFilter) && (!countryFilter || (countryFilter === 'none' ? ip.country === null : ip.country === countryFilter)) && (!query || `${ip.ip} ${ip.group} ${ip.provider}`.toLowerCase().includes(query.trim().toLowerCase())));
   const k = data?.kpis;
   const stateTotal = data?.states.reduce((s, x) => s + x.count, 0) ?? 0, providerMax = Math.max(1, ...(data?.providers.map(p => p.count) ?? [1]));
   const providerTotal = data?.providers.reduce((s, p) => s + p.count, 0) ?? 0, groupTotal = data?.groups.reduce((s, g) => s + g.count, 0) ?? 0;
@@ -212,9 +227,10 @@ export default function Proxies() {
           {tab === 'sources' && <button className="button small primary tab-action" disabled={!operator} onClick={() => setAddingSource(true)}><Rss size={13}/>添加来源</button>}</div>
         {tab === 'sources' ? <SourcesTable sources={sources.data?.items ?? []} operator={operator} onDone={() => { sources.refresh(); overview.refresh(); }}/> : <>
         <div className="list-tools ip-filters"><label className="list-search" htmlFor="ip-search"><Search size={13}/><input id="ip-search" placeholder="搜索 IP、分组、服务商…" value={query} onChange={e => setQuery(e.target.value)} disabled={!data}/></label>
-          <select aria-label="全部状态" value={stateFilter} onChange={e => setStateFilter(e.target.value)} disabled={!data}><option value="">全部状态</option>{(Object.keys(stateMeta) as IpState[]).map(s => <option key={s} value={s}>{stateMeta[s].label}</option>)}</select></div>
+          <select aria-label="全部状态" value={stateFilter} onChange={e => setStateFilter(e.target.value)} disabled={!data}><option value="">全部状态</option>{(Object.keys(stateMeta) as IpState[]).map(s => <option key={s} value={s}>{stateMeta[s].label}</option>)}</select>
+          <select aria-label="出口国家" value={countryFilter} onChange={e => setCountryFilter(e.target.value)} disabled={!data}><option value="">全部国家</option>{data?.countries.map(c => <option key={c.code ?? 'none'} value={c.code ?? 'none'}>{c.label}（{fmt(c.count)}）</option>)}</select></div>
         {data && data.ips.length ? <div className="table-scroll"><table><thead><tr><th>IP 地址</th><th className="num">端口</th><th>地区</th><th>服务商</th><th>分组</th><th>状态</th><th className="num">成功率</th><th className="num">响应时间</th><th className="num">今日请求</th><th>绑定节点</th><th>最后检测</th><th>操作</th></tr></thead>
-          <tbody>{ips!.map(ip => { const m = stateMeta[ip.state]; return <tr key={ip.id ?? `${ip.ip}:${ip.port}`}><td className="mono query-term">{ip.ip}{ip.insecure && <small className="cell-note" title="该 HTTPS 代理自身的证书未校验；不带凭据，经它到 YouTube 的加密照常校验">证书未校验</small>}</td><td className="num">{ip.port}</td><td>{ip.region}</td><td>{ip.provider}</td><td><span className="keyword-chip">{ip.group}</span></td>
+          <tbody>{ips!.map(ip => { const m = stateMeta[ip.state]; return <tr key={ip.id ?? `${ip.ip}:${ip.port}`}><td className="mono query-term">{ip.ip}{ip.insecure && <small className="cell-note" title="该 HTTPS 代理自身的证书未校验；不带凭据，经它到 YouTube 的加密照常校验">证书未校验</small>}</td><td className="num">{ip.port}</td><td className={ip.regionTone} title={ip.regionHint}>{ip.region}</td><td>{ip.provider}</td><td><span className="keyword-chip">{ip.group}</span></td>
             <td>{ip.retired ? <span className="status-chip slate" title={retiredNote[ip.retired]}><i/>{ip.retired === 'unhealthy' ? '已淘汰' : '已退役'}</span> : <span className={`status-chip ${m.tone}`}><i/>{m.label}</span>}</td><td className={`num ${ip.state === 'failed' ? 'text-red' : ''}`}>{ip.success}</td><td className="num">{ip.latency}</td><td className="num">{ip.requests ? fmt(ip.requests) : '—'}</td><td className="mono">{ip.node}</td><td>{ip.checked}</td><td className="row-actions">{operator ? <RowActions ip={ip} servers={servers} onDone={overview.refresh}/> : <><span title={NOT_CONNECTED}>检测</span><MoreHorizontal size={14}/></>}</td></tr>; })}</tbody></table></div>
           : <Empty title="尚无代理 IP">{operator ? '点击“添加 IP”导入代理。导入后绑定到服务器，由该节点的本地代理管理按并发与冷却使用。' : '尚未导入代理。'}</Empty>}
         <footer className="pager">{data ? <span>共 {fmt(data.kpis.total)} 条{data.ips.length < data.kpis.total ? `，列表显示前 ${fmt(data.ips.length)} 条（已退役和未绑定排在最后）` : ''}{ips && ips.length !== data.ips.length ? `，筛选后 ${fmt(ips.length)} 条` : ''}</span> : <span>—</span>}</footer></>}
@@ -222,6 +238,9 @@ export default function Proxies() {
       <div className="side-stack">
         <Card title="状态分布" className="natural">
           {data ? <div className="source-body"><Donut parts={data.states.filter(s => s.count > 0).map(s => ({ label: stateMeta[s.state].label, count: s.count, color: stateMeta[s.state].color }))} caption="IP 总数" label="IP 状态分布"/><div className="legend">{data.states.map(s => <div key={s.state}><i style={{ background: stateMeta[s.state].color }}/><span>{stateMeta[s.state].label}</span><b>{(s.count / stateTotal * 100).toFixed(1)}%</b><small>{fmt(s.count)}</small></div>)}</div></div> : <Empty title="暂无 IP">{NOT_CONNECTED}</Empty>}
+        </Card>
+        <Card title="出口国家" subtitle="YouTube 识别的代理出口国家，导入后自动检测">
+          {data?.countries.length ? <div className="provider-bars">{data.countries.slice(0, 8).map(c => <div key={c.code ?? 'none'}><span>{c.label}</span><div className="dim-bar"><i style={{ width: `${c.count / Math.max(1, ...data.countries.map(x => x.count)) * 100}%` }}/></div><b>{fmt(c.count)}</b><small>{(c.count / Math.max(1, data.kpis.total) * 100).toFixed(1)}%</small></div>)}</div> : <Empty title="暂无代理">导入代理后自动检测出口国家。</Empty>}
         </Card>
         <Card title="服务商分布">
           {data ? <div className="provider-bars">{data.providers.map(p => <div key={p.name}><span>{p.name}</span><div className="dim-bar"><i style={{ width: `${p.count / providerMax * 100}%` }}/></div><b>{fmt(p.count)}</b><small>{(p.count / providerTotal * 100).toFixed(1)}%</small></div>)}</div> : <Empty title="暂无服务商">{NOT_CONNECTED}</Empty>}

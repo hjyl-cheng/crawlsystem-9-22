@@ -1,3 +1,4 @@
+import type { ProxyEndpoint } from '@crawlsystem/contracts';
 import { connect as tcpConnect, isIP, type Socket } from 'node:net';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
 import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
@@ -61,6 +62,13 @@ async function socks5(proxy: URL, host: string, port: number, signal: AbortSigna
 }
 /** Marks an HTTPS proxy URL whose own certificate is not verified (see httpsProxyTls). */
 export const INSECURE_TLS_FRAGMENT = '#insecure-tls';
+/** The URL proxiedFetch takes; the insecure-TLS fragment never leaves this host and only applies without credentials. */
+export function proxyUrlOf(a: Pick<ProxyEndpoint, 'protocol' | 'host' | 'port' | 'username' | 'password' | 'tls_insecure'>): string {
+  const auth = a.username ? `${encodeURIComponent(a.username)}${a.password ? `:${encodeURIComponent(a.password)}` : ''}@` : '';
+  const host = a.host.includes(':') && !a.host.startsWith('[') ? `[${a.host}]` : a.host;
+  const insecure = a.tls_insecure && a.protocol === 'https' && !auth ? INSECURE_TLS_FRAGMENT : '';
+  return `${a.protocol}://${auth}${host}:${a.port}${insecure}`;
+}
 /**
  * TLS options for the hop to an HTTPS proxy. Its certificate is verified unless the URL carries
  * INSECURE_TLS_FRAGMENT and no credentials, so nothing secret crosses an unverified hop; the

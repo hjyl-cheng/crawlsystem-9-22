@@ -199,3 +199,45 @@ test('only disabled proxies can be deleted, with a version check', async () => {
   await store.remove(p.operator, proxy.proxy_id, disabled.version);
   assert.equal((await store.overview(p.reader)).items_total, 0);
 });
+
+test('imported proxies get their exit country checked: pending first, failures back off, success rechecked weekly', async () => {
+  const p = people();
+  await store.importProxies(p.operator, { entries: [entry('198.51.100.20'), entry('198.51.100.21', { username: null, password: null }), entry('198.51.100.22', { username: null, password: null })] });
+  let view = await store.overview(p.reader);
+  assert.deepEqual(view.items.map(i => i.exit_check), ['pending', 'pending', 'pending'], 'just imported: shown as being checked');
+  const claimed = await store.claimExitChecks(p.operator.workspace_id, 10);
+  assert.equal(claimed.length, 3);
+  assert.equal(claimed.find(c => c.host === '198.51.100.20')!.password, 'secret-pass-1', 'credentials are decrypted for the check only');
+  assert.deepEqual(await store.claimExitChecks(p.operator.workspace_id, 10), [], 'a claim is not handed out twice');
+  view = await store.overview(p.reader);
+  assert.ok(view.items.every(i => i.exit_check === 'pending'), 'still pending while being checked');
+  const byHost = (h: string) => claimed.find(c => c.host === h)!.proxy_id;
+  await store.recordExitCheck(p.operator.workspace_id, byHost('198.51.100.20'), { ok: true, country: 'BR', ip: '200.1.2.3' });
+  await store.recordExitCheck(p.operator.workspace_id, byHost('198.51.100.21'), { ok: true, country: 'BR', ip: '200.1.2.4' });
+  await store.recordExitCheck(p.operator.workspace_id, byHost('198.51.100.22'), { ok: false, error: 'timeout' });
+  view = await store.overview(p.reader);
+  const item = (h: string) => view.items.find(i => i.host === h)!;
+  assert.deepEqual([item('198.51.100.20').exit_check, item('198.51.100.20').exit_country, item('198.51.100.20').exit_ip, item('198.51.100.20').country_code], ['ok', 'BR', '200.1.2.3', 'US'], 'the declaration is kept apart');
+  assert.deepEqual([item('198.51.100.22').exit_check, item('198.51.100.22').exit_check_error], ['failed', 'timeout']);
+  assert.deepEqual(view.exit_countries, [{ country: 'BR', count: 2 }, { country: null, count: 1 }]);
+  assert.deepEqual(await store.claimExitChecks(p.operator.workspace_id, 10), [], 'nothing due right after the checks');
+  // The failed one returns after its backoff; the successful ones after a week.
+  await pool.query(`UPDATE m1.proxies SET exit_checked_at=exit_checked_at-interval '31 minutes' WHERE workspace_id=$1`, [p.operator.workspace_id]);
+  assert.deepEqual((await store.claimExitChecks(p.operator.workspace_id, 10)).map(c => c.host), ['198.51.100.22']);
+  await store.recordExitCheck(p.operator.workspace_id, byHost('198.51.100.22'), { ok: false, error: 'network' });
+  await pool.query(`UPDATE m1.proxies SET exit_checked_at=exit_checked_at-interval '45 minutes' WHERE workspace_id=$1`, [p.operator.workspace_id]);
+  assert.deepEqual(await store.claimExitChecks(p.operator.workspace_id, 10), [], 'the second failure waits an hour');
+  await pool.query(`UPDATE m1.proxies SET exit_checked_at=exit_checked_at-interval '7 days' WHERE workspace_id=$1`, [p.operator.workspace_id]);
+  assert.equal((await store.claimExitChecks(p.operator.workspace_id, 10)).length, 3, 'a week later everything is rechecked');
+  await store.recordExitCheck(p.operator.workspace_id, byHost('198.51.100.20'), { ok: false, error: 'timeout' });
+  view = await store.overview(p.reader);
+  assert.deepEqual([view.items.find(i => i.host === '198.51.100.20')!.exit_check, view.items.find(i => i.host === '198.51.100.20')!.exit_country], ['ok', 'BR'], 'a failed recheck keeps the last country');
+  // Retired proxies are checked once (so the inventory has a country) but never again.
+  await store.importProxies(p.operator, { entries: [entry('198.51.100.23', { username: null, password: null })] });
+  await pool.query(`UPDATE m1.proxies SET retired_at=clock_timestamp(),enabled=false WHERE workspace_id=$1 AND host='198.51.100.23'`, [p.operator.workspace_id]);
+  const retired = await store.claimExitChecks(p.operator.workspace_id, 10);
+  assert.deepEqual(retired.map(c => c.host), ['198.51.100.23']);
+  await store.recordExitCheck(p.operator.workspace_id, retired[0]!.proxy_id, { ok: false, error: 'timeout' });
+  await pool.query(`UPDATE m1.proxies SET exit_checked_at=exit_checked_at-interval '30 days' WHERE workspace_id=$1 AND host='198.51.100.23'`, [p.operator.workspace_id]);
+  assert.deepEqual(await store.claimExitChecks(p.operator.workspace_id, 10), [], 'a retired proxy is not retried');
+});

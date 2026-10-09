@@ -10,6 +10,8 @@ import { ProxyStore } from '@crawlsystem/store/proxies';
 import { CredentialBox } from '@crawlsystem/store/credentials';
 import { refreshReferences } from '@crawlsystem/store/feature-clocks';
 import { fetchProxySource } from './proxy-source-fetch.ts';
+import { checkProxyExit } from '@crawlsystem/execution-client/proxy-exit';
+import { proxyUrlOf } from '@crawlsystem/execution-client/proxy-connect';
 import { temporalOptions } from './temporal-config.ts';
 import { discoveryLimits, updateLimits } from './update-config.ts';
 function required(name:string):string {const value=process.env[name];if(!value)throw new Error(`${name} is required`);return value;}
@@ -36,6 +38,24 @@ async function refreshSources(){
     process.stdout.write(JSON.stringify({time:new Date().toISOString(),event:'proxy_source_refresh',source_id:claim.source_id,status:result.status,...applied})+'\n');
   }
 }
+// Exit country of every proxy as YouTube sees it (plan R2): checked shortly after import, failed
+// checks retried with backoff, successful ones rechecked weekly. Bounded per round and in parallel.
+let nextExitCheck=0;
+async function checkProxyExits(){
+  if(Date.now()<nextExitCheck)return;
+  nextExitCheck=Date.now()+20_000;
+  const due=await proxies.claimExitChecks(required('M1_WORKSPACE_ID'),16);
+  if(!due.length)return;
+  const results=new Map<string,number>();
+  for(let i=0;i<due.length;i+=8){
+    await Promise.all(due.slice(i,i+8).map(async proxy=>{
+      const result=await checkProxyExit(proxyUrlOf(proxy));
+      await proxies.recordExitCheck(required('M1_WORKSPACE_ID'),proxy.proxy_id,result);
+      const key=result.ok?result.country:`failed:${result.error}`;results.set(key,(results.get(key)??0)+1);
+    }));
+  }
+  process.stdout.write(JSON.stringify({time:new Date().toISOString(),event:'proxy_exit_checks',checked:due.length,results:Object.fromEntries(results)})+'\n');
+}
 // Update clocks rank growth against the day's cross-channel distributions: built once per UTC day.
 let nextReferenceCheck=0;
 async function refreshClockReferences(){
@@ -49,7 +69,7 @@ try {
   while(!stopping) {
     if(alive)writeFileSync(alive,String(Date.now()));
     try {
-      await refreshSources();await refreshClockReferences();
+      await refreshSources();await refreshClockReferences();await checkProxyExits();
       if(Date.now()>=nextUpdateScan){
         // Qualified candidates join the import queue first, so the same scan can plan them.
         const admitted=await store.admitCandidates(required('M1_WORKSPACE_ID'));

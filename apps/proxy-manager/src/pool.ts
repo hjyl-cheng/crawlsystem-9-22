@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ProxyAssignment } from '@crawlsystem/contracts';
-import { INSECURE_TLS_FRAGMENT } from '@crawlsystem/execution-client/proxy-connect';
+import { proxyUrlOf } from '@crawlsystem/execution-client/proxy-connect';
 
 // Node-local proxy selection (24.8 §10.2): one pool per server, shared by every Worker on
 // it, so per-proxy concurrency and cooldown are enforced once rather than per Pod.
@@ -16,13 +16,8 @@ interface Health {
 const COOLDOWN_BASE_MS = 60_000, COOLDOWN_MAX_MS = 30 * 60_000, BLOCKED_COOLDOWN_MS = 10 * 60_000;
 const FAILURES_BEFORE_COOLDOWN = 3, COOLDOWNS_BEFORE_FAILED = 3, TRIAL_PASSES = 2;
 
-export function proxyUrl(a: ProxyAssignment): string {
-  const auth = a.username ? `${encodeURIComponent(a.username)}${a.password ? `:${encodeURIComponent(a.password)}` : ''}@` : '';
-  const host = a.host.includes(':') && !a.host.startsWith('[') ? `[${a.host}]` : a.host;
-  // The fragment never leaves this host; connectViaProxy reads it (and ignores it if credentials are present).
-  const insecure = a.tls_insecure && a.protocol === 'https' && !auth ? INSECURE_TLS_FRAGMENT : '';
-  return `${a.protocol === 'socks5' ? 'socks5' : a.protocol}://${auth}${host}:${a.port}${insecure}`;
-}
+// The fragment never leaves this host; connectViaProxy reads it (and ignores it if credentials are present).
+export const proxyUrl = (a: ProxyAssignment): string => proxyUrlOf(a);
 
 export class ProxyPool {
   private assignments = new Map<string, ProxyAssignment>();

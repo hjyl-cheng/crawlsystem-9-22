@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
-import { MAX_PROXIES_PER_SERVER, ProxyImportSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySyncRequestSchema, ProxyUpdateSchema, type Principal, type ProxyAssignment, type ProxyOverview, type ProxySourceView, type ProxyState, type ProxySyncResponse, type ProxyView } from '@crawlsystem/contracts';
+import { MAX_PROXIES_PER_SERVER, ProxyImportSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySyncRequestSchema, ProxyUpdateSchema, type Principal, type ProxyAssignment, type ProxyEndpoint, type ProxyExitResult, type ProxyOverview, type ProxySourceView, type ProxyState, type ProxySyncResponse, type ProxyView } from '@crawlsystem/contracts';
 import { StoreError, requireRole } from './index.ts';
 import type { CredentialBox } from './credentials.ts';
 
@@ -67,12 +67,13 @@ export class ProxyStore {
     const items = rows.map(r => this.view(r));
     const tally = <K extends string>(keys: K[]) => Object.fromEntries(keys.map(k => [k, 0])) as Record<K, number>;
     const by_state = tally(['healthy', 'trial', 'degraded', 'cooldown', 'failed', 'disabled', 'unassigned', 'unknown'] as ProxyState[]);
-    const providers = new Map<string, { name: string; count: number; requests_today: number; failures_today: number }>(), groups = new Map<string, number>();
+    const providers = new Map<string, { name: string; count: number; requests_today: number; failures_today: number }>(), groups = new Map<string, number>(), countries = new Map<string | null, number>();
     for (const item of items) {
       by_state[item.state]++;
       const p = providers.get(item.provider) ?? { name: item.provider, count: 0, requests_today: 0, failures_today: 0 };
       p.count++; p.requests_today += item.requests_today; p.failures_today += item.failures_today; providers.set(item.provider, p);
       groups.set(item.group, (groups.get(item.group) ?? 0) + 1);
+      countries.set(item.exit_country, (countries.get(item.exit_country) ?? 0) + 1);
     }
     const days = (await this.pool.query(`SELECT to_char(day,'YYYY-MM-DD') AS day, sum(requests)::bigint AS requests, sum(failures)::bigint AS failures FROM m1.proxy_daily
       WHERE workspace_id=$1 AND day > (clock_timestamp() AT TIME ZONE 'UTC')::date - 7 GROUP BY day ORDER BY day`, [principal.workspace_id])).rows;
@@ -80,7 +81,8 @@ export class ProxyStore {
     return { observed_at: iso(rows[0]?.now ?? new Date())!, items: items.slice(0, 1000), items_total: items.length, by_state, providers: [...providers.values()].sort((a, b) => b.count - a.count),
       groups: [...groups].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
       requests_today: items.reduce((n, i) => n + i.requests_today, 0), failures_today: items.reduce((n, i) => n + i.failures_today, 0),
-      availability_7d: days.map(d => ({ day: d.day, requests: Number(d.requests), failures: Number(d.failures) })) };
+      availability_7d: days.map(d => ({ day: d.day, requests: Number(d.requests), failures: Number(d.failures) })),
+      exit_countries: [...countries].map(([country, count]) => ({ country, count })).sort((a, b) => b.count - a.count || String(a.country).localeCompare(String(b.country))).slice(0, 250) };
   }
   private view(r: QueryResultRow): ProxyView {
     // Only a fresh report for the current assignment generation describes the proxy.
@@ -90,7 +92,38 @@ export class ProxyStore {
       provider: r.provider, group: r.group_name, country_code: r.country_code, kind: r.kind, max_concurrency: r.max_concurrency, enabled: r.enabled, version: r.version,
       server_id: r.server_id, source: r.source_name ?? null, retired: r.retired_at != null, retire_reason: r.retired_at != null ? r.retire_reason ?? 'source_missing' : null, tls_insecure: r.tls_insecure === true, state, cooldown_until: current ? iso(r.cooldown_until) : null, last_success_at: iso(r.last_success_at ?? null), last_failure_at: iso(r.last_failure_at ?? null),
       last_error: r.last_error ?? null, requests_today: Number(r.requests_today), failures_today: Number(r.failures_today), latency_ms: current ? r.latency_ms ?? null : null,
-      observed_at: iso(r.observed_at ?? null), created_at: iso(r.created_at)!, updated_at: iso(r.updated_at)! };
+      observed_at: iso(r.observed_at ?? null), created_at: iso(r.created_at)!, updated_at: iso(r.updated_at)!,
+      exit_country: r.exit_country ?? null, exit_ip: r.exit_ip ?? null, exit_checked_at: iso(r.exit_checked_at ?? null),
+      exit_check: r.exit_country ? 'ok' : !r.exit_checked_at || r.exit_check_error === 'checking' ? 'pending' : 'failed',
+      exit_check_error: r.exit_check_error === 'checking' ? null : r.exit_check_error ?? null };
+  }
+  /**
+   * Proxies whose exit to check next (plan R2): never checked first, then failed ones after a backoff
+   * (30 minutes doubling, at most a day), then a recheck a week after success. Retired proxies are
+   * checked once and not retried. Claiming stamps the check time, so a crash mid-check only delays the retry.
+   */
+  async claimExitChecks(workspaceId: string, limit: number): Promise<(ProxyEndpoint & { proxy_id: string })[]> {
+    return this.tx(async client => {
+      const rows = (await client.query(`UPDATE m1.proxies SET exit_checked_at=clock_timestamp(),exit_check_error='checking'
+        WHERE (workspace_id,proxy_id) IN (SELECT workspace_id,proxy_id FROM m1.proxies
+          WHERE workspace_id=$1 AND (exit_checked_at IS NULL OR retired_at IS NULL AND (
+            (exit_country IS NOT NULL AND exit_checked_at < clock_timestamp()-interval '7 days')
+            OR (exit_country IS NULL AND exit_checked_at < clock_timestamp()-least(interval '24 hours', interval '30 minutes'*power(2,greatest(exit_check_failures-1,0))))))
+          ORDER BY exit_checked_at NULLS FIRST,created_at,proxy_id LIMIT $2 FOR UPDATE SKIP LOCKED)
+        RETURNING proxy_id,protocol,host,port,username,credential,tls_insecure`, [workspaceId, limit])).rows;
+      return rows.map(r => ({ proxy_id: r.proxy_id, protocol: r.protocol, host: r.host, port: r.port, username: r.username,
+        password: r.credential === null ? null : this.sealer().open(r.credential, context(workspaceId, r.proxy_id)), tls_insecure: r.tls_insecure === true }));
+    });
+  }
+  /** A finished exit check. A failure keeps the last detected country (a proxy may be briefly down). */
+  async recordExitCheck(workspaceId: string, proxyId: string, result: ProxyExitResult): Promise<void> {
+    if (result.ok) {
+      await this.pool.query(`UPDATE m1.proxies SET exit_country=$3,exit_ip=$4,exit_checked_at=clock_timestamp(),exit_check_error=NULL,exit_check_failures=0
+        WHERE workspace_id=$1 AND proxy_id=$2`, [workspaceId, proxyId, result.country, result.ip]);
+    } else {
+      await this.pool.query(`UPDATE m1.proxies SET exit_checked_at=clock_timestamp(),exit_check_error=$3,exit_check_failures=exit_check_failures+1
+        WHERE workspace_id=$1 AND proxy_id=$2`, [workspaceId, proxyId, result.error.slice(0, 40)]);
+    }
   }
   /** Enable/disable and (re)assign with a version check. A new server gets a new generation; the old lease is dropped. */
   async update(principal: Principal, proxyId: string, raw: unknown): Promise<ProxyView> {
