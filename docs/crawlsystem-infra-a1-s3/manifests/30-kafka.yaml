@@ -77,6 +77,16 @@ spec:
       - namespaceSelector:
           matchLabels:
             kubernetes.io/metadata.name: monitoring
+      # Collection pipeline (plan R1): worker and parser, the PG sink, the ClickHouse sink.
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: crawler
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingest
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: analytics
     authorization:
       type: simple
     config:

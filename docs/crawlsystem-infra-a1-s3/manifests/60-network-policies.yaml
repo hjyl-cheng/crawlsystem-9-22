@@ -329,3 +329,47 @@ spec:
       port: 3000
     - protocol: TCP
       port: 3100
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: storage
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress: []
+---
+# MinIO (41-minio.yaml): collection and parsing (crawler), Control and ingest readers, the
+# setup Job in its own namespace, and Prometheus.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minio-allowed
+  namespace: storage
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: minio }
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: crawler
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: control
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingest
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: storage
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9000

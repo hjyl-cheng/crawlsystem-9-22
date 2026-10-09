@@ -86,3 +86,13 @@ python3 scripts/verify-alerts.py
 成功后，先前稳定性记录保存在 `/var/lib/crawlsystem-observation/archives/`，随后重新计时48小时。通过条件包括样本覆盖及PG、CDC、Kafka、监控、备份和小负载测试健康，不能用计划完成时间代替实际验收。故障时查看 `reports/a1-reboot-validation.json` 和 `journalctl -u crawlsystem-a1-complete.service`；S1的观察证据独立保留。
 
 计划维护或验收重载影响观察时，可执行 `sudo python3 scripts/restart-observation.py --reason '实际维护原因'`。该脚本先采集并验证当前健康；仅在健康通过后，完整归档旧样本、旧汇总及重启原因，再重新开始两段各24小时观察。旧窗口的异常不会删除或改为通过。
+
+
+## 采集数据的对象存储与业务主题（2026-10-09，计划 R1）
+
+- MinIO：`manifests/41-minio.yaml`（命名空间 `storage`，单节点在 a1，卷 `/srv/crawl-data/minio` 80 GB）。桶与自动过期：`crawl-raw` 14 天（上限 60 GB）、`crawl-parsed` 90 天（15 GB）、`crawl-evidence` 90 天（5 GB）；上限合计等于卷大小，写满时写入失败而不是撑满 a1 系统盘。
+- 镜像：官方 MinIO 镜像已不再公开发布，使用老系统同版本镜像（`minio/minio:RELEASE.2025-07-23T15-54-02Z`，digest `sha256:d249d1fb…`），存档 `/srv/crawl-data/images/minio-RELEASE.2025-07-23T15-54-02Z.tar.gz`；a1 重装后执行 `gunzip -c <存档> | sudo k3s ctr -n k8s.io images import -`。
+- 账号：`scripts/create-minio-secrets.py` 生成（只在本地 `secrets/` 与集群中，不打印、不覆盖已有）。`crawl-worker` 只写 `crawl-raw`；`crawl-parser` 读 `crawl-raw`、写 `crawl-parsed` / `crawl-evidence`；`crawl-reader` 只读。修改后重跑初始化：`kubectl -n storage delete job minio-setup --ignore-not-found && kubectl apply -f manifests/41-minio.yaml`。
+- Kafka 业务主题与账号：`manifests/35-crawl-topics-users.yaml`（`crawl.raw`、`crawl.step`、`facts.*`、`ops.events`、`dlq.*`；账号 `crawl-worker`、`crawl-parser`、`crawl-sink-pg`、`crawl-sink-ch`）。客户端凭据：`scripts/configure-crawl-kafka-clients.py` 把密码与集群 CA 复制为各命名空间的 `kafka-<账号>`，密码或 CA 轮换后重跑。
+- 应用这些清单时只应用新增对象：整份应用 `00-namespaces.yaml` 会删掉 cloudnative-pg / keda 命名空间上由安装程序加的标签。
+- 网络策略生效有几秒延迟：新 Pod 刚启动时访问 MinIO 可能被拒绝，客户端需对连接失败重试。

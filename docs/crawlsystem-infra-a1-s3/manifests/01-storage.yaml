@@ -283,3 +283,37 @@ spec:
           operator: In
           values:
           - s3
+---
+# Object storage for collected data (plan R1, 2026-10-09): single-node MinIO on a1, the node
+# with the most free disk. Local volumes do not enforce their size, so MinIO bucket quotas
+# (41-minio.yaml) keep the total under this capacity and away from a1's system disk.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: crawl-minio-local
+provisioner: kubernetes.io/no-provisioner
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: minio-a1
+spec:
+  capacity:
+    storage: 80Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: crawl-minio-local
+  local:
+    path: /srv/crawl-data/minio
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - a1

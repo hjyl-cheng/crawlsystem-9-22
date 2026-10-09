@@ -1,0 +1,307 @@
+# Business topics and users of the collection pipeline (plan R1, 2026-10-09; generated from one
+# table, see the plan document section 0.3c). Messages carry references and parsed facts only:
+# raw responses and comment bodies stay in MinIO. Retention is bounded by time and by bytes per
+# partition (each broker holds every partition, RF 3). Keys are channel IDs, so one channel's
+# messages stay ordered. Client credentials: scripts/configure-crawl-kafka-clients.py.
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: crawl-raw
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  # one message per raw response stored in MinIO (reference only)
+  topicName: crawl.raw
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: delete
+    retention.ms: 259200000
+    retention.bytes: 268435456
+    segment.bytes: 33554432
+    segment.ms: 3600000
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: crawl-step
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  # a collection step finished: its manifest of MinIO objects
+  topicName: crawl.step
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: delete
+    retention.ms: 259200000
+    retention.bytes: 67108864
+    segment.bytes: 33554432
+    segment.ms: 3600000
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: facts-channel
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  # parsed channel facts
+  topicName: facts.channel
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: delete
+    retention.ms: 259200000
+    retention.bytes: 134217728
+    segment.bytes: 33554432
+    segment.ms: 3600000
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: facts-video
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  # parsed video facts without comment bodies
+  topicName: facts.video
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: delete
+    retention.ms: 259200000
+    retention.bytes: 268435456
+    segment.bytes: 33554432
+    segment.ms: 3600000
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: facts-observation
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  # metric observations (views, likes, subscribers at a time)
+  topicName: facts.observation
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: delete
+    retention.ms: 259200000
+    retention.bytes: 134217728
+    segment.bytes: 33554432
+    segment.ms: 3600000
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: facts-agent
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  # Agent profile results
+  topicName: facts.agent
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: delete
+    retention.ms: 259200000
+    retention.bytes: 67108864
+    segment.bytes: 33554432
+    segment.ms: 3600000
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: ops-events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  # operational events for statistics (ClickHouse)
+  topicName: ops.events
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: delete
+    retention.ms: 259200000
+    retention.bytes: 268435456
+    segment.bytes: 33554432
+    segment.ms: 3600000
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: dlq-parse
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  # messages the parser could not process after retries
+  topicName: dlq.parse
+  partitions: 1
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: delete
+    retention.ms: 604800000
+    retention.bytes: 67108864
+    segment.bytes: 33554432
+    segment.ms: 3600000
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: dlq-sink
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  # messages a database sink could not apply after retries
+  topicName: dlq.sink
+  partitions: 1
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    cleanup.policy: delete
+    retention.ms: 604800000
+    retention.bytes: 67108864
+    segment.bytes: 33554432
+    segment.ms: 3600000
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: crawl-worker
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+    - resource: { type: topic, name: crawl.raw, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: topic, name: crawl.step, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: topic, name: facts.agent, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: topic, name: ops.events, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: crawl-parser
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+    - resource: { type: topic, name: crawl.raw, patternType: literal }
+      operations: [Read, Describe]
+      host: '*'
+    - resource: { type: topic, name: facts.channel, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: topic, name: facts.video, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: topic, name: facts.observation, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: topic, name: dlq.parse, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: topic, name: ops.events, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: group, name: crawl-parser, patternType: literal }
+      operations: [Read]
+      host: '*'
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: crawl-sink-pg
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+    - resource: { type: topic, name: crawl.step, patternType: literal }
+      operations: [Read, Describe]
+      host: '*'
+    - resource: { type: topic, name: facts.channel, patternType: literal }
+      operations: [Read, Describe]
+      host: '*'
+    - resource: { type: topic, name: facts.video, patternType: literal }
+      operations: [Read, Describe]
+      host: '*'
+    - resource: { type: topic, name: facts.observation, patternType: literal }
+      operations: [Read, Describe]
+      host: '*'
+    - resource: { type: topic, name: facts.agent, patternType: literal }
+      operations: [Read, Describe]
+      host: '*'
+    - resource: { type: topic, name: dlq.sink, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: topic, name: ops.events, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: group, name: crawl-sink-pg, patternType: literal }
+      operations: [Read]
+      host: '*'
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: crawl-sink-ch
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crawler-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+    - resource: { type: topic, name: facts.observation, patternType: literal }
+      operations: [Read, Describe]
+      host: '*'
+    - resource: { type: topic, name: ops.events, patternType: literal }
+      operations: [Read, Describe]
+      host: '*'
+    - resource: { type: group, name: crawl-sink-ch, patternType: literal }
+      operations: [Read]
+      host: '*'

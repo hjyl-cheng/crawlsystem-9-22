@@ -1,0 +1,204 @@
+# Object storage for collected data (plan R1, 2026-10-09). Single-node MinIO on a1, same
+# release as the legacy system. Buckets and their lifecycle (automatic expiry):
+#   crawl-raw       raw responses, one object per request       14 days, quota 60 GiB
+#   crawl-parsed    parsed results incl. comment bodies          90 days, quota 15 GiB
+#   crawl-evidence  raw responses kept for failure analysis      90 days, quota  5 GiB
+# The quotas add up to the 80 GiB local volume, so a full bucket fails writes instead of
+# filling a1's system disk. Each service has its own user (crawl-worker writes raw;
+# crawl-parser reads raw and writes parsed / evidence; crawl-reader reads everything).
+# Pod traffic is WireGuard-encrypted (flannel); access is limited by 60-network-policies.yaml.
+# Image: the official MinIO images are no longer published (Docker Hub and quay.io refuse the
+# pull since late 2025), so the legacy system's image (same release, digest sha256:d249d1fb6966…)
+# was copied into a1's containerd; a copy of the archive is kept at
+# /srv/crawl-data/images/minio-RELEASE.2025-07-23T15-54-02Z.tar.gz. Both pods run on a1 and the
+# setup Job uses the `mc` bundled in that image. Re-import after rebuilding a1:
+#   gunzip -c <archive> | sudo k3s ctr -n k8s.io images import -
+# Secrets: scripts/create-minio-secrets.py. Re-run the setup Job after changing it:
+#   kubectl -n storage delete job minio-setup --ignore-not-found && kubectl apply -f 41-minio.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: storage
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: crawl-minio-local
+  resources:
+    requests:
+      storage: 80Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: storage
+  labels: { app.kubernetes.io/name: minio }
+spec:
+  selector: { app.kubernetes.io/name: minio }
+  ports:
+  - { name: api, port: 9000, targetPort: api }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: storage
+  labels: { app.kubernetes.io/name: minio }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: minio }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: minio }
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector: { kubernetes.io/hostname: a1 }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+      - name: minio
+        image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+        imagePullPolicy: Never
+        args: ["server", "/data", "--address", ":9000", "--certs-dir", "/tmp/certs"]
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom: { secretKeyRef: { name: minio-root, key: user } }
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom: { secretKeyRef: { name: minio-root, key: password } }
+        # No web console; metrics stay inside the cluster (network policy).
+        - { name: MINIO_BROWSER, value: "off" }
+        - { name: MINIO_PROMETHEUS_AUTH_TYPE, value: public }
+        # a1 is the busiest node: keep the Go heap under the container limit.
+        - { name: GOMEMLIMIT, value: 768MiB }
+        ports:
+        - { name: api, containerPort: 9000 }
+        readinessProbe:
+          httpGet: { path: /minio/health/ready, port: api }
+          periodSeconds: 10
+        livenessProbe:
+          httpGet: { path: /minio/health/live, port: api }
+          initialDelaySeconds: 20
+          periodSeconds: 20
+        resources:
+          requests: { cpu: 100m, memory: 256Mi }
+          limits: { cpu: "1", memory: 1Gi }
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: { drop: [ALL] }
+        volumeMounts:
+        - { name: data, mountPath: /data }
+        - { name: tmp, mountPath: /tmp }
+      volumes:
+      - name: data
+        persistentVolumeClaim: { claimName: minio-data }
+      - name: tmp
+        emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minio-setup
+  namespace: storage
+data:
+  worker.json: |
+    {"Version": "2012-10-17", "Statement": [
+      {"Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject"], "Resource": ["arn:aws:s3:::crawl-raw/*"]}]}
+  parser.json: |
+    {"Version": "2012-10-17", "Statement": [
+      {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": ["arn:aws:s3:::crawl-raw/*"]},
+      {"Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject"], "Resource": ["arn:aws:s3:::crawl-parsed/*", "arn:aws:s3:::crawl-evidence/*"]},
+      {"Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": ["arn:aws:s3:::crawl-parsed"]}]}
+  reader.json: |
+    {"Version": "2012-10-17", "Statement": [
+      {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": ["arn:aws:s3:::crawl-raw/*", "arn:aws:s3:::crawl-parsed/*", "arn:aws:s3:::crawl-evidence/*"]},
+      {"Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": ["arn:aws:s3:::crawl-raw", "arn:aws:s3:::crawl-parsed", "arn:aws:s3:::crawl-evidence"]}]}
+  setup.sh: |
+    #!/bin/sh
+    # Idempotent: buckets, lifecycle, quotas, policies and users converge to this file.
+    set -eu
+    export MC_CONFIG_DIR=/tmp/mc
+    tries=0
+    until mc alias set local http://minio.storage.svc.cluster.local:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do
+      tries=$((tries + 1)); [ "$tries" -lt 30 ] || { echo "MinIO not reachable"; exit 1; }; sleep 5
+    done
+    for spec in crawl-raw:14:60GiB crawl-parsed:90:15GiB crawl-evidence:90:5GiB; do
+      bucket=${spec%%:*}; rest=${spec#*:}; days=${rest%%:*}; quota=${rest#*:}
+      mc mb --ignore-existing "local/$bucket" >/dev/null
+      printf '{"Rules":[{"ID":"expire-after-%s-days","Status":"Enabled","Expiration":{"Days":%s}}]}' "$days" "$days" > "/tmp/lifecycle-$bucket.json"
+      mc ilm import "local/$bucket" < "/tmp/lifecycle-$bucket.json" >/dev/null
+      mc quota set "local/$bucket" --size "$quota" >/dev/null
+      echo "$bucket: expires after $days days, quota $quota"
+    done
+    for role in worker parser reader; do
+      mc admin policy create local "crawl-$role" "/config/$role.json" >/dev/null
+      secret=$(cat "/users/$role")
+      mc admin user add local "crawl-$role" "$secret" >/dev/null
+      # The image has no grep: match the attached policy with a shell pattern.
+      info=$(mc admin user info local "crawl-$role" --json)
+      case "$info" in
+        *"\"policyName\":\"crawl-$role\""*) ;;
+        *) mc admin policy attach local "crawl-$role" --user "crawl-$role" >/dev/null ;;
+      esac
+      echo "user crawl-$role: policy crawl-$role"
+    done
+    mc admin user list local
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-setup
+  namespace: storage
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: minio-setup }
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector: { kubernetes.io/hostname: a1 }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+      - name: setup
+        image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+        imagePullPolicy: Never
+        command: ["/bin/sh", "/config/setup.sh"]
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom: { secretKeyRef: { name: minio-root, key: user } }
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom: { secretKeyRef: { name: minio-root, key: password } }
+        resources:
+          requests: { cpu: 20m, memory: 32Mi }
+          limits: { cpu: 200m, memory: 128Mi }
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: { drop: [ALL] }
+        volumeMounts:
+        - { name: config, mountPath: /config, readOnly: true }
+        - { name: users, mountPath: /users, readOnly: true }
+        - { name: tmp, mountPath: /tmp }
+      volumes:
+      - name: config
+        configMap: { name: minio-setup }
+      - name: users
+        secret: { secretName: minio-users, defaultMode: 0440 }
+      - name: tmp
+        emptyDir: { sizeLimit: 16Mi }
