@@ -1,105 +1,129 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowRight, Box, CircleAlert, CircleCheck, CirclePlay, Clock3, FileText, Funnel, Info, OctagonX, Plus, Search, Snowflake, TriangleAlert, Zap } from 'lucide-react';
-import { Empty } from '../ui.js';
-import Donut from '../components/donut.js';
-import type { DiscoverView } from './discover-sample.js';
+import { useState, type ReactNode } from 'react';
+import { CircleCheck, CirclePlay, OctagonX, Plus, RefreshCw, Search, Snowflake, Zap } from 'lucide-react';
+import { BUSINESS_CATEGORIES, type BusinessCategory, type QueryBinding } from '@crawlsystem/contracts';
+import { useAuth } from '../auth.js';
+import { ApiFailure } from '../api.js';
+import { useResource } from '../resource.js';
+import { Empty, ErrorBox, Modal, ResourceView } from '../ui.js';
+import { time } from '../presentation.js';
 import './overview.css';
 import './discover.css';
 
-type Status = DiscoverView['statuses'][number]['key'];
-const statusMeta: Record<Status, { label: string; tone: string; icon: ReactNode }> = {
-  pending: { label: '待执行', tone: 'blue', icon: <Clock3 size={16}/> },
-  running: { label: '运行中', tone: 'green', icon: <CirclePlay size={16}/> },
-  cooldown: { label: '冷静期', tone: 'cyan', icon: <Snowflake size={16}/> },
-  lowyield: { label: '低效观察', tone: 'amber', icon: <TriangleAlert size={16}/> },
-  disabled: { label: '停用', tone: 'red', icon: <OctagonX size={16}/> },
+/** Chinese labels of the 19 fixed business categories (24.8 §5.3); the English value is the stored one. */
+export const categoryLabels: Record<BusinessCategory, string> = {
+  Automotive: '汽车', 'Beauty Creators': '美妆博主', 'Casual Vlogs': '日常生活记录', Dance: '舞蹈', Education: '教育', Fashion: '时尚', Food: '美食', Gaming: '游戏',
+  'General Humanities & Society': '综合人文与社会', 'Health & Wellness': '健康与养生', Home: '家居', Music: '音乐', Parenting: '育儿', 'Pets & Animals': '宠物与动物',
+  'Self Improvement': '自我提升', 'Software & Internet': '软件与互联网', 'Sports & Outdoors': '体育与户外', Tech: '科技', Travel: '旅行',
 };
-const kpiIcons = [<Search size={22}/>, <FileText size={22}/>, <Box size={22}/>, <Zap size={22}/>];
-const funnelIcons = [<CirclePlay size={20}/>, <FileText size={20}/>, <Funnel size={20}/>, <Box size={20}/>, <CircleCheck size={20}/>];
-const kpiLabels = ['今日执行 Query', '今日发现频道', '去重后新频道', '转入全量采集'];
-const funnelLabels = ['今日执行', '发现频道', '去重后', '进入候选', '转入全量'];
-const fmt = (n: number) => n.toLocaleString('zh-CN');
-const pct = (part: number, total: number) => total ? `${(part / total * 100).toFixed(1)}%` : '—';
-const NOT_CONNECTED = 'Discover 尚未接入';
+const stateMeta: Record<QueryBinding['state'], { label: string; tone: string }> = {
+  BOOTSTRAP: { label: '待首次搜索', tone: 'blue' }, ACTIVE: { label: '活跃', tone: 'green' }, COOLDOWN: { label: '冷却中', tone: 'amber' }, DORMANT: { label: '休眠', tone: 'slate' }, DISABLED: { label: '已停用', tone: 'red' },
+};
+const sourceLabels: Record<QueryBinding['sources'][number]['type'], string> = {
+  SEED_KEYWORD: '种子词', AUTO_TAG: '自动标签', VIDEO_TITLE: '视频标题', VIDEO_DESCRIPTION: '视频描述', CHANNEL_ABOUT: '频道简介', RELATED_QUERY: '相关搜索', MANUAL: '人工添加',
+};
+const cadenceText = (b: QueryBinding) => b.state === 'BOOTSTRAP' ? '首次搜“今年”' : (b.cadence_override ?? b.cadence) === 'WEEK' ? '每周' : (b.cadence_override ?? b.cadence) === 'MONTH' ? '每月' : '—';
+const fmt = (n?: number) => n === undefined ? '—' : n.toLocaleString('zh-CN');
 
-function Card({ title, subtitle, extra, className = '', children }: { title: string; subtitle?: string; extra?: ReactNode; className?: string; children: ReactNode }) {
+function Kpi({ label, tone, icon, value, foot }: { label: string; tone: string; icon: ReactNode; value?: ReactNode; foot: ReactNode }) {
+  return <section className={`panel discover-kpi tone-${tone}`}><span className="kpi-icon">{icon}</span><div><small>{label}</small><strong>{value ?? '—'}</strong><span className="kpi-foot"><span>{foot}</span></span></div></section>;
+}
+function Card({ title, subtitle, extra, className = '', children }: { title: string; subtitle?: ReactNode; extra?: ReactNode; className?: string; children: ReactNode }) {
   return <section className={`panel discover-card ${className}`}><div className="panel-heading"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{extra}</div>{children}</section>;
 }
-const Unavailable = ({ children = '查看详情' }: { children?: string }) => <span className="dashboard-unavailable" title={NOT_CONNECTED}>{children}<ArrowRight size={12}/></span>;
 
+function AddQuery({ open, onOpenChange, onAdded }: { open: boolean; onOpenChange: (open: boolean) => void; onAdded: () => void }) {
+  const { api } = useAuth();
+  const [form, setForm] = useState({ text: '', country: 'BR', language: 'pt', category: 'Music' as BusinessCategory });
+  const [busy, setBusy] = useState(false), [error, setError] = useState<ApiFailure>();
+  async function submit() {
+    setBusy(true); setError(undefined);
+    try { await api.createQuery(form); setForm({ ...form, text: '' }); onAdded(); onOpenChange(false); }
+    catch (cause) { setError(cause instanceof ApiFailure ? cause : new ApiFailure('添加失败，请重试')); }
+    finally { setBusy(false); }
+  }
+  return <Modal open={open} onOpenChange={onOpenChange} title="添加搜索词" description="同一个词在同一国家、同一分类下只登记一次；重复添加只会记下新的来源。新词会先搜一次“今年”，再按结果决定每周或每月搜。">
+    <form className="fields" onSubmit={event => { event.preventDefault(); void submit(); }}>
+      <label>搜索词<input aria-label="搜索词" value={form.text} maxLength={200} onChange={e => setForm({ ...form, text: e.target.value })}/></label>
+      <label>国家（两位代码）<input aria-label="国家" value={form.country} maxLength={2} onChange={e => setForm({ ...form, country: e.target.value.toUpperCase() })}/></label>
+      <label>搜索语言<input aria-label="搜索语言" value={form.language} maxLength={8} onChange={e => setForm({ ...form, language: e.target.value })}/></label>
+      <label>业务分类<select aria-label="业务分类" value={form.category} onChange={e => setForm({ ...form, category: e.target.value as BusinessCategory })}>
+        {BUSINESS_CATEGORIES.map(c => <option key={c} value={c}>{categoryLabels[c]}</option>)}</select></label>
+      {error && <ErrorBox error={error}/>}
+      <div className="dialog-actions"><button className="button primary" disabled={busy || !form.text.trim()}>{busy ? '正在添加…' : '添加'}</button></div>
+    </form>
+  </Modal>;
+}
+
+/** Query discovery: query terms bound to a country and a business category, each with its own search clock. */
 export default function Discover() {
-  const [sampleOn, setSampleOn] = useState(false);
-  const [data, setData] = useState<DiscoverView>();
-  const [dimension, setDimension] = useState<'country' | 'category'>('country');
-  // The sample module loads only when asked for, so it never ships with the default view.
-  useEffect(() => {
-    if (!sampleOn) { setData(undefined); return; }
-    let live = true;
-    void import('./discover-sample.js').then(module => { if (live) setData(module.discoverSample); });
-    return () => { live = false; };
-  }, [sampleOn]);
-  const sourceTotal = data?.sources.reduce((sum, s) => sum + s.count, 0) ?? 0;
-  const bars = data ? (dimension === 'country' ? data.countries : data.categories) : [];
-  const barTotal = bars.reduce((sum, b) => sum + b.count, 0), barMax = Math.max(1, ...bars.map(b => b.count));
-  const statusTotal = data?.statuses.reduce((sum, s) => sum + s.count, 0) ?? 0;
+  const { api, session } = useAuth();
+  const operator = session.role === 'operator';
+  const [filter, setFilter] = useState<{ state?: QueryBinding['state']; category?: BusinessCategory; country?: string; search?: string }>({});
+  const [cursor, setCursor] = useState('0'), [adding, setAdding] = useState(false), [busy, setBusy] = useState<string>(), [error, setError] = useState<ApiFailure>();
+  const summary = useResource('query-summary', signal => api.querySummary(signal), true, 30_000);
+  const list = useResource(`queries:${cursor}:${JSON.stringify(filter)}`, signal => api.queries(cursor, filter, signal), true, 30_000);
+  const s = summary.data;
+  const refresh = () => { summary.refresh(); list.refresh(); };
+  const set = (next: typeof filter) => { setFilter(next); setCursor('0'); };
+  async function command(b: QueryBinding, body: Parameters<typeof api.queryCommand>[1]) {
+    setBusy(b.binding_id); setError(undefined);
+    try { await api.queryCommand(b.binding_id, body); refresh(); }
+    catch (cause) { setError(cause instanceof ApiFailure ? cause : new ApiFailure('操作失败，请刷新后重试')); }
+    finally { setBusy(undefined); }
+  }
+  const ask = (question: string) => { const reason = window.prompt(question)?.trim(); return reason || undefined; };
+  const categoryMax = Math.max(1, ...(s?.by_category.map(c => c.bindings) ?? [1]));
   return <div className="dashboard discover">
     <header className="dashboard-heading">
-      <div><h1>Query 发现</h1><p>管理自发现查询词、执行策略、来源归因与发现效果</p><span className="data-freshness failing"><i/>{data ? '示例数据' : NOT_CONNECTED}</span></div>
-      <div className="dashboard-period">
-        <label className="sample-switch" htmlFor="discover-sample"><input id="discover-sample" type="checkbox" checked={sampleOn} onChange={event => setSampleOn(event.target.checked)}/>预览示例数据</label>
-        <div title="时间范围统计尚未接入"><button disabled>近24小时</button><button disabled>近7天</button><button disabled>近30天</button></div>
-      </div>
+      <div><h1>Query 发现</h1><p>搜索词按“国家 + 业务分类”管理，每个都有自己的搜索时钟：首次搜“今年”，之后每周或每月搜一次</p>
+        <span className="data-freshness failing"><i/>自动搜索在下一步接入，目前只管理搜索词</span></div>
+      <div className="dashboard-period"><button className="button small" onClick={refresh}><RefreshCw size={13}/>刷新</button>
+        {operator && <button className="button small primary" onClick={() => setAdding(true)}><Plus size={13}/>添加搜索词</button>}</div>
     </header>
-    {data && <div className="sample-banner" role="note"><TriangleAlert size={14}/>以下为设计示例数据，用于预览页面效果，不是真实统计。Discover 后端接入后显示真实数据。</div>}
+    {summary.error && <ErrorBox error={summary.error}/>} {error && <ErrorBox error={error}/>}
+    <AddQuery open={adding} onOpenChange={setAdding} onAdded={refresh}/>
 
-    <div className="discover-kpis">{kpiLabels.map((label, i) => { const k = data?.kpis[i]; return <section key={label} className="panel discover-kpi">
-      <span className="kpi-icon">{kpiIcons[i]}</span>
-      <div><small>{label}</small><strong>{k ? fmt(k.value) : '—'}</strong>{k ? <><em>↑ {k.delta}</em><span className="kpi-foot"><span>{k.compare}</span><span>{k.total}</span></span></> : <span className="kpi-foot"><span>{NOT_CONNECTED}</span></span>}</div>
-    </section>; })}</div>
-
-    <div className="discover-row row-flow">
-      <Card title="Query 执行与发现漏斗" subtitle="今日口径：从执行 Query 到转入全量采集；Query 池存量不计入转化率" className="funnel-card">
-        <div className="funnel">{funnelLabels.map((label, i) => { const step = data?.funnel[i]; return <div key={label} className="funnel-step">
-          <span className="funnel-icon">{funnelIcons[i]}</span><small>{label}</small><strong>{step ? fmt(step.value) : '—'}</strong><span className="funnel-note">{step?.note ?? '尚未接入'}</span>
-          {step ? <span className={`funnel-badge ${step.tone}`}>{step.badge}</span> : <span className="funnel-badge slate">—</span>}
-        </div>; })}</div>
-      </Card>
-      <Card title="来源构成" extra={<Unavailable/>}>
-        <div className="source-body"><Donut parts={data?.sources} caption="新增频道" label={data ? '新增频道的来源构成' : '来源构成尚未接入'}/><div className="legend">{(data?.sources ?? ['手工关键词', '标签派生', '视频标题', '频道简介', '相关搜索', 'Agent 建议'].map(label => ({ label, count: 0, color: '#c9d4e3' }))).map(s => <div key={s.label}><i style={{ background: s.color }}/><span>{s.label}</span><b>{data ? pct(s.count, sourceTotal) : '—'}</b><small>{data ? s.count : ''}</small></div>)}</div></div>
-      </Card>
-      <Card title="国家与业务分类" extra={<div className="segmented" role="tablist"><button role="tab" aria-selected={dimension === 'country'} className={dimension === 'country' ? 'on' : ''} onClick={() => setDimension('country')}>国家</button><button role="tab" aria-selected={dimension === 'category'} className={dimension === 'category' ? 'on' : ''} onClick={() => setDimension('category')}>业务分类</button></div>}>
-        {bars.length ? <div className="dim-bars">{bars.map(b => <div key={b.name}><span>{b.code && <i className="cc">{b.code}</i>}{b.name}</span><div className="dim-bar"><i style={{ width: `${b.count / barMax * 100}%` }}/></div><b>{pct(b.count, barTotal)}</b><small>{b.count}</small></div>)}</div> : <Empty title="尚无分布数据">{NOT_CONNECTED}</Empty>}
-      </Card>
-    </div>
-
-    <div className="discover-row row-state">
-      <Card title="Query 状态分布" subtitle="当前 Query 池存量">
-        <div className="status-grid">{(Object.keys(statusMeta) as Status[]).map(key => { const s = data?.statuses.find(x => x.key === key); const meta = statusMeta[key]; return <div key={key} className={`status-cell ${meta.tone}`}>
-          {meta.icon}<small>{meta.label}</small><strong>{s ? fmt(s.count) : '—'}</strong><span>{s ? pct(s.count, statusTotal) : ''}</span>
-        </div>; })}</div>
-      </Card>
-      <Card title="执行策略与时间窗" subtitle="按搜索结果的上传时间范围分配执行频率" extra={<Unavailable>配置管理</Unavailable>}>
-        {data ? <div className="table-scroll"><table><thead><tr><th>时间窗</th><th>策略说明</th><th>下次执行</th></tr></thead><tbody>{data.policies.map(p => <tr key={p.window}><td>{p.window}</td><td>{p.rule}</td><td>{p.next}</td></tr>)}</tbody></table></div> : <Empty title="尚未配置执行策略">{NOT_CONNECTED}</Empty>}
-      </Card>
-      <Card title="关键提醒" extra={<Unavailable>查看全部</Unavailable>}>
-        {data ? <div className="alerts">{data.alerts.map(a => <div key={a.title} className={`alert-row ${a.tone}`}>{a.tone === 'red' ? <CircleAlert size={17}/> : a.tone === 'amber' ? <TriangleAlert size={17}/> : <Info size={17}/>}<div><b><em>{a.count}</em> {a.title}</b><small>{a.detail}</small></div><time>{a.when}</time></div>)}</div> : <Empty title="暂无提醒">{NOT_CONNECTED}</Empty>}
-      </Card>
+    <div className="discover-kpis">
+      <Kpi label="搜索词" tone="blue" icon={<Search size={22}/>} value={fmt(s?.total)} foot={s ? `覆盖 ${s.by_country.length} 个国家 · 已到期待搜 ${fmt(s.due)}` : '—'}/>
+      <Kpi label="待首次搜索" tone="blue" icon={<CirclePlay size={22}/>} value={fmt(s?.by_state.BOOTSTRAP)} foot="首次搜“今年”后再定频率"/>
+      <Kpi label="活跃" tone="green" icon={<Zap size={22}/>} value={fmt(s?.by_state.ACTIVE)} foot="每周或每月搜一次"/>
+      <Kpi label="冷却 / 休眠" tone="amber" icon={<Snowflake size={22}/>} value={s ? `${fmt(s.by_state.COOLDOWN)} / ${fmt(s.by_state.DORMANT)}` : undefined} foot={s ? `已停用 ${fmt(s.by_state.DISABLED)}` : '—'}/>
     </div>
 
     <div className="discover-row row-list">
-      <Card title="Query 列表" subtitle={data ? `示例 ${data.queries.length} 条` : '支持按国家、分类、状态筛选'} className="query-list" extra={<div className="list-tools">
-        <select aria-label="国家" disabled><option>全部国家</option></select><select aria-label="业务分类" disabled><option>全部分类</option></select><select aria-label="状态" disabled><option>全部状态</option></select>
-        <label className="list-search" htmlFor="query-search"><Search size={13}/><input id="query-search" placeholder="搜索 Query 词…" disabled/></label>
-        <button className="button small primary" disabled title={NOT_CONNECTED}><Plus size={13}/>新增 Query</button>
+      <Card title="搜索词列表" className="query-list" extra={<div className="list-tools">
+        <select aria-label="状态" value={filter.state ?? ''} onChange={e => set({ ...filter, state: (e.target.value || undefined) as QueryBinding['state'] | undefined })}>
+          <option value="">全部状态</option>{Object.entries(stateMeta).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
+        <select aria-label="业务分类" value={filter.category ?? ''} onChange={e => set({ ...filter, category: (e.target.value || undefined) as BusinessCategory | undefined })}>
+          <option value="">全部分类</option>{BUSINESS_CATEGORIES.map(c => <option key={c} value={c}>{categoryLabels[c]}</option>)}</select>
+        <select aria-label="国家" value={filter.country ?? ''} onChange={e => set({ ...filter, country: e.target.value || undefined })}>
+          <option value="">全部国家</option>{s?.by_country.map(c => <option key={c.country} value={c.country}>{c.country}</option>)}</select>
+        <label className="list-search"><Search size={13}/><input aria-label="搜索搜索词" placeholder="搜索词…" maxLength={200} value={filter.search ?? ''} onChange={e => set({ ...filter, search: e.target.value || undefined })}/></label>
       </div>}>
-        {data ? <div className="table-scroll"><table><thead><tr><th>Query 词</th><th>国家</th><th>业务分类</th><th>来源</th><th>时间窗</th><th>状态</th><th>上次执行</th><th>下次执行</th><th className="num">发现频道</th><th className="num">去重后</th><th className="num">转全量</th><th>操作</th></tr></thead>
-          <tbody>{data.queries.map(q => { const meta = statusMeta[q.status]; return <tr key={q.term}><td className="query-term">{q.term}</td><td>{q.country}</td><td>{q.category}</td><td>{q.source}</td><td>{q.window}</td><td><span className={`status-chip ${meta.tone}`}><i/>{meta.label}</span></td><td>{q.last}</td><td>{q.next}</td><td className="num">{q.found}</td><td className="num">{q.unique}</td><td className="num">{q.full}</td><td className="row-actions"><span title={NOT_CONNECTED}>查看</span><span title={NOT_CONNECTED}>执行</span><span title={NOT_CONNECTED}>调整策略</span></td></tr>; })}</tbody></table></div>
-          : <Empty title="尚无 Query">Discover 模块的 Query 管理与执行尚未接入后端。</Empty>}
+        <ResourceView resource={list}>{page => <>{page.items.length ? <div className="table-scroll"><table><thead><tr><th>搜索词</th><th>国家 / 语言</th><th>业务分类</th><th>状态</th><th>频率</th><th>下次搜索</th><th>上次成功</th><th>来源</th>{operator && <th>操作</th>}</tr></thead>
+          <tbody>{page.items.map(b => { const meta = stateMeta[b.state]; return <tr key={b.binding_id}>
+            <td className="query-term">{b.text}</td><td>{b.country} / {b.language}</td><td>{categoryLabels[b.category]}</td>
+            <td><span className={`status-chip ${meta.tone}`}><i/>{meta.label}</span></td>
+            <td>{cadenceText(b)}{b.cadence_override && <small className="cell-sub">人工指定</small>}</td>
+            <td>{b.next_run_at ? time(b.next_run_at) : '—'}</td><td>{b.last_success_at ? time(b.last_success_at) : '—'}</td>
+            <td title={b.sources.map(x => `${sourceLabels[x.type]}：${x.ref}`).join('\n')}>{[...new Set(b.sources.map(x => sourceLabels[x.type]))].join('、')}{b.source_count > 1 && <small className="cell-sub">共 {b.source_count} 条</small>}</td>
+            {operator && <td className="row-actions">
+              {b.state === 'DISABLED'
+                ? <button className="text-button" disabled={!!busy} onClick={() => void command(b, { action: 'enable', expected_version: b.version })}>启用</button>
+                : <button className="text-button" disabled={!!busy} onClick={() => { const reason = ask('停用原因'); if (reason) void command(b, { action: 'disable', reason, expected_version: b.version }); }}>停用</button>}
+              <select aria-label={`${b.text} 搜索频率`} value={b.cadence_override ?? 'auto'} disabled={!!busy || b.state === 'DISABLED'} onChange={e => {
+                const cadence = e.target.value === 'auto' ? null : e.target.value as 'WEEK' | 'MONTH', reason = ask('调整频率的原因');
+                if (reason) void command(b, { action: 'set_cadence', cadence, reason, expected_version: b.version }); }}>
+                <option value="auto">自动</option><option value="WEEK">每周</option><option value="MONTH">每月</option></select>
+            </td>}
+          </tr>; })}</tbody></table></div> : <Empty title="没有符合条件的搜索词">可以调整筛选条件，或添加新的搜索词。</Empty>}
+          <footer className="pager"><span>每页最多 20 条</span><button className="button small" disabled={cursor === '0'} onClick={() => setCursor(String(Math.max(0, Number(cursor) - 20)))}>上一页</button><button className="button small" disabled={!page.next_cursor} onClick={() => setCursor(page.next_cursor!)}>下一页</button></footer></>}</ResourceView>
       </Card>
-      <Card title="近期发现效果 Top 10" extra={<Unavailable>查看全部</Unavailable>}>
-        {data ? <div className="table-scroll"><table><thead><tr><th>#</th><th>Query 词</th><th className="num">新增</th><th className="num">去重后</th></tr></thead><tbody>{data.top.map((t, i) => <tr key={t.term}><td><span className={`rank ${i < 3 ? 'hot' : ''}`}>{i + 1}</span></td><td className="query-term">{t.term}</td><td className="num">{t.found}</td><td className="num">{t.unique}</td></tr>)}</tbody></table></div> : <Empty title="暂无排行">{NOT_CONNECTED}</Empty>}
+      <Card title="业务分类分布" subtitle="未停用的搜索词">
+        {s?.by_category.length ? <div className="reason-bars">{s.by_category.map(c => <div key={c.category}><span>{categoryLabels[c.category]}</span><div className="dim-bar"><i style={{ width: `${(c.bindings / categoryMax) * 100}%` }}/></div><b>{fmt(c.bindings)}</b></div>)}</div>
+          : <Empty title="还没有搜索词">添加搜索词后显示各分类的数量。</Empty>}
       </Card>
     </div>
-    <footer className="dashboard-foot"><span>Discover 为后续阶段模块；接入前各统计显示“—”。“预览示例数据”仅用于查看页面设计。</span><span>口径：今日 = 浏览器时区自然日</span></footer>
+    <footer className="dashboard-foot"><span><CircleCheck size={12}/> 状态：待首次搜索 → 活跃（每周 / 每月）→ 冷却 → 休眠；<OctagonX size={12}/> 人工停用后，新来源不会自动解除停用。</span><span>统计时间：{s ? time(s.observed_at) : '—'}</span></footer>
   </div>;
 }

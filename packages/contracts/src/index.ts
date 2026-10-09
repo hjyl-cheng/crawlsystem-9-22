@@ -323,6 +323,7 @@ export const pageSchema = <T extends z.ZodType>(item: T) => z.strictObject({ ite
 export const ApiRoutes = {
   updates: '/v1/updates', updatesSummary: '/v1/updates/summary', dataApiPermit: '/v1/data-api/permit', dataApiFailure: '/v1/data-api/failure', dataApiSummary: '/v1/data-api/summary',
   agentTasks: '/v1/agent/tasks', agentSummary: '/v1/agent/summary', channelImport: '/v1/channels/import', channelImports: '/v1/channels/imports',
+  queries: '/v1/queries', queriesSummary: '/v1/queries/summary', query: (id: string) => `/v1/queries/${encodeURIComponent(id)}`,
   session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', consoleAccounts: '/v1/console/accounts', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', proxies: '/v1/proxies', proxyImport: '/v1/proxies/import', proxySync: '/v1/proxy-manager/sync', proxySources: '/v1/proxy-sources',
   proxySource: (id: string) => `/v1/proxy-sources/${encodeURIComponent(id)}`,
@@ -530,3 +531,45 @@ export const ChannelImportsSchema = z.strictObject({
   items: z.array(ChannelImportItemSchema).max(100),
 });
 export type ChannelImports = z.infer<typeof ChannelImportsSchema>;
+
+// ---- Discover / Query (24.8 §5): a query term bound to a country and one of the 19 fixed business
+// categories; each binding has its own query clock (BOOTSTRAP → THIS_YEAR, then WEEK or MONTH).
+export const BUSINESS_CATEGORIES = ['Automotive', 'Beauty Creators', 'Casual Vlogs', 'Dance', 'Education', 'Fashion', 'Food', 'Gaming', 'General Humanities & Society',
+  'Health & Wellness', 'Home', 'Music', 'Parenting', 'Pets & Animals', 'Self Improvement', 'Software & Internet', 'Sports & Outdoors', 'Tech', 'Travel'] as const;
+export const BusinessCategorySchema = z.enum(BUSINESS_CATEGORIES);
+export type BusinessCategory = typeof BUSINESS_CATEGORIES[number];
+export const QUERY_STATES = ['BOOTSTRAP', 'ACTIVE', 'COOLDOWN', 'DORMANT', 'DISABLED'] as const;
+export const QueryStateSchema = z.enum(QUERY_STATES);
+export const QueryCadenceSchema = z.enum(['WEEK', 'MONTH']);
+export const QUERY_SOURCE_TYPES = ['SEED_KEYWORD', 'AUTO_TAG', 'VIDEO_TITLE', 'VIDEO_DESCRIPTION', 'CHANNEL_ABOUT', 'RELATED_QUERY', 'MANUAL'] as const;
+export const QuerySourceTypeSchema = z.enum(QUERY_SOURCE_TYPES);
+const CountryCode = z.string().regex(/^[A-Z]{2}$/);
+const LanguageCode = z.string().regex(/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/);
+/** Query text as it is matched: NFKC, no control characters, single spaces, lower case (the legacy normalisation). */
+export function normalizeQueryText(text: string): string {
+  return text.normalize('NFKC').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().replace(/\s+/gu, ' ').toLowerCase();
+}
+export const QueryBindingSchema = z.strictObject({
+  binding_id: z.uuid(), text: z.string().min(1).max(200), country: CountryCode, language: LanguageCode, category: BusinessCategorySchema,
+  state: QueryStateSchema, cadence: QueryCadenceSchema.nullable(), cadence_override: QueryCadenceSchema.nullable(),
+  next_run_at: Timestamp.nullable(), last_success_at: Timestamp.nullable(), empty_runs: Count, priority: z.number().int(),
+  sources: z.array(z.strictObject({ type: QuerySourceTypeSchema, ref: z.string().max(300) })).max(5), source_count: Count,
+  version: z.number().int().positive(), created_at: Timestamp,
+});
+export type QueryBinding = z.infer<typeof QueryBindingSchema>;
+export const QuerySummarySchema = z.strictObject({
+  observed_at: Timestamp, total: Count, by_state: z.record(QueryStateSchema, Count), due: Count,
+  by_category: z.array(z.strictObject({ category: BusinessCategorySchema, bindings: Count })).max(19),
+  by_country: z.array(z.strictObject({ country: CountryCode, bindings: Count })).max(50),
+});
+export type QuerySummary = z.infer<typeof QuerySummarySchema>;
+/** Operator adds a query: one binding per country and category; an existing one gains a MANUAL source. */
+export const CreateQuerySchema = z.strictObject({ text: z.string().min(1).max(200), country: CountryCode, language: LanguageCode, category: BusinessCategorySchema });
+export type CreateQuery = z.infer<typeof CreateQuerySchema>;
+/** Operator command on a binding; a cadence override needs a reason (audited). */
+export const QueryCommandSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('disable'), reason: z.string().min(1).max(300), expected_version: z.number().int().positive() }),
+  z.strictObject({ action: z.literal('enable'), expected_version: z.number().int().positive() }),
+  z.strictObject({ action: z.literal('set_cadence'), cadence: QueryCadenceSchema.nullable(), reason: z.string().min(1).max(300), expected_version: z.number().int().positive() }),
+]);
+export type QueryCommand = z.infer<typeof QueryCommandSchema>;

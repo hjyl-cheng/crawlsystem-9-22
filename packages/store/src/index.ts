@@ -11,6 +11,8 @@ import { aboutObservation, agentObservation, applyObservations, loadClocks, vide
 import { ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, parseChannelReference, type ChannelImportResult, type ChannelImports } from '@crawlsystem/contracts';
 import { UpdateLimitsSchema, ChannelUpdateSchema, DataApiPermitRequestSchema, DataApiFailureReportSchema, type UpdateLimits, type DataApiPermit, type DataApiSummary, type AgentTask, type AgentSummary } from '@crawlsystem/contracts';
 import { readAgentSummary, readAgentTasks, readDataApiSummary } from './operations-view.ts';
+import { commandQuery, createQuery, DiscoveryError, listBindings, querySummary, type BindingFilter } from './discovery.ts';
+import { CreateQuerySchema, QueryCommandSchema, type QueryBinding, type QuerySummary } from '@crawlsystem/contracts';
 import { apiBudget, estimateApiUnits, releaseApiReservation, schedulerState } from './update-budget.ts';
 import { readUpdates } from './update-view.ts';
 import { nextChangeProbability, planRecentSampling, RECENT_SAMPLING } from './recent-sampling.ts';
@@ -30,6 +32,14 @@ export function toPlan(row: QueryResultRow): Plan {
 }
 function page<T>(rows: T[], limit: number, offset: number): Page<T> { return { items: rows.slice(0, limit), next_cursor: rows.length > limit ? String(offset + limit) : null }; }
 const terminal = (status: string) => ['COMPLETED','CANCELLED','FAILED'].includes(status);
+/** Discovery errors as Store errors (status codes). */
+async function discovery<T>(run: () => Promise<T>): Promise<T> {
+  try { return await run(); }
+  catch (error) {
+    if (error instanceof DiscoveryError) throw new StoreError(error.code, error.message, error.code === 'NOT_FOUND' ? 404 : error.code === 'INVALID_REQUEST' ? 400 : 409);
+    throw error;
+  }
+}
 /** A count the source resolved (exact or estimated), else null. */
 const resolvedCount = (metric: { value: number | null; status: string }) => ['exact', 'estimated'].includes(metric.status) ? metric.value : null;
 export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; trace_context?: string; }
@@ -108,6 +118,24 @@ export class Store {
       await client.query("INSERT INTO m1.intents(intent_id,plan_id,kind) VALUES($1,$2,'START')", [randomUUID(),planId]);
       return toPlan(row);
     }
+  }
+  async queries(principal: Principal, limit = 20, offset = 0, filter: BindingFilter = {}): Promise<Page<QueryBinding>> {
+    requireRole(principal, 'reader', 'operator');
+    return page(await listBindings(this.pool, principal.workspace_id, filter, limit + 1, offset), limit, offset);
+  }
+  async querySummary(principal: Principal): Promise<QuerySummary> {
+    requireRole(principal, 'reader', 'operator');
+    return querySummary(this.pool, principal.workspace_id);
+  }
+  async createQuery(principal: Principal, raw: unknown): Promise<QueryBinding> {
+    requireRole(principal, 'operator');
+    const input = CreateQuerySchema.parse(raw);
+    return this.tx(client => discovery(() => createQuery(client, principal.workspace_id, principal.subject, input)));
+  }
+  async queryCommand(principal: Principal, bindingId: string, raw: unknown): Promise<QueryBinding> {
+    requireRole(principal, 'operator');
+    const command = QueryCommandSchema.parse(raw);
+    return this.tx(client => discovery(() => commandQuery(client, principal.workspace_id, principal.subject, bindingId, command)));
   }
   /**
    * Queue channels for a first collection (operator). Each line is a channel ID or /channel/ link; channels

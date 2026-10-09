@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentTaskStateSchema, ApiRoutes, CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema, LoginSchema, UpdateStateSchema } from '@crawlsystem/contracts';
+import { AgentTaskStateSchema, BusinessCategorySchema, QueryStateSchema, ApiRoutes, CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema, LoginSchema, UpdateStateSchema } from '@crawlsystem/contracts';
 import { requireRole, StoreError } from '@crawlsystem/store';
 import { createServer, pagination, planId, sourceMode, type ServerOptions } from '@crawlsystem/http';
 import { authenticate } from '@crawlsystem/http/auth';
@@ -73,6 +73,13 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     const q=pagination(request.query), filter=z.object({state:AgentTaskStateSchema.optional()}).parse(request.query);
     return store.agentTasks(request.principal,q.limit,q.offset,filter.state);
   });
+  app.get(ApiRoutes.queriesSummary,async request=>store.querySummary(request.principal));
+  app.get(ApiRoutes.queries,async request=>{
+    const q=pagination(request.query), filter=z.object({state:QueryStateSchema.optional(),category:BusinessCategorySchema.optional(),country:z.string().regex(/^[A-Z]{2}$/).optional(),search:z.string().max(200).optional()}).parse(request.query);
+    return store.queries(request.principal,q.limit,q.offset,filter);
+  });
+  app.post(ApiRoutes.queries,{bodyLimit:4096},async request=>store.createQuery(request.principal,request.body));
+  app.post('/v1/queries/:id',{bodyLimit:4096},async request=>store.queryCommand(request.principal,z.object({id:z.uuid()}).parse(request.params).id,request.body));
   app.post(ApiRoutes.channelImport,{bodyLimit:262144},async request=>store.importChannels(request.principal,request.body));
   app.get(ApiRoutes.channelImports,async request=>store.channelImports(request.principal));
   app.get('/v1/channels/:id',async request=>store.getChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id));

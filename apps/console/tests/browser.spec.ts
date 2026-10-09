@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test, expect, type Page } from '@playwright/test';
-import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView, type UpdateChannel, type AgentTask } from '@crawlsystem/contracts';
-import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture, agentTaskFixtures, agentSummaryFixture, dataApiSummaryFixture } from './fixtures.js';
+import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView, type UpdateChannel, type AgentTask, type QueryBinding } from '@crawlsystem/contracts';
+import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture, agentTaskFixtures, agentSummaryFixture, dataApiSummaryFixture, queryBindingFixture, querySummaryFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
-  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[], agentTasks: [] as AgentTask[], dataApiCalls: false, channelImports: [] as unknown[] };
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[], agentTasks: [] as AgentTask[], dataApiCalls: false, channelImports: [] as unknown[], queryBindings: [] as QueryBinding[], queryRequests: [] as unknown[] };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -43,6 +43,9 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       return json({ items, queued: items.filter(i => i.outcome === 'queued').length });
     }
     if (path === '/v1/channels/imports') return json({ counts: { queued: state.channelImports.length ? 1 : 0, planned: 0, done: 0, failed: 0 }, items: [] });
+    if (path === '/v1/queries/summary') return json(querySummaryFixture(state.queryBindings));
+    if (path === '/v1/queries' && method === 'GET') return json({ items: state.queryBindings, next_cursor: null });
+    if (path.startsWith('/v1/queries') && method === 'POST') { state.queryRequests.push(route.request().postDataJSON()); return json(state.queryBindings[0] ?? queryBindingFixture()); }
     if (path === '/v1/agent/summary') return json(agentSummaryFixture(state.agentTasks));
     if (path === '/v1/agent/tasks') return json({ items: state.agentTasks, next_cursor: null });
     if (path === '/v1/data-api/summary') return json(dataApiSummaryFixture(state.dataApiCalls));
@@ -280,17 +283,25 @@ test('overview polling updates the pipeline in place without hiding nodes or edg
   await expect.poll(() => state.reads.length).toBeGreaterThan(reads);
   await expect.poll(visible).toEqual(before);
 });
-test('query discovery shows no figures until the sample preview is switched on, and then warns', async ({ page }) => {
-  await mock(page); await login(page, '/discover/queries');
+test('query discovery lists real query bindings, adds queries and disables them with a reason', async ({ page }) => {
+  const state = await mock(page); state.queryBindings = [queryBindingFixture()]; await login(page, '/discover/queries');
   await expect(page.getByRole('heading', { name: 'Query 发现', exact: true })).toBeVisible();
-  await expect(page.getByText('尚无 Query', { exact: true })).toBeVisible();
-  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toHaveCount(0);
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
-  await expect(page.locator('.discover-kpi strong').first()).toHaveText('1,284');
-  await page.getByLabel('预览示例数据').uncheck();
-  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
+  await expect(page.getByLabel('预览示例数据'), 'real data only').toHaveCount(0);
+  await expect(page.locator('.discover-kpi strong').first()).toHaveText('1');
+  const row = page.locator('.query-list tbody tr').first();
+  await expect(row).toContainText('rock com atitude'); await expect(row).toContainText('音乐'); await expect(row).toContainText('待首次搜索'); await expect(row).toContainText('首次搜“今年”');
+  await page.getByRole('button', { name: '添加搜索词' }).click();
+  await page.getByLabel('搜索词', { exact: true }).fill('receitas fit');
+  await page.getByLabel('业务分类').last().selectOption('Food');
+  await page.getByRole('button', { name: '添加', exact: true }).click();
+  await expect.poll(() => state.queryRequests.length).toBe(1);
+  expect(state.queryRequests[0]).toEqual({ text: 'receitas fit', country: 'BR', language: 'pt', category: 'Food' });
+  page.once('dialog', dialog => void dialog.accept('不相关'));
+  await row.getByRole('button', { name: '停用' }).click();
+  await expect.poll(() => state.queryRequests.length).toBe(2);
+  expect(state.queryRequests[1]).toEqual({ action: 'disable', reason: '不相关', expected_version: 1 });
+  await page.getByLabel('业务分类').first().selectOption('Music');
+  await expect.poll(() => state.reads.some(r => r.startsWith('/api/v1/queries?') && r.includes('category=Music'))).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 test('candidate channels show no figures until the sample preview is switched on, and then warn', async ({ page }) => {

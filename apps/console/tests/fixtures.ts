@@ -1,6 +1,6 @@
 // Explicit browser-test fixtures. Never imported by the application.
 import { randomUUID } from 'node:crypto';
-import { CONTRACT_VERSION, PlanSchema, PlanDetailSchema, ReceiptSchema, WorkerSchema, StoredEventSchema, ChannelDetailSchema, UpdateChannelSchema, UpdateSummarySchema, AgentTaskSchema, AgentSummarySchema, DataApiSummarySchema, type Plan, type Domain, type UpdateChannel, type AgentTask } from '@crawlsystem/contracts';
+import { CONTRACT_VERSION, PlanSchema, PlanDetailSchema, ReceiptSchema, WorkerSchema, StoredEventSchema, ChannelDetailSchema, UpdateChannelSchema, UpdateSummarySchema, AgentTaskSchema, AgentSummarySchema, DataApiSummarySchema, QueryBindingSchema, QuerySummarySchema, type QueryBinding, type Plan, type Domain, type UpdateChannel, type AgentTask } from '@crawlsystem/contracts';
 import { createFrozenFixture, fixtureChannel, fixtureVideo } from '@crawlsystem/contracts/fixtures';
 import { contentHash, fixtureSubmission } from '@crawlsystem/contracts/hash';
 
@@ -63,4 +63,13 @@ export function dataApiSummaryFixture(calls: boolean) {
     endpoints: calls ? [{ endpoint: 'videos', calls: 80, failures: 1 }, { endpoint: 'channels', calls: 4, failures: 0 }] : [],
     failures_by_reason: calls ? [{ reason: 'quota', count: 1 }] : [],
     recent_failures: calls ? [{ at: timestamp, endpoint: 'videos', reason: 'quota', plan_id: randomUUID(), channel_id: fixtureChannel.channel_id }] : [] });
+}
+export function queryBindingFixture(): QueryBinding {
+  return QueryBindingSchema.parse({ binding_id: randomUUID(), text: 'rock com atitude', country: 'BR', language: 'pt', category: 'Music', state: 'BOOTSTRAP', cadence: null, cadence_override: null,
+    next_run_at: timestamp, last_success_at: null, empty_runs: 0, priority: 56, sources: [{ type: 'AUTO_TAG', ref: 'legacy:crawlsystem:query_terms:1' }], source_count: 1, version: 1, created_at: timestamp });
+}
+export function querySummaryFixture(bindings: QueryBinding[]) {
+  return QuerySummarySchema.parse({ observed_at: timestamp, total: bindings.length, due: bindings.length,
+    by_state: { BOOTSTRAP: bindings.length, ACTIVE: 0, COOLDOWN: 0, DORMANT: 0, DISABLED: 0 },
+    by_category: bindings.length ? [{ category: 'Music', bindings: bindings.length }] : [], by_country: bindings.length ? [{ country: 'BR', bindings: bindings.length }] : [] });
 }
