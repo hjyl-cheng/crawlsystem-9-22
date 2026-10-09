@@ -33,8 +33,8 @@ export default function Candidates() {
   const refresh = () => { summary.refresh(); list.refresh(); };
   const set = (next: typeof filter) => { setFilter(next); setCursor('0'); };
   async function decide(c: Candidate, action: 'admit' | 'reject') {
-    const needsReason = action === 'reject' || c.state !== 'QUALIFIED';
-    const reason = window.prompt(action === 'reject' ? '拒绝原因' : needsReason ? '准入原因（未达标或已拒绝的频道需要说明）' : '准入备注（可不填）')?.trim();
+    const needsReason = action === 'reject' || !['QUALIFIED', 'ADMITTED'].includes(c.state);
+    const reason = window.prompt(action === 'reject' ? '拒绝原因' : c.state === 'ADMITTED' ? '重新采集备注（可不填）' : needsReason ? '准入原因（未达标或已拒绝的频道需要说明）' : '准入备注（可不填）')?.trim();
     if (reason === undefined || (needsReason && !reason)) return;
     setBusy(c.channel_id); setError(undefined);
     try {
@@ -80,6 +80,7 @@ export default function Candidates() {
             <td>{time(c.discovered_at)}</td>
             {operator && <td className="row-actions">
               {['QUALIFIED', 'UNQUALIFIED', 'REJECTED'].includes(c.state) && <button className="text-button" disabled={!!busy} onClick={() => void decide(c, 'admit')}>准入</button>}
+              {c.state === 'ADMITTED' && c.import_state === 'failed' && <button className="text-button" disabled={!!busy} onClick={() => void decide(c, 'admit')}>重新采集</button>}
               {c.state !== 'REJECTED' && (c.state !== 'ADMITTED' || c.import_state === 'queued') && <button className="text-button" disabled={!!busy} onClick={() => void decide(c, 'reject')}>拒绝</button>}
             </td>}
           </tr>; })}</tbody></table></div> : <Empty title="没有符合条件的候选频道">自动搜索发现新频道后会显示在这里。</Empty>}

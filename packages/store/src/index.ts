@@ -200,7 +200,8 @@ export class Store {
         const id = ref.channel_id;
         if (seen.has(id)) { items.push({ line, channel_id: id, outcome: 'duplicate' }); continue; }
         seen.add(id);
-        const known = (await client.query('SELECT 1 FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2 AND about IS NOT NULL', [principal.workspace_id, id])).rowCount;
+        // Known = managed, paused or removed; a channel whose first collection stopped half-way can be queued again.
+        const known = (await client.query('SELECT 1 FROM m1.channels WHERE workspace_id=$1 AND channel_id=$2 AND management_state IS NOT NULL', [principal.workspace_id, id])).rowCount;
         if (known) { items.push({ line, channel_id: id, outcome: 'known' }); continue; }
         const queued = await client.query(`INSERT INTO m1.channel_imports(workspace_id,channel_id,requested_by,request_id) VALUES($1,$2,$3,$4)
           ON CONFLICT(workspace_id,channel_id) DO UPDATE SET state='queued',plan_id=NULL,requested_by=EXCLUDED.requested_by,request_id=EXCLUDED.request_id,requested_at=clock_timestamp(),updated_at=clock_timestamp()

@@ -26,9 +26,11 @@ function submit(plan: Plan, domain: Domain, key: string, payload: unknown, domai
   return { ...body, payload_hash: submissionHash(body as never) } as Submission;
 }
 const importLines = (t: ReturnType<typeof setup>, lines: string[]) => t.store.importChannels(t.op, { request_id: randomUUID(), lines });
+const applyAbout = (t: ReturnType<typeof setup>, plan: Plan) => t.store.apply(t.worker, submit(plan, 'ABOUT', 'about',
+  { ...structuredClone(fixtureChannel), channel_id: plan.channel_id, channel_url: `https://www.youtube.com/channel/${plan.channel_id}`, observed_at: new Date().toISOString() }, true));
 async function completeFirstCollection(t: ReturnType<typeof setup>, plan: Plan) {
   const channel = plan.channel_id, input = (await t.store.getInput(t.worker, plan.plan_id)).input as YoutubeFrozenInput, video = randomUUID().replaceAll('-', '').slice(0, 11);
-  await t.store.apply(t.worker, submit(plan, 'ABOUT', 'about', { ...structuredClone(fixtureChannel), channel_id: channel, channel_url: `https://www.youtube.com/channel/${channel}`, observed_at: new Date().toISOString() }, true));
+  await applyAbout(t, plan);
   await t.store.apply(t.worker, submit(plan, 'VIDEO', 'targets', { kind: 'targets', channel_id: channel, video_ids: [video], listed_at: new Date().toISOString(),
     window_start: new Date(Date.parse(input.reference_time) - input.scope.max_age_days * 86_400_000).toISOString(), exhausted: true, source: 'test' }, false));
   await t.store.apply(t.worker, submit(plan, 'VIDEO', 'videos', { kind: 'videos', items: [{ ...structuredClone(fixtureVideo), channel_id: channel, source_content_id: video, url: `https://www.youtube.com/watch?v=${video}` }] }, true));
@@ -55,9 +57,13 @@ test('the scheduler admits imports oldest first within the active-plan limit; ou
   assert.deepEqual((await t.store.channelImports(t.reader)).counts, { queued: 1, planned: 1, done: 0, failed: 0 });
   assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id), [], 'the limit holds');
 
-  await t.store.cancel(t.op, admitted[0]!.plan_id, { command_id: randomUUID(), expected_version: admitted[0]!.version });
+  // The first collection stops after the About page: the channel is known but not managed.
+  await applyAbout(t, admitted[0]!);
+  const half = (await t.store.getPlan(t.reader, admitted[0]!.plan_id)).plan;
+  await t.store.cancel(t.op, half.plan_id, { command_id: randomUUID(), expected_version: half.version });
   assert.equal((await t.store.channelImports(t.reader)).items.find(i => i.channel_id === first)!.state, 'failed');
-  assert.deepEqual((await importLines(t, [first])).items.map(i => i.outcome), ['queued'], 'a failed import can be queued again');
+  assert.equal((await t.store.getChannel(t.reader, first)).management.state, null);
+  assert.deepEqual((await importLines(t, [first])).items.map(i => i.outcome), ['queued'], 'a half-collected channel whose import failed can be queued again');
 
   const next = await t.store.scheduleUpdates(t.op.workspace_id);
   assert.deepEqual(next.map(p => p.channel_id), [second], 'the older queued channel goes first');

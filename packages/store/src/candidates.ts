@@ -46,11 +46,14 @@ export async function admitCandidates(client: PoolClient, workspace: string, lim
 
 export async function commandCandidate(client: PoolClient, workspace: string, actor: string, channelId: string, raw: unknown, now = new Date()): Promise<Candidate> {
   const command = CandidateCommandSchema.parse(raw);
-  const row = (await client.query('SELECT state,version FROM m1.channel_candidates WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE', [workspace, channelId])).rows[0];
+  const row = (await client.query(`SELECT k.state,k.version,i.state AS import_state FROM m1.channel_candidates k
+    LEFT JOIN m1.channel_imports i ON i.workspace_id=k.workspace_id AND i.channel_id=k.channel_id WHERE k.workspace_id=$1 AND k.channel_id=$2 FOR UPDATE OF k`, [workspace, channelId])).rows[0];
   if (!row) throw new DiscoveryError('NOT_FOUND', 'Candidate not found');
   if (row.version !== command.expected_version) throw new DiscoveryError('CONFLICT', 'Candidate changed; refresh before deciding');
   if (command.action === 'admit') {
-    if (!['QUALIFIED', 'UNQUALIFIED', 'REJECTED'].includes(row.state)) throw new DiscoveryError('CONFLICT', row.state === 'ADMITTED' ? 'Candidate is already admitted' : 'The channel does not exist on YouTube');
+    // An admitted candidate whose first collection failed is admitted again (a retry).
+    const retry = row.state === 'ADMITTED' && row.import_state === 'failed';
+    if (!retry && !['QUALIFIED', 'UNQUALIFIED', 'REJECTED'].includes(row.state)) throw new DiscoveryError('CONFLICT', row.state === 'ADMITTED' ? 'Candidate is already admitted' : 'The channel does not exist on YouTube');
     await queueImports(client, workspace, [channelId], actor);
   } else {
     if (row.state === 'REJECTED') throw new DiscoveryError('CONFLICT', 'Candidate is already rejected');
