@@ -191,7 +191,7 @@ export default function Proxies() {
   const { api, session } = useAuth();
   const operator = session.role === 'operator';
   const overview = useResource('proxies', signal => api.proxies(signal), true, 15_000);
-  const [importing, setImporting] = useState(false), [addingSource, setAddingSource] = useState(false), [tab, setTab] = useState<Tab>('ips'), [query, setQuery] = useState(''), [stateFilter, setStateFilter] = useState(''), [countryFilter, setCountryFilter] = useState('');
+  const [importing, setImporting] = useState(false), [addingSource, setAddingSource] = useState(false), [tab, setTab] = useState<Tab>('ips'), [query, setQuery] = useState(''), [stateFilter, setStateFilter] = useState('active'), [countryFilter, setCountryFilter] = useState('');
   const sources = useResource('proxy-sources', signal => api.proxySources(signal), true, 30_000);
   // Real fact today: registered Workers report their proxy status (fixture runs use none).
   const workers = useResource('proxies-workers', signal => api.workers('0', 20, signal), true, 15_000);
@@ -199,7 +199,7 @@ export default function Proxies() {
   const data = useMemo(() => overview.data && fromOverview(overview.data), [overview.data]);
   // Candidate servers for binding: nodes that already run Workers, plus current bindings.
   const servers = [...new Set(workers.data?.items.map(w => w.server_id) ?? [])];
-  const ips = data?.ips.filter(ip => (!stateFilter || ip.state === stateFilter) && (!countryFilter || (countryFilter === 'none' ? ip.country === null : ip.country === countryFilter)) && (!query || `${ip.ip} ${ip.group} ${ip.provider}`.toLowerCase().includes(query.trim().toLowerCase())));
+  const ips = data?.ips.filter(ip => (!stateFilter || (stateFilter === 'active' ? ip.enabled && !ip.retired : ip.state === stateFilter)) && (!countryFilter || (countryFilter === 'none' ? ip.country === null : ip.country === countryFilter)) && (!query || `${ip.ip} ${ip.group} ${ip.provider}`.toLowerCase().includes(query.trim().toLowerCase())));
   const k = data?.kpis;
   const stateTotal = data?.states.reduce((s, x) => s + x.count, 0) ?? 0, providerMax = Math.max(1, ...(data?.providers.map(p => p.count) ?? [1]));
   const providerTotal = data?.providers.reduce((s, p) => s + p.count, 0) ?? 0, groupTotal = data?.groups.reduce((s, g) => s + g.count, 0) ?? 0;
@@ -227,7 +227,7 @@ export default function Proxies() {
           {tab === 'sources' && <button className="button small primary tab-action" disabled={!operator} onClick={() => setAddingSource(true)}><Rss size={13}/>添加来源</button>}</div>
         {tab === 'sources' ? <SourcesTable sources={sources.data?.items ?? []} operator={operator} onDone={() => { sources.refresh(); overview.refresh(); }}/> : <>
         <div className="list-tools ip-filters"><label className="list-search" htmlFor="ip-search"><Search size={13}/><input id="ip-search" placeholder="搜索 IP、分组、服务商…" value={query} onChange={e => setQuery(e.target.value)} disabled={!data}/></label>
-          <select aria-label="全部状态" value={stateFilter} onChange={e => setStateFilter(e.target.value)} disabled={!data}><option value="">全部状态</option>{(Object.keys(stateMeta) as IpState[]).map(s => <option key={s} value={s}>{stateMeta[s].label}</option>)}</select>
+          <select aria-label="全部状态" value={stateFilter} onChange={e => setStateFilter(e.target.value)} disabled={!data}><option value="active">启用中</option><option value="">全部状态</option>{(Object.keys(stateMeta) as IpState[]).map(s => <option key={s} value={s}>{stateMeta[s].label}</option>)}</select>
           <select aria-label="出口国家" value={countryFilter} onChange={e => setCountryFilter(e.target.value)} disabled={!data}><option value="">全部国家</option>{data?.countries.map(c => <option key={c.code ?? 'none'} value={c.code ?? 'none'}>{c.label}（{fmt(c.count)}）</option>)}</select></div>
         {data && data.ips.length ? <div className="table-scroll"><table><thead><tr><th>IP 地址</th><th className="num">端口</th><th>地区</th><th>服务商</th><th>分组</th><th>状态</th><th className="num">成功率</th><th className="num">响应时间</th><th className="num">今日请求</th><th>绑定节点</th><th>最后检测</th><th>操作</th></tr></thead>
           <tbody>{ips!.map(ip => { const m = stateMeta[ip.state]; return <tr key={ip.id ?? `${ip.ip}:${ip.port}`}><td className="mono query-term">{ip.ip}{ip.insecure && <small className="cell-note" title="该 HTTPS 代理自身的证书未校验；不带凭据，经它到 YouTube 的加密照常校验">证书未校验</small>}</td><td className="num">{ip.port}</td><td className={ip.regionTone} title={ip.regionHint}>{ip.region}</td><td>{ip.provider}</td><td><span className="keyword-chip">{ip.group}</span></td>

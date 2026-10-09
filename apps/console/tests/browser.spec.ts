@@ -489,8 +489,14 @@ test('proxies show the exit country YouTube detected, pending and failed checks,
     created_at: '2026-10-09T08:00:00.000Z', updated_at: '2026-10-09T08:00:00.000Z', exit_country: null, exit_ip: null, exit_checked_at: null, exit_check: 'pending', exit_check_error: null, ...exit });
   state.proxies = [proxy('1.1.1.1', { exit_country: 'BR', exit_ip: '200.1.2.3', exit_checked_at: '2026-10-09T08:00:00.000Z', exit_check: 'ok', country_code: 'US' }),
     proxy('2.2.2.2', { exit_country: 'BR', exit_ip: '200.1.2.4', exit_checked_at: '2026-10-09T08:00:00.000Z', exit_check: 'ok' }),
-    proxy('3.3.3.3', { exit_check: 'failed', exit_checked_at: '2026-10-09T08:00:00.000Z', exit_check_error: 'timeout' }), proxy('4.4.4.4', {})];
+    proxy('3.3.3.3', { exit_check: 'failed', exit_checked_at: '2026-10-09T08:00:00.000Z', exit_check_error: 'timeout' }), proxy('4.4.4.4', {}),
+    proxy('5.5.5.5', { enabled: false, retired: true, retire_reason: 'source_missing', state: 'disabled' })];
   await login(page, '/proxies');
+  await expect(page.getByLabel('全部状态')).toHaveValue('active', { timeout: 10_000 });
+  await expect(page.locator('tbody tr', { hasText: '5.5.5.5' }), 'stopped and retired proxies are hidden by default').toHaveCount(0);
+  await page.getByLabel('全部状态').selectOption('');
+  await expect(page.locator('tbody tr', { hasText: '5.5.5.5' })).toHaveCount(1);
+  await page.getByLabel('全部状态').selectOption('active');
   const row = (ip: string) => page.locator('tbody tr', { hasText: ip });
   await expect(row('1.1.1.1')).toContainText('巴西 BR');
   await expect(row('1.1.1.1').locator('td[title*="200.1.2.3"]')).toHaveAttribute('title', /导入时申报 US/);
@@ -583,6 +589,8 @@ test('operators import proxies without the page ever showing the password, then 
   await page.getByLabel('绑定服务器 198.51.100.10:8080').selectOption('a1');
   await expect(page.locator('.ip-list tbody tr', { hasText: '198.51.100.10' })).toContainText('未上报');
   await page.locator('.ip-list tbody tr', { hasText: '198.51.100.10' }).getByRole('button', { name: '停用' }).click();
+  await expect(page.locator('.ip-list tbody tr', { hasText: '198.51.100.10' }), 'the default list shows proxies in use only').toHaveCount(0);
+  await page.getByLabel('全部状态').selectOption('');
   await expect(page.locator('.ip-list tbody tr', { hasText: '198.51.100.10' })).toContainText('已停用');
   expect(state.proxyUpdates).toEqual([{ expected_version: 1, server_id: 'a1' }, { expected_version: 2, enabled: false }]);
 });
