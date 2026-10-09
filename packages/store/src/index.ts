@@ -12,8 +12,9 @@ import { ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, p
 import { UpdateLimitsSchema, ChannelUpdateSchema, DataApiPermitRequestSchema, DataApiFailureReportSchema, type UpdateLimits, type DataApiPermit, type DataApiSummary, type AgentTask, type AgentSummary } from '@crawlsystem/contracts';
 import { readAgentSummary, readAgentTasks, readDataApiSummary } from './operations-view.ts';
 import { commandQuery, createQuery, DiscoveryError, listBindings, querySummary, type BindingFilter } from './discovery.ts';
-import { CreateQuerySchema, DiscoveryLimitsSchema, QueryCommandSchema, type DiscoveryLimits, type QueryBinding, type QueryRunClaim, type QuerySummary } from '@crawlsystem/contracts';
+import { CreateQuerySchema, DiscoveryLimitsSchema, QueryCommandSchema, type DiscoveryLimits, type QueryBinding, type QueryRunClaim, type QuerySummary, type Candidate, type CandidateSummary } from '@crawlsystem/contracts';
 import { claimRun, completeRun, extendLease, failRun, recordPage, runPermit, runPermitFailure } from './query-runs.ts';
+import { admitCandidates, candidateSummary, commandCandidate, listCandidates, type CandidateFilter } from './candidates.ts';
 import { apiBudget, estimateApiUnits, releaseApiReservation, schedulerState } from './update-budget.ts';
 import { readUpdates } from './update-view.ts';
 import { nextChangeProbability, planRecentSampling, RECENT_SAMPLING } from './recent-sampling.ts';
@@ -156,6 +157,22 @@ export class Store {
   async queryRunPermitFailure(principal: Principal, runId: string, raw: unknown) {
     requireRole(principal, 'worker');
     return this.tx(client => discovery(() => runPermitFailure(client, principal.workspace_id, runId, raw)));
+  }
+  async candidates(principal: Principal, limit = 20, offset = 0, filter: CandidateFilter = {}): Promise<Page<Candidate>> {
+    requireRole(principal, 'reader', 'operator');
+    return page(await listCandidates(this.pool, principal.workspace_id, filter, limit + 1, offset), limit, offset);
+  }
+  async candidateSummary(principal: Principal): Promise<CandidateSummary> {
+    requireRole(principal, 'reader', 'operator');
+    return candidateSummary(this.pool, principal.workspace_id, this.discoveryLimits);
+  }
+  async candidateCommand(principal: Principal, channelId: string, raw: unknown): Promise<Candidate> {
+    requireRole(principal, 'operator');
+    return this.tx(client => discovery(() => commandCandidate(client, principal.workspace_id, principal.subject, channelId, raw)));
+  }
+  /** Scheduler: keep the import queue topped up from qualified candidates (before plans are admitted). */
+  async admitCandidates(workspaceId: string): Promise<string[]> {
+    return this.tx(client => admitCandidates(client, workspaceId, this.discoveryLimits));
   }
   async createQuery(principal: Principal, raw: unknown): Promise<QueryBinding> {
     requireRole(principal, 'operator');

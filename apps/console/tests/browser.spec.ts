@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test, expect, type Page } from '@playwright/test';
-import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView, type UpdateChannel, type AgentTask, type QueryBinding } from '@crawlsystem/contracts';
-import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture, agentTaskFixtures, agentSummaryFixture, dataApiSummaryFixture, queryBindingFixture, querySummaryFixture } from './fixtures.js';
+import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView, type UpdateChannel, type AgentTask, type QueryBinding, type Candidate } from '@crawlsystem/contracts';
+import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture, agentTaskFixtures, agentSummaryFixture, dataApiSummaryFixture, queryBindingFixture, querySummaryFixture, candidateFixture, candidateSummaryFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
-  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[], agentTasks: [] as AgentTask[], dataApiCalls: false, channelImports: [] as unknown[], queryBindings: [] as QueryBinding[], queryRequests: [] as unknown[] };
+  const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[], agentTasks: [] as AgentTask[], dataApiCalls: false, channelImports: [] as unknown[], queryBindings: [] as QueryBinding[], queryRequests: [] as unknown[], candidates: [] as Candidate[], candidateRequests: [] as unknown[] };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -43,6 +43,9 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       return json({ items, queued: items.filter(i => i.outcome === 'queued').length });
     }
     if (path === '/v1/channels/imports') return json({ counts: { queued: state.channelImports.length ? 1 : 0, planned: 0, done: 0, failed: 0 }, items: [] });
+    if (path === '/v1/candidates/summary') return json(candidateSummaryFixture(state.candidates));
+    if (path === '/v1/candidates' && method === 'GET') return json({ items: state.candidates, next_cursor: null });
+    if (path.startsWith('/v1/candidates/') && method === 'POST') { state.candidateRequests.push(route.request().postDataJSON()); return json(state.candidates[0] ?? candidateFixture()); }
     if (path === '/v1/queries/summary') return json(querySummaryFixture(state.queryBindings));
     if (path === '/v1/queries' && method === 'GET') return json({ items: state.queryBindings, next_cursor: null });
     if (path.startsWith('/v1/queries') && method === 'POST') { state.queryRequests.push(route.request().postDataJSON()); return json(state.queryBindings[0] ?? queryBindingFixture()); }
@@ -307,17 +310,25 @@ test('query discovery lists real query bindings, adds queries and disables them 
   await expect.poll(() => state.reads.some(r => r.startsWith('/api/v1/queries?') && r.includes('category=Music'))).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
-test('candidate channels show no figures until the sample preview is switched on, and then warn', async ({ page }) => {
-  await mock(page); await login(page, '/discover/candidates');
+test('candidate channels list real candidates and let operators admit or reject them', async ({ page }) => {
+  const state = await mock(page); state.candidates = [candidateFixture()]; await login(page, '/discover/candidates');
   await expect(page.getByRole('heading', { name: '候选频道', exact: true })).toBeVisible();
-  await expect(page.getByText('尚无候选频道', { exact: true })).toBeVisible();
-  await expect(page.locator('.discover-kpi strong').first()).toHaveText('—');
-  await expect(page.getByRole('button', { name: '选择文件' })).toBeDisabled();
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
-  await expect(page.locator('.discover-kpi strong').first()).toHaveText('12,438');
+  await expect(page.getByLabel('预览示例数据'), 'real data only').toHaveCount(0);
+  await expect(page.getByText('自动准入已开启：采集队列保持 50 个，当前排队 12 个')).toBeVisible();
+  const row = page.locator('.query-list tbody tr').first();
+  await expect(row).toContainText('Canal do Rock'); await expect(row).toContainText('52,000'); await expect(row).toContainText('rock com atitude');
+  await expect(row).toContainText('音乐'); await expect(row).toContainText('共被搜到 2 次'); await expect(row).toContainText('合格，待准入');
+  page.once('dialog', dialog => void dialog.accept('不是巴西频道'));
+  await row.getByRole('button', { name: '拒绝' }).click();
+  await expect.poll(() => state.candidateRequests.length).toBe(1);
+  expect(state.candidateRequests[0]).toEqual({ action: 'reject', reason: '不是巴西频道', expected_version: 1 });
+  page.once('dialog', dialog => void dialog.accept(''));
+  await row.getByRole('button', { name: '准入' }).click();
+  await expect.poll(() => state.candidateRequests.length).toBe(2);
+  expect(state.candidateRequests[1]).toEqual({ action: 'admit', expected_version: 1 });
+  await page.getByLabel('候选状态').selectOption('ADMITTED');
+  await expect.poll(() => state.reads.some(r => r.startsWith('/api/v1/candidates?') && r.includes('state=ADMITTED'))).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByLabel('预览示例数据')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 test('full collection shows backend plan statistics next to the real plan list', async ({ page }) => {

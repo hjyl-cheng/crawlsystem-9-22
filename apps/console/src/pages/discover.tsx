@@ -5,16 +5,10 @@ import { useAuth } from '../auth.js';
 import { ApiFailure } from '../api.js';
 import { useResource } from '../resource.js';
 import { Empty, ErrorBox, Modal, ResourceView } from '../ui.js';
-import { time } from '../presentation.js';
+import { categoryLabels, time } from '../presentation.js';
 import './overview.css';
 import './discover.css';
 
-/** Chinese labels of the 19 fixed business categories (24.8 §5.3); the English value is the stored one. */
-export const categoryLabels: Record<BusinessCategory, string> = {
-  Automotive: '汽车', 'Beauty Creators': '美妆博主', 'Casual Vlogs': '日常生活记录', Dance: '舞蹈', Education: '教育', Fashion: '时尚', Food: '美食', Gaming: '游戏',
-  'General Humanities & Society': '综合人文与社会', 'Health & Wellness': '健康与养生', Home: '家居', Music: '音乐', Parenting: '育儿', 'Pets & Animals': '宠物与动物',
-  'Self Improvement': '自我提升', 'Software & Internet': '软件与互联网', 'Sports & Outdoors': '体育与户外', Tech: '科技', Travel: '旅行',
-};
 const stateMeta: Record<QueryBinding['state'], { label: string; tone: string }> = {
   BOOTSTRAP: { label: '待首次搜索', tone: 'blue' }, ACTIVE: { label: '活跃', tone: 'green' }, COOLDOWN: { label: '冷却中', tone: 'amber' }, DORMANT: { label: '休眠', tone: 'slate' }, DISABLED: { label: '已停用', tone: 'red' },
 };

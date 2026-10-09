@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { UpdateSummarySchema, UpdateChannelSchema, ChannelUpdateSchema, AgentSummarySchema, AgentTaskSchema, DataApiSummarySchema, ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, QuerySummarySchema, QueryBindingSchema, CreateQuerySchema, QueryCommandSchema, type AgentTask, type ChannelImport, type ChannelUpdate, type CreateQuery, type QueryCommand } from '@crawlsystem/contracts';
+import { UpdateSummarySchema, UpdateChannelSchema, ChannelUpdateSchema, AgentSummarySchema, AgentTaskSchema, DataApiSummarySchema, ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, QuerySummarySchema, QueryBindingSchema, CreateQuerySchema, QueryCommandSchema, CandidateSchema, CandidateSummarySchema, CandidateCommandSchema, type CandidateCommand, type AgentTask, type ChannelImport, type ChannelUpdate, type CreateQuery, type QueryCommand } from '@crawlsystem/contracts';
 import {
   ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,
   ChannelListItemSchema, ChannelDetailSchema, ChannelManagementSchema, ChannelManagementCommandSchema, ChannelClockOverrideSchema, CompletenessSchema, ConsoleAccountListSchema, PlansSummarySchema, WorkerSchema, StoredEventSchema,
@@ -96,6 +96,10 @@ export class ControlApi {
     this.request(`${ApiRoutes.queries}?${new URLSearchParams({ limit: '20', cursor, ...Object.fromEntries(Object.entries(filter).filter(([, v]) => v)) as Record<string, string> })}`, pageSchema(QueryBindingSchema), signal);
   createQuery = (body: CreateQuery, signal?: AbortSignal) => this.request(ApiRoutes.queries, QueryBindingSchema, signal, CreateQuerySchema.parse(body));
   queryCommand = (id: string, body: QueryCommand, signal?: AbortSignal) => this.request(ApiRoutes.query(id), QueryBindingSchema, signal, QueryCommandSchema.parse(body));
+  candidateSummary = (signal?: AbortSignal) => this.request(ApiRoutes.candidatesSummary, CandidateSummarySchema, signal);
+  candidates = (cursor = '0', filter: { state?: string; category?: string; search?: string } = {}, signal?: AbortSignal) =>
+    this.request(`${ApiRoutes.candidates}?${new URLSearchParams({ limit: '20', cursor, ...Object.fromEntries(Object.entries(filter).filter(([, v]) => v)) as Record<string, string> })}`, pageSchema(CandidateSchema), signal);
+  candidateCommand = (id: string, body: CandidateCommand, signal?: AbortSignal) => this.request(ApiRoutes.candidate(id), CandidateSchema, signal, CandidateCommandSchema.parse(body));
   login = (body: Login, signal?: AbortSignal) => this.request(ApiRoutes.login, SessionSchema, signal, LoginSchema.parse(body));
   logout = (signal?: AbortSignal) => this.request(ApiRoutes.logout, LogoutSchema, signal, {});
   plans = (cursor = '0', status?: PlanStatus, limit = 20, signal?: AbortSignal, sourceMode: SourceMode = 'youtube') => this.request(`${ApiRoutes.plans}?${new URLSearchParams({ limit: String(limit), cursor, source_mode: sourceMode, ...(status ? { status } : {}) })}`, pageSchema(PlanSchema), signal);

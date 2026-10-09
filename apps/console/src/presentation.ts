@@ -1,4 +1,4 @@
-import type { ChannelClock, ClockName, Domain, ErrorCode, ManagementState, PlanStatus, Plan, Role } from '@crawlsystem/contracts';
+import type { BusinessCategory, ChannelClock, ClockName, Domain, ErrorCode, ManagementState, PlanStatus, Plan, Role } from '@crawlsystem/contracts';
 
 export const planLabels: Record<PlanStatus, string> = {
   QUEUED: '等待执行', RUNNING: '执行中', WAITING: '等待依赖', COMPLETED: '本轮已完成', CANCELLED: '已取消', FAILED: '执行失败',
@@ -69,3 +69,10 @@ export const dueIn = (value: string, now = Date.now()): string => {
   return hours <= 0 ? '已到期' : hours < 48 ? `${Math.ceil(hours)} 小时后` : `${Math.round(hours / 24)} 天后`;
 };
 export const receiptPath = (id: string) => `/receipts/${encodeURIComponent(id)}`;
+
+/** Chinese labels of the 19 fixed business categories (24.8 §5.3); the English value is the stored one. */
+export const categoryLabels: Record<BusinessCategory, string> = {
+  Automotive: '汽车', 'Beauty Creators': '美妆博主', 'Casual Vlogs': '日常生活记录', Dance: '舞蹈', Education: '教育', Fashion: '时尚', Food: '美食', Gaming: '游戏',
+  'General Humanities & Society': '综合人文与社会', 'Health & Wellness': '健康与养生', Home: '家居', Music: '音乐', Parenting: '育儿', 'Pets & Animals': '宠物与动物',
+  'Self Improvement': '自我提升', 'Software & Internet': '软件与互联网', 'Sports & Outdoors': '体育与户外', Tech: '科技', Travel: '旅行',
+};

@@ -325,6 +325,7 @@ export const ApiRoutes = {
   agentTasks: '/v1/agent/tasks', agentSummary: '/v1/agent/summary', channelImport: '/v1/channels/import', channelImports: '/v1/channels/imports',
   queries: '/v1/queries', queriesSummary: '/v1/queries/summary', query: (id: string) => `/v1/queries/${encodeURIComponent(id)}`,
   queryRunClaim: '/v1/query-runs/claim',
+  candidates: '/v1/candidates', candidatesSummary: '/v1/candidates/summary', candidate: (id: string) => `/v1/candidates/${encodeURIComponent(id)}`,
   queryRun: (id: string, action: 'heartbeat' | 'page' | 'complete' | 'fail' | 'data-api-permit' | 'data-api-failure') => `/v1/query-runs/${encodeURIComponent(id)}/${action}`,
   session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', consoleAccounts: '/v1/console/accounts', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', proxies: '/v1/proxies', proxyImport: '/v1/proxies/import', proxySync: '/v1/proxy-manager/sync', proxySources: '/v1/proxy-sources',
@@ -601,6 +602,10 @@ export const DiscoveryLimitsSchema = z.strictObject({
   api_reserve: z.number().int().min(0).max(1_000_000).default(3000),
   /** Qualified candidates plus queued imports at which new searches pause (backpressure, Q-22). */
   backlog_limit: z.number().int().min(1).max(1_000_000).default(2000),
+  /** Qualified candidates move into the import queue by themselves ("自动准入 + 可人工干预"). */
+  auto_admit: z.boolean().default(true),
+  /** Queued imports kept topped up from qualified candidates; the rest wait as candidates, where operators can still reject them. */
+  import_buffer: z.number().int().min(1).max(10_000).default(50),
 });
 export type DiscoveryLimits = z.infer<typeof DiscoveryLimitsSchema>;
 export const QueryRunParamsSchema = z.strictObject({
@@ -643,3 +648,31 @@ export const QueryRunFailSchema = z.strictObject({ attempt: RunAttempt, reason: 
 export const QueryRunFailResultSchema = z.strictObject({ state: z.enum(['PENDING', 'FAILED', 'CANCELLED', 'SUCCEEDED']), retry_at: Timestamp.nullable() });
 export const QueryRunPermitRequestSchema = z.strictObject({ request_id: z.uuid(), attempt: RunAttempt, endpoint: z.literal('channels') });
 export const QueryRunPermitFailureSchema = z.strictObject({ request_id: z.uuid(), attempt: RunAttempt, reason: z.enum(DATA_API_FAILURES) });
+
+// ---- Candidate channels (plan step B3): channels a search found new to the system, qualified by subscribers.
+// Qualified ones are admitted into the import queue automatically, fairly across business categories;
+// operators can reject a candidate or admit one by hand (also below the threshold).
+export const CANDIDATE_STATES = ['QUALIFIED', 'UNQUALIFIED', 'UNAVAILABLE', 'ADMITTED', 'REJECTED'] as const;
+export const CandidateStateSchema = z.enum(CANDIDATE_STATES);
+export const CandidateSchema = z.strictObject({
+  channel_id: YoutubeChannelIdSchema, title: z.string().max(300).nullable(), country: z.string().max(10).nullable(),
+  subscriber_count: Count.nullable(), video_count: Count.nullable(), view_count: Count.nullable(),
+  state: CandidateStateSchema, reason: z.enum(['below_threshold', 'hidden_subscribers', 'not_found']).nullable(),
+  found_by: z.strictObject({ binding_id: z.uuid(), text: z.string().max(200), country: CountryCode, category: BusinessCategorySchema }),
+  /** Searches that found the channel (lineage, BC-16). */
+  found_count: Count, discovered_at: Timestamp,
+  decided_by: z.string().max(200).nullable(), decided_at: Timestamp.nullable(), decision_reason: z.string().max(300).nullable(),
+  import_state: z.enum(['queued', 'planned', 'done', 'failed']).nullable(), version: z.number().int().positive(),
+});
+export type Candidate = z.infer<typeof CandidateSchema>;
+export const CandidateSummarySchema = z.strictObject({
+  observed_at: Timestamp, by_state: z.record(CandidateStateSchema, Count), admitted_today: Count,
+  auto_admit: z.boolean(), import_buffer: Count, import_queue: Count,
+  by_category: z.array(z.strictObject({ category: BusinessCategorySchema, qualified: Count, admitted: Count })).max(19),
+});
+export type CandidateSummary = z.infer<typeof CandidateSummarySchema>;
+export const CandidateCommandSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('admit'), reason: z.string().max(300).optional(), expected_version: z.number().int().positive() }),
+  z.strictObject({ action: z.literal('reject'), reason: z.string().min(1).max(300), expected_version: z.number().int().positive() }),
+]);
+export type CandidateCommand = z.infer<typeof CandidateCommandSchema>;

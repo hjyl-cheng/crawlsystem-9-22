@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentTaskStateSchema, BusinessCategorySchema, QueryStateSchema, ApiRoutes, CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema, LoginSchema, UpdateStateSchema } from '@crawlsystem/contracts';
+import { AgentTaskStateSchema, BusinessCategorySchema, CandidateStateSchema, QueryStateSchema, YoutubeChannelIdSchema, ApiRoutes, CONTRACT_VERSION, CreatePlanSchema, CancelPlanSchema, ExecutionEventSchema, HeartbeatSchema, IdSchema, LoginSchema, UpdateStateSchema } from '@crawlsystem/contracts';
 import { requireRole, StoreError } from '@crawlsystem/store';
 import { createServer, pagination, planId, sourceMode, type ServerOptions } from '@crawlsystem/http';
 import { authenticate } from '@crawlsystem/http/auth';
@@ -80,6 +80,12 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   });
   app.post(ApiRoutes.queries,{bodyLimit:4096},async request=>store.createQuery(request.principal,request.body));
   app.post('/v1/queries/:id',{bodyLimit:4096},async request=>store.queryCommand(request.principal,z.object({id:z.uuid()}).parse(request.params).id,request.body));
+  app.get(ApiRoutes.candidatesSummary,async request=>store.candidateSummary(request.principal));
+  app.get(ApiRoutes.candidates,async request=>{
+    const q=pagination(request.query), filter=z.object({state:CandidateStateSchema.optional(),category:BusinessCategorySchema.optional(),search:z.string().max(200).optional()}).parse(request.query);
+    return store.candidates(request.principal,q.limit,q.offset,filter);
+  });
+  app.post('/v1/candidates/:id',{bodyLimit:4096},async request=>store.candidateCommand(request.principal,z.object({id:YoutubeChannelIdSchema}).parse(request.params).id,request.body));
   // Worker: search execution under a lease (claim, renew, pages, result, failure, Data API permits).
   const runId=(request:{params:unknown})=>z.object({id:z.uuid()}).parse(request.params).id;
   app.post(ApiRoutes.queryRunClaim,{bodyLimit:1024},async request=>store.claimQueryRun(request.principal));

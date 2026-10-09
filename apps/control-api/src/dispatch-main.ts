@@ -11,12 +11,12 @@ import { CredentialBox } from '@crawlsystem/store/credentials';
 import { refreshReferences } from '@crawlsystem/store/feature-clocks';
 import { fetchProxySource } from './proxy-source-fetch.ts';
 import { temporalOptions } from './temporal-config.ts';
-import { updateLimits } from './update-config.ts';
+import { discoveryLimits, updateLimits } from './update-config.ts';
 function required(name:string):string {const value=process.env[name];if(!value)throw new Error(`${name} is required`);return value;}
 // The real Temporal adapter is linked statically; there is no mock workflow fallback.
 const starter=await createWorkflowStarter(temporalOptions());
 const tracing=new RequestTracing('intent-dispatcher',record=>process.stdout.write(JSON.stringify({time:new Date().toISOString(),...record})+'\n'),Number(process.env.TRACE_SAMPLE_RATIO??'0.1'));
-const pool=createPool(),store=new Store(pool,updateLimits()),dispatcher=new IntentDispatcher(store,starter,required('M1_WORKSPACE_ID'),tracing);
+const pool=createPool(),store=new Store(pool,updateLimits(),discoveryLimits()),dispatcher=new IntentDispatcher(store,starter,required('M1_WORKSPACE_ID'),tracing);
 let stopping=false;process.once('SIGINT',()=>{stopping=true;});process.once('SIGTERM',()=>{stopping=true;});
 // Renewed mTLS files: exit cleanly (intents are leased) and let Kubernetes restart us.
 watchTlsFiles(process.env,()=>{process.stderr.write('Temporal client certificate changed; restarting\n');stopping=true;});
@@ -51,6 +51,9 @@ try {
     try {
       await refreshSources();await refreshClockReferences();
       if(Date.now()>=nextUpdateScan){
+        // Qualified candidates join the import queue first, so the same scan can plan them.
+        const admitted=await store.admitCandidates(required('M1_WORKSPACE_ID'));
+        if(admitted.length)process.stdout.write(JSON.stringify({time:new Date().toISOString(),event:'candidates_admitted',count:admitted.length})+'\n');
         const plans=await store.scheduleUpdates(required('M1_WORKSPACE_ID'));
         nextUpdateScan=Date.now()+30_000;
         if(plans.length)process.stdout.write(JSON.stringify({time:new Date().toISOString(),event:'updates_scheduled',plan_ids:plans.map(p=>p.plan_id)})+'\n');

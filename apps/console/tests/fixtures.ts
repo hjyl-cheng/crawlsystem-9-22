@@ -1,6 +1,6 @@
 // Explicit browser-test fixtures. Never imported by the application.
 import { randomUUID } from 'node:crypto';
-import { CONTRACT_VERSION, PlanSchema, PlanDetailSchema, ReceiptSchema, WorkerSchema, StoredEventSchema, ChannelDetailSchema, UpdateChannelSchema, UpdateSummarySchema, AgentTaskSchema, AgentSummarySchema, DataApiSummarySchema, QueryBindingSchema, QuerySummarySchema, type QueryBinding, type Plan, type Domain, type UpdateChannel, type AgentTask } from '@crawlsystem/contracts';
+import { CONTRACT_VERSION, PlanSchema, PlanDetailSchema, ReceiptSchema, WorkerSchema, StoredEventSchema, ChannelDetailSchema, UpdateChannelSchema, UpdateSummarySchema, AgentTaskSchema, AgentSummarySchema, DataApiSummarySchema, QueryBindingSchema, QuerySummarySchema, CandidateSchema, CandidateSummarySchema, type Candidate, type QueryBinding, type Plan, type Domain, type UpdateChannel, type AgentTask } from '@crawlsystem/contracts';
 import { createFrozenFixture, fixtureChannel, fixtureVideo } from '@crawlsystem/contracts/fixtures';
 import { contentHash, fixtureSubmission } from '@crawlsystem/contracts/hash';
 
@@ -74,4 +74,13 @@ export function querySummaryFixture(bindings: QueryBinding[]) {
     by_category: bindings.length ? [{ category: 'Music', bindings: bindings.length }] : [], by_country: bindings.length ? [{ country: 'BR', bindings: bindings.length }] : [],
     runs: { enabled: true, max_active_runs: 2, daily_run_limit: 300, running: 1, pending_retry: 0, created_today: 12, succeeded_today: 11, failed_today: 0, new_channels_today: 140, qualified_today: 37, last_finished_at: timestamp },
     candidates: { qualified: 37, unqualified: 98, unavailable: 5, admitted: 0, rejected: 0 } });
+}
+export function candidateFixture(): Candidate {
+  return CandidateSchema.parse({ channel_id: 'UC1234567890123456789012', title: 'Canal do Rock', country: 'BR', subscriber_count: 52_000, video_count: 340, view_count: 9_100_000,
+    state: 'QUALIFIED', reason: null, found_by: { binding_id: randomUUID(), text: 'rock com atitude', country: 'BR', category: 'Music' }, found_count: 2,
+    discovered_at: timestamp, decided_by: null, decided_at: null, decision_reason: null, import_state: null, version: 1 });
+}
+export function candidateSummaryFixture(candidates: Candidate[]) {
+  return CandidateSummarySchema.parse({ observed_at: timestamp, by_state: { QUALIFIED: candidates.length, ADMITTED: 12, UNQUALIFIED: 30, UNAVAILABLE: 1, REJECTED: 0 },
+    admitted_today: 12, auto_admit: true, import_buffer: 50, import_queue: 12, by_category: candidates.length ? [{ category: 'Music', qualified: candidates.length, admitted: 12 }] : [] });
 }
