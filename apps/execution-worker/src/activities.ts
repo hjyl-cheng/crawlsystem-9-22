@@ -200,7 +200,7 @@ export function createActivities(options: ActivityOptions) {
           for (const id of batch) {
             const api = byId.get(id);
             if (!api || api.snippet.channelId !== input.channel_id) { out.push(unavailableVideo(input.channel_id, id, observed)); continue; }
-            const comments = input.scope.comments_per_video === 0 ? { kind: 'skipped' as const } : await topComments(yt, id, api.statistics?.commentCount === undefined);
+            const comments = input.scope.comments_per_video === 0 ? { kind: 'skipped' as const } : await topComments(yt, id, api.statistics?.commentCount);
             out.push(toVideoFacts(api, shorts ? shorts.has(id) : null, comments, input.scope.comments_per_video, observed));
             heartbeat({ plan_id: ref.plan_id, phase: 'VIDEO', done: out.length, of: batch.length });
           }

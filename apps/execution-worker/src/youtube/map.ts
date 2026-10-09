@@ -73,7 +73,9 @@ export interface ApiVideo { id: string; snippet: { channelId: string; title: str
   liveStreamingDetails?: { scheduledStartTime?: string; actualStartTime?: string; actualEndTime?: string } }
 export interface ScrapedComment { comment_id: string; text: string; author_name: string | null; author_channel_id: string | null; author_url: string | null; author_avatar_url: string | null;
   published_text: string | null; like_text: string | null; reply_text: string | null; is_pinned: boolean | null; is_channel_owner: boolean | null; is_verified: boolean | null; is_hearted: boolean | null }
-export type CommentsResult = { kind: 'page'; total_text: string | null; comments: ScrapedComment[]; collected_at: string } | { kind: 'disabled'; collected_at: string } | { kind: 'skipped' };
+/** `unavailable`: the section exists (the API counts comments) but YouTube served none; facts keep the API count and no page. */
+export type CommentsResult = { kind: 'page'; total_text: string | null; comments: ScrapedComment[]; collected_at: string } | { kind: 'disabled'; collected_at: string }
+  | { kind: 'unavailable'; collected_at: string } | { kind: 'skipped' };
 
 export function toVideoFacts(api: ApiVideo, isShort: boolean | null, comments: CommentsResult, commentLimit: number, observed_at: string): VideoFacts {
   const s = api.snippet, stats = api.statistics ?? {}, src = 'data_api:videos';

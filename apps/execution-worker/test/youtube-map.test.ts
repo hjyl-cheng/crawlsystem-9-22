@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { estimateRelative, parseCount, parseIsoDuration, parseKeywords, toChannelFacts, toVideoFacts, unavailableVideo, type AboutPage, type ApiChannel, type ApiVideo, type CommentsResult } from '../src/youtube/map.ts';
 import { DataApi, DataApiError } from '../src/youtube/data-api.ts';
+import { ScrapeError, topComments } from '../src/youtube/scrape.ts';
+import type { Innertube } from 'youtubei.js';
 
 const now = '2026-09-24T12:00:00.000Z';
 const channel: ApiChannel = { id: 'UC_x5XG1OV2P6uZZ5FSM9Ttw', snippet: { title: 'Google for Developers', description: 'Build.', customUrl: '@googledevelopers', publishedAt: '2007-08-23T00:34:43Z', country: 'US', thumbnails: { high: { url: 'https://yt3.example/a.jpg' } } },
@@ -43,6 +45,18 @@ test('video facts classify type, respect the comment limit and keep missing coun
   const hidden = toVideoFacts(video({ statistics: { viewCount: '5' } }), false, { kind: 'disabled', collected_at: now }, 20, now);
   assert.deepEqual([hidden.like_count.status, hidden.comment_count.status, hidden.comment_count.value, hidden.comments_disabled], ['unavailable', 'disabled', 0, true]);
   assert.equal(unavailableVideo(channel.id, 'abcdefghijk', now).unavailable, true);
+});
+test('an empty comment section means turned off, no comments yet, or unavailable, by the Data API count', async () => {
+  const yt = (message: string) => ({ getComments: async () => { throw new Error(message); } }) as unknown as Innertube;
+  const empty = yt('The comments page did not have any content');
+  assert.equal((await topComments(empty, 'YDCB8Bk1OBE', undefined)).kind, 'disabled');
+  assert.deepEqual(await topComments(empty, 'YDCB8Bk1OBE', '0').then(r => r.kind === 'page' ? r.comments.length : r.kind), 0);
+  const unavailable = await topComments(empty, 'YDCB8Bk1OBE', '15');
+  assert.equal(unavailable.kind, 'unavailable', 'counted comments YouTube did not serve do not fail the batch');
+  const facts = toVideoFacts(video(), false, unavailable, 20, now);
+  assert.deepEqual([facts.comments_disabled, facts.comments_first_page, facts.comment_count.value, facts.comment_count.status], [null, null, 15, 'exact']);
+  await assert.rejects(() => topComments(yt('Cannot read properties of undefined'), 'YDCB8Bk1OBE', '15'), (e: unknown) => e instanceof ScrapeError && e.kind === 'parse', 'other parse failures still fail');
+  await assert.rejects(() => topComments(yt('Sign in to confirm you\u2019re not a bot'), 'YDCB8Bk1OBE', undefined), (e: unknown) => e instanceof ScrapeError && e.kind === 'blocked');
 });
 test('Data API listing stops at the window or the limit, pages through results, and hides the key in errors', async () => {
   const calls: string[] = [];

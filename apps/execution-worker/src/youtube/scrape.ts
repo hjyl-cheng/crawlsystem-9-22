@@ -66,8 +66,15 @@ export async function shortsIds(yt: Innertube, channelId: string): Promise<Set<s
     return new Set((shorts.videos ?? []).map(v => v.on_tap_endpoint?.payload?.videoId ?? v.content_id ?? v.id).filter((id): id is string => typeof id === 'string'));
   } catch (error) { throw classify(error); }
 }
-/** First page of Top comments. `disabledLikely` (no comment count from the API) turns a refusal into "disabled". */
-export async function topComments(yt: Innertube, videoId: string, disabledLikely: boolean): Promise<CommentsResult> {
+/** youtubei.js's error for a comments request that came back without a comment section. */
+const EMPTY_COMMENTS = /comments page did not have any content/i;
+/**
+ * First page of Top comments. The Data API comment count says what a refused or empty comment section
+ * means: no count → comments are turned off; "0" → no comments yet; more → YouTube did not serve them
+ * (restricted or held), recorded as unavailable instead of failing the video batch. Other parse
+ * failures still fail, so a YouTube change is not silently absorbed.
+ */
+export async function topComments(yt: Innertube, videoId: string, apiCommentCount: string | undefined): Promise<CommentsResult> {
   const collected_at = new Date().toISOString();
   try {
     const page = await yt.getComments(videoId, 'TOP_COMMENTS') as unknown as { header?: { comments_count?: unknown }; contents?: { comment?: Record<string, unknown> }[] };
@@ -82,7 +89,9 @@ export async function topComments(yt: Innertube, videoId: string, disabledLikely
     return { kind: 'page', total_text: text(page.header?.comments_count), comments, collected_at };
   } catch (error) {
     const classified = classify(error);
-    if (disabledLikely && classified.kind === 'parse') return { kind: 'disabled', collected_at };
+    if (classified.kind !== 'parse') throw classified;
+    if (apiCommentCount === undefined) return { kind: 'disabled', collected_at };
+    if (error instanceof Error && EMPTY_COMMENTS.test(error.message)) return apiCommentCount === '0' ? { kind: 'page', total_text: null, comments: [], collected_at } : { kind: 'unavailable', collected_at };
     throw classified;
   }
 }
