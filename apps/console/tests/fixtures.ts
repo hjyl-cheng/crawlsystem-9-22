@@ -66,10 +66,12 @@ export function dataApiSummaryFixture(calls: boolean) {
 }
 export function queryBindingFixture(): QueryBinding {
   return QueryBindingSchema.parse({ binding_id: randomUUID(), text: 'rock com atitude', country: 'BR', language: 'pt', category: 'Music', state: 'BOOTSTRAP', cadence: null, cadence_override: null,
-    next_run_at: timestamp, last_success_at: null, empty_runs: 0, priority: 56, sources: [{ type: 'AUTO_TAG', ref: 'legacy:crawlsystem:query_terms:1' }], source_count: 1, version: 1, created_at: timestamp });
+    next_run_at: timestamp, last_success_at: null, empty_runs: 0, priority: 56, sources: [{ type: 'AUTO_TAG', ref: 'legacy:crawlsystem:query_terms:1' }], source_count: 1, version: 1, created_at: timestamp, last_run: null });
 }
 export function querySummaryFixture(bindings: QueryBinding[]) {
   return QuerySummarySchema.parse({ observed_at: timestamp, total: bindings.length, due: bindings.length,
     by_state: { BOOTSTRAP: bindings.length, ACTIVE: 0, COOLDOWN: 0, DORMANT: 0, DISABLED: 0 },
-    by_category: bindings.length ? [{ category: 'Music', bindings: bindings.length }] : [], by_country: bindings.length ? [{ country: 'BR', bindings: bindings.length }] : [] });
+    by_category: bindings.length ? [{ category: 'Music', bindings: bindings.length }] : [], by_country: bindings.length ? [{ country: 'BR', bindings: bindings.length }] : [],
+    runs: { enabled: true, max_active_runs: 2, daily_run_limit: 300, running: 1, pending_retry: 0, created_today: 12, succeeded_today: 11, failed_today: 0, new_channels_today: 140, qualified_today: 37, last_finished_at: timestamp },
+    candidates: { qualified: 37, unqualified: 98, unavailable: 5, admitted: 0, rejected: 0 } });
 }

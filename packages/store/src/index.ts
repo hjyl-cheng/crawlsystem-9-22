@@ -12,7 +12,8 @@ import { ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, p
 import { UpdateLimitsSchema, ChannelUpdateSchema, DataApiPermitRequestSchema, DataApiFailureReportSchema, type UpdateLimits, type DataApiPermit, type DataApiSummary, type AgentTask, type AgentSummary } from '@crawlsystem/contracts';
 import { readAgentSummary, readAgentTasks, readDataApiSummary } from './operations-view.ts';
 import { commandQuery, createQuery, DiscoveryError, listBindings, querySummary, type BindingFilter } from './discovery.ts';
-import { CreateQuerySchema, QueryCommandSchema, type QueryBinding, type QuerySummary } from '@crawlsystem/contracts';
+import { CreateQuerySchema, DiscoveryLimitsSchema, QueryCommandSchema, type DiscoveryLimits, type QueryBinding, type QueryRunClaim, type QuerySummary } from '@crawlsystem/contracts';
+import { claimRun, completeRun, extendLease, failRun, recordPage, runPermit, runPermitFailure } from './query-runs.ts';
 import { apiBudget, estimateApiUnits, releaseApiReservation, schedulerState } from './update-budget.ts';
 import { readUpdates } from './update-view.ts';
 import { nextChangeProbability, planRecentSampling, RECENT_SAMPLING } from './recent-sampling.ts';
@@ -45,7 +46,7 @@ const resolvedCount = (metric: { value: number | null; status: string }) => ['ex
 export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; trace_context?: string; }
 
 export class Store {
-  constructor(public readonly pool: Pool, public readonly updateLimits: UpdateLimits = UpdateLimitsSchema.parse({})) {}
+  constructor(public readonly pool: Pool, public readonly updateLimits: UpdateLimits = UpdateLimitsSchema.parse({}), public readonly discoveryLimits: DiscoveryLimits = DiscoveryLimitsSchema.parse({})) {}
   private async tx<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       const client = await this.pool.connect();
@@ -125,7 +126,36 @@ export class Store {
   }
   async querySummary(principal: Principal): Promise<QuerySummary> {
     requireRole(principal, 'reader', 'operator');
-    return querySummary(this.pool, principal.workspace_id);
+    return querySummary(this.pool, principal.workspace_id, this.discoveryLimits);
+  }
+  /** Worker: the next due search under the discovery limits, or why there is none. */
+  async claimQueryRun(principal: Principal): Promise<QueryRunClaim> {
+    requireRole(principal, 'worker');
+    return this.tx(client => claimRun(client, principal.workspace_id, principal.subject, this.discoveryLimits, this.updateLimits.api_daily_limit));
+  }
+  async queryRunHeartbeat(principal: Principal, runId: string, raw: unknown) {
+    requireRole(principal, 'worker');
+    return this.tx(client => extendLease(client, principal.workspace_id, principal.subject, runId, raw));
+  }
+  async queryRunPage(principal: Principal, runId: string, raw: unknown) {
+    requireRole(principal, 'worker');
+    return this.tx(client => discovery(() => recordPage(client, principal.workspace_id, principal.subject, runId, raw)));
+  }
+  async queryRunComplete(principal: Principal, runId: string, raw: unknown) {
+    requireRole(principal, 'worker');
+    return this.tx(client => discovery(() => completeRun(client, principal.workspace_id, principal.subject, runId, raw)));
+  }
+  async queryRunFail(principal: Principal, runId: string, raw: unknown) {
+    requireRole(principal, 'worker');
+    return this.tx(client => discovery(() => failRun(client, principal.workspace_id, principal.subject, runId, raw)));
+  }
+  async queryRunPermit(principal: Principal, runId: string, raw: unknown): Promise<DataApiPermit> {
+    requireRole(principal, 'worker');
+    return this.tx(client => discovery(() => runPermit(client, principal.workspace_id, principal.subject, runId, raw, this.discoveryLimits, this.updateLimits.api_daily_limit)));
+  }
+  async queryRunPermitFailure(principal: Principal, runId: string, raw: unknown) {
+    requireRole(principal, 'worker');
+    return this.tx(client => discovery(() => runPermitFailure(client, principal.workspace_id, runId, raw)));
   }
   async createQuery(principal: Principal, raw: unknown): Promise<QueryBinding> {
     requireRole(principal, 'operator');

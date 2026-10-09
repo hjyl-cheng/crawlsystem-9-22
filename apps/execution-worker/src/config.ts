@@ -27,5 +27,7 @@ export function workerConfig(env: NodeJS.ProcessEnv = process.env) {
     proxyManagerUrl: env.COLLECTOR_PROXY === 'direct' ? 'direct' as const : env.PROXY_MANAGER_URL ? validateApiUrl(env.PROXY_MANAGER_URL) : undefined,
     // Profile Agent (local-model inference) for the AGENT domain.
     profileAgentUrl: env.PROFILE_AGENT_URL ? validateApiUrl(env.PROFILE_AGENT_URL) : undefined,
+    // Query search runs claimed in parallel by this Worker (0 turns search execution off here).
+    queryRunnerSlots: integer('QUERY_RUNNER_SLOTS', 1, 0, 4),
   };
 }

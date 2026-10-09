@@ -78,6 +78,8 @@ spec:
             - { name: CONSOLE_PG_POOL_MAX, value: "1" }
             - { name: M1_WORKSPACE_ID, value: "m1-main" }
             - { name: TRACE_SAMPLE_RATIO, value: "0.1" }
+            # Query search execution (plan B2): start at 300 new searches a day while it is watched.
+            - { name: QUERY_DAILY_RUN_LIMIT, value: "300" }
             - { name: WORKLOAD_SERVICE_ACCOUNT, value: "system:serviceaccount:crawler:execution-worker" }
             - { name: WORKLOAD_TOKEN_AUDIENCE, value: crawlsystem-control }
             - { name: WORKLOAD_TOKEN_SECONDS, value: "900" }

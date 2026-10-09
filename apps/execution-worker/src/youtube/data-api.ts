@@ -50,6 +50,13 @@ export class DataApi {
     const body = await this.get<{ items?: ApiChannel[] }>('channels', { part: 'snippet,statistics,contentDetails,brandingSettings', id, maxResults: '1' }, guard);
     return body.items?.[0] ?? null;
   }
+  /** Basic facts (title, country, counts) of up to 50 channels; channels that do not exist are absent. */
+  async channelFacts(ids: string[], guard?: RequestGuard): Promise<ApiChannel[]> {
+    if (!ids.length) return [];
+    if (ids.length > 50) throw new Error('At most 50 channels per call');
+    const body = await this.get<{ items?: ApiChannel[] }>('channels', { part: 'snippet,statistics', id: ids.join(','), maxResults: '50' }, guard);
+    return body.items ?? [];
+  }
   /** Newest uploads published at/after windowStart, at most `limit`, in upload-playlist order. */
   async recentUploads(uploadsPlaylist: string, windowStart: string, limit: number, guard?: RequestGuard): Promise<{ ids: string[]; exhausted: boolean }> {
     const ids: string[] = []; let page: string | undefined;

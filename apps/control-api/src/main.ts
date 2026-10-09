@@ -11,7 +11,7 @@ import { ConsoleAuth } from './console-auth.ts';
 import { createConsolePool,PgAccountStore } from './console-db.ts';
 import { ProxyStore } from '@crawlsystem/store/proxies';
 import { CredentialBox } from '@crawlsystem/store/credentials';
-import { updateLimits } from './update-config.ts';
+import { discoveryLimits, updateLimits } from './update-config.ts';
 const pool=createPool(),shared=new PgConsoleSessions(pool);
 const consolePool=process.env.CONSOLE_DATABASE_URL?createConsolePool():undefined;
 const secure=process.env.CONSOLE_COOKIE_SECURE!=='false',signingKey=loadSigningKey();
@@ -24,6 +24,6 @@ const workloadIdentity=process.env.WORKLOAD_SERVICE_ACCOUNT?new WorkloadIdentity
 // Proxy credentials are sealed with a key only Control holds; without it, password imports are refused.
 const proxies=new ProxyStore(pool,process.env.PROXY_CREDENTIAL_KEY_FILE?CredentialBox.fromFile(process.env.PROXY_CREDENTIAL_KEY_FILE):undefined);
 const consoleAuth=consolePool?new ConsoleAuth(new PgAccountStore(consolePool,shared),secure):process.env.M1_CONSOLE_ACCOUNTS_FILE?ConsoleAuth.fromFile(process.env.M1_CONSOLE_ACCOUNTS_FILE,secure,shared):undefined;
-const app=createControlApi({store:new Store(pool,updateLimits()),signingKey,workloadIdentity,proxies,logger:true,allowedOrigin:process.env.CONSOLE_ORIGIN,consoleAuth,readiness:consolePool?async()=>{await consolePool.query('SELECT 1 FROM console.accounts LIMIT 0');await pool.query('SELECT 1 FROM m1.console_login_limits LIMIT 0');}:undefined,metricsWorkspace:process.env.M1_WORKSPACE_ID});
+const app=createControlApi({store:new Store(pool,updateLimits(),discoveryLimits()),signingKey,workloadIdentity,proxies,logger:true,allowedOrigin:process.env.CONSOLE_ORIGIN,consoleAuth,readiness:consolePool?async()=>{await consolePool.query('SELECT 1 FROM console.accounts LIMIT 0');await pool.query('SELECT 1 FROM m1.console_login_limits LIMIT 0');}:undefined,metricsWorkspace:process.env.M1_WORKSPACE_ID});
 if(consolePool)app.addHook('onClose',async()=>{await consolePool.end();});
 await listen(app,pool,Number(process.env.CONTROL_PORT??'18100'));

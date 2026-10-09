@@ -290,6 +290,9 @@ test('query discovery lists real query bindings, adds queries and disables them 
   await expect(page.locator('.discover-kpi strong').first()).toHaveText('1');
   const row = page.locator('.query-list tbody tr').first();
   await expect(row).toContainText('rock com atitude'); await expect(row).toContainText('音乐'); await expect(row).toContainText('待首次搜索'); await expect(row).toContainText('首次搜“今年”');
+  await expect(row).toContainText('还没搜过');
+  await expect(page.getByText('自动搜索已开启：今天已搜 12 次（上限 300），同时最多 2 个')).toBeVisible();
+  await expect(page.getByRole('region', { name: '今日搜索' })).toContainText('140');
   await page.getByRole('button', { name: '添加搜索词' }).click();
   await page.getByLabel('搜索词', { exact: true }).fill('receitas fit');
   await page.getByLabel('业务分类').last().selectOption('Food');

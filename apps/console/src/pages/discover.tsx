@@ -23,6 +23,12 @@ const sourceLabels: Record<QueryBinding['sources'][number]['type'], string> = {
 };
 const cadenceText = (b: QueryBinding) => b.state === 'BOOTSTRAP' ? '首次搜“今年”' : (b.cadence_override ?? b.cadence) === 'WEEK' ? '每周' : (b.cadence_override ?? b.cadence) === 'MONTH' ? '每月' : '—';
 const fmt = (n?: number) => n === undefined ? '—' : n.toLocaleString('zh-CN');
+/** The latest search of a query, in words. */
+function lastRunText(run: QueryBinding['last_run']): string {
+  if (!run) return '还没搜过';
+  if (run.state === 'SUCCEEDED') return `新频道 ${run.new_channels ?? 0}，合格 ${run.qualified_new ?? 0}`;
+  return { PENDING: '失败，等待重试', RUNNING: '正在搜索', FAILED: '多次失败，明天再试', CANCELLED: '已取消' }[run.state];
+}
 
 function Kpi({ label, tone, icon, value, foot }: { label: string; tone: string; icon: ReactNode; value?: ReactNode; foot: ReactNode }) {
   return <section className={`panel discover-kpi tone-${tone}`}><span className="kpi-icon">{icon}</span><div><small>{label}</small><strong>{value ?? '—'}</strong><span className="kpi-foot"><span>{foot}</span></span></div></section>;
@@ -76,7 +82,7 @@ export default function Discover() {
   return <div className="dashboard discover">
     <header className="dashboard-heading">
       <div><h1>Query 发现</h1><p>搜索词按“国家 + 业务分类”管理，每个都有自己的搜索时钟：首次搜“今年”，之后每周或每月搜一次</p>
-        <span className="data-freshness failing"><i/>自动搜索在下一步接入，目前只管理搜索词</span></div>
+        {s && <span className={`data-freshness ${s.runs.enabled ? '' : 'failing'}`}><i/>{s.runs.enabled ? `自动搜索已开启：今天已搜 ${fmt(s.runs.created_today)} 次（上限 ${fmt(s.runs.daily_run_limit)}），同时最多 ${s.runs.max_active_runs} 个` : '自动搜索已关闭'}</span>}</div>
       <div className="dashboard-period"><button className="button small" onClick={refresh}><RefreshCw size={13}/>刷新</button>
         {operator && <button className="button small primary" onClick={() => setAdding(true)}><Plus size={13}/>添加搜索词</button>}</div>
     </header>
@@ -90,6 +96,17 @@ export default function Discover() {
       <Kpi label="冷却 / 休眠" tone="amber" icon={<Snowflake size={22}/>} value={s ? `${fmt(s.by_state.COOLDOWN)} / ${fmt(s.by_state.DORMANT)}` : undefined} foot={s ? `已停用 ${fmt(s.by_state.DISABLED)}` : '—'}/>
     </div>
 
+    <section className="panel discover-card run-strip" aria-label="今日搜索">
+      <div><small>正在搜索</small><strong>{fmt(s?.runs.running)}</strong></div>
+      <div><small>今天完成</small><strong>{fmt(s?.runs.succeeded_today)}</strong></div>
+      <div><small>失败待重试</small><strong>{fmt(s?.runs.pending_retry)}</strong></div>
+      <div><small>今天放弃</small><strong>{fmt(s?.runs.failed_today)}</strong></div>
+      <div><small>今天发现新频道</small><strong>{fmt(s?.runs.new_channels_today)}</strong></div>
+      <div><small>其中合格（订阅 ≥1000）</small><strong>{fmt(s?.runs.qualified_today)}</strong></div>
+      <div><small>候选频道：合格 / 不合格 / 不可用</small><strong>{s ? `${fmt(s.candidates.qualified)} / ${fmt(s.candidates.unqualified)} / ${fmt(s.candidates.unavailable)}` : '—'}</strong></div>
+      <div><small>最近一次完成</small><strong className="small-value">{s?.runs.last_finished_at ? time(s.runs.last_finished_at) : '—'}</strong></div>
+    </section>
+
     <div className="discover-row row-list">
       <Card title="搜索词列表" className="query-list" extra={<div className="list-tools">
         <select aria-label="状态" value={filter.state ?? ''} onChange={e => set({ ...filter, state: (e.target.value || undefined) as QueryBinding['state'] | undefined })}>
@@ -100,12 +117,12 @@ export default function Discover() {
           <option value="">全部国家</option>{s?.by_country.map(c => <option key={c.country} value={c.country}>{c.country}</option>)}</select>
         <label className="list-search"><Search size={13}/><input aria-label="搜索搜索词" placeholder="搜索词…" maxLength={200} value={filter.search ?? ''} onChange={e => set({ ...filter, search: e.target.value || undefined })}/></label>
       </div>}>
-        <ResourceView resource={list}>{page => <>{page.items.length ? <div className="table-scroll"><table><thead><tr><th>搜索词</th><th>国家 / 语言</th><th>业务分类</th><th>状态</th><th>频率</th><th>下次搜索</th><th>上次成功</th><th>来源</th>{operator && <th>操作</th>}</tr></thead>
+        <ResourceView resource={list}>{page => <>{page.items.length ? <div className="table-scroll"><table><thead><tr><th>搜索词</th><th>国家 / 语言</th><th>业务分类</th><th>状态</th><th>频率</th><th>下次搜索</th><th>上次搜索结果</th><th>来源</th>{operator && <th>操作</th>}</tr></thead>
           <tbody>{page.items.map(b => { const meta = stateMeta[b.state]; return <tr key={b.binding_id}>
             <td className="query-term">{b.text}</td><td>{b.country} / {b.language}</td><td>{categoryLabels[b.category]}</td>
             <td><span className={`status-chip ${meta.tone}`}><i/>{meta.label}</span></td>
             <td>{cadenceText(b)}{b.cadence_override && <small className="cell-sub">人工指定</small>}</td>
-            <td>{b.next_run_at ? time(b.next_run_at) : '—'}</td><td>{b.last_success_at ? time(b.last_success_at) : '—'}</td>
+            <td>{b.next_run_at ? time(b.next_run_at) : '—'}</td><td>{lastRunText(b.last_run)}{b.last_success_at && <small className="cell-sub">上次成功 {time(b.last_success_at)}</small>}</td>
             <td title={b.sources.map(x => `${sourceLabels[x.type]}：${x.ref}`).join('\n')}>{[...new Set(b.sources.map(x => sourceLabels[x.type]))].join('、')}{b.source_count > 1 && <small className="cell-sub">共 {b.source_count} 条</small>}</td>
             {operator && <td className="row-actions">
               {b.state === 'DISABLED'

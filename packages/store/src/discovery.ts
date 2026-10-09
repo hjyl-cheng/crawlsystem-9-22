@@ -1,14 +1,15 @@
 import type { Pool, PoolClient } from 'pg';
 import {
   BUSINESS_CATEGORIES, QUERY_STATES, QueryBindingSchema, QuerySummarySchema, normalizeQueryText,
-  type CreateQuery, type QueryBinding, type QueryCommand, type QuerySummary,
+  type CreateQuery, type DiscoveryLimits, type QueryBinding, type QueryCommand, type QuerySummary,
 } from '@crawlsystem/contracts';
 import { addCalendarMonths, QUERY_POLICY_VERSION } from './query-clock.ts';
+import { runsOverview } from './query-runs.ts';
 
 /** Query terms and their country/category bindings (24.8 §5): add, change, list and bulk import. */
 
 export class DiscoveryError extends Error {
-  constructor(readonly code: 'INVALID_REQUEST' | 'NOT_FOUND' | 'CONFLICT', message: string) { super(message); }
+  constructor(readonly code: 'INVALID_REQUEST' | 'NOT_FOUND' | 'CONFLICT' | 'STALE_EXECUTION', message: string) { super(message); }
 }
 
 export interface BindingInput {
@@ -59,6 +60,7 @@ export async function commandQuery(client: PoolClient, workspace: string, actor:
   if (command.action === 'disable') {
     if (row.state === 'DISABLED') throw new DiscoveryError('CONFLICT', 'Query is already disabled');
     change = { state: 'DISABLED', next_run_at: null, retry_at: null };
+    await client.query(`UPDATE m1.query_runs SET state='CANCELLED',finished_at=$2,worker_id=NULL,lease_expires_at=NULL WHERE binding_id=$1 AND state IN ('PENDING','RUNNING')`, [bindingId, now]);
   } else if (command.action === 'enable') {
     if (row.state !== 'DISABLED') throw new DiscoveryError('CONFLICT', 'Only a disabled query can be enabled');
     change = { state: row.last_success_at ? 'ACTIVE' : 'BOOTSTRAP', next_run_at: now, empty_runs: 0 };
@@ -81,7 +83,9 @@ export interface BindingFilter { id?: string; state?: string; category?: string;
 export async function listBindings(client: PoolClient | Pool, workspace: string, filter: BindingFilter, limit: number, offset: number): Promise<QueryBinding[]> {
   const rows = (await client.query(`SELECT b.*,t.text,
       coalesce((SELECT jsonb_agg(jsonb_build_object('type',s.source_type,'ref',s.source_ref) ORDER BY s.created_at) FROM (SELECT * FROM m1.query_sources WHERE binding_id=b.binding_id ORDER BY created_at LIMIT 5) s),'[]') AS sources,
-      (SELECT count(*)::int FROM m1.query_sources WHERE binding_id=b.binding_id) AS source_count
+      (SELECT count(*)::int FROM m1.query_sources WHERE binding_id=b.binding_id) AS source_count,
+      (SELECT jsonb_build_object('state',r.state,'new_channels',r.new_channels,'qualified_new',r.qualified_new,'finished_at',r.finished_at)
+        FROM m1.query_runs r WHERE r.binding_id=b.binding_id ORDER BY r.created_at DESC LIMIT 1) AS last_run
     FROM m1.query_bindings b JOIN m1.query_terms t USING (term_id)
     WHERE b.workspace_id=$1 AND ($2::uuid IS NULL OR b.binding_id=$2) AND ($3::text IS NULL OR b.state=$3) AND ($4::text IS NULL OR b.category=$4)
       AND ($5::text IS NULL OR b.country=$5) AND ($6::text IS NULL OR strpos(t.text,lower($6))>0)
@@ -90,15 +94,16 @@ export async function listBindings(client: PoolClient | Pool, workspace: string,
   const iso = (v: Date | null) => v ? new Date(v).toISOString() : null;
   return rows.map(r => QueryBindingSchema.parse({ binding_id: r.binding_id, text: r.text, country: r.country, language: r.language, category: r.category, state: r.state,
     cadence: r.cadence, cadence_override: r.cadence_override, next_run_at: iso(r.next_run_at), last_success_at: iso(r.last_success_at), empty_runs: r.empty_runs,
-    priority: r.priority, sources: r.sources, source_count: r.source_count, version: r.version, created_at: iso(r.created_at) }));
+    priority: r.priority, sources: r.sources, source_count: r.source_count, version: r.version, created_at: iso(r.created_at),
+    last_run: r.last_run ? { ...r.last_run, finished_at: r.last_run.finished_at ? new Date(r.last_run.finished_at).toISOString() : null } : null }));
 }
 
-export async function querySummary(pool: Pool, workspace: string, now = new Date()): Promise<QuerySummary> {
+export async function querySummary(pool: Pool, workspace: string, limits: DiscoveryLimits, now = new Date()): Promise<QuerySummary> {
   const states = (await pool.query(`SELECT state,count(*)::int AS n,count(*) FILTER (WHERE state IN ('BOOTSTRAP','ACTIVE','COOLDOWN') AND coalesce(retry_at,next_run_at)<=$2)::int AS due
     FROM m1.query_bindings WHERE workspace_id=$1 GROUP BY 1`, [workspace, now])).rows;
   const byCategory = (await pool.query(`SELECT category,count(*)::int AS bindings FROM m1.query_bindings WHERE workspace_id=$1 AND state<>'DISABLED' GROUP BY 1 ORDER BY 2 DESC,1`, [workspace])).rows;
   const byCountry = (await pool.query(`SELECT country,count(*)::int AS bindings FROM m1.query_bindings WHERE workspace_id=$1 AND state<>'DISABLED' GROUP BY 1 ORDER BY 2 DESC,1 LIMIT 50`, [workspace])).rows;
   const by_state = Object.fromEntries(QUERY_STATES.map(s => [s, states.find(r => r.state === s)?.n ?? 0]));
   return QuerySummarySchema.parse({ observed_at: now.toISOString(), total: states.reduce((n, r) => n + r.n, 0), by_state, due: states.reduce((n, r) => n + r.due, 0),
-    by_category: byCategory.filter(r => (BUSINESS_CATEGORIES as readonly string[]).includes(r.category)), by_country: byCountry });
+    by_category: byCategory.filter(r => (BUSINESS_CATEGORIES as readonly string[]).includes(r.category)), by_country: byCountry, ...await runsOverview(pool, workspace, limits, now) });
 }

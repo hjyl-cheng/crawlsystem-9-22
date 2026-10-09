@@ -324,6 +324,8 @@ export const ApiRoutes = {
   updates: '/v1/updates', updatesSummary: '/v1/updates/summary', dataApiPermit: '/v1/data-api/permit', dataApiFailure: '/v1/data-api/failure', dataApiSummary: '/v1/data-api/summary',
   agentTasks: '/v1/agent/tasks', agentSummary: '/v1/agent/summary', channelImport: '/v1/channels/import', channelImports: '/v1/channels/imports',
   queries: '/v1/queries', queriesSummary: '/v1/queries/summary', query: (id: string) => `/v1/queries/${encodeURIComponent(id)}`,
+  queryRunClaim: '/v1/query-runs/claim',
+  queryRun: (id: string, action: 'heartbeat' | 'page' | 'complete' | 'fail' | 'data-api-permit' | 'data-api-failure') => `/v1/query-runs/${encodeURIComponent(id)}/${action}`,
   session: '/v1/session', login: '/v1/auth/login', logout: '/v1/auth/logout', plans: '/v1/plans', channels: '/v1/channels', completeness: '/v1/overview/completeness', plansSummary: '/v1/overview/plans', consoleAccounts: '/v1/console/accounts', workers: '/v1/workers', errors: '/v1/errors',
   heartbeat: '/v1/workers/heartbeat', submissions: '/v1/submissions', proxies: '/v1/proxies', proxyImport: '/v1/proxies/import', proxySync: '/v1/proxy-manager/sync', proxySources: '/v1/proxy-sources',
   proxySource: (id: string) => `/v1/proxy-sources/${encodeURIComponent(id)}`,
@@ -555,12 +557,19 @@ export const QueryBindingSchema = z.strictObject({
   next_run_at: Timestamp.nullable(), last_success_at: Timestamp.nullable(), empty_runs: Count, priority: z.number().int(),
   sources: z.array(z.strictObject({ type: QuerySourceTypeSchema, ref: z.string().max(300) })).max(5), source_count: Count,
   version: z.number().int().positive(), created_at: Timestamp,
+  /** The binding's latest search (any outcome), if it has run. */
+  last_run: z.strictObject({ state: z.enum(['PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED']), new_channels: Count.nullable(), qualified_new: Count.nullable(),
+    finished_at: Timestamp.nullable() }).nullable(),
 });
 export type QueryBinding = z.infer<typeof QueryBindingSchema>;
 export const QuerySummarySchema = z.strictObject({
   observed_at: Timestamp, total: Count, by_state: z.record(QueryStateSchema, Count), due: Count,
   by_category: z.array(z.strictObject({ category: BusinessCategorySchema, bindings: Count })).max(19),
   by_country: z.array(z.strictObject({ country: CountryCode, bindings: Count })).max(50),
+  /** Search execution today (UTC day) and the limits that pace it. */
+  runs: z.strictObject({ enabled: z.boolean(), max_active_runs: Count, daily_run_limit: Count, running: Count, pending_retry: Count,
+    created_today: Count, succeeded_today: Count, failed_today: Count, new_channels_today: Count, qualified_today: Count, last_finished_at: Timestamp.nullable() }),
+  candidates: z.strictObject({ qualified: Count, unqualified: Count, unavailable: Count, admitted: Count, rejected: Count }),
 });
 export type QuerySummary = z.infer<typeof QuerySummarySchema>;
 /** Operator adds a query: one binding per country and category; an existing one gains a MANUAL source. */
@@ -573,3 +582,64 @@ export const QueryCommandSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('set_cadence'), cadence: QueryCadenceSchema.nullable(), reason: z.string().min(1).max(300), expected_version: z.number().int().positive() }),
 ]);
 export type QueryCommand = z.infer<typeof QueryCommandSchema>;
+
+// ---- Query runs (24.8 §5.2, Q-02..Q-09, Q-20..Q-23): one frozen search of a binding, claimed by a Worker
+// under a lease. Retries reuse the run and its frozen parameters; the binding clock settles with the run.
+export const QUERY_WINDOWS = ['THIS_YEAR', 'THIS_WEEK', 'THIS_MONTH'] as const;
+export const QueryWindowSchema = z.enum(QUERY_WINDOWS);
+/** Pacing of search execution (operator settings via environment). */
+export const DiscoveryLimitsSchema = z.strictObject({
+  enabled: z.boolean().default(true),
+  max_active_runs: z.number().int().min(1).max(50).default(2),
+  /** New runs per UTC day; retries of a run do not count. */
+  daily_run_limit: z.number().int().min(1).max(100000).default(500),
+  max_pages: z.number().int().min(1).max(20).default(5),
+  /** A page with at least this many channels new to the system is followed by the next page. */
+  continue_min_new: z.number().int().min(1).max(50).default(3),
+  min_subscribers: z.number().int().min(0).max(100_000_000).default(1000),
+  /** Data API units kept free for collection: searches stop qualifying channels below this many left today. */
+  api_reserve: z.number().int().min(0).max(1_000_000).default(3000),
+  /** Qualified candidates plus queued imports at which new searches pause (backpressure, Q-22). */
+  backlog_limit: z.number().int().min(1).max(1_000_000).default(2000),
+});
+export type DiscoveryLimits = z.infer<typeof DiscoveryLimitsSchema>;
+export const QueryRunParamsSchema = z.strictObject({
+  text: z.string().min(1).max(200), country: CountryCode, language: LanguageCode, category: BusinessCategorySchema, window: QueryWindowSchema,
+  sort: z.literal('popularity'), max_pages: z.number().int().min(1).max(20), continue_min_new: z.number().int().min(1).max(50),
+  min_subscribers: z.number().int().min(0), policy_version: z.string().min(1).max(40),
+});
+export type QueryRunParams = z.infer<typeof QueryRunParamsSchema>;
+export const QUERY_RUN_IDLE = ['disabled', 'no_due', 'concurrency', 'daily_runs', 'backlog', 'api_quota'] as const;
+export const QueryRunClaimSchema = z.strictObject({
+  run: z.strictObject({ run_id: z.uuid(), binding_id: z.uuid(), attempt: z.number().int().positive(), lease_expires_at: Timestamp, params: QueryRunParamsSchema }).nullable(),
+  idle_reason: z.enum(QUERY_RUN_IDLE).nullable(), retry_after_ms: Count,
+});
+export type QueryRunClaim = z.infer<typeof QueryRunClaimSchema>;
+const RunAttempt = z.number().int().positive();
+export const QueryRunHeartbeatSchema = z.strictObject({ attempt: RunAttempt });
+export const QueryRunLeaseSchema = z.strictObject({ active: z.boolean(), lease_expires_at: Timestamp.nullable() });
+export const QueryRunPageSchema = z.strictObject({
+  attempt: RunAttempt, page: z.number().int().min(1).max(20),
+  items: z.array(z.strictObject({ video_id: z.string().regex(/^[A-Za-z0-9_-]{11}$/), channel_id: YoutubeChannelIdSchema })).max(200),
+});
+export type QueryRunPage = z.infer<typeof QueryRunPageSchema>;
+export const QueryRunPageResultSchema = z.strictObject({ new_channel_ids: z.array(YoutubeChannelIdSchema).max(200), continue: z.boolean() });
+export const QueryRunChannelSchema = z.strictObject({
+  channel_id: YoutubeChannelIdSchema, title: z.string().max(300).nullable(), country: z.string().max(10).nullable(),
+  subscriber_count: Count.nullable(), hidden_subscribers: z.boolean(), video_count: Count.nullable(), view_count: Count.nullable(),
+});
+export const QueryRunCompleteSchema = z.strictObject({
+  attempt: RunAttempt, pages: z.number().int().min(0).max(20), stop_reason: z.enum(['list_end', 'max_pages', 'low_yield']),
+  /** Data API facts of every channel the run found new (Q-09: replays return the stored result). */
+  channels: z.array(QueryRunChannelSchema).max(4000), missing_channel_ids: z.array(YoutubeChannelIdSchema).max(4000),
+});
+export type QueryRunComplete = z.infer<typeof QueryRunCompleteSchema>;
+export const QueryRunResultSchema = z.strictObject({
+  run_id: z.uuid(), state: z.literal('SUCCEEDED'), new_channels: Count, qualified_new: Count,
+  binding: z.strictObject({ state: QueryStateSchema, cadence: QueryCadenceSchema.nullable(), next_run_at: Timestamp.nullable() }),
+});
+export const QUERY_RUN_FAILURES = ['blocked', 'network', 'parse', 'proxy_unavailable', 'quota', 'data_api', 'interrupted', 'internal'] as const;
+export const QueryRunFailSchema = z.strictObject({ attempt: RunAttempt, reason: z.enum(QUERY_RUN_FAILURES), retryable: z.boolean() });
+export const QueryRunFailResultSchema = z.strictObject({ state: z.enum(['PENDING', 'FAILED', 'CANCELLED', 'SUCCEEDED']), retry_at: Timestamp.nullable() });
+export const QueryRunPermitRequestSchema = z.strictObject({ request_id: z.uuid(), attempt: RunAttempt, endpoint: z.literal('channels') });
+export const QueryRunPermitFailureSchema = z.strictObject({ request_id: z.uuid(), attempt: RunAttempt, reason: z.enum(DATA_API_FAILURES) });

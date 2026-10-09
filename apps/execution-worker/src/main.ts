@@ -8,6 +8,7 @@ import { createActivities } from './activities.ts';
 import { DataApi } from './youtube/data-api.ts';
 import { LeaseClient } from './youtube/transport.ts';
 import { ProfileClient } from './profile-client.ts';
+import { runQueries } from './query-runner.ts';
 import { workerConfig } from './config.ts';
 import { refreshTemporalApiKey, watchTlsFiles } from '@crawlsystem/execution-client/config';
 
@@ -24,7 +25,8 @@ const session = await api.session();
 if (session.role !== 'worker' || session.subject !== config.workerId) throw new Error('Worker credential identity mismatch');
 const running = new Map<string, number>();
 let accepting = false, stopping = false;
-const heartbeatStop = new AbortController();
+const heartbeatStop = new AbortController(), queryStop = new AbortController();
+let queryLoops: Promise<void>[] = [];
 const report = () => api.heartbeat({ worker_id: config.workerId, server_id: config.serverId, build_version: config.buildVersion,
   accepting_work: accepting, capacity: config.capacity, running_plan_ids: [...running.keys()] }, { attempts: 1 });
 const temporalApiKey = config.temporal.apiKey ? await config.temporal.apiKey() : undefined;
@@ -32,10 +34,14 @@ const connection = await NativeConnection.connect({ address: config.temporal.add
 const stopTemporalRefresh = refreshTemporalApiKey(config.temporal.apiKey, token => connection.setApiKey(token),
   () => log({ worker_id: config.workerId, phase: 'TEMPORAL_TOKEN', error_code: 'UNAVAILABLE', retryable: true }));
 let worker: Worker | undefined;
+// Real collection (optional): the Data API key and this node's Proxy Manager (or 'direct' for local development only).
+const youtube = config.youtubeKeyFile && config.proxyManagerUrl
+  ? { dataApi: new DataApi((await readFile(config.youtubeKeyFile, 'utf8')).trim()), proxies: config.proxyManagerUrl === 'direct' ? 'direct' as const : new LeaseClient(config.proxyManagerUrl) } : undefined;
 let heartbeatLoop: Promise<void> | undefined;
 const stop = () => {
   if (stopping) return;
   stopping = true; accepting = false;
+  queryStop.abort();
   void report().catch(() => {});
   if (worker?.getState() === 'RUNNING') worker.shutdown();
 };
@@ -48,7 +54,7 @@ try {
     // Prebuild once; each replacement process loads the same bundle without webpack.
     workflowBundle: { codePath: fileURLToPath(new URL('../dist/workflow-bundle.cjs', import.meta.url)) },
     activities: createActivities({ api, workerId: config.workerId, workspaceId: session.workspace_id, log, tracing,
-      youtube: config.youtubeKeyFile && config.proxyManagerUrl ? { dataApi: new DataApi((await readFile(config.youtubeKeyFile, 'utf8')).trim()), proxies: config.proxyManagerUrl === 'direct' ? 'direct' : new LeaseClient(config.proxyManagerUrl) } : undefined,
+      youtube,
       profiler: config.profileAgentUrl ? new ProfileClient(config.profileAgentUrl) : undefined,
       enter(planId) { running.set(planId, (running.get(planId) ?? 0) + 1); return () => { const count = running.get(planId)! - 1; if (count) running.set(planId, count); else running.delete(planId); }; },
     }),
@@ -67,12 +73,15 @@ try {
       }
     })();
     log({ worker_id: config.workerId, phase: 'READY', build_version: config.buildVersion, workspace_id: session.workspace_id });
+    // Query searches run beside the Temporal Worker, claimed from Control under a lease.
+    if (youtube) queryLoops = Array.from({ length: config.queryRunnerSlots }, () => runQueries({ api, dataApi: youtube.dataApi, proxies: youtube.proxies, workerId: config.workerId, signal: queryStop.signal, log })
+      .catch(() => { log({ worker_id: config.workerId, phase: 'QUERY_RUNNER', error_code: 'INTERNAL_ERROR', retryable: false }); }));
     await worker.run();
   }
 } finally {
   accepting = false;
-  heartbeatStop.abort();
-  await heartbeatLoop;
+  heartbeatStop.abort(); queryStop.abort();
+  await heartbeatLoop; await Promise.all(queryLoops);
   await report().catch(() => {});
   await tracing.close();
   await connection.close();

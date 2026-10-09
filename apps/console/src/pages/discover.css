@@ -196,3 +196,9 @@
 .trend-tip b { font-size: var(--fs-text); }
 .trend-tip span { display: flex; align-items: center; gap: 5px; }
 .trend-tip i { width: 8px; height: 8px; border-radius: 50%; }
+
+.discover .run-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 20px; padding: 14px 18px; }
+.discover .run-strip > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.discover .run-strip small { font-size: var(--fs-text); color: #253f6a; font-weight: 600; }
+.discover .run-strip strong { font-size: var(--fs-metric); line-height: 1.25; color: #0c1e43; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.discover .run-strip strong.small-value { font-size: var(--fs-text); font-weight: 600; }

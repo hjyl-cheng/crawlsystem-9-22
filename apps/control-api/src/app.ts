@@ -80,6 +80,15 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   });
   app.post(ApiRoutes.queries,{bodyLimit:4096},async request=>store.createQuery(request.principal,request.body));
   app.post('/v1/queries/:id',{bodyLimit:4096},async request=>store.queryCommand(request.principal,z.object({id:z.uuid()}).parse(request.params).id,request.body));
+  // Worker: search execution under a lease (claim, renew, pages, result, failure, Data API permits).
+  const runId=(request:{params:unknown})=>z.object({id:z.uuid()}).parse(request.params).id;
+  app.post(ApiRoutes.queryRunClaim,{bodyLimit:1024},async request=>store.claimQueryRun(request.principal));
+  app.post('/v1/query-runs/:id/heartbeat',{bodyLimit:1024},async request=>store.queryRunHeartbeat(request.principal,runId(request),request.body));
+  app.post('/v1/query-runs/:id/page',{bodyLimit:65536},async request=>store.queryRunPage(request.principal,runId(request),request.body));
+  app.post('/v1/query-runs/:id/complete',{bodyLimit:1048576},async request=>store.queryRunComplete(request.principal,runId(request),request.body));
+  app.post('/v1/query-runs/:id/fail',{bodyLimit:1024},async request=>store.queryRunFail(request.principal,runId(request),request.body));
+  app.post('/v1/query-runs/:id/data-api-permit',{bodyLimit:1024},async request=>store.queryRunPermit(request.principal,runId(request),request.body));
+  app.post('/v1/query-runs/:id/data-api-failure',{bodyLimit:1024},async request=>store.queryRunPermitFailure(request.principal,runId(request),request.body));
   app.post(ApiRoutes.channelImport,{bodyLimit:262144},async request=>store.importChannels(request.principal,request.body));
   app.get(ApiRoutes.channelImports,async request=>store.channelImports(request.principal));
   app.get('/v1/channels/:id',async request=>store.getChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id));

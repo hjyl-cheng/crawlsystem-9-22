@@ -113,3 +113,11 @@ export function unavailableVideo(channel_id: string, id: string, observed_at: st
   return VideoUnavailableSchema.parse({ channel_id, source_content_id: id, unavailable: true, access_status: 'unavailable',
     reason: 'Listed as an upload but not returned by the Data API videos endpoint (private, removed or restricted)', source: 'data_api:videos', observed_at });
 }
+
+/** A search candidate's qualification facts from the Data API (hidden subscriber counts stay unknown). */
+export function toCandidateFacts(api: ApiChannel) {
+  const stats = api.statistics ?? {}, count = (v?: string) => v !== undefined && /^\d+$/.test(v) ? Number(v) : null;
+  return { channel_id: api.id, title: api.snippet.title?.slice(0, 300) ?? null, country: api.snippet.country?.slice(0, 10) ?? null,
+    subscriber_count: stats.hiddenSubscriberCount ? null : count(stats.subscriberCount), hidden_subscribers: stats.hiddenSubscriberCount === true,
+    video_count: count(stats.videoCount), view_count: count(stats.viewCount) };
+}

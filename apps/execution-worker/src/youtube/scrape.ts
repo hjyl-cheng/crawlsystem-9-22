@@ -17,9 +17,31 @@ function classify(error: unknown): ScrapeError {
   if (/fetch failed|ECONN|ETIMEDOUT|socket|proxy|timed out|network/i.test(message) || (error as { name?: string })?.name === 'ProxyConnectError') return new ScrapeError('network', 'Network or proxy failure');
   return new ScrapeError('parse', 'Unexpected YouTube response');
 }
-export async function session(fetcher: typeof fetch): Promise<Innertube> {
-  try { return await Innertube.create({ fetch: fetcher, retrieve_player: false, generate_session_locally: true, lang: 'en', location: 'US' }); }
+/** A client session; searches use the binding's language and country (YouTube hl/gl). */
+export async function session(fetcher: typeof fetch, locale: { lang: string; location: string } = { lang: 'en', location: 'US' }): Promise<Innertube> {
+  try { return await Innertube.create({ fetch: fetcher, retrieve_player: false, generate_session_locally: true, lang: locale.lang, location: locale.location }); }
   catch (error) { throw classify(error); }
+}
+const UPLOAD_DATE = { THIS_YEAR: 'year', THIS_WEEK: 'week', THIS_MONTH: 'month' } as const;
+export interface SearchPage { items: { video_id: string; channel_id: string }[]; more: boolean }
+/**
+ * Video search result pages for a frozen query: upload window and popularity order (24.8 §5.2 keeps the
+ * business window; this is the adapter's encoding). Each page is reduced to video and channel IDs; the
+ * next page is fetched only when the caller asks for it.
+ */
+export async function* searchPages(yt: Innertube, text: string, window: keyof typeof UPLOAD_DATE): AsyncGenerator<SearchPage> {
+  let search;
+  try { search = await yt.search(text, { type: 'video', upload_date: UPLOAD_DATE[window], prioritize: 'popularity' }); }
+  catch (error) { throw classify(error); }
+  for (;;) {
+    const items = search.videos.map(v => ({ video_id: (v as { video_id?: unknown }).video_id, channel_id: (v as { author?: { id?: unknown } }).author?.id }))
+      .filter((i): i is SearchPage['items'][number] => typeof i.video_id === 'string' && /^[\w-]{11}$/.test(i.video_id) && typeof i.channel_id === 'string' && /^UC[\w-]{22}$/.test(i.channel_id));
+    const more = search.has_continuation;
+    yield { items, more };
+    if (!more) return;
+    try { search = await search.getContinuation(); }
+    catch (error) { throw classify(error); }
+  }
 }
 export async function aboutPage(yt: Innertube, channelId: string): Promise<AboutPage> {
   try {

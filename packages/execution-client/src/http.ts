@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { DataApiFailureReportSchema, DataApiPermitRequestSchema, DataApiPermitSchema } from '@crawlsystem/contracts';
+import { DataApiFailureReportSchema, DataApiPermitRequestSchema, DataApiPermitSchema, QueryRunClaimSchema, QueryRunCompleteSchema, QueryRunFailResultSchema, QueryRunFailSchema,
+  QueryRunHeartbeatSchema, QueryRunLeaseSchema, QueryRunPageResultSchema, QueryRunPageSchema, QueryRunPermitFailureSchema, QueryRunPermitRequestSchema, QueryRunResultSchema } from '@crawlsystem/contracts';
 import { z } from 'zod';
 import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, AgentInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
   ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, TemporalTokenSchema, ProxySyncRequestSchema, ProxySyncResponseSchema, type ProxySyncRequest, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
@@ -139,6 +140,14 @@ export class ExecutionApi {
   dataApiPermit(value: unknown, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.dataApiPermit, DataApiPermitSchema, DataApiPermitRequestSchema.parse(value), budget); }
   /** Record why a permitted Data API request failed (best effort; the console's failure breakdown). */
   dataApiFailure(value: unknown, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.dataApiFailure, z.strictObject({ recorded: z.boolean() }), DataApiFailureReportSchema.parse(value), budget); }
+  /** Search execution: claim a due run (not retried: a lost claim is recovered by its lease), then report on it. Reports are idempotent. */
+  claimQueryRun(budget?: RequestBudget) { return this.request(this.control, ApiRoutes.queryRunClaim, QueryRunClaimSchema, {}, { ...budget, attempts: 1 }); }
+  queryRunHeartbeat(id: string, value: unknown, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.queryRun(id, 'heartbeat'), QueryRunLeaseSchema, QueryRunHeartbeatSchema.parse(value), budget); }
+  queryRunPage(id: string, value: unknown, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.queryRun(id, 'page'), QueryRunPageResultSchema, QueryRunPageSchema.parse(value), budget); }
+  queryRunComplete(id: string, value: unknown, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.queryRun(id, 'complete'), QueryRunResultSchema, QueryRunCompleteSchema.parse(value), budget); }
+  queryRunFail(id: string, value: unknown, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.queryRun(id, 'fail'), QueryRunFailResultSchema, QueryRunFailSchema.parse(value), budget); }
+  queryRunPermit(id: string, value: unknown, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.queryRun(id, 'data-api-permit'), DataApiPermitSchema, QueryRunPermitRequestSchema.parse(value), budget); }
+  queryRunPermitFailure(id: string, value: unknown, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.queryRun(id, 'data-api-failure'), z.strictObject({ recorded: z.boolean() }), QueryRunPermitFailureSchema.parse(value), budget); }
   async submit(raw: Submission, budget: RequestBudget = {}): Promise<Receipt> {
     const submission = SubmissionSchema.parse(raw);
     // Read-before-write also handles a previous Activity dying after the Store commit.
