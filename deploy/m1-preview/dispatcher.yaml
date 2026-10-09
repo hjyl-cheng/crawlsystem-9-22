@@ -42,6 +42,9 @@ spec:
           env:
             - { name: PG_POOL_MAX, value: "1" }
             - { name: M1_WORKSPACE_ID, value: "m1-main" }
+            # Paused 2026-10-09 while collection is reworked: no scheduled updates, imports or candidate admission.
+            - { name: UPDATE_SCHEDULER_ENABLED, value: "false" }
+            - { name: QUERY_AUTO_ADMIT, value: "false" }
             - { name: PG_CA_FILE, value: /secrets/pg-ca.crt }
             - { name: PG_TLS_SERVERNAME, value: crawler-pg-pool.db.svc.cluster.local }
             - name: DATABASE_URL
