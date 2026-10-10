@@ -64,10 +64,16 @@ try{
  phase='desktop-layout';
  const layouts=[];
  for(const [width,height] of [[1920,937],[1586,992]] as const){
+  phase=`desktop-layout:${width}x${height}`;
   await page.setViewportSize({width,height});
+  writeFileSync(`${dir}/layout-inspection.json`,JSON.stringify(await page.evaluate(()=>({row:document.querySelector('.recent-panel tbody tr')?.getBoundingClientRect().toJSON(),panel:document.querySelector('.recent-panel')?.getBoundingClientRect().toJSON(),view:document.querySelector('.recent-panel .table-scroll')?.getBoundingClientRect().toJSON(),capacity:document.querySelector('.capacity-panel')?.getBoundingClientRect().toJSON(),width:innerWidth,height:innerHeight,scroll_width:document.documentElement.scrollWidth,scroll_height:document.documentElement.scrollHeight})),null,2),{mode:0o600});
+  phase=`desktop-layout:${width}x${height}:overflow`;
   await expect.poll(()=>page.evaluate(()=>({x:document.documentElement.scrollWidth-innerWidth,y:document.documentElement.scrollHeight-innerHeight}))).toEqual({x:0,y:0});
+  phase=`desktop-layout:${width}x${height}:visibility`;
   await expect.poll(()=>page.evaluate(()=>[...document.querySelectorAll('#pipeline .react-flow__node')].filter(n=>getComputedStyle(n).visibility==='hidden').length)).toBe(0);
+  phase=`desktop-layout:${width}x${height}:columns`;
   const columns=await page.evaluate(()=>[...document.querySelectorAll('.dashboard-row')].map(row=>[...row.children].map(cell=>Math.round(cell.getBoundingClientRect().left))));expect(columns[0]).toEqual(columns[1]);
+  phase=`desktop-layout:${width}x${height}:recent-row`;
   await expect.poll(()=>page.evaluate(()=>{const row=document.querySelector('.recent-panel tbody tr'),panel=document.querySelector('.recent-panel'),view=document.querySelector('.recent-panel .table-scroll');return !!row&&!!panel&&!!view&&row.getBoundingClientRect().bottom<=Math.min(panel.getBoundingClientRect().bottom,view.getBoundingClientRect().bottom);})).toBe(true);
   layouts.push({width,height,horizontal_overflow:0,vertical_overflow:0});
   await page.screenshot({path:`${dir}/overview-${width}.png`,fullPage:true});
@@ -91,6 +97,7 @@ try{
  writeFileSync(`${dir}/browser-evidence.json`,JSON.stringify(evidence,null,2)+'\n',{mode:0o600});console.log(JSON.stringify(evidence));
 }catch(error){
  // Never print Playwright request stacks: they can include the bearer header.
+  await browser.contexts()[0]?.pages()[0]?.screenshot({path:`${dir}/browser-failure.png`,fullPage:true}).catch(()=>{});
  writeFileSync(`${dir}/browser-failure.json`,JSON.stringify({result:'FAILED',at:new Date().toISOString(),phase,error:error instanceof Error?error.name:'UnknownError',runtime_errors:errors,failed_api_reads:failed},null,2),{mode:0o600});
  console.error('C3 browser acceptance failed; inspect the local page and sanitized failure record.');process.exitCode=1;
 }finally{await browser.close();}

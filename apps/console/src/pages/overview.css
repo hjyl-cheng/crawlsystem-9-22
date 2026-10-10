@@ -170,7 +170,7 @@
 .trend-placeholder strong { color: #8b9ebb; font-size: var(--fs-text); font-weight: 500; }
 .trend-placeholder span { color: #a2b1c6; font-size: var(--fs-meta); }
 .capacity-panel { flex-shrink: 0; }
-.capacity-items { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 0 12px 10px; line-height: 1.35; }
+.capacity-items { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 0 12px 6px; line-height: 1.2; }
 .capacity-items>div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .capacity-items span { display: flex; align-items: center; gap: 3px; font-size: var(--fs-meta); color: #6c84a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .capacity-items strong { font-size: var(--fs-body); color: #a9b6c8; font-weight: 500; }
