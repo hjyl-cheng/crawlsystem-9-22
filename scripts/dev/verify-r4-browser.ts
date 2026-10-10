@@ -14,6 +14,10 @@ try {
       await expect(page.getByText('本轮已结束：订阅门槛未通过，频道资料已保存，视频和画像未执行。',{exact:true})).toBeVisible();
       await expect(page.getByText('未执行：订阅门槛未通过',{exact:true})).toHaveCount(2);
       await expect(page.getByText('等待清单或入库',{exact:true})).toHaveCount(0);
+      await expect(page.locator('.domain-list').getByText('未执行',{exact:true})).toHaveCount(2);
+      await expect(page.locator('.domain-list').getByText('待核对',{exact:true})).toHaveCount(0);
+      await expect(page.getByText('未列出：订阅门槛未通过',{exact:true})).toBeVisible();
+      await expect(page.getByText('未生成：订阅门槛未通过',{exact:true})).toBeVisible();
     }else await expect(page.getByText('本轮采集与入库已完成。',{exact:true})).toBeVisible();
     await page.screenshot({path:`.runtime/r4/${mode}-plan.png`,fullPage:true});
     await page.goto('http://127.0.0.1:18103/discover/candidates');
@@ -23,7 +27,7 @@ try {
     await expect(row).toContainText(mode==='reject'?'订阅门槛未通过，已停止后续采集':'订阅门槛已通过');
     await page.screenshot({path:`.runtime/r4/${mode}-candidate.png`,fullPage:true});
   }
-  await page.goto('http://127.0.0.1:18103/discover');
+  await page.goto('http://127.0.0.1:18103/discover/queries');
   await expect(page.getByText('已验证合格 / 待结算搜索',{exact:true})).toBeVisible();
   await page.getByRole('textbox',{name:'搜索搜索词'}).fill('Google Developers tutorials');
   await expect(page.locator('.query-list tbody tr').first()).toContainText('合格 1');
