@@ -1,0 +1,196 @@
+{
+  "result": "PASSED",
+  "verified_at": "2026-10-10T08:52:09.192188+00:00",
+  "schema_version": 29,
+  "backend_revision": "ba2113ddcd9f918f14acbec39fff2c1040ce7c85",
+  "console_revision": "d7ed628a4177ac88b9ab88c06eecfc3841412167",
+  "services": [
+    {
+      "namespace": "control",
+      "name": "control-api-preview",
+      "ready": 2,
+      "desired": 2,
+      "images": [
+        "docker.io/crawlsystem/control-api:main-ba2113ddcd9f-acc0cc36"
+      ]
+    },
+    {
+      "namespace": "control",
+      "name": "intent-dispatcher",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        "docker.io/crawlsystem/control-api:main-ba2113ddcd9f-acc0cc36"
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "raw-parser",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        "docker.io/crawlsystem/control-api:main-ba2113ddcd9f-acc0cc36"
+      ]
+    },
+    {
+      "namespace": "ingest",
+      "name": "pg-sink",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        "docker.io/crawlsystem/control-api:main-ba2113ddcd9f-acc0cc36"
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "execution-worker",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        "docker.io/crawlsystem/execution-worker:main-ba2113ddcd9f-b003e466",
+        "docker.io/crawlsystem/fingerprint-gateway:1ff2fbba98b3c83f"
+      ]
+    },
+    {
+      "namespace": "analytics",
+      "name": "crawl-analytics",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        "docker.io/crawlsystem/control-api:main-ba2113ddcd9f-acc0cc36"
+      ]
+    }
+  ],
+  "preservation": {
+    "all_workspaces": true,
+    "videos": 9692,
+    "comment_bodies": 0,
+    "comment_refs": 9618,
+    "video_identities_verified": 9692,
+    "backup_bytes": 15615523,
+    "backup_sha256": "20caae275e303838b4fd93f9c13700e671298f861ddf5a68aa8c3d6b7b1015fe"
+  },
+  "bootstrap": {
+    "workspace": "m1-main",
+    "events": 15268,
+    "video_snapshots": 8785,
+    "batch_size": 500,
+    "repeatable_read": true,
+    "idempotent": true
+  },
+  "recovery": {
+    "plan_id": "de8ed481-06ec-43ed-8687-f922dc364bcc",
+    "failure_id": "86f66e98-10ed-4077-8856-b4db6069723b",
+    "retry_completed": true,
+    "ignored_failure": true,
+    "outage_recovered": true,
+    "duplicate_preserved": true,
+    "evidence_saved": true,
+    "operator_command_idempotent": true,
+    "real_kafka_dlq": true,
+    "outage_unarchived_retained": 1
+  },
+  "statistics": {
+    "source": "clickhouse",
+    "totals": {
+      "collected": 9,
+      "videos": 4,
+      "about": 3,
+      "agent": 2,
+      "completed": 344,
+      "failed": 9,
+      "searches": 60,
+      "raw_bytes": 713020,
+      "metric_total": 25,
+      "metric_missing": 6
+    },
+    "youtube_baseline": 8784,
+    "unarchived": 0,
+    "clickhouse_available": true,
+    "deduplication": {
+      "result": "PASSED",
+      "duplicate_inserts": 6,
+      "unique_events": 2,
+      "daily_count": 2,
+      "hourly_count": 2,
+      "late_event_rebuilt": true,
+      "quality_missing": 1,
+      "channel_history_verified": true,
+      "workspace_history_isolated": true,
+      "tls_verified": true,
+      "test_workspace": "r5-ch-ee99850c-ff81-415d-8c93-4b41804407c7"
+    }
+  },
+  "permissions": {
+    "control_fact_write": false,
+    "sink_control_read": false,
+    "sink_control_write": false
+  },
+  "retention": {
+    "pg_days": 30,
+    "events_days": 180,
+    "evidence_days": 90,
+    "loki_days": 7,
+    "summaries": "long_term"
+  },
+  "maintenance": {
+    "last_at": "2026-10-10T08:36:30.305Z",
+    "result": {
+      "units": 0,
+      "events": 0,
+      "failures": 0
+    }
+  },
+  "monitoring": {
+    "alerts": [
+      "CrawlTelemetryArchiveDelayed",
+      "CrawlFailureEvidenceDelayed"
+    ],
+    "loki_capacity": {
+      "bytes": 53878784,
+      "capacity_bytes": 5368709120,
+      "projected_7d_bytes": 125717162,
+      "retention_days": 7,
+      "measured_at": "2026-10-10T07:29:37.135003+00:00"
+    }
+  },
+  "validation": {
+    "unit": 161,
+    "temporal": 9,
+    "integration": 106,
+    "r5_focused_integration": 10,
+    "parser_and_workload": 16,
+    "browser_regression": 44,
+    "typecheck": true,
+    "console_build": true
+  },
+  "browser": {
+    "result": "PASSED",
+    "pages": [
+      "/analytics",
+      "/quality",
+      "/storage",
+      "/failures?failure=86f66e98-10ed-4077-8856-b4db6069723b",
+      "/",
+      "/agent",
+      "/data-api",
+      "/history/UC3L23SlbXIkxvttMI-mDOsw"
+    ],
+    "runtime_errors": 0,
+    "mobile_verified": true,
+    "verified_at": "2026-10-10T08:47:15.859Z"
+  },
+  "public_url": "https://controversy-roughly-kiss-genealogy.trycloudflare.com",
+  "public_http": {
+    "/": 200,
+    "/failures": 200,
+    "/analytics": 200,
+    "/quality": 200,
+    "/storage": 200
+  },
+  "automatic_search": false,
+  "automatic_admission": false,
+  "automatic_updates": false,
+  "query_runner_slots": 0,
+  "forced_br_egress": false
+}
