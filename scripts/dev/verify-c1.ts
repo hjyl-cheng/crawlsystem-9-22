@@ -40,7 +40,7 @@ async function snapshot(){
  const enabled=load('enabled');
  const plans=(await pool.query('SELECT plan_kind,status,count(*)::int AS n FROM control.plans WHERE workspace_id=$1 AND created_at>=$2 GROUP BY 1,2',[workspace,enabled.at])).rows;
  const failures=(await pool.query("SELECT stage,code,state,count(*)::int AS n FROM control.failures WHERE workspace_id=$1 AND first_at>=$2 GROUP BY 1,2,3",[workspace,enabled.at])).rows;
- const names=new Set(workloads.map(w=>w[2] as string)),pods=JSON.parse(kube(['get','pods','-A','-o','json'])).items.filter((p:any)=>names.has(p.metadata.labels?.['app.kubernetes.io/name'])).map((p:any)=>({namespace:p.metadata.namespace,name:p.metadata.name,phase:p.status.phase,containers:(p.status.containerStatuses??[]).map((c:any)=>({name:c.name,ready:c.ready,restarts:c.restartCount,last_reason:c.lastState?.terminated?.reason??null}))}));
+ const names=workloads.map(w=>w[2]),pods=JSON.parse(kube(['get','pods','-A','-l',`app.kubernetes.io/name in (${names.join(',')})`,'-o','json'])).items.map((p:any)=>({namespace:p.metadata.namespace,name:p.metadata.name,phase:p.status.phase,containers:(p.status.containerStatuses??[]).map((c:any)=>({name:c.name,ready:c.ready,restarts:c.restartCount,last_reason:c.lastState?.terminated?.reason??null}))}));
  const result={at:new Date().toISOString(),records,projection,snapshots,source,slot,services:services(),pods,connector:{state:connector.connector.state,tasks:connector.tasks.map((t:any)=>t.state)},summary:await api('/v1/deliveries/summary'),plans,failures};save('latest',result);
  console.log(JSON.stringify({phase:'snapshot',summary:result.summary,projection,snapshots,source,slot,plans,failures}));return result;
 }
@@ -54,14 +54,16 @@ try {
   catch(e){kube(['-n','ingest','scale','deployment/business-sink','--replicas=1']);throw e;}
  }else if(mode==='recovery-finish'){
   const state=load('recovery');
+  if(!state.pending_during_outage||!state.retry_idempotent){
   try{
    for(const end=Date.now()+120000;;){const p=(await pool.query('SELECT status FROM control.plans WHERE plan_id=$1',[state.plan_id])).rows[0];assert.ok(!['FAILED','CANCELLED'].includes(p.status),'Recovery update must complete');if(p.status==='COMPLETED')break;assert.ok(Date.now()<end,'Resume after recorded update completes');await delay(2000);}
    const r=(await pool.query('SELECT delivery_id,status,shard FROM delivery.records WHERE plan_id=$1',[state.plan_id])).rows[0];assert.ok(r);assert.equal(r.status,'PENDING','Real update must queue while business receiver is stopped');
    const command={command_id:randomUUID(),reason:'C1 验收：接收端停机后重发相同定稿版本'};await api(`/v1/deliveries/${r.delivery_id}/retry`,command);await api(`/v1/deliveries/${r.delivery_id}/retry`,command);
    state.delivery_id=r.delivery_id;state.manifest_hash=r.shard.manifest_hash;state.pending_during_outage=true;state.retry_idempotent=true;save('recovery',state);
   }finally{kube(['-n','ingest','scale','deployment/business-sink','--replicas=1']);kube(['-n','ingest','rollout','status','deployment/business-sink','--timeout=180s']);}
+  }
   for(const end=Date.now()+60000;;){const r=(await pool.query('SELECT status FROM delivery.records WHERE delivery_id=$1',[state.delivery_id])).rows[0];if(r?.status==='DELIVERED')break;assert.ok(Date.now()<end,'Receipt must recover after receiver restarts');await delay(2000);}
-  const revisions=(await biz.query('SELECT receive_count FROM publication.inbox WHERE revision_id=ANY((SELECT revision_ids FROM delivery_transport.messages WHERE delivery_id=$1))',[state.delivery_id])).rows;
+  const revisions=(await biz.query('SELECT receive_count FROM publication.inbox WHERE revision_id IN (SELECT unnest(revision_ids) FROM delivery_transport.messages WHERE delivery_id=$1)',[state.delivery_id])).rows;
   assert.ok(revisions.length&&revisions.every(r=>r.receive_count>=2),'Both original and retry consumed without losing durable revisions');
   state.completed_at=new Date().toISOString();state.recovered=true;state.duplicate_consumed=true;save('recovery',state);console.log(JSON.stringify({phase:'recovered',...state}));
  }else{

@@ -1,0 +1,445 @@
+{
+  "result": "PASSED",
+  "at": "2026-10-10T11:18:49.471Z",
+  "workspace": "m1-main",
+  "source_schema_version": 31,
+  "deployed_control_revision": "29938cb53aa32666708fd810f8a48cd6dd442ae9",
+  "business_database": {
+    "name": "crawlsystem_business_main",
+    "legacy_tables": 64,
+    "ddl_sha256": "8e2964ef1b322c95dea3ea00894213e3ce25030b70e718367782f00b45b1f3f5",
+    "transport_schema": "delivery_transport",
+    "old_production_connected": false,
+    "old_production_modified": false
+  },
+  "summary": {
+    "enabled": true,
+    "target": "业务库（旧服务器结构）",
+    "total": 444,
+    "pending": 0,
+    "delivered": 442,
+    "failed": 0,
+    "not_ready": 2,
+    "unchanged": 0,
+    "delivered_today": 442,
+    "oldest_pending_at": null
+  },
+  "business_projection": {
+    "projected_channels": 441
+  },
+  "public_tables": {
+    "channel_snapshots": 442,
+    "video_snapshots": 8780,
+    "profile_facts": 4420,
+    "searchable_channels": 441
+  },
+  "source": {
+    "videos": 11997,
+    "comment_bodies": 0
+  },
+  "preserved_video_identities": 11136,
+  "connector": {
+    "state": "RUNNING",
+    "tasks": [
+      "RUNNING"
+    ]
+  },
+  "slot": {
+    "slot_name": "c1_delivery_slot",
+    "active": true,
+    "retained_bytes": "20985144"
+  },
+  "services": [
+    {
+      "namespace": "control",
+      "name": "control-api-preview",
+      "ready": 2,
+      "desired": 2,
+      "images": [
+        {
+          "name": "control-api",
+          "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+        }
+      ]
+    },
+    {
+      "namespace": "control",
+      "name": "intent-dispatcher",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        {
+          "name": "dispatcher",
+          "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "execution-worker",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        {
+          "name": "worker",
+          "image": "docker.io/crawlsystem/execution-worker:main-2ed9fd0ae306-05c80967"
+        },
+        {
+          "name": "fingerprint-gateway",
+          "image": "docker.io/crawlsystem/fingerprint-gateway:1ff2fbba98b3c83f"
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "profile-agent",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        {
+          "name": "profile-agent",
+          "image": "docker.io/crawlsystem/profile-agent:96bc1d79fdffbf8a"
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "raw-parser",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        {
+          "name": "parser",
+          "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+        }
+      ]
+    },
+    {
+      "namespace": "ingest",
+      "name": "pg-sink",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        {
+          "name": "sink",
+          "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+        }
+      ]
+    },
+    {
+      "namespace": "analytics",
+      "name": "crawl-analytics",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        {
+          "name": "analytics",
+          "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+        }
+      ]
+    },
+    {
+      "namespace": "ingest",
+      "name": "business-sink",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        {
+          "name": "business-sink",
+          "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+        }
+      ]
+    },
+    {
+      "namespace": "control",
+      "name": "delivery-receipts",
+      "ready": 1,
+      "desired": 1,
+      "images": [
+        {
+          "name": "delivery-receipts",
+          "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+        }
+      ]
+    }
+  ],
+  "pods": [
+    {
+      "namespace": "analytics",
+      "name": "crawl-analytics-76cc5b96b4-srkk8",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "analytics",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        }
+      ]
+    },
+    {
+      "namespace": "control",
+      "name": "control-api-preview-7475c6b96d-2n6d5",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "control-api",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        }
+      ]
+    },
+    {
+      "namespace": "control",
+      "name": "control-api-preview-7475c6b96d-cq7lk",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "control-api",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        }
+      ]
+    },
+    {
+      "namespace": "control",
+      "name": "delivery-receipts-84b5c7fd8d-d44dx",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "delivery-receipts",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        }
+      ]
+    },
+    {
+      "namespace": "control",
+      "name": "intent-dispatcher-5b47c74cb4-prdww",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "dispatcher",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "execution-worker-0",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "fingerprint-gateway",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        },
+        {
+          "name": "worker",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "profile-agent-5d4bc54bdf-mhccl",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "profile-agent",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "raw-parser-74df8bbd95-9sk5m",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "parser",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        }
+      ]
+    },
+    {
+      "namespace": "ingest",
+      "name": "business-sink-f5bc76cc5-t7cnj",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "business-sink",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        }
+      ]
+    },
+    {
+      "namespace": "ingest",
+      "name": "pg-sink-c655b995-56rlg",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "sink",
+          "ready": true,
+          "restarts": 0,
+          "last_reason": null
+        }
+      ]
+    }
+  ],
+  "plans_since_enabled": [
+    {
+      "plan_kind": "FULL",
+      "status": "COMPLETED",
+      "n": 33
+    },
+    {
+      "plan_kind": "FULL",
+      "status": "RUNNING",
+      "n": 2
+    },
+    {
+      "plan_kind": "UPDATE",
+      "status": "COMPLETED",
+      "n": 1
+    }
+  ],
+  "failures_since_enabled": [
+    {
+      "stage": "WORKER",
+      "code": "UNAVAILABLE",
+      "state": "RESOLVED",
+      "n": 1
+    }
+  ],
+  "delivered_business_vectors_verified": 442,
+  "recovery": {
+    "channel_id": "UC--FL6OwLFWGIZfLfazY4yA",
+    "plan_id": "cd33fa83-3660-4f38-b927-fd6a90b5afd8",
+    "started_at": "2026-10-10T11:16:22.182Z",
+    "delivery_id": "f55431e8-fcc6-4542-97bc-0241ccf85281",
+    "manifest_hash": "sha256:89e11b84e00987163a328bbfa370dfd0865f1c852a2c2eea544114eceabb2609",
+    "pending_during_outage": true,
+    "retry_idempotent": true,
+    "completed_at": "2026-10-10T11:18:04.532Z",
+    "recovered": true,
+    "duplicate_consumed": true
+  },
+  "temporary_capacity": {
+    "at": "2026-10-10T11:14:29.766Z",
+    "restored_at": "2026-10-10T11:18:40.838Z",
+    "temporary": [
+      [
+        "control-api-preview",
+        {
+          "QUERY_RUNS_ENABLED": "false",
+          "QUERY_AUTO_ADMIT": "false",
+          "UPDATE_SCHEDULER_ENABLED": "false",
+          "UPDATE_DAILY_PLAN_LIMIT": "101"
+        }
+      ],
+      [
+        "intent-dispatcher",
+        {
+          "QUERY_RUNS_ENABLED": "false",
+          "QUERY_AUTO_ADMIT": "false",
+          "UPDATE_SCHEDULER_ENABLED": "false"
+        }
+      ]
+    ],
+    "restored_values": [
+      {
+        "name": "control-api-preview",
+        "values": {
+          "QUERY_RUNS_ENABLED": "true",
+          "QUERY_AUTO_ADMIT": "true",
+          "UPDATE_SCHEDULER_ENABLED": "true",
+          "UPDATE_DAILY_PLAN_LIMIT": "100"
+        }
+      },
+      {
+        "name": "intent-dispatcher",
+        "values": {
+          "QUERY_RUNS_ENABLED": "true",
+          "QUERY_AUTO_ADMIT": "true",
+          "UPDATE_SCHEDULER_ENABLED": "true"
+        }
+      }
+    ]
+  },
+  "duplicate_link_projection_jobs_recovered": 25,
+  "not_ready": [
+    {
+      "channel_id": "UC3L23SlbXIkxvttMI-mDOsw",
+      "reason": "initial_window_scope_incomplete"
+    },
+    {
+      "channel_id": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+      "reason": "initial_window_scope_incomplete"
+    }
+  ],
+  "browser": {
+    "result": "PASSED",
+    "at": "2026-10-10T11:18:28.276Z",
+    "desktop": true,
+    "mobile": true,
+    "state_filter": true,
+    "search": true,
+    "detail": true,
+    "reader_controls_hidden": true,
+    "reader_retry_status": 403,
+    "pages": [
+      "/delivery",
+      "/",
+      "/discover/queries",
+      "/discover/candidates",
+      "/plans",
+      "/update",
+      "/agent",
+      "/workers",
+      "/analytics",
+      "/storage"
+    ],
+    "runtime_errors": 0,
+    "failed_api_reads": 0
+  },
+  "public_entry": {
+    "url": "https://controversy-roughly-kiss-genealogy.trycloudflare.com/delivery",
+    "http_status": 200,
+    "checked_at": "2026-10-10T11:22:04.001968+00:00",
+    "tunnel_pid_preserved": 1882
+  },
+  "checks": {
+    "unit_passed": 162,
+    "publication_integration_passed": 18,
+    "pipeline_integration_passed": 10,
+    "pipeline_unit_passed": 16,
+    "related_mock_browser_passed": 10,
+    "typecheck": "PASSED",
+    "console_build": "PASSED"
+  },
+  "preservation": {
+    "source_database_not_reset": true,
+    "r5_backup_and_r6_records_unchanged": true,
+    "console_original_dirty_file_sha256": "57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709"
+  },
+  "limitations": [
+    "Two historical small-window records remain NOT_READY",
+    "Automatic detection of YouTube channel deletion remains pending",
+    "Other homepage nodes and resources, automatic query extraction, management and long-term operations remain pending"
+  ]
+}
