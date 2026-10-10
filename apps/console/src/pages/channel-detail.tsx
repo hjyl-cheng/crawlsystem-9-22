@@ -5,7 +5,7 @@ import ClockPolicy from '../components/clock-policy.js';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
 import { Badge, Empty, Fields, PageHeading, Panel, PlanBadge, ResourceView, SafeLink, SampleBadge } from '../ui.js';
-import { number, planPath, time } from '../presentation.js';
+import { number, planPath, time,publicationLabels } from '../presentation.js';
 
 const metricLabels: Record<ChannelFacts['subscriber_count']['status'], string> = { exact: '精确值', estimated: '估算值', empty: '合法空值', unavailable: '不可获得', unresolved: '尚未解析', disabled: '已关闭' };
 function Metric({ label, metric }: { label: string; metric: ChannelFacts['subscriber_count'] }) {
@@ -45,6 +45,12 @@ const estimateReasons: Record<string, string> = {
   fallback_only_candidate_models_below_gate: '模型未达上线门槛，使用规则与先验估计',
 };
 const agentLabels: Record<keyof AgentResult['facts'], string> = { country: '国家 / 地区', creator_gender: '创作者性别 / 团队类型', creator_age_range: '创作者年龄', creator_language: '创作者语言', audience_region: '受众地区分布', audience_language: '受众语言分布', audience_age_gender: '受众年龄 / 性别', active_subscriber_ratio: '活跃订阅者比例', channel_tags: '频道标签', channel_categories: '频道分类' };
+function ChannelDelivery({id}:{id:string}){
+ const {api}=useAuth(),r=useResource(`channel-delivery:${id}`,signal=>api.deliveries(signal,undefined,id),true,15000);
+ return <Panel title="发布交付"><ResourceView resource={r}>{p=>{const latest=p.items.find(r=>r.channel_id===id);return latest?<Fields rows={[
+  ['最近定稿状态',publicationLabels[latest.status]],['业务回执时间',time(latest.received_at)],['数据版本',`r${latest.revision}`],['记录',<Link to={`/delivery?delivery=${latest.delivery_id}&search=${encodeURIComponent(id)}`}>查看交付与回执</Link>]
+ ]}/>:<Empty title="尚无交付记录">频道资料、视频与画像完整定稿后自动交付。</Empty>;}}</ResourceView></Panel>;
+}
 function Content({ channel, operator, onChanged }: { channel: ChannelDetail; operator: boolean; onChanged: () => void }) {
   const { about, agent } = channel;
   return <><div className="plan-summary"><div className="inline"><SampleBadge/><strong>{channel.title ?? channel.channel_id}</strong></div><Link className="button" to={planPath(channel.latest_plan_id)}>查看最近计划 →</Link></div>
@@ -55,7 +61,7 @@ function Content({ channel, operator, onChanged }: { channel: ChannelDetail; ope
     ]}/></> : <Empty title="基础资料尚未入库">创建计划不代表数据已经可用。</Empty>}</Panel>
     <Panel title="视频与评论" extra={<span className="muted">已返回 {channel.videos.length} 条 · 最多 100 条</span>}>{channel.videos.length ? channel.videos.map(video => isVideoUnavailable(video) ? <UnavailableVideo key={video.source_content_id} video={video}/> : <Video key={video.source_content_id} video={video}/>) : <Empty title="当前没有已入库的视频">本轮是否已完成，请查看 Plan 领域结果。</Empty>}</Panel>
     <Panel title="Agent 分析结果">{agent ? <><div className="notice">以下为模型分析结果，请结合来源与证据理解，不作为平台后台实测统计。</div><Fields rows={[["输入版本", <code>{agent.input_hash}</code>], ['模型版本', agent.model_version], ['分类版本', agent.taxonomy_version], ['分析时间', time(agent.observed_at)]]}/><div className="agent-facts">{(Object.keys(agentLabels) as (keyof AgentResult['facts'])[]).map(key => { const fact = agent.facts[key]; return <details key={key}><summary>{agentLabels[key]} · 置信度{confidenceLabels[fact.confidence]}</summary><pre>{JSON.stringify(fact.value, null, 2)}</pre><p>来源：{fact.source}</p>{fact.evidence.map((e, i) => <p key={i}>{e}</p>)}{fact.reason && <p>说明：{estimateReasons[fact.reason] ?? fact.reason}</p>}{fact.source_urls.map(url => <p key={url}><SafeLink href={url}>{url}</SafeLink></p>)}</details>; })}</div></> : <Empty title="Agent 尚未执行">本频道还没有已入库的画像。真实频道计划在资料与视频入库后自动用本地模型分析。</Empty>}</Panel>
-    <Panel title="发布交付"><div className="notice">未启用。已有采集数据不代表已完成对外交付。</div></Panel>
+    {channel.source_mode==='fixture'?<Panel title="发布交付"><div className="notice">未启用。已有采集数据不代表已完成对外交付。</div></Panel>:<ChannelDelivery id={channel.channel_id}/>}
   </>;
 }
 export default function ChannelDetailPage() {

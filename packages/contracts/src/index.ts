@@ -201,7 +201,7 @@ export const SubmissionSchema = z.discriminatedUnion('domain', [
 export type Submission = z.infer<typeof SubmissionSchema>;
 export interface Receipt { schema_version: typeof CONTRACT_VERSION; submission_id: string; plan_id: string; logical_batch_key: string; domain: Domain; payload_hash: string; state: 'APPLIED'; applied_at: string; }
 export interface DomainResult { domain: Domain; state: 'PENDING' | 'APPLIED'; completed_at: string | null; }
-export interface Plan { plan_id: string; run_id: string; workspace_id: string; channel_id: string; source_revision: number; source_mode: SourceMode; fixture_id: string | null; plan_kind?: 'FULL' | 'UPDATE'; required_domains: Domain[]; status: PlanStatus; version: number; execution_epoch: number; input_hash: string; workflow_id: string; created_at: string; updated_at: string; finished_at: string | null; deadline_at: string; publication_status: 'NOT_ENABLED'; }
+export interface Plan { plan_id: string; run_id: string; workspace_id: string; channel_id: string; source_revision: number; source_mode: SourceMode; fixture_id: string | null; plan_kind?: 'FULL' | 'UPDATE'; required_domains: Domain[]; status: PlanStatus; version: number; execution_epoch: number; input_hash: string; workflow_id: string; created_at: string; updated_at: string; finished_at: string | null; deadline_at: string; publication_status: 'NOT_ENABLED'|'PENDING'|'DELIVERED'|'FAILED'|'NOT_READY'|'UNCHANGED'; }
 export interface PlanInput { plan: Plan; input: FrozenInput; domains: DomainResult[]; receipts: Receipt[]; trace_context?: string; video_targets?: string[]; }
 export const CancelPlanSchema = z.strictObject({ command_id: z.uuid(), expected_version: z.number().int().positive() });
 export const ErrorCodeSchema = z.enum(['INVALID_REQUEST','UNAUTHENTICATED','FORBIDDEN','NOT_FOUND','CONFLICT','STALE_EXECUTION','PLAN_TERMINAL','INPUT_MISMATCH','TARGET_MISMATCH','DOMAIN_INCOMPLETE','DOMAIN_NOT_REQUIRED','DEPENDENCY_NOT_IMPLEMENTED','BUDGET_EXHAUSTED','UNAVAILABLE','INTERNAL_ERROR']);
@@ -277,7 +277,7 @@ export const PlanSchema: z.ZodType<Plan> = z.strictObject({
   source_mode: SourceModeSchema, fixture_id: z.string().nullable(), required_domains: UniqueDomains, status: PlanStatusSchema,
   plan_kind: z.enum(['FULL', 'UPDATE']).optional(),
   version: z.number().int().positive(), execution_epoch: z.number().int().positive(), input_hash: Hash, workflow_id: z.string(),
-  created_at: Timestamp, updated_at: Timestamp, finished_at: Timestamp.nullable(), deadline_at: Timestamp, publication_status: z.literal('NOT_ENABLED'),
+  created_at: Timestamp, updated_at: Timestamp, finished_at: Timestamp.nullable(), deadline_at: Timestamp, publication_status: z.enum(['NOT_ENABLED','PENDING','DELIVERED','FAILED','NOT_READY','UNCHANGED']),
 });
 export const PlanInputSchema: z.ZodType<PlanInput> = z.strictObject({ plan: PlanSchema, input: FrozenInputSchema, domains: z.array(DomainResultSchema).max(3), receipts: z.array(ReceiptSchema).max(300), trace_context: TraceparentSchema.optional(), video_targets: z.array(IdSchema).max(100).optional() });
 export const StoredEventSchema: z.ZodType<StoredEvent> = ExecutionEventSchema.extend({ plan_id: z.uuid(), created_at: Timestamp });

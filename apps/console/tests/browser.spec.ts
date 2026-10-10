@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test, expect, type Page } from '@playwright/test';
 import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView, type UpdateChannel, type AgentTask, type QueryBinding, type Candidate } from '@crawlsystem/contracts';
+import type {DeliveryRecord} from '../../../packages/contracts/src/delivery.ts';
 import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture, agentTaskFixtures, agentSummaryFixture, dataApiSummaryFixture, queryBindingFixture, querySummaryFixture, candidateFixture, candidateSummaryFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
   const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[], agentTasks: [] as AgentTask[], dataApiCalls: false, channelImports: [] as unknown[], queryBindings: [] as QueryBinding[], queryRequests: [] as unknown[], candidates: [] as Candidate[], candidateRequests: [] as unknown[] };
+  const deliveries:DeliveryRecord[]=[],deliveryRetries:unknown[]=[];
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -18,6 +20,9 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (method === 'GET') state.reads.push(url.pathname + url.search);
     if (state.fail) return failure(503, 'UNAVAILABLE');
     if (state.malformed) return json({ unexpected: true });
+    if(path==='/v1/deliveries/summary')return json({enabled:true,target:'旧结构业务库',total:deliveries.length,pending:deliveries.filter(r=>r.status==='PENDING').length,delivered:deliveries.filter(r=>r.status==='DELIVERED').length,failed:0,not_ready:0,unchanged:0,delivered_today:deliveries.filter(r=>r.status==='DELIVERED').length,oldest_pending_at:deliveries.find(r=>r.status==='PENDING')?.created_at??null});
+    if(path==='/v1/deliveries')return json({items:deliveries.filter(r=>!url.searchParams.get('status')||r.status===url.searchParams.get('status')),next_cursor:null});
+    if(path.startsWith('/v1/deliveries/')){const r=deliveries.find(r=>path.includes(r.delivery_id));if(!r)return failure(404,'NOT_FOUND');if(method==='POST'){if(state.role==='reader')return failure(403,'FORBIDDEN');deliveryRetries.push(route.request().postDataJSON());r.attempts++;}return json(r);}
     if (path === '/v1/plans' && method === 'POST') {
       state.creates.push(route.request().postDataJSON());
       if (state.forbidden) return failure(403, 'FORBIDDEN');
@@ -119,7 +124,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (path.startsWith('/v1/receipts/') && state.detail) return json(state.detail.receipts.find(receipt => path.endsWith(receipt.submission_id)));
     return failure(404, 'NOT_FOUND');
   });
-  return state;
+  return Object.assign(state,{deliveries,deliveryRetries});
 }
 async function login(page: Page, path = '/') {
   await page.goto(path); await page.getByLabel('账号', { exact: true }).fill('fixture'); await page.getByLabel('密码', { exact: true }).fill('browser-fixture-password'); await page.getByRole('button', { name: '进入控制台' }).click();
@@ -410,16 +415,17 @@ test('data API page shows real quota, hourly calls and failures by reason', asyn
   await expect(page.locator('.trend-tip')).toContainText('调用');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
-test('delivery treats sent as unconfirmed and shows the real completed-plan count until the sample preview', async ({ page }) => {
-  await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await login(page, '/delivery');
+test('delivery shows real receipts, filters status and retries the finalized version', async ({ page }) => {
+  const state=await mock(page);state.deliveries.push({delivery_id:'f708e423-b31a-45d9-a67b-f8f68a2f462b',channel_id:'UCfixture',title:'真实交付频道',plan_id:null,revision:1,status:'PENDING',target:'旧结构业务库',created_at:'2026-10-10T09:00:00.000Z',received_at:null,error_code:null,attempts:1,domains:['channel','video','agent'],receipt:null});await login(page, '/delivery');
   await expect(page.getByRole('heading', { name: '发布交付', exact: true })).toBeVisible();
-  await expect(page.getByText('1 个计划已完成采集', { exact: false })).toBeVisible();
-  await expect(page.getByText('尚无交付记录', { exact: true })).toBeVisible();
-  await page.getByLabel('预览示例数据').check();
-  await page.getByRole('row', { name: /Deep Talk Pod/ }).click();
-  await expect(page.locator('.delivery-detail').getByText('回执到达前不计为已交付', { exact: false })).toBeVisible();
-  await page.getByRole('tab', { name: /已交付/ }).click();
-  await expect(page.locator('.delivery-list tbody tr')).toHaveCount(3);
+  await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
+  await expect(page.locator('tbody tr')).toContainText('待业务确认');await page.getByRole('button',{name:'查看',exact:true}).click();
+  await page.getByLabel('重发原因').fill('接收端恢复后重发');await page.getByRole('button',{name:'重发原版本',exact:true}).click();await expect.poll(()=>state.deliveryRetries.length).toBe(1);expect(state.deliveryRetries[0]).toMatchObject({reason:'接收端恢复后重发'});
+  await expect(page.locator('tbody tr')).toContainText('待业务确认');state.deliveries[0]!.status='DELIVERED';state.deliveries[0]!.received_at='2026-10-10T09:01:00.000Z';
+  await page.getByLabel('交付状态').selectOption('DELIVERED');await expect(page.locator('tbody tr')).toContainText('已交付');await expect(page.locator('tbody tr')).toContainText('业务表入库完成');
+});
+test('reader cannot resend a pending delivery',async({page})=>{
+ const state=await mock(page,undefined,'reader');state.deliveries.push({delivery_id:'f708e423-b31a-45d9-a67b-f8f68a2f462b',channel_id:'UCfixture',title:'待确认频道',plan_id:null,revision:1,status:'PENDING',target:'旧结构业务库',created_at:'2026-10-10T09:00:00.000Z',received_at:null,error_code:null,attempts:1,domains:['channel'],receipt:null});await login(page,'/delivery');await page.getByRole('button',{name:'查看',exact:true}).click();await expect(page.getByRole('heading',{name:'交付详情',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'重发原版本',exact:true})).toHaveCount(0);
 });
 test('channel management lists real channel facts and shows the selected channel beside the list', async ({ page }) => {
   await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await login(page, '/channels');

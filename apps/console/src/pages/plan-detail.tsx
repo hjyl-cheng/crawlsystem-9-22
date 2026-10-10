@@ -7,7 +7,7 @@ import { ApiFailure } from '../api.js';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
 import { Badge, Empty, ErrorBox, Fields, Modal, PageHeading, Panel, PlanBadge, ResourceView, SampleBadge } from '../ui.js';
-import { channelPath, domainLabels, isTerminal, planLabels, receiptPath, time } from '../presentation.js';
+import { channelPath, domainLabels, isTerminal, planLabels, publicationLabels, receiptPath, time } from '../presentation.js';
 
 function PipelineLedger({plan,rejected=false}:{plan:Plan;rejected?:boolean}) {
   const {api}=useAuth(),resource=useResource(`pipeline:${plan.plan_id}`,signal=>api.pipeline(plan.plan_id,signal),!isTerminal(plan));
@@ -76,7 +76,7 @@ function Content({ detail, refresh, refreshing }: { detail: PlanDetail; refresh:
       return <div key={domain} className="domain-row">{result?.state === 'APPLIED' ? <CheckCircle2 className="text-green" size={21}/> : skipped ? <Ban className="text-amber" size={21}/> : <Clock3 className="text-amber" size={21}/>}<div><strong>{domainLabels[domain]}</strong><small>{result?.state === 'APPLIED' ? `入库于 ${time(result.completed_at)}` : skipped ? '订阅门槛未通过，已停止后续采集' : domain === 'AGENT' ? (plan.source_mode === 'fixture' ? '固定样本计划没有画像执行，本轮仍要求该结果' : '本轮频道资料与视频入库后，由本地模型生成') : result ? '等待本轮完整入库证明' : '后端尚未提供领域状态'}</small></div><Badge tone={result?.state === 'APPLIED' ? 'green' : 'amber'}>{result?.state === 'APPLIED' ? '已入库' : skipped ? '未执行' : '待核对'}</Badge></div>;
     })}</div></Panel><Panel title="当前阶段 / 等待原因"><Fields rows={[["最近上报阶段", plan.status==='COMPLETED' ? '全部必需领域已入库' : latestEvent?.phase ?? '尚无执行阶段上报'], ['执行代次', plan.execution_epoch], ['Workflow 身份', <code>{plan.workflow_id}</code>]]}/>
       {rejected ? <p className="muted inset">本轮已结束：订阅门槛未通过，频道资料已保存，视频和画像未执行。</p> : plan.status==='COMPLETED' ? <p className="muted inset">本轮采集与入库已完成。</p> : reasons[0] ? <div className="notice warning"><strong>{reasons[0].kind} · {reasons[0].phase}</strong><p>{reasons[0].message}</p><small>{time(reasons[0].created_at)}</small></div> : <p className="muted inset">尚无等待或失败原因上报。</p>}
-      <p className="fine-print inset">Workflow 身份已分配不代表执行已启动，请核对阶段事件与持久回执。</p></Panel><Panel title="Agent 与交付"><Fields rows={[['Agent 画像', !plan.required_domains.includes('AGENT') ? '本计划不需要画像' : rejected ? '未生成：订阅门槛未通过' : plan.source_mode === 'fixture' ? '固定样本计划不生成画像' : <Link to="/agent">本地模型生成，进度见 Agent 任务</Link>], ['对外交付', '未启用']]}/></Panel></div></div>
+      <p className="fine-print inset">Workflow 身份已分配不代表执行已启动，请核对阶段事件与持久回执。</p></Panel><Panel title="Agent 与交付"><Fields rows={[['Agent 画像', !plan.required_domains.includes('AGENT') ? '本计划不需要画像' : rejected ? '未生成：订阅门槛未通过' : plan.source_mode === 'fixture' ? '固定样本计划不生成画像' : <Link to="/agent">本地模型生成，进度见 Agent 任务</Link>], ['对外交付', <Link to={`/delivery?search=${encodeURIComponent(plan.channel_id)}`}>{publicationLabels[plan.publication_status]}</Link>]]}/></Panel></div></div>
     {input.pipeline_version==='r3.v1' && <PipelineLedger plan={plan} rejected={!!rejected}/>}
     <Panel title={input.pipeline_version==='r3.v1'?'目标冻结回执':'持久回执'} extra={<span className="muted">本轮最多返回 300 笔</span>}>{rejected && !receipts.length ? <Empty title="未生成目标回执">订阅门槛未通过，未执行视频列表采集。</Empty> : <Receipts receipts={receipts}/>}</Panel>
     <Panel title="执行事件与关联错误" extra={<span className="muted">最近最多 100 条事件</span>}>{events.length ? <div className="timeline">{events.map(event => <article key={event.event_id} className={['ERROR','FAILED'].includes(event.kind) ? 'event-error' : ''}><span className="timeline-dot"/><div className="inline"><Badge tone={['ERROR','FAILED'].includes(event.kind) ? 'red' : 'blue'}>{event.kind}</Badge><strong>{event.phase}</strong><time>{time(event.created_at)}</time></div><p>{event.message}</p><div className="muted">Worker：<Link to={`/workers?highlight=${encodeURIComponent(event.worker_id)}`}>{event.worker_id}</Link> · 代次 {event.execution_epoch}{event.domain && ` · ${domainLabels[event.domain]}`}{event.error_code && <> · <Link to={`/errors?event=${encodeURIComponent(event.event_id)}`}>{event.error_code}</Link></>}</div></article>)}</div> : <Empty title="尚无执行事件">等待 Worker 上报。不会由创建成功推断执行已经启动。</Empty>}</Panel>
@@ -84,6 +84,6 @@ function Content({ detail, refresh, refreshing }: { detail: PlanDetail; refresh:
 }
 export default function PlanDetailPage() {
   const { id = '' } = useParams(); const { api } = useAuth();
-  const resource = useResource(`plan:${id}`, signal => api.plan(id, signal), d => !isTerminal(d.plan));
+  const resource = useResource(`plan:${id}`, signal => api.plan(id, signal), d => !isTerminal(d.plan)||d.plan.publication_status==='PENDING');
   return <><PageHeading title="采集任务详情" description="核对本轮领域结果、执行阶段与持久回执。"><Link className="button" to="/plans">返回计划列表</Link></PageHeading><ResourceView resource={resource}>{detail => <Content key={id} detail={detail} refresh={resource.refresh} refreshing={resource.refreshing}/>}</ResourceView></>;
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {DeliveryRecordSchema,DeliverySummarySchema,DeliveryRetrySchema} from '../../../packages/contracts/src/delivery.ts';
 import { PipelineProgressSchema } from '@crawlsystem/contracts/pipeline';
 import {FailureSchema,FailureCommandSchema,AnalyticsSchema,StorageSchema,EvidencePreviewSchema,ChannelHistorySchema,type FailureCommand} from '@crawlsystem/contracts/analytics';
 import { CommentPageSchema } from '@crawlsystem/contracts';
@@ -43,6 +44,10 @@ export function normalizeBaseUrl(raw: string): string {
 }
 
 export class ControlApi {
+  deliverySummary(signal?:AbortSignal){return this.request('/v1/deliveries/summary',DeliverySummarySchema,signal);}
+  deliveries(signal?:AbortSignal,status?:string,search?:string,cursor?:string){const q=new URLSearchParams({limit:'50',...(status?{status}:{}),...(search?{search}:{}),...(cursor?{cursor}:{})});return this.request('/v1/deliveries?'+q,pageSchema(DeliveryRecordSchema),signal);}
+  delivery(id:string,signal?:AbortSignal){return this.request('/v1/deliveries/'+encodeURIComponent(id),DeliveryRecordSchema,signal);}
+  retryDelivery(id:string,command:unknown,signal?:AbortSignal){return this.request('/v1/deliveries/'+encodeURIComponent(id)+'/retry',DeliveryRecordSchema,signal,DeliveryRetrySchema.parse(command));}
   readonly baseUrl: string;
   constructor(baseUrl: string, private token = '', private unauthorized: () => void = () => {}, private timeoutMs = 10_000) {
     this.baseUrl = normalizeBaseUrl(baseUrl);

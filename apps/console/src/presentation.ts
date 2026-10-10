@@ -4,6 +4,7 @@ export const planLabels: Record<PlanStatus, string> = {
   QUEUED: '等待执行', RUNNING: '执行中', WAITING: '等待依赖', COMPLETED: '本轮已完成', CANCELLED: '已取消', FAILED: '执行失败',
 };
 export const domainLabels: Record<Domain, string> = { ABOUT: '频道基础信息', VIDEO: '视频与评论', AGENT: 'Agent 分析' };
+export const publicationLabels:Record<Plan['publication_status'],string>={NOT_ENABLED:'未启用',PENDING:'待业务确认',DELIVERED:'已交付',FAILED:'交付失败',NOT_READY:'未达发布条件',UNCHANGED:'资料无变化'};
 /** Short labels for error-code chips; full sentences live in api.ts. */
 export const errorCodeLabels: Record<ErrorCode, string> = {
   INVALID_REQUEST: '请求不合规', UNAUTHENTICATED: '身份失效', FORBIDDEN: '无权限', NOT_FOUND: '对象不存在', CONFLICT: '状态冲突',

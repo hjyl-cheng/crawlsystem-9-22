@@ -94,6 +94,14 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   // The creating request's trace context is stored so dispatch and execution continue that trace.
   app.post('/v1/plans',async request=>store.createPlan(request.principal,CreatePlanSchema.parse(request.body),request.traceparent));
   app.get('/v1/plans',async request=>{const q=pagination(request.query);return store.listPlans(request.principal,q.limit,q.offset,q.status,q.sourceMode);});
+  app.get('/v1/deliveries/summary',async request=>store.deliverySummary(request.principal));
+  app.get('/v1/deliveries',async request=>{
+    const schema=z.object({status:z.enum(['PENDING','DELIVERED','FAILED','NOT_READY','UNCHANGED']).optional(),search:z.string().max(160).optional()});
+    const q=pagination(request.query,schema.shape),filter=schema.parse(request.query);
+    return store.deliveries(request.principal,q.limit,q.offset,filter.status,filter.search);
+  });
+  app.get('/v1/deliveries/:id',async request=>store.delivery(request.principal,z.object({id:z.uuid()}).parse(request.params).id));
+  app.post('/v1/deliveries/:id/retry',async request=>store.retryDelivery(request.principal,z.object({id:z.uuid()}).parse(request.params).id,request.body));
   app.get('/v1/plans/:id',async request=>store.getPlan(request.principal,planId(request)));
   app.get('/v1/plans/:id/input',async request=>{requireRole(request.principal,'worker','parser','sink');return store.getInput(request.principal,planId(request));});
   app.post('/v1/pipeline/manifests',async request=>store.pipelineManifest(request.principal,request.body));

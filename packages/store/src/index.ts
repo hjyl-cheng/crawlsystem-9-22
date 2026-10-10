@@ -24,6 +24,8 @@ import { expectedPipelineSteps } from './pipeline.ts';
 import {listFailures,getFailure,reportFailure,commandFailure} from './failures.ts';
 import {outbox,acknowledge,claimReplays,finishReplay,storage,maintain} from './telemetry.ts';
 import type {FailureCommand} from '@crawlsystem/contracts/analytics';
+import {queuePublication,readDeliveries,deliverySummary,getDelivery,retryDelivery} from './publication.ts';
+import {DeliveryRetrySchema} from '../../contracts/src/delivery.ts';
 
 export interface PipelineOptions { enabled?: boolean; loadComments?: (ref: ObjectReference) => Promise<CommentPage | null>; }
 
@@ -38,7 +40,7 @@ export function toPlan(row: QueryResultRow): Plan {
   return { plan_id: row.plan_id, run_id: row.run_id, workspace_id: row.workspace_id, channel_id: row.channel_id, source_revision: Number(row.source_revision),
     source_mode: row.source_mode, fixture_id: row.fixture_id ?? null, plan_kind: row.plan_kind ?? 'FULL', required_domains: row.required_domains, status: row.status, version: row.version, execution_epoch: row.execution_epoch,
     input_hash: row.input_hash, workflow_id: row.workflow_id, created_at: iso(row.created_at), updated_at: iso(row.updated_at), finished_at: row.finished_at ? iso(row.finished_at) : null,
-    deadline_at: iso(row.deadline_at), publication_status: 'NOT_ENABLED' };
+    deadline_at: iso(row.deadline_at), publication_status: row.publication_status??'NOT_ENABLED' };
 }
 function page<T>(rows: T[], limit: number, offset: number): Page<T> { return { items: rows.slice(0, limit), next_cursor: rows.length > limit ? String(offset + limit) : null }; }
 const terminal = (status: string) => ['COMPLETED','CANCELLED','FAILED'].includes(status);
@@ -56,6 +58,10 @@ export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'C
 
 export class Store {
   constructor(public readonly pool: Pool, public readonly updateLimits: UpdateLimits = UpdateLimitsSchema.parse({}), public readonly discoveryLimits: DiscoveryLimits = DiscoveryLimitsSchema.parse({}), private pipeline: PipelineOptions = {}) {}
+  async deliveries(principal:Principal,limit=50,offset=0,status?:string,search?:string){requireRole(principal,'reader','operator');return readDeliveries(this.pool,principal.workspace_id,limit,offset,status,search);}
+  async deliverySummary(principal:Principal){requireRole(principal,'reader','operator');return deliverySummary(this.pool,principal.workspace_id);}
+  async delivery(principal:Principal,id:string){requireRole(principal,'reader','operator');return getDelivery(this.pool,principal.workspace_id,id);}
+  async retryDelivery(principal:Principal,id:string,value:unknown){requireRole(principal,'operator');const command=DeliveryRetrySchema.parse(value);return this.tx(client=>retryDelivery(client,principal.workspace_id,id,command,principal.subject));}
   private async tx<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       const client = await this.pool.connect();
@@ -624,7 +630,10 @@ export class Store {
       const waiting = frozen.source_mode === 'fixture' && remaining.rows.every(r => r.domain === 'AGENT');
       await client.query('UPDATE control.plans SET status=$2,version=version+1,updated_at=clock_timestamp(),finished_at=CASE WHEN $3 THEN clock_timestamp() ELSE NULL END WHERE plan_id=$1',[input.plan_id,completed ? 'COMPLETED' : waiting ? 'WAITING' : 'RUNNING',completed]);
       if (completed) await client.query("INSERT INTO control.obligations(plan_id,kind) VALUES($1,'FIXTURE_PLAN_SETTLED') ON CONFLICT DO NOTHING",[input.plan_id]);
-      if (completed) await this.settleClocks(client,row,'COMPLETED');
+      if (completed) {
+        await this.settleClocks(client,row,'COMPLETED');
+        await queuePublication(client,principal.workspace_id,row.channel_id,row.plan_id);
+      }
       return receipt;
     });
   }
@@ -723,7 +732,9 @@ export class Store {
       if(domains.every(d=>d.state==='APPLIED')) {
         const updated=(await client.query("UPDATE control.plans SET status='COMPLETED',version=version+1,updated_at=clock_timestamp(),finished_at=clock_timestamp() WHERE plan_id=$1 RETURNING *",[planId])).rows[0]!;
         await client.query("INSERT INTO control.obligations(plan_id,kind) VALUES($1,'FIXTURE_PLAN_SETTLED') ON CONFLICT DO NOTHING",[planId]);
-        await this.settleClocks(client,row,'COMPLETED'); return toPlan(updated);
+        await this.settleClocks(client,row,'COMPLETED');
+        await queuePublication(client,principal.workspace_id,row.channel_id,row.plan_id);
+        return toPlan(await this.planRow(client,principal,planId));
       }
       return toPlan(row);
     });
@@ -917,6 +928,7 @@ export class Store {
       const to = { manage:'managed', pause:'paused', resume:'managed', remove:'removed' }[command.action];
       const now = (await client.query(`UPDATE control.channels SET management_state=$3,management_version=management_version+1,management_changed_at=clock_timestamp()
         WHERE workspace_id=$1 AND channel_id=$2 RETURNING management_changed_at`,[principal.workspace_id,channelId,to])).rows[0]!.management_changed_at as Date;
+      if(to==='removed')await queuePublication(client,principal.workspace_id,channelId,null,true);
       if (command.action === 'manage') await this.seedClocks(client,principal.workspace_id,channelId,now,true);
       return this.management(client,{...row,management_state:to,management_version:row.management_version+1,management_changed_at:now});
     });
