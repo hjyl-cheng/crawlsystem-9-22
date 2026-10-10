@@ -1,0 +1,313 @@
+{
+  "result": "PASSED",
+  "control_deployment": {
+    "revision": "5c2560eaeb7e4cc15e7729c6f0bfff57f0a2365e",
+    "control_image": "docker.io/crawlsystem/control-api:main-5c2560eaeb7e-b48f9d9f",
+    "deployed_at": "2026-10-10T11:50:44.901Z",
+    "workload": "control/control-api-preview"
+  },
+  "console_revision": "8fe92b53ac5ad6dddac1d8d16e55c973d3d1c076",
+  "checks": {
+    "typecheck": "PASSED",
+    "console_build": "PASSED",
+    "unit_tests": 164,
+    "resource_integration_tests": 1,
+    "related_mock_browser_tests": 10
+  },
+  "browser": {
+    "result": "PASSED",
+    "at": "2026-10-10T12:01:11.653Z",
+    "layouts": [
+      {
+        "width": 1920,
+        "height": 937,
+        "horizontal_overflow": 0,
+        "vertical_overflow": 0
+      },
+      {
+        "width": 1586,
+        "height": 992,
+        "horizontal_overflow": 0,
+        "vertical_overflow": 0
+      }
+    ],
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "horizontal_overflow": 0
+    },
+    "history_days": [
+      1,
+      7,
+      30
+    ],
+    "live_queue_values": {
+      "new_channels_today": 236,
+      "candidates": 106,
+      "imports": 50,
+      "due": 80,
+      "overdue": 0,
+      "updates_running": 0,
+      "agent_waiting": 2,
+      "agent_running": 0,
+      "data_api_used": 7,
+      "delivery_pending": 0,
+      "delivery_delivered": 493
+    },
+    "resources": {
+      "observed_at": "2026-10-10T12:01:09.427Z",
+      "proxies": {
+        "total": 728,
+        "by_state": {
+          "healthy": 43,
+          "trial": 3,
+          "degraded": 2,
+          "cooldown": 16,
+          "failed": 0,
+          "disabled": 664,
+          "unassigned": 0,
+          "unknown": 0
+        },
+        "assignments": [
+          {
+            "server_id": "s2",
+            "assigned": 64
+          }
+        ]
+      },
+      "monitoring": {
+        "source": "prometheus",
+        "available": true,
+        "nodes": [
+          {
+            "server_id": "s2",
+            "cpu_percent": 23.733333333188476,
+            "memory_used_bytes": 4256608256,
+            "memory_total_bytes": 7988867072,
+            "sampled_at": "2026-10-10T12:00:57.958Z"
+          }
+        ]
+      }
+    },
+    "reader_status": 200,
+    "runtime_errors": 0,
+    "failed_api_reads": 0
+  },
+  "runtime": {
+    "before_at": "2026-10-10T11:48:56.723Z",
+    "after_at": "2026-10-10T12:01:41.329Z",
+    "before": {
+      "delivery": {
+        "enabled": true,
+        "target": "业务库（旧服务器结构）",
+        "total": 480,
+        "pending": 0,
+        "delivered": 478,
+        "failed": 0,
+        "not_ready": 2,
+        "unchanged": 0,
+        "delivered_today": 478,
+        "oldest_pending_at": null
+      },
+      "source": {
+        "videos": 13085,
+        "comment_bodies": 0
+      },
+      "completed_full": 503
+    },
+    "after": {
+      "delivery": {
+        "enabled": true,
+        "target": "业务库（旧服务器结构）",
+        "total": 495,
+        "pending": 0,
+        "delivered": 493,
+        "failed": 0,
+        "not_ready": 2,
+        "unchanged": 0,
+        "delivered_today": 493,
+        "oldest_pending_at": null
+      },
+      "source": {
+        "videos": 13539,
+        "comment_bodies": 0
+      },
+      "completed_full": 518,
+      "business": {
+        "legacy_tables": 64,
+        "searchable_channels": 492,
+        "channel_snapshots": 493,
+        "video_snapshots": 8785
+      }
+    },
+    "new_completed_full": 15,
+    "new_video_identities": 454,
+    "automatic": {
+      "search": true,
+      "admission": true,
+      "updates": true,
+      "daily_update_limit": 100
+    },
+    "services": [
+      {
+        "namespace": "control",
+        "name": "control-api-preview",
+        "ready": 2,
+        "desired": 2,
+        "images": [
+          {
+            "name": "control-api",
+            "image": "docker.io/crawlsystem/control-api:main-5c2560eaeb7e-b48f9d9f"
+          }
+        ],
+        "automatic": {
+          "QUERY_RUNS_ENABLED": "true",
+          "QUERY_AUTO_ADMIT": "true",
+          "UPDATE_SCHEDULER_ENABLED": "true"
+        }
+      },
+      {
+        "namespace": "control",
+        "name": "intent-dispatcher",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "dispatcher",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {
+          "UPDATE_SCHEDULER_ENABLED": "true",
+          "QUERY_AUTO_ADMIT": "true",
+          "QUERY_RUNS_ENABLED": "true"
+        }
+      },
+      {
+        "namespace": "crawler",
+        "name": "execution-worker",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "worker",
+            "image": "docker.io/crawlsystem/execution-worker:main-2ed9fd0ae306-05c80967"
+          },
+          {
+            "name": "fingerprint-gateway",
+            "image": "docker.io/crawlsystem/fingerprint-gateway:1ff2fbba98b3c83f"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "crawler",
+        "name": "profile-agent",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "profile-agent",
+            "image": "docker.io/crawlsystem/profile-agent:96bc1d79fdffbf8a"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "crawler",
+        "name": "raw-parser",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "parser",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "ingest",
+        "name": "pg-sink",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "sink",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "analytics",
+        "name": "crawl-analytics",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "analytics",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "ingest",
+        "name": "business-sink",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "business-sink",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "control",
+        "name": "delivery-receipts",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "delivery-receipts",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      }
+    ],
+    "existing_collection_delivery_pods_preserved": true,
+    "new_restarts": 0,
+    "preexisting_proxy_manager_restarts": 1,
+    "slot": {
+      "active": true,
+      "retained_bytes": "44626424"
+    },
+    "connector": {
+      "state": "RUNNING",
+      "tasks": [
+        "RUNNING"
+      ]
+    }
+  },
+  "public": {
+    "at": "2026-10-10T12:01:41.329Z",
+    "base": "https://controversy-roughly-kiss-genealogy.trycloudflare.com",
+    "entrypoint_http_status": {
+      "/": 200,
+      "/delivery": 200
+    },
+    "tunnel_pid": 1882,
+    "original_tunnel_preserved": true
+  },
+  "scope": {
+    "main_database_reset": false,
+    "legacy_business_tables": 64,
+    "schema_migration_required": false,
+    "worker_deployed": false,
+    "remote_old_production_accessed": false
+  }
+}
