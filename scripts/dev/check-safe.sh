@@ -28,6 +28,7 @@ case "${1:-}" in
   collection-unit) command=(node --import tsx --test --test-concurrency=1 apps/execution-worker/test/identity.test.ts apps/execution-worker/test/fingerprint.test.ts apps/execution-worker/test/raw-archive.test.ts apps/execution-worker/test/web-scrape.test.ts apps/execution-worker/test/web-collector.test.ts) ;;
   collection-storage) command=(node --import tsx scripts/dev/verify-r2-storage.ts) ;;
   collection-preview) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-preview.ts "${@:2}") ;;
+  collection-update) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-update.ts "${@:2}") ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;
   collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-browser.ts) ;;
   fingerprint-gateway)

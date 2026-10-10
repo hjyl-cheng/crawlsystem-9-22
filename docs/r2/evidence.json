@@ -1,0 +1,211 @@
+{
+  "verified_at": "2026-10-10T02:44:42.829Z",
+  "full": {
+    "result": "PASSED",
+    "plan_id": "74381dc1-efb1-4ba6-bc09-eb253c37bd7d",
+    "verified_at": "2026-10-10T02:44:42.829Z",
+    "revision": "6e27ed903c5ff066398a4924676f5c813fdcada0",
+    "targets": [
+      "IBVmenOroPs",
+      "fMgcm9aXZyY"
+    ],
+    "about_source": "youtubei:channel_about",
+    "videos": [
+      {
+        "id": "IBVmenOroPs",
+        "access": "unknown",
+        "source": "yt-collector/2 (youtubei.js 18.1.0 web)",
+        "published_precision": "second",
+        "comments": 0
+      },
+      {
+        "id": "fMgcm9aXZyY",
+        "access": "unknown",
+        "source": "yt-collector/2 (youtubei.js 18.1.0 web)",
+        "published_precision": "second",
+        "comments": 0
+      }
+    ],
+    "collector": {
+      "gateway": "ready",
+      "browser": "chrome136",
+      "requests_last_hour": 14,
+      "blocked_last_hour": 0,
+      "identity_policy": "qy-br-channel-anonymous-v1",
+      "language": "pt-BR",
+      "country": "BR",
+      "timezone": "America/Sao_Paulo",
+      "enforce_egress_country": false,
+      "active_leases": 0,
+      "compliant_leases": 0,
+      "last_profile": {
+        "profile_id": "browser:f0eb7b1b-be8f-4c96-a666-c165e45609dc",
+        "created_at": "2026-10-10T02:44:15.380Z",
+        "saved_at": "2026-10-10T02:44:17.230Z"
+      }
+    },
+    "receipts": [
+      "about:channel",
+      "video:targets",
+      "video:batch:0",
+      "agent:profile:c844c03f6bc4321e"
+    ],
+    "notes": [
+      "identity=browser:f0eb7b1b-be8f-4c96-a666-c165e45609dc; pt-BR / BR / America/Sao_Paulo; proxy=1400a176-424d-4c40-b44c-76c5d9c0f53d; egress=RU; clients=WEB,IOS",
+      "identity=browser:4535ded2-46ac-48d6-bdb1-e0334263a576; pt-BR / BR / America/Sao_Paulo; proxy=db2c960e-2b0c-42f6-97a8-ca7623317508; egress=RO; clients=WEB,IOS",
+      "video=IBVmenOroPs; web_attempt=1; result=blocked",
+      "proxy=8807a0a1-ab54-48fe-9360-71db92b779dc; failure=bot_challenge_or_rate_limit",
+      "identity=browser:e66d6a12-607e-48d4-8216-214428a33e17; pt-BR / BR / America/Sao_Paulo; proxy=8807a0a1-ab54-48fe-9360-71db92b779dc; egress=US; clients=WEB,IOS",
+      "identity=browser:d9af2dc6-af2f-4f6c-b638-6374e200b20f; pt-BR / BR / America/Sao_Paulo; proxy=e5ed037d-a1c5-4c12-9a39-5f726968d114; egress=US; clients=WEB,IOS",
+      "proxy=27db783f-7612-473b-ad49-6e6fd9c8cd3d; failure=transport",
+      "identity=browser:3f107a67-2394-4c1b-87c5-2d9c0eb7aba0; pt-BR / BR / America/Sao_Paulo; proxy=27db783f-7612-473b-ad49-6e6fd9c8cd3d; egress=unknown; clients=WEB,IOS",
+      "identity=browser:36fb06e6-068b-4f37-af35-b4d44d3d0a84; pt-BR / BR / America/Sao_Paulo; proxy=6ff1df7c-ed50-43d8-bd34-10d5078bcc49; egress=RO; clients=WEB,IOS"
+    ]
+  },
+  "parity": {
+    "result": "PASSED",
+    "method": "Replay the same stored raw collection units through both versions, without another YouTube request",
+    "versions": [
+      "17.2.0",
+      "18.1.0"
+    ],
+    "plan_id": "74381dc1-efb1-4ba6-bc09-eb253c37bd7d",
+    "checks": [
+      {
+        "unit": "ABOUT",
+        "result": "same title, handle, counts, country and join date"
+      },
+      {
+        "unit": "TARGETS",
+        "result": "same frozen video IDs"
+      },
+      {
+        "unit": "IBVmenOroPs",
+        "result": {
+          "title": "Order in any language with Gemini 3.5 Live Translate",
+          "published_at": "2026-10-09T23:00:24.000Z",
+          "precision": "second",
+          "views": 224,
+          "type": "short",
+          "comments": 0
+        }
+      },
+      {
+        "unit": "fMgcm9aXZyY",
+        "result": {
+          "title": "🤖 Operating real hardware with Gemini AI",
+          "published_at": "2026-10-09T19:00:36.000Z",
+          "precision": "second",
+          "views": 1050,
+          "type": "short",
+          "comments": 0
+        }
+      }
+    ],
+    "archive": {
+      "units": 4,
+      "manifests": 3,
+      "hashes_verified": true,
+      "response_counts": {
+        "ABOUT/channel": 2,
+        "TARGETS/uploads": 1,
+        "VIDEO-0/IBVmenOroPs": 7,
+        "VIDEO-0/fMgcm9aXZyY": 3
+      }
+    }
+  },
+  "incremental": {
+    "result": "PASSED",
+    "plan_id": "48760785-4910-4ba0-95a9-117702331c3b",
+    "full_plan_id": "74381dc1-efb1-4ba6-bc09-eb253c37bd7d",
+    "verified_at": "2026-10-10T02:45:31.427Z",
+    "targets": [],
+    "stop_reason": "anchor_matched",
+    "matched_anchor_id": "IBVmenOroPs",
+    "pages": 1,
+    "scanned": 1,
+    "sampling_selected": 0,
+    "receipts": [
+      "video:discovery"
+    ],
+    "raw_manifest_verified": true,
+    "video_entities_unchanged": true
+  },
+  "comments": [
+    {
+      "id": "IBVmenOroPs",
+      "comments_disabled": false,
+      "comment_count": {
+        "value": null,
+        "status": "unresolved",
+        "source": "youtubei:video",
+        "observed_at": "2026-10-10T02:44:15.323Z"
+      },
+      "returned_count": 0,
+      "total_count": null,
+      "comment_requests": 4
+    },
+    {
+      "id": "fMgcm9aXZyY",
+      "comments_disabled": false,
+      "comment_count": {
+        "value": null,
+        "status": "unresolved",
+        "source": "youtubei:video",
+        "observed_at": "2026-10-10T02:44:17.236Z"
+      },
+      "returned_count": 0,
+      "total_count": null,
+      "comment_requests": 2
+    }
+  ],
+  "checks": {
+    "unit": {
+      "passed": 149,
+      "failed": 0
+    },
+    "collection_unit": {
+      "passed": 11,
+      "failed": 0
+    },
+    "fingerprint_gateway": {
+      "passed": 3,
+      "failed": 0
+    },
+    "identity": {
+      "preserved_profiles": 5,
+      "ciphertext_hashes_unchanged": true
+    },
+    "browser": {
+      "pages": [
+        "workers",
+        "proxies",
+        "plan-detail",
+        "create-plan"
+      ],
+      "runtime_errors": 0
+    },
+    "typecheck": "PASSED",
+    "console_build": "PASSED",
+    "storage": [
+      "missing-object",
+      "put-before-publish",
+      "lost-notification-recovery",
+      "conditional-put",
+      "step-manifest"
+    ]
+  },
+  "deployment": {
+    "control_revision": "393530eeacfb",
+    "worker_revision": "6e27ed903c5f",
+    "fingerprint_image": "docker.io/crawlsystem/fingerprint-gateway:1ff2fbba98b3c83f",
+    "profile_image": "docker.io/crawlsystem/profile-agent:e22cc47314736e0c"
+  },
+  "automation": {
+    "query_runs": false,
+    "auto_admit": false,
+    "update_scheduler": false,
+    "query_runner_slots": 0,
+    "enforce_brazil": false
+  }
+}
