@@ -141,7 +141,7 @@ test('waiting plans distinguish partially available data, unexecuted Agent and d
   await expect(page.getByText('本轮已完成', { exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: detail.plan.channel_id, exact: true }).click();
   await expect(page.getByText('Agent 尚未执行', { exact: true })).toBeVisible();
-  await page.getByText('首屏评论 · 1 条已入库').click(); await expect(page.getByText('固定样本评论', { exact: true })).toBeVisible();
+  await page.getByText('首屏评论 · 1 条已采集').click(); await expect(page.getByText('固定样本评论', { exact: true })).toBeVisible();
   await expect(page.getByText('点赞 0', { exact: false })).toBeVisible();
   await expect(page.getByText('未启用。已有采集数据不代表已完成对外交付。')).toBeVisible();
 });
@@ -184,7 +184,7 @@ test('backend permission denial is visible and never shown as successful cancell
 test('worker loss of heartbeat follows the server state', async ({ page }) => {
   const state = await mock(page); state.workers = [workerFixture()]; await login(page, '/workers'); await expect(page.getByText('心跳正常', { exact: true })).toBeVisible();
   state.workers[0]!.stale = true; await page.getByRole('button', { name: '刷新数据' }).click(); await expect(page.getByText('心跳失联', { exact: true })).toBeVisible();
-  await expect(page.getByText('节点代理管理尚未部署', { exact: true })).toBeVisible();
+  await expect(page.getByText('等待采集器状态', { exact: true })).toBeVisible();
 });
 test('error entry links to the correct plan and its persisted receipt', async ({ page }) => {
   const detail = detailFixture({ status: 'FAILED' }, ['ABOUT']); await mock(page, detail); await login(page, '/errors');
@@ -266,7 +266,7 @@ test('overview completeness shows the backend aggregate, not counts derived from
 });
 test('desktop overview fits one screen and card columns line up', async ({ page }) => {
   await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await page.setViewportSize({ width: 1920, height: 937 }); await login(page);
-  await expect(page.getByText('必需领域已入库', { exact: true })).toBeVisible();
+  await expect(page.locator('.completeness-metrics .green strong')).toHaveText('1');
   for (const [width, height] of [[1920, 937], [1586, 992]] as const) {
     await page.setViewportSize({ width, height });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);

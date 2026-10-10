@@ -207,9 +207,6 @@ spec:
     - resource: { type: topic, name: crawl.step, patternType: literal }
       operations: [Write, Describe]
       host: '*'
-    - resource: { type: topic, name: facts.agent, patternType: literal }
-      operations: [Write, Describe]
-      host: '*'
     - resource: { type: topic, name: ops.events, patternType: literal }
       operations: [Write, Describe]
       host: '*'
@@ -227,6 +224,9 @@ spec:
   authorization:
     type: simple
     acls:
+    - resource: { type: cluster }
+      operations: [IdempotentWrite]
+      host: '*'
     - resource: { type: topic, name: crawl.raw, patternType: literal }
       operations: [Read, Describe]
       host: '*'
@@ -237,6 +237,9 @@ spec:
       operations: [Write, Describe]
       host: '*'
     - resource: { type: topic, name: facts.observation, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
+    - resource: { type: topic, name: facts.agent, patternType: literal }
       operations: [Write, Describe]
       host: '*'
     - resource: { type: topic, name: dlq.parse, patternType: literal }
@@ -262,6 +265,12 @@ spec:
   authorization:
     type: simple
     acls:
+    - resource: { type: cluster }
+      operations: [IdempotentWrite]
+      host: '*'
+    - resource: { type: topic, name: crawl.raw, patternType: literal }
+      operations: [Write, Describe]
+      host: '*'
     - resource: { type: topic, name: crawl.step, patternType: literal }
       operations: [Read, Describe]
       host: '*'

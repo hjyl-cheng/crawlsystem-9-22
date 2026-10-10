@@ -89,7 +89,7 @@ test('AGENT needs ABOUT and VIDEO, reads a snapshot without unavailable videos, 
   assert.deepEqual(snapshot.videos.map(v => v.source_content_id), [a]);
   await rejects(() => store.apply(t.worker, submit(t.plan, 'AGENT', 'agent:profile', agentFacts(t.channel, `sha256:${'0'.repeat(64)}`), true)), 'INPUT_MISMATCH');
   // Facts changed after the snapshot was read (e.g. a newer plan wrote the video): the old result is refused.
-  await pool.query(`UPDATE m1.videos SET data=jsonb_set(data,'{title}','"changed"') WHERE workspace_id=$1 AND video_id=$2`, [t.worker.workspace_id, a]);
+  await pool.query(`UPDATE crawl_data.videos SET data=jsonb_set(data,'{title}','"changed"') WHERE workspace_id=$1 AND video_id=$2`, [t.worker.workspace_id, a]);
   await rejects(() => store.apply(t.worker, submit(t.plan, 'AGENT', 'agent:profile', agentFacts(t.channel, snapshot.input_hash), true)), 'INPUT_MISMATCH');
   const fresh = await store.agentInput(t.worker, t.plan.plan_id);
   await store.apply(t.worker, submit(t.plan, 'AGENT', 'agent:profile:2', agentFacts(t.channel, fresh.input_hash), true));

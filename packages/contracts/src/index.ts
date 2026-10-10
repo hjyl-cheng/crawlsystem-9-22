@@ -18,7 +18,7 @@ export const YoutubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
 export const PlanStatusSchema = z.enum(['QUEUED', 'RUNNING', 'WAITING', 'COMPLETED', 'CANCELLED', 'FAILED']);
 export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 // node: a per-server Proxy Manager (DaemonSet); its credential names the server it runs on.
-export const RoleSchema = z.enum(['reader', 'operator', 'worker', 'node']);
+export const RoleSchema = z.enum(['reader', 'operator', 'worker', 'node', 'parser', 'sink']);
 export type Role = z.infer<typeof RoleSchema>;
 export interface Principal { subject: string; workspace_id: string; role: Role; server_id?: string; }
 export const LoginSchema = z.strictObject({ username: z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_.-]+$/), password: z.string().min(1).max(256) });
@@ -66,6 +66,12 @@ export const CommentPageSchema = z.strictObject({
   total_count: z.number().int().nonnegative().nullable(), returned_count: z.number().int().nonnegative().max(100),
   comments: z.array(CommentSchema).max(100),
 }).refine(p => p.returned_count === p.comments.length && new Set(p.comments.map(c => c.comment_id)).size === p.comments.length, 'comment count/identity mismatch');
+export type CommentPage = z.infer<typeof CommentPageSchema>;
+export const ObjectStorageReferenceSchema = z.strictObject({ bucket: z.enum(['crawl-raw','crawl-parsed','crawl-evidence']),
+  key: z.string().min(1).max(1024).refine(key => !key.startsWith('/') && !key.split('/').some(p => !p || p === '.' || p === '..')),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/), bytes: z.number().int().min(1).max(64 * 1024 * 1024) });
+export const StoredCommentSummarySchema = z.strictObject({ version: z.literal(1), collected_at: Timestamp, sort: z.enum(['TOP_COMMENTS','NEWEST_FIRST']),
+  total_count: z.number().int().nonnegative().nullable(), returned_count: z.number().int().nonnegative().max(100) });
 export const VideoFactsSchema = z.strictObject({
   channel_id: IdSchema, source_content_id: IdSchema, content_type: z.enum(['video', 'short', 'live']),
   content_type_source: z.string().min(1).max(120), url: Url, title: z.string().min(1).max(1000),
@@ -74,6 +80,7 @@ export const VideoFactsSchema = z.strictObject({
   published_at_precision: z.enum(['second', 'date_only', 'unknown']), published_at_source: z.string().min(1).max(120),
   duration_seconds: MetricSchema, view_count: MetricSchema, like_count: MetricSchema, comment_count: MetricSchema,
   comments_disabled: z.boolean().nullable(), comments_first_page: CommentPageSchema.nullable(),
+  comments_ref: ObjectStorageReferenceSchema.nullable().optional(), comments_summary: StoredCommentSummarySchema.nullable().optional(),
   access_status: z.enum(['public', 'unlisted', 'members_only', 'private', 'unavailable', 'login_required', 'unknown']),
   access_status_source: z.string().min(1).max(120), is_members_only: z.boolean(),
   live_scheduled_at: Timestamp.nullable(), live_started_at: Timestamp.nullable(), live_ended_at: Timestamp.nullable(),
@@ -128,12 +135,14 @@ export const CreatePlanSchema = z.union([FixtureCreateSchema, YoutubeCreateSchem
 export type CreatePlan = z.infer<typeof CreatePlanSchema>;
 const FixtureFrozenSchema = z.strictObject({
   schema_version: z.literal(CONTRACT_VERSION), source_mode: z.literal('fixture'), fixture_id: z.literal('channel-basic-v1'),
+  pipeline_version: z.literal('r3.v1').optional(),
   channel_id: IdSchema, required_domains: UniqueDomains, target_video_ids: z.array(IdSchema).max(100),
   reference_time: Timestamp, deadline_at: Timestamp, max_attempts: z.number().int().min(1).max(10),
   sample: z.strictObject({ about: ChannelFactsSchema, videos: z.array(VideoFactsSchema).max(100) }),
 });
 const YoutubeFrozenSchema = z.strictObject({
   schema_version: z.literal(CONTRACT_VERSION), source_mode: z.literal('youtube'), channel_id: YoutubeChannelIdSchema,
+  pipeline_version: z.literal('r3.v1').optional(),
   plan_kind: z.literal('UPDATE').optional(),
   /** Existing videos frozen at creation for an Agent-only update. */
   agent_video_ids: z.array(YoutubeVideoIdSchema).max(100).optional(),
@@ -170,9 +179,11 @@ const SampleCount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).
 /** Incremental Video (UPDATE): current counts of the frozen recent videos; ones the API no longer returns are missing. */
 export const VideoSamplesSchema = z.strictObject({
   kind: z.literal('samples'), observed_at: Timestamp, source: z.string().min(1).max(120),
-  items: z.array(z.strictObject({ video_id: YoutubeVideoIdSchema, view_count: SampleCount, like_count: SampleCount, comment_count: SampleCount })).max(50),
+  items: z.array(z.strictObject({ video_id: YoutubeVideoIdSchema, view_count: SampleCount, like_count: SampleCount, comment_count: SampleCount,
+    metrics:z.strictObject({view_count:MetricSchema,like_count:MetricSchema,comment_count:MetricSchema}).optional() })) .max(50),
   missing_video_ids: z.array(YoutubeVideoIdSchema).max(50),
-}).refine(s => { const ids = [...s.items.map(i => i.video_id), ...s.missing_video_ids]; return new Set(ids).size === ids.length; }, 'duplicate sampled videos');
+}).refine(s => { const ids = [...s.items.map(i => i.video_id), ...s.missing_video_ids]; return new Set(ids).size === ids.length
+  && s.items.every(i=>!i.metrics || i.view_count===i.metrics.view_count.value && i.like_count===i.metrics.like_count.value && i.comment_count===i.metrics.comment_count.value); }, 'duplicate sampled videos or metric mismatch');
 export type VideoSamples = z.infer<typeof VideoSamplesSchema>;
 export const VideoBatchSchema = z.strictObject({ kind: z.literal('videos'), items: z.array(VideoItemSchema).max(10) })
   .refine(b => new Set(b.items.map(i => i.source_content_id)).size === b.items.length, 'duplicate video identities');
@@ -289,7 +300,7 @@ export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSch
 // Kubernetes ServiceAccount token exchange: subject is the Pod, server_id the node reported by TokenReview.
 // Temporal namespace token for the gRPC Authorization header; permissions name one namespace and role.
 export const TemporalTokenSchema = z.strictObject({ token: z.string().min(20).max(4096), permissions: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}:(read|write|worker)$/)).min(1).max(4), expires_in: z.number().int().min(60).max(3600) });
-export const WorkloadTokenSchema = z.strictObject({ token: z.string().min(20).max(4096), subject: IdSchema, workspace_id: IdSchema, role: z.enum(['worker', 'node']), server_id: IdSchema, expires_in: z.number().int().min(60).max(3600) });
+export const WorkloadTokenSchema = z.strictObject({ token: z.string().min(20).max(4096), subject: IdSchema, workspace_id: IdSchema, role: z.enum(['worker', 'node','parser','sink']), server_id: IdSchema, expires_in: z.number().int().min(60).max(3600) });
 export const ApiErrorSchema: z.ZodType<ApiError> = z.strictObject({ error: z.strictObject({ code: ErrorCodeSchema, message: z.string(), retryable: z.boolean(), correlation_id: z.string() }) });
 export const WorkflowInputSchema: z.ZodType<WorkflowInput> = z.strictObject({ schema_version: z.literal(CONTRACT_VERSION), plan_id: z.uuid(), workspace_id: IdSchema, execution_epoch: z.number().int().positive(), input_hash: Hash, workflow_id: z.string() });
 const Count = z.number().int().nonnegative();

@@ -9,12 +9,12 @@ const VIEW = `WITH clock_rows AS (
     coalesce(array_agg(clock ORDER BY clock) FILTER(WHERE due_at<=$2 AND clock=ANY($10::text[])),'{}') AS auto_due,
     bool_or(due_at<=$2 AND clock=ANY($10::text[]) AND (last_scheduled_at IS NULL OR last_scheduled_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
       AND (last_attempt_at IS NULL OR last_attempt_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')) AS eligible
-  FROM m1.channel_clocks WHERE workspace_id=$1 GROUP BY channel_id
+  FROM control.channel_clocks WHERE workspace_id=$1 GROUP BY channel_id
 ), counts AS (
   SELECT count(*) FILTER(WHERE status IN ('QUEUED','RUNNING','WAITING')) AS active,
     count(*) FILTER(WHERE status IN ('QUEUED','RUNNING','WAITING') AND 'AGENT'=ANY(required_domains)) AS agent,
     count(*) FILTER(WHERE plan_kind='UPDATE' AND created_at>=date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS daily
-  FROM m1.plans WHERE workspace_id=$1 AND source_mode='youtube'
+  FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube'
 ), view AS (
   SELECT c.channel_id,c.about->>'title' AS title,c.about->>'country' AS country,c.management_version,k.due_at,k.last_success_at,k.due_domains,
     a.plan_id AS active_plan_id,to_jsonb(p) AS plan,e.data || jsonb_build_object('plan_id',e.plan_id,'created_at',e.created_at) AS event,
@@ -33,12 +33,12 @@ const VIEW = `WITH clock_rows AS (
         CASE WHEN 'VIDEO'=ANY(k.auto_due) THEN 20+ceil(coalesce((latest.frozen_input->'scope'->>'video_limit')::numeric,30)/10)::int ELSE 0 END)>$7 THEN 'api_quota'
       WHEN counts.active >= $4 THEN 'concurrency'
       WHEN 'AGENT'=ANY(k.auto_due) AND counts.agent >= $5 THEN 'agent_capacity' ELSE NULL END AS waiting_reason
-  FROM m1.channels c JOIN clock_rows k USING(channel_id) JOIN m1.plans latest ON latest.plan_id=c.latest_plan_id CROSS JOIN counts
-  LEFT JOIN LATERAL(SELECT * FROM m1.plans WHERE workspace_id=c.workspace_id AND channel_id=c.channel_id AND plan_kind='UPDATE'
+  FROM control.channel_overview c JOIN clock_rows k USING(channel_id) JOIN control.plans latest ON latest.plan_id=c.latest_plan_id CROSS JOIN counts
+  LEFT JOIN LATERAL(SELECT * FROM control.plans WHERE workspace_id=c.workspace_id AND channel_id=c.channel_id AND plan_kind='UPDATE'
     ORDER BY created_at DESC,source_revision DESC LIMIT 1) p ON true
-  LEFT JOIN LATERAL(SELECT * FROM m1.plans WHERE workspace_id=c.workspace_id AND channel_id=c.channel_id AND status IN ('QUEUED','RUNNING','WAITING')
+  LEFT JOIN LATERAL(SELECT * FROM control.plans WHERE workspace_id=c.workspace_id AND channel_id=c.channel_id AND status IN ('QUEUED','RUNNING','WAITING')
     ORDER BY created_at DESC LIMIT 1) a ON true
-  LEFT JOIN LATERAL(SELECT * FROM m1.events WHERE plan_id=coalesce(a.plan_id,p.plan_id) ORDER BY created_at DESC LIMIT 1) e ON true
+  LEFT JOIN LATERAL(SELECT * FROM control.events WHERE plan_id=coalesce(a.plan_id,p.plan_id) ORDER BY created_at DESC LIMIT 1) e ON true
   WHERE c.workspace_id=$1 AND c.management_state='managed' AND latest.source_mode='youtube'
 )`;
 
@@ -63,7 +63,7 @@ export async function readUpdates(pool: Pool, workspace: string, limits: UpdateL
     const outcomes = (await client.query(`SELECT count(*) FILTER(WHERE status='COMPLETED' AND finished_at>$2::timestamptz-interval '24 hours')::int AS completed,
       count(*) FILTER(WHERE status='FAILED' AND finished_at>$2::timestamptz-interval '24 hours')::int AS failed,
       count(*) FILTER(WHERE created_at>=date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')::int AS daily
-      FROM m1.plans WHERE workspace_id=$1 AND plan_kind='UPDATE'`, [workspace, now])).rows[0]!;
+      FROM control.plans WHERE workspace_id=$1 AND plan_kind='UPDATE'`, [workspace, now])).rows[0]!;
     const rows = (await client.query(`${VIEW} SELECT * FROM view WHERE ($11::text IS NULL OR state=$11)
       AND ($12::text IS NULL OR strpos(lower(coalesce(title,'')||' '||channel_id),lower($12))>0)
       ORDER BY CASE state WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 WHEN 'due' THEN 3 ELSE 4 END,due_at,channel_id LIMIT $13 OFFSET $14`,

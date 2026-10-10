@@ -44,7 +44,7 @@ test('operators disable, enable and override the cadence with a version check an
   assert.deepEqual([on.state, on.version], ['BOOTSTRAP', 3], 'never succeeded: back to its first run');
   const weekly = await store.queryCommand(p.op, q.binding_id, { action: 'set_cadence', cadence: 'WEEK', reason: 'seasonal topic', expected_version: 3 });
   assert.equal(weekly.cadence_override, 'WEEK');
-  const audit = (await pool.query('SELECT version,actor,action,detail FROM m1.query_audit WHERE binding_id=$1 ORDER BY version', [q.binding_id])).rows;
+  const audit = (await pool.query('SELECT version,actor,action,detail FROM control.query_audit WHERE binding_id=$1 ORDER BY version', [q.binding_id])).rows;
   assert.deepEqual(audit.map(r => [r.version, r.actor, r.action, r.detail.reason ?? null]), [[2, 'operator-1', 'disable', 'off topic'], [3, 'operator-1', 'enable', null], [4, 'operator-1', 'set_cadence', 'seasonal topic']]);
 });
 
@@ -54,7 +54,7 @@ test('bulk upserts bind thousands at once, keep every source, and summaries coun
     priority: i, source_type: 'AUTO_TAG', source_ref: `legacy:crawlsystem:query_terms:${i}` }));
   const result = await upsertBindings(pool, p.op.workspace_id, rows);
   assert.equal(result.created, 2000, '2,000 distinct texts; a repeated text keeps its category, so it adds only a source');
-  const total = (await pool.query('SELECT count(*)::int n FROM m1.query_bindings WHERE workspace_id=$1', [p.op.workspace_id])).rows[0]!.n;
+  const total = (await pool.query('SELECT count(*)::int n FROM control.query_bindings WHERE workspace_id=$1', [p.op.workspace_id])).rows[0]!.n;
   assert.equal(total, result.created, 'every new (text, country, category) once');
   const again = await upsertBindings(pool, p.op.workspace_id, rows);
   assert.equal(again.created, 0, 'idempotent');

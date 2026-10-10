@@ -34,7 +34,7 @@ async function setup(domains:Domain[]=['ABOUT','VIDEO']) {
 const auth=async(p:Principal)=>({authorization:`Bearer ${await issueToken(p,key)}`});
 const rejectsCode=async(fn:()=>Promise<unknown>,code:string)=>assert.rejects(fn,(e:unknown)=>e instanceof StoreError && e.code===code);
 function rehash(s:Submission):Submission {return {...s,payload_hash:submissionHash(s)};}
-async function count(table:'receipts'|'obligations'|'intents'|'plan_items',plan:string) {return (await pool.query(`SELECT count(*)::int AS n FROM m1.${table} WHERE plan_id=$1`,[plan])).rows[0].n as number;}
+async function count(table:'receipts'|'obligations'|'intents'|'plan_items',plan:string) {return (await pool.query(`SELECT count(*)::int AS n FROM control.${table} WHERE plan_id=$1`,[plan])).rows[0].n as number;}
 
 test('migration replay verifies checksum; actual transaction pool uses the isolated role',async()=>{
   await migrate(pool);
@@ -78,13 +78,13 @@ test('frozen target coverage and identity are enforced before sealing a domain',
 });
 test('an exception after receipt insertion rolls back facts, checkpoint and receipt together',async()=>{
   const t=await setup(['ABOUT']);const name=`test_fail_${randomBytes(8).toString('hex')}`;
-  await pool.query(`CREATE FUNCTION m1.${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.workspace_id='${t.worker.workspace_id}' THEN RAISE EXCEPTION 'injected failure before commit'; END IF; RETURN NEW; END $$`);
-  await pool.query(`CREATE TRIGGER ${name} AFTER INSERT ON m1.receipts FOR EACH ROW EXECUTE FUNCTION m1.${name}()`);
+  await pool.query(`CREATE FUNCTION control.${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.workspace_id='${t.worker.workspace_id}' THEN RAISE EXCEPTION 'injected failure before commit'; END IF; RETURN NEW; END $$`);
+  await pool.query(`CREATE TRIGGER ${name} AFTER INSERT ON control.receipts FOR EACH ROW EXECUTE FUNCTION control.${name}()`);
   try {
     await assert.rejects(()=>store.apply(t.worker,t.about));
     assert.equal(await count('receipts',t.plan.plan_id),0);assert.equal(await count('plan_items',t.plan.plan_id),0);
     assert.equal((await store.getChannel(t.reader,t.plan.channel_id)).about,null);
-  } finally {await pool.query(`DROP TRIGGER ${name} ON m1.receipts`);await pool.query(`DROP FUNCTION m1.${name}()`);}
+  } finally {await pool.query(`DROP TRIGGER ${name} ON control.receipts`);await pool.query(`DROP FUNCTION control.${name}()`);}
   assert.equal((await store.apply(t.worker,t.about)).state,'APPLIED');
 });
 test('process death before COMMIT leaves no partial state and original submission recovers',async()=>{
@@ -136,7 +136,7 @@ test('older plans cannot overwrite newer Current while retaining their own proof
   const context=await store.getInput(t.worker,newer.plan_id);
   await store.apply(t.worker,fixtureSubmission(context,'ABOUT'));await store.apply(t.worker,fixtureSubmission(context,'VIDEO'));
   await store.apply(t.worker,t.about);await store.apply(t.worker,t.video);
-  const row=(await pool.query('SELECT about_revision,latest_plan_id FROM m1.channels WHERE workspace_id=$1',[t.worker.workspace_id])).rows[0];
+  const row=(await pool.query('SELECT about_revision,latest_plan_id FROM control.channel_overview WHERE workspace_id=$1',[t.worker.workspace_id])).rows[0];
   assert.equal(Number(row.about_revision),newer.source_revision);assert.equal(row.latest_plan_id,newer.plan_id);
   assert.equal((await store.getInput(t.worker,t.plan.plan_id)).plan.status,'COMPLETED');
 });
@@ -166,7 +166,7 @@ test('all console query endpoints return actual persisted objects with the publi
     const r=await control.inject({url:`/v1/${path}limit=1`,headers:h});assert.equal(r.statusCode,200);assert.equal(r.json().items.length,1);
   }
   const channel=await control.inject({url:`/v1/channels/${encodeURIComponent(t.plan.channel_id)}`,headers:h});ChannelDetailSchema.parse(channel.json());
-  await pool.query("UPDATE m1.workers SET last_heartbeat_at=clock_timestamp()-interval '91 seconds' WHERE workspace_id=$1",[t.worker.workspace_id]);
+  await pool.query("UPDATE control.workers SET last_heartbeat_at=clock_timestamp()-interval '91 seconds' WHERE workspace_id=$1",[t.worker.workspace_id]);
   assert.equal((await store.listWorkers(t.reader)).items[0]?.stale,true);
 });
 test('failed receipt queries report retryable unavailability, never a missing receipt',async()=>{
@@ -184,7 +184,7 @@ test('diagnostic failure closes only active plans; deadlines are durable and swe
   const t=await setup();await store.event(t.worker,t.plan.plan_id,{event_id:randomUUID(),execution_epoch:1,worker_id:'worker',phase:'fixture',kind:'FAILED',domain:null,message:'Retry budget exhausted',error_code:'BUDGET_EXHAUSTED'});
   assert.equal((await store.getInput(t.worker,t.plan.plan_id)).plan.status,'FAILED');
   await rejectsCode(()=>store.apply(t.worker,t.about),'STALE_EXECUTION');
-  const expired=await setup();await pool.query("UPDATE m1.plans SET deadline_at=clock_timestamp()-interval '1 second' WHERE plan_id=$1",[expired.plan.plan_id]);
+  const expired=await setup();await pool.query("UPDATE control.plans SET deadline_at=clock_timestamp()-interval '1 second' WHERE plan_id=$1",[expired.plan.plan_id]);
   assert.equal(await store.expirePlans(20,expired.worker.workspace_id),1);assert.equal(await store.expirePlans(20,expired.worker.workspace_id),0);
   assert.equal((await store.getInput(expired.worker,expired.plan.plan_id)).plan.status,'FAILED');
   assert.equal((await store.listErrors(expired.reader,20,0,'fixture')).items[0]?.error_code,'BUDGET_EXHAUSTED');
@@ -193,10 +193,10 @@ test('durable start survives dispatcher restart and lost acknowledgement using s
   const t=await setup();const started=new Map<string,string>();let calls=0;
   const starter:WorkflowStarter={start:async input=>{calls++;const run=started.get(input.workflow_id) ?? randomUUID();started.set(input.workflow_id,run);if(calls===1)throw new Error('ack lost');return {workflow_id:input.workflow_id,run_id:run};},cancel:async()=>{}};
   await new IntentDispatcher(store,starter,t.worker.workspace_id).tick();
-  assert.equal(started.size,1);assert.equal((await pool.query('SELECT state FROM m1.intents WHERE plan_id=$1',[t.plan.plan_id])).rows[0].state,'PENDING');
-  await pool.query('UPDATE m1.intents SET available_at=clock_timestamp() WHERE plan_id=$1',[t.plan.plan_id]);
+  assert.equal(started.size,1);assert.equal((await pool.query('SELECT state FROM control.intents WHERE plan_id=$1',[t.plan.plan_id])).rows[0].state,'PENDING');
+  await pool.query('UPDATE control.intents SET available_at=clock_timestamp() WHERE plan_id=$1',[t.plan.plan_id]);
   await new IntentDispatcher(new Store(pool),starter,t.worker.workspace_id).tick();
-  assert.equal(calls,2);assert.equal(started.size,1);assert.equal((await pool.query('SELECT state FROM m1.intents WHERE plan_id=$1',[t.plan.plan_id])).rows[0].state,'DONE');
+  assert.equal(calls,2);assert.equal(started.size,1);assert.equal((await pool.query('SELECT state FROM control.intents WHERE plan_id=$1',[t.plan.plan_id])).rows[0].state,'DONE');
 });
 test('business metrics use committed facts in the configured workspace and bounded labels',async()=>{
   const t=await setup();await store.apply(t.worker,t.about);
@@ -214,10 +214,10 @@ test('business metrics use committed facts in the configured workspace and bound
 });
 test('expired leases can be claimed; stale claimants cannot overwrite newer acknowledgement',async()=>{
   const t=await setup();const first=await store.claimIntent(30,t.worker.workspace_id);assert.ok(first);
-  await pool.query("UPDATE m1.intents SET lease_until=clock_timestamp()-interval '1 second' WHERE intent_id=$1",[first.intent_id]);
+  await pool.query("UPDATE control.intents SET lease_until=clock_timestamp()-interval '1 second' WHERE intent_id=$1",[first.intent_id]);
   const second=await store.claimIntent(30,t.worker.workspace_id);assert.ok(second);assert.notEqual(first.lease_token,second.lease_token);
   await store.finishIntent(second,'DONE','current-run');await store.finishIntent(first,'DONE','stale-run');
-  assert.equal((await pool.query('SELECT workflow_run_id FROM m1.intents WHERE intent_id=$1',[first.intent_id])).rows[0].workflow_run_id,'current-run');
+  assert.equal((await pool.query('SELECT workflow_run_id FROM control.intents WHERE intent_id=$1',[first.intent_id])).rows[0].workflow_run_id,'current-run');
 });
 test('cancel during a claimed start waits for startup resolution and retries cancellation durably',async()=>{
   const t=await setup();const claimed=await store.claimIntent(30,t.worker.workspace_id);assert.ok(claimed);
@@ -226,22 +226,22 @@ test('cancel during a claimed start waits for startup resolution and retries can
   await store.finishIntent(claimed,'DONE','run-started');let cancels=0;
   const starter:WorkflowStarter={start:async()=>{throw new Error('must not start');},cancel:async id=>{assert.equal(id,t.plan.workflow_id);if(++cancels===1)throw new Error('ack lost');}};
   await new IntentDispatcher(store,starter,t.worker.workspace_id).tick();
-  await pool.query("UPDATE m1.intents SET available_at=clock_timestamp() WHERE plan_id=$1 AND kind='CANCEL'",[t.plan.plan_id]);
+  await pool.query("UPDATE control.intents SET available_at=clock_timestamp() WHERE plan_id=$1 AND kind='CANCEL'",[t.plan.plan_id]);
   await new IntentDispatcher(store,starter,t.worker.workspace_id).tick();assert.equal(cancels,2);
-  assert.equal((await pool.query("SELECT state FROM m1.intents WHERE plan_id=$1 AND kind='CANCEL'",[t.plan.plan_id])).rows[0].state,'DONE');
+  assert.equal((await pool.query("SELECT state FROM control.intents WHERE plan_id=$1 AND kind='CANCEL'",[t.plan.plan_id])).rows[0].state,'DONE');
 });
 test('cancel, expiry and failure before first dispatch settle without cancelling a nonexistent Workflow',async()=>{
   for (const reason of ['cancel','expiry','failure'] as const) {
     const t=await setup();let rpcCalls=0;
     const starter:WorkflowStarter={start:async()=>{rpcCalls++;throw new Error('unexpected start');},cancel:async()=>{rpcCalls++;throw new Error('Workflow does not exist');}};
     if(reason==='cancel')await store.cancel(t.operator,t.plan.plan_id,{command_id:randomUUID(),expected_version:1});
-    if(reason==='expiry')await pool.query("UPDATE m1.plans SET deadline_at=clock_timestamp()-interval '1 second' WHERE plan_id=$1",[t.plan.plan_id]);
+    if(reason==='expiry')await pool.query("UPDATE control.plans SET deadline_at=clock_timestamp()-interval '1 second' WHERE plan_id=$1",[t.plan.plan_id]);
     if(reason==='failure')await store.event(t.worker,t.plan.plan_id,{event_id:randomUUID(),execution_epoch:1,worker_id:'worker',phase:'INPUT',kind:'FAILED',domain:null,message:'Input unavailable',error_code:'INPUT_MISMATCH'});
     const dispatcher=new IntentDispatcher(store,starter,t.worker.workspace_id);
     assert.equal(await dispatcher.tick(),true,reason);
     assert.equal(await dispatcher.tick(),false,reason);
     assert.equal(rpcCalls,0,reason);
-    const intents=(await pool.query('SELECT kind,state FROM m1.intents WHERE plan_id=$1 ORDER BY kind',[t.plan.plan_id])).rows;
+    const intents=(await pool.query('SELECT kind,state FROM control.intents WHERE plan_id=$1 ORDER BY kind',[t.plan.plan_id])).rows;
     assert.deepEqual(intents,[{kind:'CANCEL',state:'SKIPPED'},{kind:'START',state:'SKIPPED'}],reason);
     assert.equal((await store.getInput(t.worker,t.plan.plan_id)).plan.status,reason==='cancel'?'CANCELLED':'FAILED');
     await rejectsCode(()=>store.apply(t.worker,t.about),'STALE_EXECUTION');
@@ -255,7 +255,7 @@ test('an unacknowledged START must still be cancelled after its pending retry is
   await store.cancel(t.operator,t.plan.plan_id,{command_id:randomUUID(),expected_version:1});
   await dispatcher.tick();
   assert.equal(starts,1);assert.equal(cancels,1);
-  assert.equal((await pool.query("SELECT state FROM m1.intents WHERE plan_id=$1 AND kind='CANCEL'",[t.plan.plan_id])).rows[0].state,'DONE');
+  assert.equal((await pool.query("SELECT state FROM control.intents WHERE plan_id=$1 AND kind='CANCEL'",[t.plan.plan_id])).rows[0].state,'DONE');
 });
 test('the creating request trace continues through the durable intent, dispatch span and Worker input',async()=>{
   const {InMemorySpanExporter}=await import('@opentelemetry/sdk-trace-base');

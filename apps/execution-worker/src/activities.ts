@@ -11,10 +11,10 @@ import { toChannelFacts, toVideoFacts, unavailableVideo } from './youtube/map.ts
 import { LeaseClient, ProxyUnavailable, proxiedFetch, type Outcome } from './youtube/transport.ts';
 import type { ProfileClient } from './profile-client.ts';
 import type { WebCollector, CollectionContext } from './youtube/web-collector.ts';
-import { ArchiveError } from './raw-archive.ts';
+import { ArchiveError, type RawArchive } from './raw-archive.ts';
 import { FingerprintError } from './youtube/fingerprint.ts';
 
-export interface ExecutionDescriptor { deadlineAt: number; maxAttempts: number; status: PlanStatus; sourceMode?: 'fixture' | 'youtube'; videoBatches?: number | null; requiresAgent?: boolean; }
+export interface ExecutionDescriptor { deadlineAt: number; maxAttempts: number; status: PlanStatus; sourceMode?: 'fixture' | 'youtube'; videoBatches?: number | null; requiresAgent?: boolean; pipelineVersion?: 'r3.v1'; }
 export const VIDEO_BATCH = 10;
 export interface ActivityOptions {
   api: ExecutionApi; workerId: string; workspaceId: string;
@@ -25,6 +25,7 @@ export interface ActivityOptions {
   youtube?: { dataApi: DataApi; proxies: LeaseClient | 'direct'; web?: WebCollector };
   /** Profile Agent (local models) producing the AGENT domain from the Store's input snapshot. */
   profiler?: ProfileClient;
+  archive?: RawArchive;
 }
 /** Collector failures as execution errors: transient upstream/proxy trouble retries; missing targets and quota do not. */
 function collectorError(error: unknown): ExecutionApiError {
@@ -123,8 +124,16 @@ export function createActivities(options: ActivityOptions) {
   async function collect<T>(ref: WorkflowInput, phase: string, work: (scope: TraceScope) => Promise<T>): Promise<T> {
     return activity(ref, phase, async scope => { try { return await work(scope); } catch (error) { throw collectorError(error); } });
   }
-  const submitOnce = async (ref: WorkflowInput, value: PlanInput, submission: Submission, deadline: number) =>
-    value.receipts.some(r => r.submission_id === submission.submission_id) ? undefined : api.submit(submission, { deadline, signal: Context.current().cancellationSignal });
+  const submitOnce = async (ref: WorkflowInput, value: PlanInput, submission: Submission, deadline: number) => {
+    if(value.receipts.some(r => r.submission_id === submission.submission_id)) return undefined;
+    const budget={deadline,signal:Context.current().cancellationSignal};
+    if(value.input.pipeline_version==='r3.v1') {
+      if(submission.domain==='VIDEO' && ['targets','discovery'].includes(submission.payload.kind))
+        return api.navigation(submissionOf(ref,'VIDEO',submission.logical_batch_key,submission.payload,false),budget);
+      return undefined;
+    }
+    return api.submit(submission,budget);
+  };
   /** Data API guard: one quota permit per request (stops the plan when the day's budget is spent); failures are recorded by reason. */
   const permit = (ref: WorkflowInput, scope: TraceScope, deadline: number): RequestGuard => {
     const budget = () => ({ deadline, signal: Context.current().cancellationSignal, traceparent: scope.traceparent });
@@ -167,7 +176,7 @@ export function createActivities(options: ActivityOptions) {
           facts = toChannelFacts(channel, about, new Date().toISOString());
         }
         const receipt = await submitOnce(ref, value, submissionOf(ref, 'ABOUT', 'about:channel', facts, true), descriptor.deadlineAt);
-        await event(ref, scope, 'PROGRESS', 'ABOUT', `APPLIED receipt=${receipt?.submission_id ?? 'existing'}`, 'ABOUT');
+        await event(ref, scope, 'PROGRESS', 'ABOUT', input.pipeline_version==='r3.v1'?'Channel response archived; awaiting independent parsing and ingestion':`APPLIED receipt=${receipt?.submission_id ?? 'existing'}`, 'ABOUT');
         return { plan_id: ref.plan_id, status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
       });
     },
@@ -225,7 +234,7 @@ export function createActivities(options: ActivityOptions) {
         });
         const receipt = await submitOnce(ref, value, submissionOf(ref, 'VIDEO', key, { kind: 'videos', items }, last && !resamples(input)), descriptor.deadlineAt);
         const missing = items.filter(i => 'unavailable' in i).length;
-        await event(ref, scope, 'PROGRESS', 'VIDEO', `Batch ${index + 1}/${Math.ceil(targets.length / VIDEO_BATCH)}: ${items.length - missing} videos${missing ? `, ${missing} unavailable` : ''}; receipt=${receipt?.submission_id ?? 'existing'}`, 'VIDEO');
+        await event(ref, scope, 'PROGRESS', 'VIDEO', `Batch ${index + 1}/${Math.ceil(targets.length / VIDEO_BATCH)}: ${items.length - missing} videos${missing ? `, ${missing} unavailable` : ''}; ${input.pipeline_version==='r3.v1'?'raw units archived; waiting for ingestion':`receipt=${receipt?.submission_id ?? 'existing'}`}`, 'VIDEO');
         return { status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
       });
     },
@@ -245,7 +254,7 @@ export function createActivities(options: ActivityOptions) {
         });
         const missing = ids.filter(id => !items.some(item => item.video_id === id));
         const receipt = await submitOnce(ref, value, submissionOf(ref, 'VIDEO', key, { kind: 'samples', observed_at: observed, source: youtube().web ? 'youtubei:video_or_api_fallback' : 'data_api:videos', items, missing_video_ids: missing }, true), descriptor.deadlineAt);
-        await event(ref, scope, 'PROGRESS', 'SAMPLING', `Re-read ${items.length} recent videos${missing.length ? `, ${missing.length} no longer available` : ''}; receipt=${receipt?.submission_id ?? 'existing'}`, 'VIDEO');
+        await event(ref, scope, 'PROGRESS', 'SAMPLING', `Re-read ${items.length} recent videos${missing.length ? `, ${missing.length} no longer available` : ''}; ${input.pipeline_version==='r3.v1'?'raw units archived; waiting for ingestion':`receipt=${receipt?.submission_id ?? 'existing'}`}`, 'VIDEO');
         return { status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
       });
     },
@@ -256,6 +265,20 @@ export function createActivities(options: ActivityOptions) {
         if (terminal(value.plan.status) || !value.input.required_domains.includes('AGENT') || value.domains.find(d => d.domain === 'AGENT')?.state === 'APPLIED') return { status: value.plan.status };
         if (!options.profiler) throw new ExecutionApiError('DEPENDENCY_NOT_IMPLEMENTED', false);
         const budget = { deadline: descriptor.deadlineAt, signal: Context.current().cancellationSignal, traceparent: scope.traceparent };
+        if(value.input.pipeline_version==='r3.v1') {
+          if(!options.archive) throw new ExecutionApiError('DEPENDENCY_NOT_IMPLEMENTED',false);
+          let saved=await options.archive.reuse(ref,value.plan.channel_id,'AGENT','profile',budget.signal);
+          if(!saved) {
+            const input=await api.agentInput(ref.plan_id,budget),profile=await options.profiler.profile(input,budget);
+            const payload:AgentResult={channel_id:input.channel_id,input_hash:input.input_hash,model_version:profile.model_version,taxonomy_version:profile.taxonomy_version,observed_at:profile.observed_at,facts:profile.facts};
+            const reference=await options.archive.save({schema_version:'crawl.unit.v1',owner:ref,channel_id:input.channel_id,step:'AGENT',unit_id:'profile',captured_at:new Date().toISOString(),
+              responses:[{endpoint:'local:profile-agent',method:'POST',status:200,captured_at:profile.observed_at,body:JSON.stringify(payload)}],result:payload},budget.signal);
+            saved={result:payload,reference};
+          }
+          await options.archive.finish(ref,value.plan.channel_id,'AGENT',[saved.reference],budget.signal);
+          await event(ref,scope,'PROGRESS','AGENT','Profile archived; waiting for durable ingestion','AGENT');
+          return {status:(await read(ref,scope,descriptor.deadlineAt)).plan.status};
+        }
         await event(ref, scope, 'STARTED', 'AGENT', 'Profiling the collected channel facts with the local models', 'AGENT');
         // The facts can be rewritten by another plan of the same channel between reading and
         // submitting; the Store then rejects the stale hash and the profile is computed again.
@@ -287,7 +310,18 @@ export function createActivities(options: ActivityOptions) {
       return activity(ref, 'INPUT', async scope => {
         const value = await read(ref, scope);
         return { deadlineAt: Date.parse(value.input.deadline_at), maxAttempts: value.input.max_attempts, status: value.plan.status, sourceMode: value.input.source_mode,
-          requiresAgent: value.input.required_domains.includes('AGENT') };
+          requiresAgent: value.input.required_domains.includes('AGENT'),pipelineVersion:value.input.pipeline_version };
+      });
+    },
+    async waitPipeline(ref:WorkflowInput,descriptor:ExecutionDescriptor,final:boolean):Promise<PlanWorkflowResult> {
+      return activity(ref,'INGEST',async scope=>{
+        await event(ref,scope,'WAITING','INGEST','Waiting for archived units to be parsed and durably ingested');
+        for(;;) {
+          await api.pipelineConfirm(ref.plan_id,{deadline:descriptor.deadlineAt,signal:Context.current().cancellationSignal,traceparent:scope.traceparent});
+          const value=await read(ref,scope,descriptor.deadlineAt);
+          if(terminal(value.plan.status) || !final && value.domains.filter(d=>d.domain!=='AGENT').every(d=>d.state==='APPLIED')) return {plan_id:ref.plan_id,status:value.plan.status};
+          await sleep(2000,undefined,{signal:Context.current().cancellationSignal});
+        }
       });
     },
     async executeFixture(ref: WorkflowInput, descriptor: ExecutionDescriptor): Promise<PlanWorkflowResult> {
@@ -301,6 +335,25 @@ export function createActivities(options: ActivityOptions) {
           return { plan_id: ref.plan_id, status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
         }
         await event(ref, scope, 'STARTED', 'FIXTURE', 'Reading frozen test sample; no real collection or proxy');
+        if(value.input.pipeline_version==='r3.v1') {
+          if(!options.archive)throw new ExecutionApiError('DEPENDENCY_NOT_IMPLEMENTED',false);
+          const archive=options.archive,signal=Context.current().cancellationSignal,input=value.input;
+          const units=[...(input.required_domains.includes('ABOUT')?[{step:'ABOUT',id:'channel',result:input.sample.about}]:[]),
+            ...(input.required_domains.includes('VIDEO')?input.sample.videos.map((v,i)=>({step:`VIDEO-${Math.floor(i/VIDEO_BATCH)}`,id:v.source_content_id,result:v})):[])];
+          const references=new Map<string,import('./raw-archive.ts').RawReference[]>();
+          for(const u of units) {
+            const reuse=await archive.reuse(ref,input.channel_id,u.step,u.id,signal),at=new Date().toISOString();
+            const reference=reuse?.reference??await archive.save({schema_version:'crawl.unit.v1',owner:ref,channel_id:input.channel_id,step:u.step,unit_id:u.id,captured_at:at,
+              responses:[{endpoint:'local:fixture',method:'LOCAL',status:200,captured_at:at,body:'{}'}],result:u.result},signal);
+            references.set(u.step,[...(references.get(u.step)??[]),reference]);
+          }
+          for(const [step,refs] of references)await archive.finish(ref,input.channel_id,step,refs,signal);
+          for(;;) {
+            await api.pipelineConfirm(ref.plan_id,{deadline:descriptor.deadlineAt,signal});value=await read(ref,scope,descriptor.deadlineAt);
+            if(terminal(value.plan.status)||value.domains.filter(d=>d.domain!=='AGENT').every(d=>d.state==='APPLIED'))return {plan_id:ref.plan_id,status:value.plan.status};
+            await sleep(1000,undefined,{signal});
+          }
+        }
         for (const domain of ['ABOUT','VIDEO'] as const) {
           if (!value.input.required_domains.includes(domain)) continue;
           // Use the original epoch, including while inspecting receipts of a cancelled run.

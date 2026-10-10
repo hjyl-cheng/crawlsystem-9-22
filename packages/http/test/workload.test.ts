@@ -13,6 +13,21 @@ function identity(result: ReviewedWorkload | undefined | Error, seen: string[] =
     reviewer: async (token, audience) => { seen.push(`${audience}:${token}`); if (result instanceof Error) throw result; return result; } });
 }
 const pod = { username: serviceAccount, pod: 'execution-worker-0', node: 'a2' };
+test('pipeline ServiceAccounts get distinct parser and sink tokens that satisfy the exchange contract',async()=>{
+  const {WorkloadTokenSchema}=await import('@crawlsystem/contracts');
+  const accounts={'system:serviceaccount:crawler:raw-parser':'parser','system:serviceaccount:ingest:pg-sink':'sink'} as const;
+  for(const [username,role] of Object.entries(accounts)) {
+    const id=new WorkloadIdentity({serviceAccount,audience:'crawlsystem-control',workspaceId:'m1-test',signingKey:key,pipelineServiceAccounts:accounts,
+      reviewer:async()=>({...pod,username,pod:`${role}-pod`})});
+    const result=await id.exchange(`Bearer ${saToken}`);assert.equal(result.principal.role,role);
+    assert.equal(WorkloadTokenSchema.safeParse({token:result.token,...result.principal,server_id:result.server_id,expires_in:result.expires_in}).success,true);
+    assert.equal((await authenticate(`Bearer ${result.token}`,key)).role,role);
+  }
+});
+test('pipeline identities cannot override the execution Worker ServiceAccount',()=>{
+  assert.throws(()=>new WorkloadIdentity({serviceAccount,audience:'crawlsystem-control',workspaceId:'m1-test',signingKey:key,
+    reviewer:async()=>pod,pipelineServiceAccounts:{[serviceAccount]:'sink'}}));
+});
 
 test('a reviewed Worker Pod receives a short worker token whose subject is the Pod', async () => {
   const seen: string[] = [];

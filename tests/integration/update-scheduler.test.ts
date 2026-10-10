@@ -36,12 +36,12 @@ async function seed(t: ReturnType<typeof setup>, due: Domain[], now = new Date()
       s.domain_complete = false; s.payload_hash = submissionHash(s); return s; })() });
   await t.store.apply(t.worker, submission(plan, 'VIDEO', { kind: 'videos', items: [{ ...structuredClone(fixtureVideo), channel_id: channel, source_content_id: video_id,
     url: `https://www.youtube.com/watch?v=${video_id}`, observed_at: now.toISOString() }] }, 'videos'));
-  // The legacy engine's own clocks are the source; m1.channel_clocks is derived from them. Make the chosen
+  // The legacy engine's own clocks are the source; control.channel_clocks is derived from them. Make the chosen
   // domains due yesterday (UTC) and the others in 30 days in both, as a settlement would write them.
   const today = Date.parse(now.toISOString().slice(0, 10)), day = (offset: number) => new Date(today + offset * 86_400_000).toISOString().slice(0, 10);
   const days = Object.fromEntries(CLOCK_NAMES.map(c => [`${c.toLowerCase()}_due_day`, due.includes(c) ? day(-1) : day(30)]));
-  await pool.query('UPDATE m1.channel_feature_state SET clock=clock||$3::jsonb WHERE workspace_id=$1 AND channel_id=$2', [t.op.workspace_id, channel, days]);
-  await pool.query(`UPDATE m1.channel_clocks SET due_at=(($3::jsonb->>(lower(clock)||'_due_day'))::date)::timestamp AT TIME ZONE 'UTC',
+  await pool.query('UPDATE control.channel_feature_state SET clock=clock||$3::jsonb WHERE workspace_id=$1 AND channel_id=$2', [t.op.workspace_id, channel, days]);
+  await pool.query(`UPDATE control.channel_clocks SET due_at=(($3::jsonb->>(lower(clock)||'_due_day'))::date)::timestamp AT TIME ZONE 'UTC',
     last_attempt_at=NULL,last_scheduled_at=NULL WHERE workspace_id=$1 AND channel_id=$2`, [t.op.workspace_id, channel, days]);
   return { channel, about, video_id };
 }
@@ -60,7 +60,7 @@ test('concurrent scanners create exactly one frozen update per channel for all s
     const input = (await t.store.getInput(t.worker, plan.plan_id)).input;
     assert.equal(input.source_mode, 'youtube');
     if (input.source_mode === 'youtube') assert.equal(input.plan_kind, 'UPDATE');
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM m1.intents WHERE plan_id=$1', [plan.plan_id])).rows[0]!.n, 1);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM control.intents WHERE plan_id=$1', [plan.plan_id])).rows[0]!.n, 1);
     if (plan.required_domains.includes('AGENT') && !plan.required_domains.includes('VIDEO')) {
       // Without VIDEO the Agent reads the stored videos frozen at creation; it still waits for a required About.
       if (input.source_mode === 'youtube') assert.deepEqual(input.agent_video_ids, [item.video_id]);

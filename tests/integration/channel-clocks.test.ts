@@ -49,7 +49,7 @@ async function complete(p: People, channel: string, domains: Domain[], published
 const clocks = async (p: People, channel: string) => Object.fromEntries((await store.getChannel(p.reader, channel)).management.clocks.map(c => [c.clock, c])) as Record<string, ChannelClock>;
 /** Whole UTC days from the day of `base` to the due day (clocks are due at 00:00 UTC). */
 const daysFrom = (due: string, base: string) => (Date.parse(due) - Date.parse(base.slice(0, 10))) / 86_400_000;
-const featureState = async (p: People, channel: string) => (await pool.query('SELECT state,applied FROM m1.channel_feature_state WHERE workspace_id=$1 AND channel_id=$2', [p.operator.workspace_id, channel])).rows[0];
+const featureState = async (p: People, channel: string) => (await pool.query('SELECT state,applied FROM control.channel_feature_state WHERE workspace_id=$1 AND channel_id=$2', [p.operator.workspace_id, channel])).rows[0];
 const FALLBACK = ['subscriber_growth_reference_fallback', 'view_growth_reference_fallback'];
 
 test('the first completed real plan puts the channel under management with the legacy first clocks', async () => {
@@ -163,7 +163,7 @@ test('operators pin an interval per domain and return it to the policy; lists an
   assert.deepEqual(listed.clocks.map(c => [c.clock, c.interval_days, c.override_days]), [['ABOUT', 7, null], ['VIDEO', 7, null], ['AGENT', 180, null]]);
   let counts = (await store.completeness(p.reader)).management;
   assert.deepEqual(counts, { managed: 1, paused: 0, overdue: 0 });
-  await pool.query(`UPDATE m1.channel_clocks SET due_at=clock_timestamp()-interval '1 hour' WHERE workspace_id=$1 AND channel_id=$2 AND clock='AGENT'`, [p.operator.workspace_id, channel]);
+  await pool.query(`UPDATE control.channel_clocks SET due_at=clock_timestamp()-interval '1 hour' WHERE workspace_id=$1 AND channel_id=$2 AND clock='AGENT'`, [p.operator.workspace_id, channel]);
   counts = (await store.completeness(p.reader)).management;
   assert.deepEqual(counts, { managed: 1, paused: 0, overdue: 1 });
   await store.manageChannel(p.operator, channel, { action: 'pause', expected_version: 3 });

@@ -6,6 +6,7 @@ import { authenticate } from '@crawlsystem/http/auth';
 import type { WorkloadIdentity } from '@crawlsystem/http/workload';
 import type { ProxyStore } from '@crawlsystem/store/proxies';
 import { ConsoleAuth } from './console-auth.ts';
+import { SubmissionSchema } from '@crawlsystem/contracts';
 
 export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore }) {
   const auth=options.consoleAuth,workload=options.workloadIdentity;
@@ -52,7 +53,16 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.post('/v1/plans',async request=>store.createPlan(request.principal,CreatePlanSchema.parse(request.body),request.traceparent));
   app.get('/v1/plans',async request=>{const q=pagination(request.query);return store.listPlans(request.principal,q.limit,q.offset,q.status,q.sourceMode);});
   app.get('/v1/plans/:id',async request=>store.getPlan(request.principal,planId(request)));
-  app.get('/v1/plans/:id/input',async request=>{requireRole(request.principal,'worker');return store.getInput(request.principal,planId(request));});
+  app.get('/v1/plans/:id/input',async request=>{requireRole(request.principal,'worker','parser','sink');return store.getInput(request.principal,planId(request));});
+  app.post('/v1/pipeline/manifests',async request=>store.pipelineManifest(request.principal,request.body));
+  app.get('/v1/pipeline/reconciliation',async request=>store.pipelineReconciliation(request.principal));
+  app.post('/v1/plans/:id/pipeline/confirm',async request=>store.confirmPipeline(request.principal,planId(request)));
+  app.get('/v1/plans/:id/pipeline',async request=>store.pipelineProgress(request.principal,planId(request)));
+  app.post('/v1/pipeline/navigation',async request=>{
+    const s=SubmissionSchema.parse(request.body);
+    if(s.domain!=='VIDEO'||!['targets','discovery'].includes(s.payload.kind)||s.domain_complete) throw new StoreError('INVALID_REQUEST','Only navigation manifests are accepted',400);
+    return store.apply(request.principal,s);
+  });
   app.get('/v1/plans/:id/agent-input',async request=>store.agentInput(request.principal,planId(request)));
   app.post('/v1/plans/:id/cancel',async request=>store.cancel(request.principal,planId(request),CancelPlanSchema.parse(request.body)));
   app.post('/v1/plans/:id/events',async request=>store.event(request.principal,planId(request),ExecutionEventSchema.parse(request.body)));
@@ -98,6 +108,9 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.post(ApiRoutes.channelImport,{bodyLimit:262144},async request=>store.importChannels(request.principal,request.body));
   app.get(ApiRoutes.channelImports,async request=>store.channelImports(request.principal));
   app.get('/v1/channels/:id',async request=>store.getChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id));
+  app.get('/v1/channels/:id/videos/:video/comments',async request=>{
+    const p=z.object({id:IdSchema,video:IdSchema}).parse(request.params);return store.videoComments(request.principal,p.id,p.video);
+  });
   app.post('/v1/channels/:id/management',{bodyLimit:1024},async request=>store.manageChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));
   app.post('/v1/channels/:id/clock-override',{bodyLimit:1024},async request=>store.overrideClock(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));
   app.post('/v1/channels/:id/update',{bodyLimit:2048},async request=>store.updateChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));

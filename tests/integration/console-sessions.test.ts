@@ -22,7 +22,7 @@ test('cookie survives a fresh API and connection pool; revocation propagates bet
     assert.equal(response.statusCode,200);
     const cookie=String(response.headers['set-cookie']).split(';')[0]!;
     const secret=cookie.split('=')[1]!;
-    const stored=(await pool.query('SELECT session_hash,role FROM m1.console_sessions WHERE workspace_id=$1',[a.workspace_id])).rows[0];
+    const stored=(await pool.query('SELECT session_hash,role FROM control.console_sessions WHERE workspace_id=$1',[a.workspace_id])).rows[0];
     assert.equal(stored.session_hash,digest(secret));assert.notEqual(stored.session_hash,secret);
     await first.close();second=app([a],otherPool);
     const restored=await second.inject({url:'/v1/session',headers:{cookie}});assert.equal(restored.statusCode,200);assert.equal(restored.json().role,'reader');
@@ -38,7 +38,7 @@ test('database expiration and account changes invalidate cookies without exposin
     const response=await first.inject({method:'POST',url:'/v1/auth/login',headers,payload:{username:a.username,password}});
     const cookie=String(response.headers['set-cookie']).split(';')[0]!;
     assert.equal((await changed.inject({url:'/v1/session',headers:{cookie}})).statusCode,401);
-    await pool.query("UPDATE m1.console_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE workspace_id=$1",[a.workspace_id]);
+    await pool.query("UPDATE control.console_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE workspace_id=$1",[a.workspace_id]);
     assert.equal((await first.inject({url:'/v1/session',headers:{cookie}})).statusCode,401);
   } finally {await first.close();await changed.close();}
 });
@@ -48,15 +48,15 @@ test('login budget is shared by replicas and resets at the database deadline',as
     for(let i=0;i<10;i++)assert.equal((await (i%2?first:second).inject({method:'POST',url:'/v1/auth/login',headers,payload:{username:a.username,password:'incorrect'}})).statusCode,401);
     const exhausted=await first.inject({method:'POST',url:'/v1/auth/login',headers,payload:{username:a.username,password}});
     assert.equal(exhausted.statusCode,429);assert.equal(exhausted.headers['retry-after'],'60');
-    await pool.query("UPDATE m1.console_login_limits SET reset_at=clock_timestamp()-interval '1 second' WHERE authority=$1",[contentHash([a])]);
+    await pool.query("UPDATE control.console_login_limits SET reset_at=clock_timestamp()-interval '1 second' WHERE authority=$1",[contentHash([a])]);
     assert.equal((await second.inject({method:'POST',url:'/v1/auth/login',headers,payload:{username:a.username,password}})).statusCode,200);
   } finally {await first.close();await second.close();}
 });
 test('concurrent logins cannot exceed the shared active-session capacity',async()=>{
   const a=await account(),authority=contentHash([a]),repository=new PgConsoleSessions(pool);
-  await pool.query(`INSERT INTO m1.console_sessions(authority,session_hash,subject,workspace_id,role,expires_at)
+  await pool.query(`INSERT INTO control.console_sessions(authority,session_hash,subject,workspace_id,role,expires_at)
     SELECT $1,repeat(md5(i::text),2),$2,$3,'reader',clock_timestamp()+interval '1 hour' FROM generate_series(1,198) i`,[authority,a.subject,a.workspace_id]);
   const outcomes=await Promise.all(Array.from({length:5},()=>repository.save(authority,randomBytes(32).toString('hex'),a,60_000)));
   assert.equal(outcomes.filter(Boolean).length,2);
-  assert.equal(Number((await pool.query('SELECT count(*) FROM m1.console_sessions WHERE authority=$1',[authority])).rows[0].count),200);
+  assert.equal(Number((await pool.query('SELECT count(*) FROM control.console_sessions WHERE authority=$1',[authority])).rows[0].count),200);
 });

@@ -15,7 +15,8 @@ export interface WorkloadIdentityOptions { reviewer:TokenReviewer; audience:stri
   /** Temporal namespace tokens: ServiceAccount → exact permissions it may receive. */
   temporal?:{issuer:TemporalTokenIssuer; permissions:Record<string,string[]>};
   /** Proxy Manager DaemonSet: receives a `node` credential naming the server (TokenReview node). */
-  nodeServiceAccount?:string; }
+  nodeServiceAccount?:string;
+  pipelineServiceAccounts?:Record<string,'parser'|'sink'>; }
 const ServiceAccountName=/^system:serviceaccount:[a-z0-9-]+:[a-z0-9-]+$/;
 
 const ServiceAccountToken=/^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/;
@@ -27,6 +28,8 @@ export class WorkloadIdentity {
     if(!ServiceAccountName.test(options.serviceAccount)) throw new Error('Workload service account must be system:serviceaccount:<namespace>:<name>');
     if(!/^[a-z0-9.-]{3,80}$/.test(options.audience)) throw new Error('Invalid workload token audience');
     IdSchema.parse(options.workspaceId);
+    for(const [account,role] of Object.entries(options.pipelineServiceAccounts??{}))
+      if(!ServiceAccountName.test(account)||!['parser','sink'].includes(role)||[options.serviceAccount,options.nodeServiceAccount].includes(account)) throw new Error('Pipeline identity must be a distinct ServiceAccount');
     this.lifetime=options.lifetimeSeconds??900;
     if(!Number.isInteger(this.lifetime)||this.lifetime<60||this.lifetime>3600) throw new Error('Workload token lifetime must be 60..3600 seconds');
     for(const [account,permissions] of Object.entries(options.temporal?.permissions??{}))
@@ -47,7 +50,7 @@ export class WorkloadIdentity {
   }
   async exchange(header:string|undefined):Promise<{token:string;principal:Principal;server_id:string;expires_in:number}> {
     const reviewed=await this.review(header);
-    const role=reviewed.username===this.options.serviceAccount?'worker':this.options.nodeServiceAccount&&reviewed.username===this.options.nodeServiceAccount?'node':undefined;
+    const role=reviewed.username===this.options.serviceAccount?'worker':this.options.nodeServiceAccount&&reviewed.username===this.options.nodeServiceAccount?'node':this.options.pipelineServiceAccounts?.[reviewed.username];
     if(!role) throw new StoreError('FORBIDDEN','Workload is not an execution Worker or Proxy Manager',403);
     const principal:Principal={subject:IdSchema.parse(reviewed.pod),workspace_id:this.options.workspaceId,role,server_id:IdSchema.parse(reviewed.node)};
     return {token:await issueToken(principal,this.options.signingKey,this.lifetime),principal,server_id:IdSchema.parse(reviewed.node),expires_in:this.lifetime};

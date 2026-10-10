@@ -96,7 +96,7 @@ try {
   await until(waitingPlan.plan_id, p => p.plan.status === 'CANCELLED', 30, 'cancel');
   let intents: { kind: string; state: string; attempts: number; workflow_run_id: string | null }[] = [];
   for (const end = Date.now() + 60_000; Date.now() < end; await delay(1000)) {
-    intents = (await pool.query('SELECT kind,state,attempts,workflow_run_id FROM m1.intents WHERE plan_id=$1 ORDER BY kind', [waitingPlan.plan_id])).rows;
+    intents = (await pool.query('SELECT kind,state,attempts,workflow_run_id FROM control.intents WHERE plan_id=$1 ORDER BY kind', [waitingPlan.plan_id])).rows;
     if (intents.find(i => i.kind === 'CANCEL')?.state === 'DONE') break;
   }
   const start = intents.find(i => i.kind === 'START'), cancel = intents.find(i => i.kind === 'CANCEL');

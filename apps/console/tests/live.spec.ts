@@ -101,7 +101,7 @@ test('complete sample and channel comments match the actual API; reader writes a
   await login(page, operator, '/plans'); const plan = await createFromUi(page); await apply(plan.plan_id, 'ABOUT'); await apply(plan.plan_id, 'VIDEO'); await refresh(page);
   await expect(page.getByText('本轮已完成', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: plan.channel_id, exact: true }).click(); await expect(page.getByRole('heading', { name: 'M1 固定样本频道', exact: true })).toBeVisible();
-  await page.getByText('首屏评论 · 1 条已入库').click(); await expect(page.getByText('固定样本评论', { exact: true })).toBeVisible();
+  await page.getByText('首屏评论 · 1 条已采集').click(); await expect(page.getByText('固定样本评论', { exact: true })).toBeVisible();
   await expect(page.getByText('Agent 尚未执行', { exact: true })).toBeVisible(); await capture(page, 'live-channel.png');
   await page.getByRole('button', { name: '退出登录' }).click(); await page.getByLabel('访问令牌', { exact: true }).fill(reader); await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('navigation', { name: '主导航' }).getByText('任务管理', { exact: true }).click();

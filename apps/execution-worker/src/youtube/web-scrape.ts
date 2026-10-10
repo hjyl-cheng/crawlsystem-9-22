@@ -39,11 +39,11 @@ export async function browserSession(fetcher: typeof fetch, identity: BrowserIde
       retrieve_innertube_config: false, enable_session_cache: false });
   } catch (error) { throw classify(error); }
 }
-export async function channelFacts(yt: Innertube, channelId: string): Promise<ChannelFacts> {
+export async function channelFacts(yt: Innertube, channelId: string, observedAt = new Date().toISOString()): Promise<ChannelFacts> {
   try {
     const channel = await yt.getChannel(channelId), aboutNode = await channel.getAbout() as unknown as Node;
     const about: Node = aboutNode.metadata ?? aboutNode;
-    const meta = channel.metadata, now = new Date().toISOString();
+    const meta = channel.metadata, now = observedAt;
     const header = strings(channel.header);
     const subscribers = text(about.subscriber_count) ?? header.find(s => /inscrit|subscri/i.test(s)) ?? null;
     const observed = (raw: unknown) => {
@@ -102,8 +102,8 @@ export function playability(value: Node | undefined): { kind: 'ok' | 'blocked' |
   if (status === 'LOGIN_REQUIRED' && /^please\s+sign\s+in[.!]?$/.test(reason.trim())) return { kind: 'login' };
   return { kind: status === 'OK' ? 'ok' : 'ambiguous' };
 }
-export function mapWebVideo(info: Node, channelId: string, videoId: string, comments: CommentsResult, commentLimit: number): VideoFacts {
-  const basic = info.basic_info ?? {}, micro = info.page?.[0]?.microformat ?? {}, primary = info.primary_info ?? {}, observed = new Date().toISOString();
+export function mapWebVideo(info: Node, channelId: string, videoId: string, comments: CommentsResult, commentLimit: number, observedAt = new Date().toISOString()): VideoFacts {
+  const basic = info.basic_info ?? {}, micro = info.page?.[0]?.microformat ?? {}, primary = info.primary_info ?? {}, observed = observedAt;
   const publication = absoluteDate(micro.publish_date ?? micro.upload_date);
   const published = publication.value ? publication : absoluteDate(primary.published?.text ?? primary.published);
   const title = text(basic.title ?? micro.title ?? primary.title);
@@ -134,7 +134,7 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
     live_started_at: micro.start_timestamp ? new Date(micro.start_timestamp).toISOString() : null, live_ended_at: micro.end_timestamp ? new Date(micro.end_timestamp).toISOString() : null,
     extractor_version: 'yt-collector/2 (youtubei.js 18.1.0 web)' });
 }
-export async function videoDetail(yt: Innertube, channelId: string, videoId: string, commentLimit: number, metricsOnly = false, responses: RawResponse[] = []): Promise<VideoItem> {
+export async function videoDetail(yt: Innertube, channelId: string, videoId: string, commentLimit: number, metricsOnly = false, responses: RawResponse[] = [], observedAt = new Date().toISOString()): Promise<VideoItem> {
   const logins: boolean[] = [];
   for (const client of ['WEB', 'IOS'] as const) {
     let info: Node;
@@ -143,7 +143,7 @@ export async function videoDetail(yt: Innertube, channelId: string, videoId: str
       const surface = (error as Node).info?.playability_status ?? (error as Node).info?.playabilityStatus ?? (error as Node).info;
       const decision = playability(surface);
       if (decision.kind === 'blocked') throw new ScrapeError('blocked', 'YouTube challenged this identity');
-      if (decision.kind === 'terminal') return terminalVideo(channelId, videoId, decision.status!);
+      if (decision.kind === 'terminal') return terminalVideo(channelId, videoId, decision.status!, observedAt);
       logins.push(decision.kind === 'login');
       const classified = classify(error); if (classified.kind === 'network' || classified.kind === 'blocked') throw classified;
       continue;
@@ -152,20 +152,20 @@ export async function videoDetail(yt: Innertube, channelId: string, videoId: str
     const playerBody = responses.slice().reverse().find(r => r.endpoint.endsWith('/player'))?.body;
     if (playerBody) { try { info._raw_player = JSON.parse(playerBody); } catch { /* Parser owns malformed response handling. */ } }
     if (decision.kind === 'blocked') throw new ScrapeError('blocked', 'YouTube challenged this identity');
-    if (decision.kind === 'terminal') return terminalVideo(channelId, videoId, decision.status!);
+    if (decision.kind === 'terminal') return terminalVideo(channelId, videoId, decision.status!, observedAt);
     logins.push(decision.kind === 'login');
-    try { mapWebVideo(info, channelId, videoId, { kind: 'skipped' }, 0); }
+    try { mapWebVideo(info, channelId, videoId, { kind: 'skipped' }, 0, observedAt); }
     catch { continue; }
     // Plain sign-in responses are terminal only after both clients confirmed them.
     if (decision.kind === 'login') continue;
     const total = count(info.comments_entry_point_header?.comment_count);
-    const comments: CommentsResult = metricsOnly || !commentLimit ? { kind: 'skipped' } : await topComments(yt, videoId, total === null ? undefined : String(total), 'pt-BR').catch(() => ({ kind: 'unavailable' as const, collected_at: new Date().toISOString() }));
-    return mapWebVideo(info, channelId, videoId, comments, commentLimit);
+    const comments: CommentsResult = metricsOnly || !commentLimit ? { kind: 'skipped' } : await topComments(yt, videoId, total === null ? undefined : String(total), 'pt-BR', observedAt).catch(() => ({ kind: 'unavailable' as const, collected_at: observedAt }));
+    return mapWebVideo(info, channelId, videoId, comments, commentLimit, observedAt);
   }
-  if (logins.length === 2 && logins.every(Boolean)) return terminalVideo(channelId, videoId, 'login_required');
+  if (logins.length === 2 && logins.every(Boolean)) return terminalVideo(channelId, videoId, 'login_required', observedAt);
   throw new ScrapeError('parse', 'WEB and IOS video details exhausted');
 }
-function terminalVideo(channelId: string, videoId: string, status: 'private' | 'removed' | 'members_only' | 'login_required' | 'age_restricted' | 'region_blocked'): VideoItem {
+function terminalVideo(channelId: string, videoId: string, status: 'private' | 'removed' | 'members_only' | 'login_required' | 'age_restricted' | 'region_blocked', observedAt: string): VideoItem {
   return VideoUnavailableSchema.parse({ channel_id: channelId, source_content_id: videoId, unavailable: true, access_status: status,
-    reason: `YouTube player reports ${status}`, source: 'youtubei:player', observed_at: new Date().toISOString() });
+    reason: `YouTube player reports ${status}`, source: 'youtubei:player', observed_at: observedAt });
 }

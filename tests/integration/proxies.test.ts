@@ -33,7 +33,7 @@ test('import is operator-only, upserts by endpoint and never returns credentials
   const first = overview.items.find(i => i.host === '198.51.100.1')!;
   assert.equal(first.group, 'Moved'); assert.equal(first.has_password, true, 'omitted password keeps the stored one');
   assert.doesNotMatch(JSON.stringify(overview), /secret-pass|v1\./);
-  const stored = (await pool.query('SELECT credential FROM m1.proxies WHERE workspace_id=$1 AND proxy_id=$2', [p.operator.workspace_id, first.proxy_id])).rows[0].credential as string;
+  const stored = (await pool.query('SELECT credential FROM control.proxies WHERE workspace_id=$1 AND proxy_id=$2', [p.operator.workspace_id, first.proxy_id])).rows[0].credential as string;
   assert.doesNotMatch(stored, /secret-pass/);
   assert.throws(() => box.open(stored, `proxy:${p.operator.workspace_id}:${randomUUID()}`), 'the ciphertext is bound to its own row');
   await rejects(() => new ProxyStore(pool).importProxies(p.operator, { entries: [entry('198.51.100.3')] }), 'DEPENDENCY_NOT_IMPLEMENTED');
@@ -87,7 +87,7 @@ test('a subscription source adds, spreads, retires after N misses, restores, and
   await rejects(() => store.createSource(p.operator, { name: 'dup', url: source.url, protocol: 'socks5', provider: 'P', group: 'G' }), 'CONFLICT');
   await rejects(() => store.createSource(p.reader, { name: 'x', url: `https://lists.example.test/${randomUUID()}`, protocol: 'socks5', provider: 'P', group: 'G' }), 'FORBIDDEN');
   const claimOurs = () => store.claimDueSource(120, p.operator.workspace_id);
-  const refresh = async (body: string) => { await pool.query('UPDATE m1.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]); const c = await claimOurs(); assert.ok(c); return store.applySourceFetch(c, { status: 'ok', body, etag: '"v"' }); };
+  const refresh = async (body: string) => { await pool.query('UPDATE control.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]); const c = await claimOurs(); assert.ok(c); return store.applySourceFetch(c, { status: 'ok', body, etag: '"v"' }); };
   assert.deepEqual(await refresh('192.0.2.1:1080\n192.0.2.2:1080\n192.0.2.3:1080\n192.0.2.4:1080'), { added: 4, retired: 0, restored: 0, assigned: 4, count: 4 });
   let items = (await store.overview(p.reader)).items;
   assert.deepEqual(items.map(i => i.server_id).sort(), ['a1', 'a1', 'a2', 'a2'], 'spread evenly');
@@ -107,7 +107,7 @@ test('a subscription source adds, spreads, retires after N misses, restores, and
   const views = await store.listSources(p.reader);
   assert.equal(views[0]!.last_status, 'ok'); assert.equal(views[0]!.last_count, 3); assert.equal(views[0]!.active_proxies, 3); assert.equal(views[0]!.retired_proxies, 1);
   // A failing fetch keeps the inventory and retries within 10 minutes.
-  await pool.query('UPDATE m1.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]);
+  await pool.query('UPDATE control.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]);
   const c = await claimOurs(); assert.ok(c);
   assert.equal(await store.claimDueSource(120, p.operator.workspace_id), null, 'a leased source is not claimed twice');
   await store.applySourceFetch(c, { status: 'error', error: 'HTTP 503' });
@@ -139,13 +139,13 @@ test('a proxy its server reports failed is retired as unhealthy and withheld at 
 test('a subscription offers an unhealthy endpoint again only after the quarantine; missing ones carry their own reason', async () => {
   const p = people();
   const source = await store.createSource(p.operator, { name: 'free http', url: `https://lists.example.test/${randomUUID()}.txt`, protocol: 'http', provider: 'Public', group: 'Public HTTP', retire_after_misses: 2, server_ids: ['a1'] });
-  const refresh = async (body: string) => { await pool.query('UPDATE m1.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]); const c = await store.claimDueSource(120, p.operator.workspace_id); assert.ok(c); return store.applySourceFetch(c, { status: 'ok', body }); };
+  const refresh = async (body: string) => { await pool.query('UPDATE control.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [source.source_id]); const c = await store.claimDueSource(120, p.operator.workspace_id); assert.ok(c); return store.applySourceFetch(c, { status: 'ok', body }); };
   const list = '192.0.2.50:8080\n192.0.2.51:8080';
   await refresh(list);
   const bad = (await store.overview(p.reader)).items.find(i => i.host === '192.0.2.50')!;
   await store.sync(p.nodeA, report(1, [observation(bad.proxy_id, 1, 9, 9, 'failed')]));
   assert.deepEqual(await refresh(list), { added: 0, retired: 0, restored: 0, assigned: 0, count: 2 }, 'still listed, but in quarantine');
-  await pool.query(`UPDATE m1.proxies SET retired_at=clock_timestamp()-interval '25 hours' WHERE workspace_id=$1 AND proxy_id=$2`, [p.operator.workspace_id, bad.proxy_id]);
+  await pool.query(`UPDATE control.proxies SET retired_at=clock_timestamp()-interval '25 hours' WHERE workspace_id=$1 AND proxy_id=$2`, [p.operator.workspace_id, bad.proxy_id]);
   assert.deepEqual(await refresh(list), { added: 0, retired: 0, restored: 1, assigned: 1, count: 2 });
   const again = (await store.overview(p.reader)).items.find(i => i.host === '192.0.2.50')!;
   assert.equal(again.retired, false); assert.equal(again.server_id, 'a1'); assert.equal(again.state, 'unknown', 'a new generation: its server starts a new trial');
@@ -160,7 +160,7 @@ test('a Clash source imports credential-free entries; skip-cert-verify ones need
   const clash = (hosts: [string, string][]) => 'mixed-port: 7890\nproxies:\n' + hosts.map(([host, extra]) => `- name: ${host}\n  server: ${host}\n  port: 9002\n${extra}`).join('');
   const insecure = '  type: http\n  tls: true\n  skip-cert-verify: true\n', socks = '  type: socks5\n', withAccount = '  type: http\n  username: shared\n  password: secret\n';
   const body = clash([['192.0.2.60', insecure], ['192.0.2.61', socks], ['192.0.2.62', withAccount]]);
-  const refresh = async (sourceId: string, text: string) => { await pool.query('UPDATE m1.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [sourceId]); const c = await store.claimDueSource(120, p.operator.workspace_id); assert.ok(c); return store.applySourceFetch(c, { status: 'ok', body: text }); };
+  const refresh = async (sourceId: string, text: string) => { await pool.query('UPDATE control.proxy_sources SET next_fetch_at=clock_timestamp() WHERE source_id=$1', [sourceId]); const c = await store.claimDueSource(120, p.operator.workspace_id); assert.ok(c); return store.applySourceFetch(c, { status: 'ok', body: text }); };
   const strict = await store.createSource(p.operator, { name: 'clash strict', url: `https://lists.example.test/${randomUUID()}.yaml`, protocol: 'http', provider: 'Public', group: 'Clash', server_ids: ['a1'] });
   assert.equal(strict.allow_insecure_tls, false);
   assert.deepEqual(await refresh(strict.source_id, body), { added: 1, retired: 0, restored: 0, assigned: 1, count: 1 }, 'only the socks5 entry without the opt-in');
@@ -172,19 +172,19 @@ test('a Clash source imports credential-free entries; skip-cert-verify ones need
   assert.equal(items['192.0.2.60']!.protocol, 'https'); assert.equal(items['192.0.2.60']!.tls_insecure, true); assert.equal(items['192.0.2.61']!.tls_insecure, false);
   const assignments = Object.fromEntries((await store.sync(p.nodeA, report(1, []))).assignments.map(a => [a.host, a]));
   assert.equal(assignments['192.0.2.60']!.tls_insecure, true); assert.equal(assignments['192.0.2.60']!.password, null); assert.equal(assignments['192.0.2.61']!.tls_insecure, false);
-  await assert.rejects(() => pool.query(`UPDATE m1.proxies SET username='u' WHERE workspace_id=$1 AND host='192.0.2.60'`, [p.operator.workspace_id]), /proxies_tls_insecure/, 'the schema keeps credentials off unverified hops');
+  await assert.rejects(() => pool.query(`UPDATE control.proxies SET username='u' WHERE workspace_id=$1 AND host='192.0.2.60'`, [p.operator.workspace_id]), /proxies_tls_insecure/, 'the schema keeps credentials off unverified hops');
   for (const view of await store.listSources(p.reader)) await store.updateSource(p.operator, view.source_id, { expected_version: view.version, enabled: false });
 });
 test('a server holds at most 500 enabled proxies, so a sync always fits the contract', async () => {
   const p = people();
   await store.importProxies(p.operator, { entries: Array.from({ length: 500 }, (_, i) => entry(`10.77.${i >> 8}.${i & 255}`)) });
-  await pool.query(`UPDATE m1.proxies SET server_id='a1', generation=1 WHERE workspace_id=$1`, [p.operator.workspace_id]);
+  await pool.query(`UPDATE control.proxies SET server_id='a1', generation=1 WHERE workspace_id=$1`, [p.operator.workspace_id]);
   await store.importProxies(p.operator, { entries: [entry('10.78.0.1')] });
   const extra = (await store.overview(p.reader)).items.find(i => i.host === '10.78.0.1')!;
   await rejects(() => store.update(p.operator, extra.proxy_id, { expected_version: extra.version, server_id: 'a1' }), 'BUDGET_EXHAUSTED');
   assert.equal((await store.overview(p.reader)).items.find(i => i.host === '10.78.0.1')!.server_id, null, 'the assignment rolled back');
   assert.equal((await store.sync(p.nodeA, report(1, []))).assignments.length, 500);
-  await pool.query(`UPDATE m1.proxies SET enabled=false WHERE workspace_id=$1 AND host='10.77.0.0'`, [p.operator.workspace_id]);
+  await pool.query(`UPDATE control.proxies SET enabled=false WHERE workspace_id=$1 AND host='10.77.0.0'`, [p.operator.workspace_id]);
   const bound = await store.update(p.operator, extra.proxy_id, { expected_version: extra.version, server_id: 'a1' });
   assert.equal(bound.server_id, 'a1', 'a disabled endpoint frees its slot');
 });
@@ -222,22 +222,22 @@ test('imported proxies get their exit country checked: pending first, failures b
   assert.deepEqual(view.exit_countries, [{ country: 'BR', count: 2 }, { country: null, count: 1 }]);
   assert.deepEqual(await store.claimExitChecks(p.operator.workspace_id, 10), [], 'nothing due right after the checks');
   // The failed one returns after its backoff; the successful ones after a week.
-  await pool.query(`UPDATE m1.proxies SET exit_checked_at=exit_checked_at-interval '31 minutes' WHERE workspace_id=$1`, [p.operator.workspace_id]);
+  await pool.query(`UPDATE control.proxies SET exit_checked_at=exit_checked_at-interval '31 minutes' WHERE workspace_id=$1`, [p.operator.workspace_id]);
   assert.deepEqual((await store.claimExitChecks(p.operator.workspace_id, 10)).map(c => c.host), ['198.51.100.22']);
   await store.recordExitCheck(p.operator.workspace_id, byHost('198.51.100.22'), { ok: false, error: 'network' });
-  await pool.query(`UPDATE m1.proxies SET exit_checked_at=exit_checked_at-interval '45 minutes' WHERE workspace_id=$1`, [p.operator.workspace_id]);
+  await pool.query(`UPDATE control.proxies SET exit_checked_at=exit_checked_at-interval '45 minutes' WHERE workspace_id=$1`, [p.operator.workspace_id]);
   assert.deepEqual(await store.claimExitChecks(p.operator.workspace_id, 10), [], 'the second failure waits an hour');
-  await pool.query(`UPDATE m1.proxies SET exit_checked_at=exit_checked_at-interval '7 days' WHERE workspace_id=$1`, [p.operator.workspace_id]);
+  await pool.query(`UPDATE control.proxies SET exit_checked_at=exit_checked_at-interval '7 days' WHERE workspace_id=$1`, [p.operator.workspace_id]);
   assert.equal((await store.claimExitChecks(p.operator.workspace_id, 10)).length, 3, 'a week later everything is rechecked');
   await store.recordExitCheck(p.operator.workspace_id, byHost('198.51.100.20'), { ok: false, error: 'timeout' });
   view = await store.overview(p.reader);
   assert.deepEqual([view.items.find(i => i.host === '198.51.100.20')!.exit_check, view.items.find(i => i.host === '198.51.100.20')!.exit_country], ['ok', 'BR'], 'a failed recheck keeps the last country');
   // Retired proxies are checked once (so the inventory has a country) but never again.
   await store.importProxies(p.operator, { entries: [entry('198.51.100.23', { username: null, password: null })] });
-  await pool.query(`UPDATE m1.proxies SET retired_at=clock_timestamp(),enabled=false WHERE workspace_id=$1 AND host='198.51.100.23'`, [p.operator.workspace_id]);
+  await pool.query(`UPDATE control.proxies SET retired_at=clock_timestamp(),enabled=false WHERE workspace_id=$1 AND host='198.51.100.23'`, [p.operator.workspace_id]);
   const retired = await store.claimExitChecks(p.operator.workspace_id, 10);
   assert.deepEqual(retired.map(c => c.host), ['198.51.100.23']);
   await store.recordExitCheck(p.operator.workspace_id, retired[0]!.proxy_id, { ok: false, error: 'timeout' });
-  await pool.query(`UPDATE m1.proxies SET exit_checked_at=exit_checked_at-interval '30 days' WHERE workspace_id=$1 AND host='198.51.100.23'`, [p.operator.workspace_id]);
+  await pool.query(`UPDATE control.proxies SET exit_checked_at=exit_checked_at-interval '30 days' WHERE workspace_id=$1 AND host='198.51.100.23'`, [p.operator.workspace_id]);
   assert.deepEqual(await store.claimExitChecks(p.operator.workspace_id, 10), [], 'a retired proxy is not retried');
 });

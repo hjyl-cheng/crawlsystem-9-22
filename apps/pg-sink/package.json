@@ -1,0 +1,1 @@
+{"name":"@crawlsystem/pg-sink","version":"0.1.0","private":true,"type":"module","dependencies":{"@crawlsystem/contracts":"0.1.0","@crawlsystem/execution-client":"0.1.0","@crawlsystem/store":"0.1.0","aws4fetch":"1.0.20","kafkajs":"2.2.4","pg":"8.23.0"}}

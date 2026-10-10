@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { PipelineProgressSchema } from '@crawlsystem/contracts/pipeline';
+import { CommentPageSchema } from '@crawlsystem/contracts';
 import { UpdateSummarySchema, UpdateChannelSchema, ChannelUpdateSchema, AgentSummarySchema, AgentTaskSchema, DataApiSummarySchema, ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, QuerySummarySchema, QueryBindingSchema, CreateQuerySchema, QueryCommandSchema, CandidateSchema, CandidateSummarySchema, CandidateCommandSchema, type CandidateCommand, type AgentTask, type ChannelImport, type ChannelUpdate, type CreateQuery, type QueryCommand } from '@crawlsystem/contracts';
 import {
   ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,
@@ -104,6 +106,9 @@ export class ControlApi {
   logout = (signal?: AbortSignal) => this.request(ApiRoutes.logout, LogoutSchema, signal, {});
   plans = (cursor = '0', status?: PlanStatus, limit = 20, signal?: AbortSignal, sourceMode: SourceMode = 'youtube') => this.request(`${ApiRoutes.plans}?${new URLSearchParams({ limit: String(limit), cursor, source_mode: sourceMode, ...(status ? { status } : {}) })}`, pageSchema(PlanSchema), signal);
   plan = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.plan(id), PlanDetailSchema, signal);
+  pipeline = (id:string,signal?:AbortSignal)=>this.request(`/v1/plans/${encodeURIComponent(id)}/pipeline`,PipelineProgressSchema,signal);
+  comments = (channel:string,video:string,signal?:AbortSignal)=>this.request(`/v1/channels/${encodeURIComponent(channel)}/videos/${encodeURIComponent(video)}/comments`,
+    z.strictObject({page:CommentPageSchema.nullable(),state:z.enum(['AVAILABLE','EXPIRED','NONE'])}),signal);
   create = (body: CreatePlan, signal?: AbortSignal) => this.request(ApiRoutes.plans, PlanSchema, signal, CreatePlanSchema.parse(body));
   cancel = (id: string, body: z.infer<typeof CancelPlanSchema>, signal?: AbortSignal) => this.request(ApiRoutes.cancel(id), PlanSchema, signal, CancelPlanSchema.parse(body));
   channels = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.channels}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(ChannelListItemSchema), signal);

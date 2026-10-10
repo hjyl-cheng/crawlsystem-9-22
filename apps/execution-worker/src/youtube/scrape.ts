@@ -77,8 +77,7 @@ const EMPTY_COMMENTS = /comments page did not have any content/i;
  * (restricted or held), recorded as unavailable instead of failing the video batch. Other parse
  * failures still fail, so a YouTube change is not silently absorbed.
  */
-export async function topComments(yt: Innertube, videoId: string, apiCommentCount: string | undefined, locale = 'en'): Promise<CommentsResult> {
-  const collected_at = new Date().toISOString();
+export async function topComments(yt: Innertube, videoId: string, apiCommentCount: string | undefined, locale = 'en', collected_at = new Date().toISOString()): Promise<CommentsResult> {
   try {
     let page: { header?: { comments_count?: unknown }; contents?: { comment?: Record<string, unknown> }[] };
     let sort: 'TOP_COMMENTS' | 'NEWEST_FIRST' = 'TOP_COMMENTS';

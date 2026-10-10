@@ -83,6 +83,11 @@ spec:
             # Paused 2026-10-09 while collection is reworked (raw data to MinIO, legacy collection flow).
             - { name: QUERY_RUNS_ENABLED, value: "false" }
             - { name: QUERY_AUTO_ADMIT, value: "false" }
+            - { name: PIPELINE_ENABLED, value: "true" }
+            - name: PIPELINE_SERVICE_ACCOUNTS
+              value: '{"system:serviceaccount:crawler:raw-parser":"parser","system:serviceaccount:ingest:pg-sink":"sink"}'
+            - { name: MINIO_URL, value: "http://minio.storage.svc.cluster.local:9000" }
+            - { name: MINIO_CREDENTIALS_DIRECTORY, value: /minio }
             - { name: WORKLOAD_SERVICE_ACCOUNT, value: "system:serviceaccount:crawler:execution-worker" }
             - { name: WORKLOAD_TOKEN_AUDIENCE, value: crawlsystem-control }
             - { name: WORKLOAD_TOKEN_SECONDS, value: "900" }
@@ -106,6 +111,7 @@ spec:
               valueFrom: { secretKeyRef: { name: control-api-preview, key: console-database-url } }
           volumeMounts:
             - { name: secrets, mountPath: /secrets, readOnly: true }
+            - { name: minio, mountPath: /minio, readOnly: true }
             - { name: temporal-jwt, mountPath: /temporal-jwt, readOnly: true }
             - { name: proxy-credential, mountPath: /proxy-credential, readOnly: true }
           readinessProbe:
@@ -126,6 +132,8 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
       volumes:
+        - name: minio
+          secret: { secretName: minio-crawl-reader, defaultMode: 0440 }
         - name: secrets
           secret:
             secretName: control-api-preview

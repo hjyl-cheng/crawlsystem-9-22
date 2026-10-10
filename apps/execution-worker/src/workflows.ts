@@ -35,9 +35,12 @@ export async function channelPlanWorkflow(ref: WorkflowInput): Promise<PlanWorkf
         // Recorded before M3 step 3: no update re-read recent videos.
         if (!settled(status) && patched('m3-recent-sampling')) status = (await collector.sampleRecentVideos(ref, descriptor)).status;
       }
+      if(patched('r3-durable-ingestion') && descriptor.pipelineVersion==='r3.v1' && !settled(status))
+        status=(await collector.waitPipeline(ref,descriptor,!descriptor.requiresAgent)).status;
       if (settled(status) || !descriptor.requiresAgent) return { plan_id: ref.plan_id, status: status as PlanWorkflowResult['status'] };
       if (patched('m2-agent-profile')) {
         status = (await collector.collectAgent(ref, descriptor)).status;
+        if(descriptor.pipelineVersion==='r3.v1' && !settled(status)) status=(await collector.waitPipeline(ref,descriptor,true)).status;
         // Every required domain is sealed once AGENT applies; anything else is a Store-side gap, never a silent success.
         return settled(status) ? { plan_id: ref.plan_id, status: status as PlanWorkflowResult['status'] } : await cleanup.settleExecution(ref, 'DOMAIN_INCOMPLETE');
       }

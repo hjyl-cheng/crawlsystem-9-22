@@ -11,14 +11,14 @@ const AGENT_TASKS = `WITH task AS (
   SELECT p.plan_id,p.channel_id,c.about->>'title' AS title,c.about->>'country' AS country,
     CASE WHEN p.plan_kind='UPDATE' THEN lower(coalesce(p.update_trigger,'SCHEDULED')) ELSE 'first' END AS trigger,
     p.created_at,p.finished_at,d.completed_at,
-    coalesce(ARRAY(SELECT x.domain FROM m1.domains x WHERE x.plan_id=p.plan_id AND x.domain IN ('ABOUT','VIDEO') AND x.state<>'APPLIED' ORDER BY x.domain),'{}') AS waiting_on,
+    coalesce(ARRAY(SELECT x.domain FROM control.domains x WHERE x.plan_id=p.plan_id AND x.domain IN ('ABOUT','VIDEO') AND x.state<>'APPLIED' ORDER BY x.domain),'{}') AS waiting_on,
     CASE WHEN d.state='APPLIED' THEN 'completed' WHEN p.status IN ('FAILED','CANCELLED','COMPLETED') THEN 'failed'
-      WHEN EXISTS(SELECT 1 FROM m1.domains x WHERE x.plan_id=p.plan_id AND x.domain IN ('ABOUT','VIDEO') AND x.state<>'APPLIED') THEN 'waiting' ELSE 'running' END AS state,
+      WHEN EXISTS(SELECT 1 FROM control.domains x WHERE x.plan_id=p.plan_id AND x.domain IN ('ABOUT','VIDEO') AND x.state<>'APPLIED') THEN 'waiting' ELSE 'running' END AS state,
     e.message,e.error_code,c.management_state,coalesce(c.management_version,0) AS management_version,k.due_at AS next_due_at
-  FROM m1.plans p JOIN m1.domains d ON d.plan_id=p.plan_id AND d.domain='AGENT'
-  LEFT JOIN m1.channels c ON c.workspace_id=p.workspace_id AND c.channel_id=p.channel_id
-  LEFT JOIN m1.channel_clocks k ON k.workspace_id=p.workspace_id AND k.channel_id=p.channel_id AND k.clock='AGENT'
-  LEFT JOIN LATERAL (SELECT ev.data->>'message' AS message,ev.data->>'error_code' AS error_code FROM m1.events ev
+  FROM control.plans p JOIN control.domains d ON d.plan_id=p.plan_id AND d.domain='AGENT'
+  LEFT JOIN control.channel_overview c ON c.workspace_id=p.workspace_id AND c.channel_id=p.channel_id
+  LEFT JOIN control.channel_clocks k ON k.workspace_id=p.workspace_id AND k.channel_id=p.channel_id AND k.clock='AGENT'
+  LEFT JOIN LATERAL (SELECT ev.data->>'message' AS message,ev.data->>'error_code' AS error_code FROM control.events ev
     WHERE ev.plan_id=p.plan_id AND (ev.data->>'domain'='AGENT' OR ev.data->>'kind' IN ('ERROR','FAILED')) ORDER BY ev.created_at DESC LIMIT 1) e ON true
   WHERE p.workspace_id=$1 AND p.source_mode='youtube'
 )`;
@@ -36,7 +36,7 @@ export async function readAgentSummary(pool: Pool, workspace: string, now: Date)
       count(*) FILTER(WHERE state='failed' AND finished_at>$2::timestamptz-interval '24 hours')::int AS failed_24h,
       avg(extract(epoch FROM completed_at-created_at)) FILTER(WHERE state='completed' AND completed_at>$2::timestamptz-interval '24 hours') AS avg_seconds
     FROM task`, [workspace, now])).rows[0]!;
-  const models = (await pool.query(`SELECT agent->>'model_version' AS model_version,count(*)::int AS channels FROM m1.channels
+  const models = (await pool.query(`SELECT agent->>'model_version' AS model_version,count(*)::int AS channels FROM control.channel_overview
     WHERE workspace_id=$1 AND agent IS NOT NULL GROUP BY 1 ORDER BY 2 DESC,1 LIMIT 20`, [workspace])).rows;
   return AgentSummarySchema.parse({ observed_at: now.toISOString(), waiting: counts.waiting, running: counts.running, completed_24h: counts.completed_24h, failed_24h: counts.failed_24h,
     avg_seconds_24h: counts.avg_seconds === null ? null : Math.round(Number(counts.avg_seconds)), profiled_channels: models.reduce((n, m) => n + m.channels, 0), model_versions: models });
@@ -47,17 +47,17 @@ export async function readDataApiSummary(pool: Pool, workspace: string, limit: n
   const client = await pool.connect();
   try {
     const window = await quotaWindow(client, now);
-    const budget = (await client.query('SELECT used_units,reserved_units FROM m1.data_api_budget WHERE workspace_id=$1 AND quota_day=$2', [workspace, window.day])).rows[0];
+    const budget = (await client.query('SELECT used_units,reserved_units FROM control.data_api_budget WHERE workspace_id=$1 AND quota_day=$2', [workspace, window.day])).rows[0];
     const since = `$2::timestamptz-interval '24 hours'`;
     const hourly = (await client.query(`SELECT hour,coalesce(calls,0)::int AS calls,coalesce(failures,0)::int AS failures
       FROM generate_series(date_trunc('hour',${since})+interval '1 hour',date_trunc('hour',$2::timestamptz),interval '1 hour') hour
-      LEFT JOIN (SELECT date_trunc('hour',granted_at) AS h,count(*) AS calls,count(failure) AS failures FROM m1.data_api_permits
+      LEFT JOIN (SELECT date_trunc('hour',granted_at) AS h,count(*) AS calls,count(failure) AS failures FROM control.data_api_permits
         WHERE workspace_id=$1 AND granted_at>${since} GROUP BY 1) x ON x.h=hour ORDER BY hour`, [workspace, now])).rows;
-    const endpoints = (await client.query(`SELECT coalesce(endpoint,'unknown') AS endpoint,count(*)::int AS calls,count(failure)::int AS failures FROM m1.data_api_permits
+    const endpoints = (await client.query(`SELECT coalesce(endpoint,'unknown') AS endpoint,count(*)::int AS calls,count(failure)::int AS failures FROM control.data_api_permits
       WHERE workspace_id=$1 AND granted_at>${since} GROUP BY 1 ORDER BY 2 DESC,1 LIMIT 10`, [workspace, now])).rows;
-    const reasons = (await client.query(`SELECT failure AS reason,count(*)::int AS count FROM m1.data_api_permits
+    const reasons = (await client.query(`SELECT failure AS reason,count(*)::int AS count FROM control.data_api_permits
       WHERE workspace_id=$1 AND failure IS NOT NULL AND failed_at>${since} GROUP BY 1 ORDER BY 2 DESC,1`, [workspace, now])).rows;
-    const recent = (await client.query(`SELECT d.failed_at AS at,d.endpoint,d.failure AS reason,d.plan_id,p.channel_id FROM m1.data_api_permits d JOIN m1.plans p ON p.plan_id=d.plan_id
+    const recent = (await client.query(`SELECT d.failed_at AS at,d.endpoint,d.failure AS reason,d.plan_id,p.channel_id FROM control.data_api_permits d JOIN control.plans p ON p.plan_id=d.plan_id
       WHERE d.workspace_id=$1 AND d.failure IS NOT NULL ORDER BY d.failed_at DESC LIMIT 20`, [workspace])).rows;
     return DataApiSummarySchema.parse({ observed_at: now.toISOString(), quota_day: window.day, reset_at: window.reset_at, limit,
       used_units: Number(budget?.used_units ?? 0), reserved_units: Number(budget?.reserved_units ?? 0),

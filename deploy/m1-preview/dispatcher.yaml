@@ -45,6 +45,7 @@ spec:
             # Paused 2026-10-09 while collection is reworked: no scheduled updates, imports or candidate admission.
             - { name: UPDATE_SCHEDULER_ENABLED, value: "false" }
             - { name: QUERY_AUTO_ADMIT, value: "false" }
+            - { name: PIPELINE_ENABLED, value: "true" }
             - { name: PG_CA_FILE, value: /secrets/pg-ca.crt }
             - { name: PG_TLS_SERVERNAME, value: crawler-pg-pool.db.svc.cluster.local }
             - name: DATABASE_URL

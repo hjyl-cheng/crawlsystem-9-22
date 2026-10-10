@@ -18,7 +18,7 @@ function required(name:string):string {const value=process.env[name];if(!value)t
 // The real Temporal adapter is linked statically; there is no mock workflow fallback.
 const starter=await createWorkflowStarter(temporalOptions());
 const tracing=new RequestTracing('intent-dispatcher',record=>process.stdout.write(JSON.stringify({time:new Date().toISOString(),...record})+'\n'),Number(process.env.TRACE_SAMPLE_RATIO??'0.1'));
-const pool=createPool(),store=new Store(pool,updateLimits(),discoveryLimits()),dispatcher=new IntentDispatcher(store,starter,required('M1_WORKSPACE_ID'),tracing);
+const pool=createPool(),store=new Store(pool,updateLimits(),discoveryLimits(),{enabled:process.env.PIPELINE_ENABLED==='true'}),dispatcher=new IntentDispatcher(store,starter,required('M1_WORKSPACE_ID'),tracing);
 let stopping=false;process.once('SIGINT',()=>{stopping=true;});process.once('SIGTERM',()=>{stopping=true;});
 // Renewed mTLS files: exit cleanly (intents are leased) and let Kubernetes restart us.
 watchTlsFiles(process.env,()=>{process.stderr.write('Temporal client certificate changed; restarting\n');stopping=true;});

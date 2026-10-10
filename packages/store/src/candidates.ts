@@ -16,29 +16,29 @@ import { DiscoveryError } from './discovery.ts';
 /** Queue imports for candidates just admitted; a failed import of the same channel is queued again. */
 async function queueImports(client: PoolClient, workspace: string, channelIds: string[], requestedBy: string) {
   if (!channelIds.length) return;
-  await client.query(`INSERT INTO m1.channel_imports(workspace_id,channel_id,requested_by,request_id) SELECT $1,c,$3,$4 FROM unnest($2::text[]) c
+  await client.query(`INSERT INTO control.channel_imports(workspace_id,channel_id,requested_by,request_id) SELECT $1,c,$3,$4 FROM unnest($2::text[]) c
     ON CONFLICT(workspace_id,channel_id) DO UPDATE SET state='queued',plan_id=NULL,requested_by=EXCLUDED.requested_by,request_id=EXCLUDED.request_id,requested_at=clock_timestamp(),updated_at=clock_timestamp()
-    WHERE m1.channel_imports.state='failed'`, [workspace, channelIds, requestedBy, randomUUID()]);
+    WHERE control.channel_imports.state='failed'`, [workspace, channelIds, requestedBy, randomUUID()]);
 }
 
 /** Top the import queue up to `import_buffer` from qualified candidates; returns the channels admitted. */
 export async function admitCandidates(client: PoolClient, workspace: string, limits: DiscoveryLimits, now = new Date()): Promise<string[]> {
   if (!limits.auto_admit) return [];
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`candidate-admit:${workspace}`]);
-  const queued = (await client.query(`SELECT count(*)::int AS n FROM m1.channel_imports WHERE workspace_id=$1 AND state='queued'`, [workspace])).rows[0]!.n;
+  const queued = (await client.query(`SELECT count(*)::int AS n FROM control.channel_imports WHERE workspace_id=$1 AND state='queued'`, [workspace])).rows[0]!.n;
   const room = limits.import_buffer - queued;
   if (room <= 0) return [];
   // Categories take turns: a category's next candidate waits behind those it already had admitted in
   // the last week; within a category, more subscribers first.
   const picked = (await client.query(`SELECT channel_id FROM (
       SELECT k.channel_id,k.subscriber_count,coalesce(a.n,0)+row_number() OVER (PARTITION BY b.category ORDER BY k.subscriber_count DESC NULLS LAST,k.discovered_at,k.channel_id) AS turn
-      FROM m1.channel_candidates k JOIN m1.query_bindings b ON b.binding_id=k.first_binding_id
-      LEFT JOIN (SELECT q.category,count(*)::int AS n FROM m1.channel_candidates c JOIN m1.query_bindings q ON q.binding_id=c.first_binding_id
+      FROM control.channel_candidates k JOIN control.query_bindings b ON b.binding_id=k.first_binding_id
+      LEFT JOIN (SELECT q.category,count(*)::int AS n FROM control.channel_candidates c JOIN control.query_bindings q ON q.binding_id=c.first_binding_id
         WHERE c.workspace_id=$1 AND c.state='ADMITTED' AND c.decided_at>=$3::timestamptz-interval '7 days' GROUP BY 1) a ON a.category=b.category
       WHERE k.workspace_id=$1 AND k.state='QUALIFIED') k
     ORDER BY turn,subscriber_count DESC NULLS LAST,channel_id LIMIT $2`, [workspace, room, now])).rows.map(r => r.channel_id as string);
   // Only those still qualified: an operator's decision in the meantime wins.
-  const admitted = (await client.query(`UPDATE m1.channel_candidates SET state='ADMITTED',decided_by='auto',decided_at=$3,decision_reason=NULL,version=version+1
+  const admitted = (await client.query(`UPDATE control.channel_candidates SET state='ADMITTED',decided_by='auto',decided_at=$3,decision_reason=NULL,version=version+1
     WHERE workspace_id=$1 AND channel_id=ANY($2::text[]) AND state='QUALIFIED' RETURNING channel_id`, [workspace, picked, now])).rows.map(r => r.channel_id as string);
   await queueImports(client, workspace, admitted, 'discovery');
   return admitted;
@@ -46,8 +46,8 @@ export async function admitCandidates(client: PoolClient, workspace: string, lim
 
 export async function commandCandidate(client: PoolClient, workspace: string, actor: string, channelId: string, raw: unknown, now = new Date()): Promise<Candidate> {
   const command = CandidateCommandSchema.parse(raw);
-  const row = (await client.query(`SELECT k.state,k.version,i.state AS import_state FROM m1.channel_candidates k
-    LEFT JOIN m1.channel_imports i ON i.workspace_id=k.workspace_id AND i.channel_id=k.channel_id WHERE k.workspace_id=$1 AND k.channel_id=$2 FOR UPDATE OF k`, [workspace, channelId])).rows[0];
+  const row = (await client.query(`SELECT k.state,k.version,i.state AS import_state FROM control.channel_candidates k
+    LEFT JOIN control.channel_imports i ON i.workspace_id=k.workspace_id AND i.channel_id=k.channel_id WHERE k.workspace_id=$1 AND k.channel_id=$2 FOR UPDATE OF k`, [workspace, channelId])).rows[0];
   if (!row) throw new DiscoveryError('NOT_FOUND', 'Candidate not found');
   if (row.version !== command.expected_version) throw new DiscoveryError('CONFLICT', 'Candidate changed; refresh before deciding');
   if (command.action === 'admit') {
@@ -59,11 +59,11 @@ export async function commandCandidate(client: PoolClient, workspace: string, ac
     if (row.state === 'REJECTED') throw new DiscoveryError('CONFLICT', 'Candidate is already rejected');
     if (row.state === 'ADMITTED') {
       // Withdrawn only while its import still waits in the queue.
-      const withdrawn = await client.query(`DELETE FROM m1.channel_imports WHERE workspace_id=$1 AND channel_id=$2 AND state='queued'`, [workspace, channelId]);
+      const withdrawn = await client.query(`DELETE FROM control.channel_imports WHERE workspace_id=$1 AND channel_id=$2 AND state='queued'`, [workspace, channelId]);
       if (!withdrawn.rowCount) throw new DiscoveryError('CONFLICT', 'Collection of this channel has already started');
     }
   }
-  await client.query(`UPDATE m1.channel_candidates SET state=$3,decided_by=$4,decided_at=$5,decision_reason=$6,version=version+1 WHERE workspace_id=$1 AND channel_id=$2`,
+  await client.query(`UPDATE control.channel_candidates SET state=$3,decided_by=$4,decided_at=$5,decision_reason=$6,version=version+1 WHERE workspace_id=$1 AND channel_id=$2`,
     [workspace, channelId, command.action === 'admit' ? 'ADMITTED' : 'REJECTED', actor, now, command.reason ?? null]);
   return (await listCandidates(client, workspace, { channel_id: channelId }, 1, 0))[0]!;
 }
@@ -72,9 +72,9 @@ export interface CandidateFilter { channel_id?: string; state?: string; category
 
 export async function listCandidates(client: PoolClient | Pool, workspace: string, filter: CandidateFilter, limit: number, offset: number): Promise<Candidate[]> {
   const rows = (await client.query(`SELECT k.*,b.country AS found_country,b.category,t.text,i.state AS import_state,
-      (SELECT count(*)::int FROM m1.query_run_channels rc JOIN m1.query_runs r USING (run_id) WHERE rc.channel_id=k.channel_id AND r.workspace_id=k.workspace_id) AS found_count
-    FROM m1.channel_candidates k JOIN m1.query_bindings b ON b.binding_id=k.first_binding_id JOIN m1.query_terms t ON t.term_id=b.term_id
-    LEFT JOIN m1.channel_imports i ON i.workspace_id=k.workspace_id AND i.channel_id=k.channel_id
+      (SELECT count(*)::int FROM control.query_run_channels rc JOIN control.query_runs r USING (run_id) WHERE rc.channel_id=k.channel_id AND r.workspace_id=k.workspace_id) AS found_count
+    FROM control.channel_candidates k JOIN control.query_bindings b ON b.binding_id=k.first_binding_id JOIN control.query_terms t ON t.term_id=b.term_id
+    LEFT JOIN control.channel_imports i ON i.workspace_id=k.workspace_id AND i.channel_id=k.channel_id
     WHERE k.workspace_id=$1 AND ($2::text IS NULL OR k.channel_id=$2) AND ($3::text IS NULL OR k.state=$3) AND ($4::text IS NULL OR b.category=$4)
       AND ($5::text IS NULL OR k.channel_id=$5 OR strpos(lower(coalesce(k.title,'')),lower($5))>0 OR strpos(t.text,lower($5))>0)
     ORDER BY CASE k.state WHEN 'QUALIFIED' THEN 0 WHEN 'ADMITTED' THEN 1 WHEN 'UNQUALIFIED' THEN 2 WHEN 'UNAVAILABLE' THEN 3 ELSE 4 END,
@@ -92,11 +92,11 @@ export async function listCandidates(client: PoolClient | Pool, workspace: strin
 export async function candidateSummary(pool: Pool, workspace: string, limits: DiscoveryLimits, now = new Date()): Promise<CandidateSummary> {
   const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const states = (await pool.query(`SELECT state,count(*)::int AS n,count(*) FILTER (WHERE state='ADMITTED' AND decided_at>=$2)::int AS today
-    FROM m1.channel_candidates WHERE workspace_id=$1 GROUP BY 1`, [workspace, day])).rows;
+    FROM control.channel_candidates WHERE workspace_id=$1 GROUP BY 1`, [workspace, day])).rows;
   const categories = (await pool.query(`SELECT b.category,count(*) FILTER (WHERE k.state='QUALIFIED')::int AS qualified,count(*) FILTER (WHERE k.state='ADMITTED')::int AS admitted
-    FROM m1.channel_candidates k JOIN m1.query_bindings b ON b.binding_id=k.first_binding_id
+    FROM control.channel_candidates k JOIN control.query_bindings b ON b.binding_id=k.first_binding_id
     WHERE k.workspace_id=$1 AND k.state IN ('QUALIFIED','ADMITTED') GROUP BY 1 ORDER BY 2 DESC,3 DESC,1`, [workspace])).rows;
-  const queue = (await pool.query(`SELECT count(*)::int AS n FROM m1.channel_imports WHERE workspace_id=$1 AND state='queued'`, [workspace])).rows[0]!.n;
+  const queue = (await pool.query(`SELECT count(*)::int AS n FROM control.channel_imports WHERE workspace_id=$1 AND state='queued'`, [workspace])).rows[0]!.n;
   return CandidateSummarySchema.parse({ observed_at: now.toISOString(), by_state: Object.fromEntries(CANDIDATE_STATES.map(s => [s, states.find(r => r.state === s)?.n ?? 0])),
     admitted_today: states.reduce((n, r) => n + r.today, 0), auto_admit: limits.auto_admit, import_buffer: limits.import_buffer, import_queue: queue,
     by_category: categories.filter(r => (BUSINESS_CATEGORIES as readonly string[]).includes(r.category)) });

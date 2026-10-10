@@ -2,6 +2,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { DataApiFailureReportSchema, DataApiPermitRequestSchema, DataApiPermitSchema, QueryRunClaimSchema, QueryRunCompleteSchema, QueryRunFailResultSchema, QueryRunFailSchema,
   QueryRunHeartbeatSchema, QueryRunLeaseSchema, QueryRunPageResultSchema, QueryRunPageSchema, QueryRunPermitFailureSchema, QueryRunPermitRequestSchema, QueryRunResultSchema } from '@crawlsystem/contracts';
 import { z } from 'zod';
+import { PipelineProgressSchema, StepManifestSchema } from '@crawlsystem/contracts/pipeline';
+import { PlanSchema, WorkflowInputSchema } from '@crawlsystem/contracts';
 import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, AgentInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
   ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, TemporalTokenSchema, ProxySyncRequestSchema, ProxySyncResponseSchema, type ProxySyncRequest, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
 
@@ -127,6 +129,11 @@ export class ExecutionApi {
   session(budget?: RequestBudget) { return this.request(this.control, ApiRoutes.session, SessionSchema, undefined, budget); }
   input(id: string, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.input(id), PlanInputSchema, undefined, budget); }
   agentInput(id: string, budget?: RequestBudget) { return this.request(this.control, ApiRoutes.agentInput(id), AgentInputSchema, undefined, budget); }
+  pipelineConfirm(id:string,budget?:RequestBudget) { return this.request(this.control,`/v1/plans/${id}/pipeline/confirm`,PlanSchema,{},budget); }
+  pipelineProgress(id:string,budget?:RequestBudget) { return this.request(this.control,`/v1/plans/${id}/pipeline`,PipelineProgressSchema,undefined,budget); }
+  pipelineManifest(value:unknown,budget?:RequestBudget) { return this.request(this.control,'/v1/pipeline/manifests',z.strictObject({recorded:z.boolean()}),StepManifestSchema.parse(value),budget); }
+  pipelineReconciliation(budget?:RequestBudget) { return this.request(this.control,'/v1/pipeline/reconciliation',z.strictObject({owners:z.array(WorkflowInputSchema),units:z.array(z.unknown())}),undefined,budget); }
+  navigation(value:Submission,budget?:RequestBudget) { return this.request(this.control,'/v1/pipeline/navigation',ReceiptSchema,SubmissionSchema.parse(value),budget); }
   async receipt(id: string, budget?: RequestBudget): Promise<Receipt | null> {
     try { return await this.request(this.control, ApiRoutes.receipt(id), ReceiptSchema, undefined, budget); }
     catch (error) { if (error instanceof ExecutionApiError && error.code === 'NOT_FOUND') return null; throw error; }

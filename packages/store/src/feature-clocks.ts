@@ -15,7 +15,7 @@ import {
 /**
  * Update clocks from the legacy algorithm (packages/feature-clock): what the new system collected is
  * read as the legacy observations, applied to the channel's stored feature state, and the resulting
- * clocks are written to m1.channel_clocks with an operator's pinned interval applied on top.
+ * clocks are written to control.channel_clocks with an operator's pinned interval applied on top.
  */
 
 if (ACTIVE_POLICY.policy_version !== CLOCK_POLICY_VERSION) throw new Error('contracts and feature-clock disagree on the clock policy');
@@ -44,7 +44,7 @@ export function aboutObservation(about: ChannelFacts): Observation {
   } };
 }
 
-/** What an incremental update's Recent Sampling found (m1.plan_video_samples plus the pool at settlement). */
+/** What an incremental update's Recent Sampling found (control.plan_video_samples plus the pool at settlement). */
 export interface SamplingResult {
   recent_count: number; stale_ratio: number; selected_count: number; success_count: number; failure_count: number;
   comparable_view_count: number; view_changed_count: number; engagement_changed_count: number;
@@ -101,22 +101,22 @@ export function agentObservation(agent: AgentResult, observedAt: Instant = parse
 export interface StoredClocks { snapshot: ClockSnapshot; reasons: Partial<Record<ClockKind, string[]>> }
 
 export async function loadClocks(client: PoolClient, workspaceId: string, channelId: string): Promise<StoredClocks | null> {
-  const row = (await client.query('SELECT state,clock,applied,reasons FROM m1.channel_feature_state WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE', [workspaceId, channelId])).rows[0];
+  const row = (await client.query('SELECT state,clock,applied,reasons FROM control.channel_feature_state WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE', [workspaceId, channelId])).rows[0];
   if (!row) return null;
   return { snapshot: { state: deserializeState(row.state), clock: row.clock ? deserializeClock(row.clock) : null, applied: { ...EMPTY_SNAPSHOT.applied, ...row.applied } }, reasons: row.reasons };
 }
 
 async function saveClocks(client: PoolClient, workspaceId: string, channelId: string, stored: StoredClocks): Promise<void> {
   const { state, clock, applied } = stored.snapshot;
-  await client.query(`INSERT INTO m1.channel_feature_state(workspace_id,channel_id,policy_version,state,clock,applied,reasons) VALUES($1,$2,$3,$4,$5,$6,$7)
+  await client.query(`INSERT INTO control.channel_feature_state(workspace_id,channel_id,policy_version,state,clock,applied,reasons) VALUES($1,$2,$3,$4,$5,$6,$7)
     ON CONFLICT(workspace_id,channel_id) DO UPDATE SET policy_version=EXCLUDED.policy_version,state=EXCLUDED.state,clock=EXCLUDED.clock,applied=EXCLUDED.applied,reasons=EXCLUDED.reasons,updated_at=clock_timestamp()`,
   [workspaceId, channelId, CLOCK_POLICY_VERSION, serializeState(state), clock ? serializeClock(clock) : null, applied, stored.reasons]);
 }
 
 /** The newest reference distributions on or before `day` (the legacy load_reference_catalog). */
 export async function referenceCatalog(client: PoolClient | Pool, workspaceId: string, day: Day): Promise<ReferenceCatalog> {
-  const rows = (await client.query(`SELECT as_of_day::text AS as_of_day,feature_name,cohort_key,sample_count,quantiles FROM m1.feature_reference_distributions
-    WHERE workspace_id=$1 AND method_version=$2 AND as_of_day=(SELECT max(as_of_day) FROM m1.feature_reference_distributions WHERE workspace_id=$1 AND method_version=$2 AND as_of_day<=$3::date)
+  const rows = (await client.query(`SELECT as_of_day::text AS as_of_day,feature_name,cohort_key,sample_count,quantiles FROM control.feature_reference_distributions
+    WHERE workspace_id=$1 AND method_version=$2 AND as_of_day=(SELECT max(as_of_day) FROM control.feature_reference_distributions WHERE workspace_id=$1 AND method_version=$2 AND as_of_day<=$3::date)
     ORDER BY feature_name,cohort_key`, [workspaceId, REFERENCE_METHOD_VERSION, day])).rows;
   return new ReferenceCatalog(rows.map(row => ({ as_of_day: row.as_of_day, feature_name: row.feature_name, cohort_key: row.cohort_key, sample_count: row.sample_count,
     probabilities: row.quantiles.probabilities, values: row.quantiles.values, method_version: REFERENCE_METHOD_VERSION })));
@@ -152,18 +152,18 @@ export interface ClockActivity { planId: string | null; succeeded: Partial<Recor
 export async function writeClocks(client: PoolClient, workspaceId: string, channelId: string, stored: StoredClocks, activity: ClockActivity, now: Date): Promise<void> {
   const clock = stored.snapshot.clock;
   if (clock === null) return;
-  const existing = new Map((await client.query('SELECT clock,override_days,last_success_at FROM m1.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE', [workspaceId, channelId]))
+  const existing = new Map((await client.query('SELECT clock,override_days,last_success_at FROM control.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE', [workspaceId, channelId]))
     .rows.map(row => [row.clock as ClockName, row as { override_days: number | null; last_success_at: Date | null }]));
   for (const kind of CLOCK_KINDS) {
     const name = NAME[kind], pinned = existing.get(name)?.override_days ?? null;
     const lastSuccess = activity.succeeded[kind] ?? existing.get(name)?.last_success_at ?? null;
     let dueDay = clock[`${kind}_due_day`], interval = clock[`${kind}_tier`], reasons = stored.reasons[kind] ?? [BOOTSTRAP_BASELINE_REASON];
     if (pinned !== null) [dueDay, interval, reasons] = [addDays(utcDay(instantFromDate(lastSuccess ?? now)), pinned), pinned, [MANUAL_OVERRIDE_REASON]];
-    await client.query(`INSERT INTO m1.channel_clocks(workspace_id,channel_id,clock,due_at,retry_at,interval_days,reason,reasons,policy_version,last_success_at,last_attempt_at,last_plan_id)
+    await client.query(`INSERT INTO control.channel_clocks(workspace_id,channel_id,clock,due_at,retry_at,interval_days,reason,reasons,policy_version,last_success_at,last_attempt_at,last_plan_id)
       VALUES($1,$2,$3,$4,NULL,$5,$6,$7,$8,$9,$10,$11)
       ON CONFLICT(workspace_id,channel_id,clock) DO UPDATE SET due_at=EXCLUDED.due_at,retry_at=NULL,interval_days=EXCLUDED.interval_days,reason=EXCLUDED.reason,reasons=EXCLUDED.reasons,
-        policy_version=EXCLUDED.policy_version,last_success_at=coalesce(EXCLUDED.last_success_at,m1.channel_clocks.last_success_at),
-        last_attempt_at=coalesce(EXCLUDED.last_attempt_at,m1.channel_clocks.last_attempt_at),last_plan_id=coalesce(EXCLUDED.last_plan_id,m1.channel_clocks.last_plan_id),updated_at=clock_timestamp()`,
+        policy_version=EXCLUDED.policy_version,last_success_at=coalesce(EXCLUDED.last_success_at,control.channel_clocks.last_success_at),
+        last_attempt_at=coalesce(EXCLUDED.last_attempt_at,control.channel_clocks.last_attempt_at),last_plan_id=coalesce(EXCLUDED.last_plan_id,control.channel_clocks.last_plan_id),updated_at=clock_timestamp()`,
     [workspaceId, channelId, name, dayStart(dueDay), interval, reasons.at(-1)!.slice(0, 60), reasons, CLOCK_POLICY_VERSION,
       activity.succeeded[kind] ?? null, activity.attempted[kind] ?? activity.succeeded[kind] ?? null, activity.attempted[kind] || activity.succeeded[kind] ? activity.planId : null]);
   }
@@ -185,29 +185,29 @@ export async function refreshReferences(pool: Pool, workspaceId: string, now = n
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('m1.feature_reference_distributions:' || $1))", [workspaceId]);
-    const done = await client.query('SELECT 1 FROM m1.feature_reference_distributions WHERE workspace_id=$1 AND method_version=$2 AND as_of_day=$3::date LIMIT 1', [workspaceId, REFERENCE_METHOD_VERSION, day]);
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('control.feature_reference_distributions:' || $1))", [workspaceId]);
+    const done = await client.query('SELECT 1 FROM control.feature_reference_distributions WHERE workspace_id=$1 AND method_version=$2 AND as_of_day=$3::date LIMIT 1', [workspaceId, REFERENCE_METHOD_VERSION, day]);
     if (done.rowCount) { await client.query('ROLLBACK'); return null; }
     let distributions = 0;
     for (const [feature, field] of Object.entries(REFERENCE_FEATURES)) {
       const cohorts = feature === 'subscriber_count' ? `'all'` : `unnest(ARRAY['all', ${COHORT_SQL}])`;
       const rows = (await client.query(`SELECT cohort_key, count(value)::int AS sample_count,
           percentile_cont($3::float8[]) WITHIN GROUP (ORDER BY value) AS values
-        FROM (SELECT (state->>$2)::float8 AS value, (state->>'last_subscriber_count')::float8 AS v_subs FROM m1.channel_feature_state WHERE workspace_id=$1) samples,
+        FROM (SELECT (state->>$2)::float8 AS value, (state->>'last_subscriber_count')::float8 AS v_subs FROM control.channel_feature_state WHERE workspace_id=$1) samples,
           LATERAL (SELECT ${cohorts} AS cohort_key) cohort
         WHERE value IS NOT NULL GROUP BY cohort_key`, [workspaceId, field, QUANTILE_PROBABILITIES])).rows;
       for (const row of rows) {
-        await client.query(`INSERT INTO m1.feature_reference_distributions(workspace_id,method_version,as_of_day,feature_name,cohort_key,sample_count,quantiles) VALUES($1,$2,$3::date,$4,$5,$6,$7)`,
+        await client.query(`INSERT INTO control.feature_reference_distributions(workspace_id,method_version,as_of_day,feature_name,cohort_key,sample_count,quantiles) VALUES($1,$2,$3::date,$4,$5,$6,$7)`,
           [workspaceId, REFERENCE_METHOD_VERSION, day, feature, row.cohort_key, row.sample_count, { probabilities: QUANTILE_PROBABILITIES, values: row.values }]);
         distributions += 1;
       }
     }
     const catalog = await referenceCatalog(client, workspaceId, day), asOf = instantFromDate(dayStart(day));
     let channels = 0;
-    for (const row of (await client.query('SELECT channel_id,state FROM m1.channel_feature_state WHERE workspace_id=$1 ORDER BY channel_id FOR UPDATE', [workspaceId])).rows) {
+    for (const row of (await client.query('SELECT channel_id,state FROM control.channel_feature_state WHERE workspace_id=$1 ORDER BY channel_id FOR UPDATE', [workspaceId])).rows) {
       const refreshed = refreshSharedFeatures(deserializeState(row.state), catalog, NO_SIGNALS, asOf);
       if (refreshed === null) continue;
-      await client.query('UPDATE m1.channel_feature_state SET state=$3,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2', [workspaceId, row.channel_id, serializeState(refreshed)]);
+      await client.query('UPDATE control.channel_feature_state SET state=$3,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2', [workspaceId, row.channel_id, serializeState(refreshed)]);
       channels += 1;
     }
     await client.query('COMMIT');

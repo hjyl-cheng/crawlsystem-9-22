@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router';
+import { useState } from 'react';
 import { isVideoUnavailable, type ChannelFacts, type ChannelDetail, type VideoFacts, type VideoUnavailable, type AgentResult } from '@crawlsystem/contracts';
 import ClockPolicy from '../components/clock-policy.js';
 import { useAuth } from '../auth.js';
@@ -16,14 +17,22 @@ function UnavailableVideo({ video }: { video: VideoUnavailable }) {
   return <article className="video-card"><div className="panel-heading"><div><h3>视频不可采集</h3><small className="muted mono">{video.source_content_id}</small></div><Badge>{video.access_status}</Badge></div><p>{video.reason}</p><Fields rows={[['判断来源', video.source], ['观察时间', time(video.observed_at)]]}/></article>;
 }
 function Video({ video }: { video: VideoFacts }) {
-  const comments = video.comments_first_page;
+  const [requested,setRequested]=useState(false),comments=video.comments_first_page??video.comments_summary;
   return <article className="video-card"><div className="panel-heading"><div><h3>{video.title}</h3><small className="muted mono">{video.source_content_id}</small></div><Badge>{video.content_type}</Badge></div><p>{video.description ?? '描述尚未提供'}</p><Fields rows={[
     ['访问状态', video.access_status], ['视频链接', <SafeLink href={video.url}>{video.url}</SafeLink>], ['发布时间', video.published_at ? `${time(video.published_at)}（${video.published_at_status}）` : `尚未提供（${video.published_at_status}）`], ['采集时间', time(video.observed_at)], ['解析器版本', video.extractor_version],
   ]}/><div className="metrics-grid"><Metric label="播放量" metric={video.view_count}/><Metric label="点赞量" metric={video.like_count}/><Metric label="评论总量" metric={video.comment_count}/><Metric label="时长（秒）" metric={video.duration_seconds}/></div>
-    <details className="comments"><summary>首屏评论 · {video.comments_disabled === true ? '评论已关闭' : comments ? `${comments.returned_count} 条已入库` : '尚无入库结果'}</summary>
-      {video.comments_disabled === true ? <div className="notice">该视频已关闭评论。</div> : comments ? <><p className="fine-print">采集于 {time(comments.collected_at)} · 排序：{comments.sort === 'TOP_COMMENTS' ? '热门评论' : '最新评论'} · 上游总量：{number(comments.total_count)}</p>{comments.comments.length ? comments.comments.map(comment => <article className="comment" key={comment.comment_id}><strong>{comment.author_name ?? '作者未知'}</strong><p>{comment.text}</p><small>点赞 {number(comment.like_count)} · 回复 {number(comment.reply_count)} · {comment.published_at_utc ? time(comment.published_at_utc) : comment.published_text_raw ?? '发布时间未知'}{comment.is_pinned === true ? ' · 已置顶' : ''}</small></article>) : <Empty title="已采集，首屏评论为空"/>}</> : <Empty title="评论尚无入库结果">尚不能判断首屏是否为空。</Empty>}
+    <details className="comments" onToggle={e=>{if(e.currentTarget.open)setRequested(true);}}><summary>首屏评论 · {video.comments_disabled === true ? '评论已关闭' : comments ? `${comments.returned_count} 条已采集` : '尚无入库结果'}</summary>
+      {video.comments_disabled === true ? <div className="notice">该视频已关闭评论。</div> : requested ? <Comments video={video}/> : null}
     </details>
   </article>;
+}
+function Comments({video}:{video:VideoFacts}) {
+  const {api}=useAuth();
+  const resource=useResource(`comments:${video.channel_id}:${video.source_content_id}:${video.comments_ref?.sha256??'legacy'}`,
+    signal=>video.comments_first_page ? Promise.resolve({page:video.comments_first_page,state:'AVAILABLE' as const}) : api.comments(video.channel_id,video.source_content_id,signal),false);
+  return <ResourceView resource={resource}>{({page:comments,state})=>comments ? <><p className="fine-print">采集于 {time(comments.collected_at)} · 排序：{comments.sort === 'TOP_COMMENTS' ? '热门评论' : '最新评论'} · 上游总量：{number(comments.total_count)}</p>
+    {comments.comments.length ? comments.comments.map(comment=><article className="comment" key={comment.comment_id}><strong>{comment.author_name??'作者未知'}</strong><p>{comment.text}</p><small>点赞 {number(comment.like_count)} · 回复 {number(comment.reply_count)} · {comment.published_at_utc?time(comment.published_at_utc):comment.published_text_raw??'发布时间未知'}{comment.is_pinned===true?' · 已置顶':''}</small></article>) : <Empty title="已采集，首屏评论为空"/>}</>
+    : <Empty title={state==='EXPIRED'?'评论正文已超过保留期':'评论尚无入库结果'}>{state==='EXPIRED'?'采集数量与时间仍可查看，后续采集会更新正文。':'尚不能判断首屏是否为空。'}</Empty>}</ResourceView>;
 }
 const confidenceLabels = { high: '高', medium: '中', low: '低' } as const;
 /** Why a value is only an estimate: the model bundle's own status for that field. */

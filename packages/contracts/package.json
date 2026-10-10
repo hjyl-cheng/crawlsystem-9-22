@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts", "./fixtures": "./src/fixtures.ts", "./hash": "./src/hash.ts",
-    "./clocks": "./src/clocks.ts" },
+    "./clocks": "./src/clocks.ts", "./pipeline": "./src/pipeline.ts" },
   "dependencies": { "zod": "4.6.5" }
 }

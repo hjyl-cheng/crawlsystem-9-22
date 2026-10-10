@@ -9,7 +9,7 @@ metadata:
   namespace: ingest
   labels: { app.kubernetes.io/name: ingest-preview }
 spec:
-  replicas: 2
+  replicas: 0
   strategy:
     type: RollingUpdate
     rollingUpdate: { maxSurge: 0, maxUnavailable: 1 }

@@ -15,10 +15,12 @@ if (( available_kib < 2621440 )); then
 fi
 
 heap_mib=384
+scope_high=768M
+scope_max=1G
 case "${1:-}" in
   lockfile) command=(npm install --package-lock-only --ignore-scripts --offline --no-audit --no-fund) ;;
   install) command=(npm ci --offline --no-audit --no-fund) ;;
-  typecheck) heap_mib=800; command=(node node_modules/typescript/bin/tsc --noEmit) ;;
+  typecheck) heap_mib=1152; scope_high=1280M; scope_max=1536M; command=(node node_modules/typescript/bin/tsc --noEmit) ;;
   unit) command=(node --import tsx --test --test-concurrency=1 packages/contracts/test/*.test.ts packages/feature-clock/test/*.test.ts packages/store/test/*.test.ts packages/http/test/*.test.ts apps/control-api/test/*.test.ts apps/console/tests/*.test.ts packages/execution-client/test/*.test.ts apps/execution-worker/test/*.test.ts apps/proxy-manager/test/*.test.ts) ;;
   execution-build) command=(npm run build:execution) ;;
   images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts) ;;
@@ -29,13 +31,19 @@ case "${1:-}" in
   collection-storage) command=(node --import tsx scripts/dev/verify-r2-storage.ts) ;;
   collection-preview) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-preview.ts "${@:2}") ;;
   collection-update) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-update.ts "${@:2}") ;;
+  pipeline-unit) command=(node --import tsx --test --test-concurrency=1 apps/raw-parser/test/*.test.ts packages/http/test/workload.test.ts) ;;
+  pipeline-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 tests/integration/pipeline.test.ts) ;;
+  pipeline-replay) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r3-replay.ts) ;;
+  pipeline-preview) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r3-preview.ts "${@:2}") ;;
+  pipeline-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r3-browser.ts) ;;
+  pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;
   collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-browser.ts) ;;
   fingerprint-gateway)
     command=(env LD_LIBRARY_PATH=.runtime/profile-agent/python/usr/local/lib PYTHONPATH=apps/fingerprint-gateway:.runtime/fingerprint-gateway/site PYTHONDONTWRITEBYTECODE=1 .runtime/profile-agent/python/usr/local/bin/python3.12 -m unittest discover -s apps/fingerprint-gateway/tests)
     ;;
   build-console) heap_mib=512; command=(npm run build:console) ;;
-  browser) command=(npm run test:browser) ;;
+  browser) command=(npm run test:browser -- "${@:2}") ;;
   # Python Profile Agent with the pinned interpreter, wheels and verified model bundle (prepared on first use).
   profile-agent)
     command=(bash -c 'node --import tsx scripts/dev/profile-agent-runtime.ts >/dev/null && p=.runtime/profile-agent &&
@@ -43,7 +51,7 @@ case "${1:-}" in
       "$p/python/usr/local/bin/python3.12" -W "ignore:\`load_model\`" -m unittest discover -s apps/profile-agent/tests "$@"' profile-agent "${@:2}")
     ;;
   integration)
-    command=(node "--env-file=${M1_CHECK_ENV_FILE:-.runtime/main.env}" --import tsx --test --test-concurrency=1 tests/integration/*.test.ts)
+    command=(node "--env-file=${M1_CHECK_ENV_FILE:-.runtime/r3-test.env}" --import tsx --test --test-concurrency=1 tests/integration/*.test.ts)
     ;;
   *) echo 'Usage: bash scripts/dev/check-safe.sh lockfile|install|typecheck|unit|build-console|browser|integration|profile-agent|execution-build|images|execution-temporal|execution-live|execution-browser' >&2; exit 64 ;;
 esac
@@ -60,7 +68,7 @@ trap 'exit 143' TERM
 # Fail if the resource boundary cannot be established. A V8 heap cap alone does
 # not cover browser children, native SDK allocations or other subprocesses.
 systemd-run --user --scope --quiet --unit="$unit" \
-  --property=MemoryAccounting=yes --property=MemoryHigh=768M --property=MemoryMax=1G \
+  --property=MemoryAccounting=yes --property=MemoryHigh="$scope_high" --property=MemoryMax="$scope_max" \
   --property=MemorySwapMax=256M --property=CPUQuota=150% --property=TasksMax=256 \
   env NODE_OPTIONS="--max-old-space-size=$heap_mib" PG_POOL_MAX=2 \
   timeout --signal=TERM --kill-after=10s 300s "${command[@]}" &

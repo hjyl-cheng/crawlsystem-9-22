@@ -40,7 +40,7 @@ async function managedChannel(p: ReturnType<typeof people>) {
     window_start: new Date(Date.parse(input.reference_time) - input.scope.max_age_days * DAY).toISOString(), exhausted: true, source: 'test' }, false));
   await store.apply(p.worker, submit(plan, 'VIDEO', 'video:batch:0', { kind: 'videos', items: [video(channel, known[0]!, 2, 1000), video(channel, known[1]!, 5, 2000), video(channel, known[2]!, 40, 3000)] }, true));
   // Counts last read ten days ago: stale, so both recent videos are picked for a re-read.
-  await pool.query("UPDATE m1.videos SET stats_observed_at=now()-interval '10 days' WHERE workspace_id=$1 AND channel_id=$2", [p.op.workspace_id, channel]);
+  await pool.query("UPDATE crawl_data.videos SET stats_observed_at=now()-interval '10 days' WHERE workspace_id=$1 AND channel_id=$2", [p.op.workspace_id, channel]);
   return { channel, known };
 }
 
@@ -72,14 +72,14 @@ test('new uploads are collected, recent counts re-read, and the Video clock gets
   await store.apply(p.worker, submit(plan, 'VIDEO', 'video:samples', samples, true));
   assert.equal((await store.getInput(p.worker, plan.plan_id)).plan.status, 'COMPLETED');
 
-  const facts = (await pool.query('SELECT facts FROM m1.plan_video_samples WHERE plan_id=$1', [plan.plan_id])).rows[0]!.facts;
+  const facts = (await pool.query('SELECT facts FROM control.plan_video_samples WHERE plan_id=$1', [plan.plan_id])).rows[0]!.facts;
   assert.deepEqual(facts, { selected_count: 2, success_count: 2, failure_count: 0, comparable_view_count: 2, view_changed_count: 1, view_delta_total: 500, engagement_changed_count: 1 });
-  const stored = (await pool.query('SELECT data,stats_observed_at,change_probability FROM m1.videos WHERE workspace_id=$1 AND channel_id=$2 AND video_id=$3', [p.op.workspace_id, channel, known[0]])).rows[0]!;
+  const stored = (await pool.query('SELECT data,stats_observed_at,change_probability FROM control.videos WHERE workspace_id=$1 AND channel_id=$2 AND video_id=$3', [p.op.workspace_id, channel, known[0]])).rows[0]!;
   assert.deepEqual([stored.data.view_count.value, stored.data.view_count.source, stored.data.comment_count.value], [1500, 'data_api:videos', 2]);
   assert.equal(stored.change_probability, 0.85, 'views (0.70) and comments (0.15) moved, likes (0.15) did not');
   assert.ok(Date.now() - new Date(stored.stats_observed_at).getTime() < 60_000);
 
-  const state = (await pool.query('SELECT state FROM m1.channel_feature_state WHERE workspace_id=$1 AND channel_id=$2', [p.op.workspace_id, channel])).rows[0]!.state;
+  const state = (await pool.query('SELECT state FROM control.channel_feature_state WHERE workspace_id=$1 AND channel_id=$2', [p.op.workspace_id, channel])).rows[0]!.state;
   assert.equal(state.recent30_video_count, 3, 'the two recent known videos and the new one');
   assert.equal(state.recent_stale_ratio, 1);
   assert.ok(state.last_recent_sampling_at, 'Recent Sampling applied');
@@ -89,14 +89,14 @@ test('new uploads are collected, recent counts re-read, and the Video clock gets
 
 test('an update with nothing new and nothing to re-read completes on its discovery', async () => {
   const p = people(), { channel, known } = await managedChannel(p);
-  await pool.query("UPDATE m1.videos SET stats_observed_at=now() WHERE workspace_id=$1 AND channel_id=$2", [p.op.workspace_id, channel]);
+  await pool.query("UPDATE crawl_data.videos SET stats_observed_at=now() WHERE workspace_id=$1 AND channel_id=$2", [p.op.workspace_id, channel]);
   const version = (await store.getChannel(p.reader, channel)).management.version;
   const plan = await store.updateChannel(p.op, channel, { request_id: randomUUID(), expected_version: version, domains: ['VIDEO'] });
   assert.deepEqual(((await store.getInput(p.worker, plan.plan_id)).input as YoutubeFrozenInput).recent_sampling!.video_ids, [], 'just read: nothing stale');
   await store.apply(p.worker, submit(plan, 'VIDEO', 'video:discovery', { kind: 'discovery', channel_id: channel, video_ids: [], listed_at: new Date().toISOString(),
     scanned_count: 0, pages: 1, matched_anchor_id: known[0], stop_reason: 'anchor_matched', source: 'test' }, true));
   assert.equal((await store.getInput(p.worker, plan.plan_id)).plan.status, 'COMPLETED');
-  const state = (await pool.query('SELECT state FROM m1.channel_feature_state WHERE workspace_id=$1 AND channel_id=$2', [p.op.workspace_id, channel])).rows[0]!.state;
+  const state = (await pool.query('SELECT state FROM control.channel_feature_state WHERE workspace_id=$1 AND channel_id=$2', [p.op.workspace_id, channel])).rows[0]!.state;
   assert.equal(state.new_video_empty_runs, 1, 'an empty discovery counts as an empty run');
 });
 

@@ -6,7 +6,7 @@ pool.on('connect',client=>{
   const original=client.query.bind(client);
   client.query=(async(...args:unknown[])=>{
     const result=await (original as (...args:unknown[])=>Promise<unknown>)(...args);
-    if(typeof args[0]==='string' && args[0].startsWith('INSERT INTO m1.receipts')) {
+    if(typeof args[0]==='string' && args[0].startsWith('INSERT INTO control.receipts')) {
       process.send?.('receipt-written-before-commit');
       await new Promise(()=>{});
     }

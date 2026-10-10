@@ -39,6 +39,10 @@ for(const node of nodes){imports[node]={};for(const artifact of [build.control,b
 const current=(namespace:string,kind:string,name:string)=>{try{return kubectl(['-n',namespace,'get',kind,name,'-o','jsonpath={.spec.template.spec.containers[0].image}']);}catch{return null;}};
 const previous={control:current('control','deployment','control-api-preview'),ingest:current('ingest','deployment','ingest-preview'),
   dispatcher:current('control','deployment','intent-dispatcher'),worker:current('crawler','statefulset','execution-worker'),profile:current('crawler','deployment','profile-agent')};
+// All images exist before the brief schema cutover. The existing database is backed up;
+// no plans, channels, videos or browser identities are reset.
+for(const script of ['prepare-pipeline-preview.ts','configure-pipeline-db.ts'])
+  execFileSync(process.execPath,['--env-file=.runtime/main.env','--import','tsx',`scripts/dev/${script}`],{stdio:'inherit'});
 
 const render=(file:string)=>readFileSync(file,'utf8').replaceAll('control-api:IMAGE_TAG',`control-api:${tagOf(build.control.image)}`)
   .replaceAll('execution-worker:IMAGE_TAG',`execution-worker:${tagOf(build.worker.image)}`).replaceAll('profile-agent:PROFILE_TAG',`profile-agent:${tagOf(build.profile.image)}`)
@@ -54,8 +58,11 @@ for(const name of ['crawlsystem-m1-dispatcher','crawlsystem-m1-worker'])kubectl(
 const tlsKeys=['ca.crt','tls.crt','tls.key'];
 putSecret('control','temporal-client-dispatcher',pick(secretData('temporal','crawlsystem-m1-dispatcher-tls'),tlsKeys));
 putSecret('crawler','temporal-client-worker',pick(secretData('temporal','crawlsystem-m1-worker-tls'),tlsKeys));
-// 4. Ingest uses the same facts database and verification key as Control.
+// 4. Legacy HTTP Ingest is scaled to zero. The PG sink has its own limited database credential.
 putSecret('ingest','ingest-preview',pick(secretData('control','control-api-preview'),['database-url','pg-ca.crt','jwt-secret']));
+apply('docs/crawlsystem-infra-a1-s3/manifests/35-crawl-topics-users.yaml');
+for(const name of ['crawl-parser','crawl-sink-pg']) kubectl(['-n','kafka','wait','--for=condition=Ready',`kafkauser/${name}`,'--timeout=120s']);
+execFileSync('python3',['docs/crawlsystem-infra-a1-s3/scripts/configure-crawl-kafka-clients.py'],{stdio:'inherit'});
 // 5. Temporal namespace tokens: ES256 private key only in Control; public JWKS for the frontend.
 // previous.pem (if present) stays in the JWKS during a key rotation so live tokens keep working.
 mkdirSync('.runtime/temporal-jwt',{recursive:true,mode:0o700});
@@ -77,12 +84,13 @@ step(`secrets ready: control/temporal-client-dispatcher, control/proxy-credentia
 
 // 6. Roll out in dependency order: Control (token exchange) and Ingest before Workers.
 const rollouts:[string,string,string][]=[['control-api','control','deployment/control-api-preview'],['ingest','ingest','deployment/ingest-preview'],
+  ['pg-sink','ingest','deployment/pg-sink'],['raw-parser','crawler','deployment/raw-parser'],
   ['dispatcher','control','deployment/intent-dispatcher'],['proxy-manager','crawler','daemonset/proxy-manager'],['profile-agent','crawler','deployment/profile-agent'],['execution-worker','crawler','statefulset/execution-worker']];
 for(const [file,namespace,resource] of rollouts){
   apply(`deploy/m1-preview/${file}.yaml`);
   kubectl(['-n',namespace,'rollout','status',resource,'--timeout=240s']);step(`${resource} rolled out`);
 }
 const record={revision:build.revision,deployed_at:new Date().toISOString(),control_image:build.control.image,worker_image:build.worker.image,profile_image:build.profile.image,fingerprint_image:build.fingerprint.image,imports,previous,
-  rollback:'kubectl set image to the previous images (still imported on every node); delete intent-dispatcher / execution-worker if previous is null.'};
+  rollback:'Schema 20 separates facts and control: use an R3-compatible image. The pre-R3 backup is retained for controlled recovery; do not point R2 writers at the split schemas.'};
 writeFileSync(`.runtime/deploy-${build.revision.slice(0,12)}.json`,JSON.stringify(record,null,2)+'\n');
 console.log(JSON.stringify(record,null,2));

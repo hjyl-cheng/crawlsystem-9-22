@@ -13,7 +13,7 @@ import type { Activities } from '../src/activities.ts';
 
 Runtime.install({ logger: new DefaultLogger('ERROR') });
 const unexpected = () => { throw new Error('not used by fixture plans'); };
-const unusedCollector = { collectAbout: unexpected, listTargets: unexpected, collectVideoBatch: unexpected, sampleRecentVideos: unexpected, collectAgent: unexpected, awaitAgent: unexpected };
+const unusedCollector = { collectAbout: unexpected, listTargets: unexpected, collectVideoBatch: unexpected, sampleRecentVideos: unexpected, collectAgent: unexpected, awaitAgent: unexpected,waitPipeline:unexpected };
 test('Temporal SDK workflow coordination, waiting, retries, cancellation and history replay', { timeout: 180_000 }, async t => {
   const existing = process.env.EXECUTION_TEMPORAL_EXISTING === 'true';
   const options = existing ? temporalOptions() : undefined;
@@ -81,7 +81,7 @@ test('Temporal SDK workflow coordination, waiting, retries, cancellation and his
       const deadline = await env.currentTimeMs() + 600_000;
       const activities: Activities = {
         loadExecution: async () => ({ deadlineAt: deadline, maxAttempts: 3, status: 'QUEUED', sourceMode: 'youtube', requiresAgent: false }),
-        executeFixture: unexpected, settleExecution: unexpected, collectAgent: unexpected, awaitAgent: unexpected, sampleRecentVideos: unexpected,
+        executeFixture: unexpected, settleExecution: unexpected, collectAgent: unexpected, awaitAgent: unexpected, sampleRecentVideos: unexpected,waitPipeline:unexpected,
         collectAbout: async () => { calls.push('about'); return { plan_id: ref.plan_id, status: 'RUNNING' }; },
         listTargets: async () => { calls.push('targets'); return { batches: 3, status: 'RUNNING' }; },
         collectVideoBatch: async (_ref, _d, index) => {
@@ -106,7 +106,7 @@ test('Temporal SDK workflow coordination, waiting, retries, cancellation and his
       const deadline = await env.currentTimeMs() + 600_000;
       const activities: Activities = {
         loadExecution: async () => ({ deadlineAt: deadline, maxAttempts: 3, status: 'QUEUED', sourceMode: 'youtube', requiresAgent: true }),
-        executeFixture: unexpected, settleExecution: unexpected, awaitAgent: unexpected,
+        executeFixture: unexpected, settleExecution: unexpected, awaitAgent: unexpected,waitPipeline:unexpected,
         collectAbout: async () => { calls.push('about'); return { plan_id: ref.plan_id, status: 'RUNNING' }; },
         listTargets: async () => { calls.push('targets'); return { batches: 1, status: 'RUNNING' }; },
         collectVideoBatch: async () => { calls.push('batch0'); return { status: 'RUNNING' }; },
@@ -125,6 +125,26 @@ test('Temporal SDK workflow coordination, waiting, retries, cancellation and his
         assert.equal((await handle.result() as { status: string }).status, 'COMPLETED');
         assert.deepEqual(calls, ['about', 'targets', 'batch0', 'samples', 'agent', 'agent']);
         await Worker.runReplayHistory({ workflowBundle }, await handle.fetchHistory());
+      });
+    });
+    await t.test('R3 waits for durable data before Agent and durable Agent before completing; history replays',async()=>{
+      const queue=`execution-sdk-${randomUUID()}`,{ref}=fixtureContext(),calls:string[]=[];
+      const activities:Activities={...unusedCollector,
+        loadExecution:async()=>({deadlineAt:await env.currentTimeMs()+600000,maxAttempts:3,status:'QUEUED',sourceMode:'youtube',requiresAgent:true,pipelineVersion:'r3.v1'}),
+        executeFixture:unexpected,settleExecution:unexpected,
+        collectAbout:async()=>{calls.push('about');return {plan_id:ref.plan_id,status:'RUNNING'};},
+        listTargets:async()=>{calls.push('targets');return {batches:1,status:'RUNNING'};},
+        collectVideoBatch:async()=>{calls.push('video');return {status:'RUNNING'};},
+        sampleRecentVideos:async()=>{calls.push('sampling');return {status:'RUNNING'};},
+        waitPipeline:async(_r,_d,final)=>{calls.push(final?'agent-ingested':'data-ingested');return {plan_id:ref.plan_id,status:final?'COMPLETED':'RUNNING'};},
+        collectAgent:async()=>{assert.equal(calls.at(-1),'data-ingested');calls.push('agent');return {status:'RUNNING'};},
+      };
+      const worker=await Worker.create({connection:env.nativeConnection,namespace:env.namespace,taskQueue:queue,workflowBundle,activities,maxConcurrentActivityTaskExecutions:2,maxCachedWorkflows:5,shutdownGraceTime:'1 second'});
+      await worker.runUntil(async()=>{
+        await workflowStarter(env.client,queue).start(ref);const handle=env.client.workflow.getHandle(ref.workflow_id);
+        assert.equal((await handle.result() as {status:string}).status,'COMPLETED');
+        assert.deepEqual(calls,['about','targets','video','sampling','data-ingested','agent','agent-ingested']);
+        await Worker.runReplayHistory({workflowBundle},await handle.fetchHistory());
       });
     });
   } finally { await env.teardown(); }

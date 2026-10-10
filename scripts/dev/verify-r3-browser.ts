@@ -1,0 +1,29 @@
+import { chromium,expect } from '@playwright/test';
+import { readFileSync,writeFileSync } from 'node:fs';
+import { issueToken,loadSigningKey } from '@crawlsystem/http/auth';
+const token=await issueToken({subject:'r3-browser-acceptance',workspace_id:'m1-main',role:'operator'},loadSigningKey(),600);
+const browser=await chromium.launch({headless:true}),errors:string[]=[];
+try {
+  const page=await browser.newPage({viewport:{width:1586,height:992},extraHTTPHeaders:{authorization:`Bearer ${token}`}});
+  page.on('pageerror',error=>errors.push(error.name));
+  const id=readFileSync('.runtime/r3/full-plan','utf8').trim();
+  await page.goto(`http://127.0.0.1:18103/plans/${id}`);
+  await expect(page.getByRole('heading',{name:'采集与入库进度',exact:true})).toBeVisible();
+  await expect(page.getByText('已完整入库',{exact:true})).toHaveCount(4);
+  await page.screenshot({path:'.runtime/r3/plan.png',fullPage:true});
+  let requests=0;page.on('request',request=>{if(/\/videos\/[^/]+\/comments(?:\?|$)/.test(request.url()))requests++;});
+  await page.goto('http://127.0.0.1:18103/channels/UC_x5XG1OV2P6uZZ5FSM9Ttw');
+  await expect(page.getByRole('heading',{name:'频道详情',exact:true})).toBeVisible();
+  await expect(page.locator('.comments summary').first()).toBeVisible();
+  expect(requests).toBe(0);
+  await expect(page.getByRole('combobox')).toHaveCount(3);
+  for(const select of await page.getByRole('combobox').all())expect((await select.locator('option:checked').innerText()).trim().length).toBeGreaterThan(0);
+  const summary=page.locator('.comments summary').first();await summary.click();
+  await expect.poll(()=>requests).toBe(1);
+  await expect(page.locator('.comments').first().locator('.fine-print')).toBeVisible();
+  await summary.click();await summary.click();await page.waitForTimeout(300);expect(requests).toBe(1);
+  await page.screenshot({path:'.runtime/r3/channel.png',fullPage:true});
+  expect(errors).toEqual([]);
+  const result={result:'PASSED',pages:['plan-detail','channel-detail'],runtime_errors:errors.length,comments_requests_before_expand:0,comments_requests_after_reopen:requests,default_selects_visible:true};
+  writeFileSync('.runtime/r3/browser-evidence.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+}finally{await browser.close();}

@@ -41,11 +41,11 @@ let worker: Worker | undefined;
 // Real collection (optional): the Data API key and this node's Proxy Manager (or 'direct' for local development only).
 const youtube = config.youtubeKeyFile && config.proxyManagerUrl
   ? { dataApi: new DataApi((await readFile(config.youtubeKeyFile, 'utf8')).trim()), proxies: config.proxyManagerUrl === 'direct' ? 'direct' as const : new LeaseClient(config.proxyManagerUrl) } : undefined;
-let publisher: KafkaPublisher | undefined, webCollector: WebCollector | undefined;
+let publisher: KafkaPublisher | undefined, webCollector: WebCollector | undefined, archive:RawArchive|undefined;
 if (config.collection && youtube && youtube.proxies !== 'direct') {
   const c = config.collection, secret = async (dir: string, name: string) => (await readFile(`${dir}/${name}`, 'utf8')).trim();
   publisher = new KafkaPublisher((await secret(c.kafkaCredentials, 'bootstrap')).split(','), await secret(c.kafkaCredentials, 'username'), await secret(c.kafkaCredentials, 'password'), await secret(c.kafkaCredentials, 'ca.crt'));
-  const archive = new RawArchive(new MinioStore(c.minioUrl, 'crawl-raw', await secret(c.minioCredentials, 'access_key'), await secret(c.minioCredentials, 'secret_key')), publisher);
+  archive = new RawArchive(new MinioStore(c.minioUrl, 'crawl-raw', await secret(c.minioCredentials, 'access_key'), await secret(c.minioCredentials, 'secret_key')), publisher);
   const fingerprint = new FingerprintClient(c.gatewayUrl, new IdentityStore(c.identityDirectory, (await readFile(c.identityKeyFile, 'utf8')).trim(), config.workerId));
   webCollector = new WebCollector(fingerprint, youtube.proxies, archive, youtube.dataApi, c.enforceBrazil);
 }
@@ -65,7 +65,7 @@ try {
     identity: config.workerId, buildId: config.buildVersion,
     // Prebuild once; each replacement process loads the same bundle without webpack.
     workflowBundle: { codePath: fileURLToPath(new URL('../dist/workflow-bundle.cjs', import.meta.url)) },
-    activities: createActivities({ api, workerId: config.workerId, workspaceId: session.workspace_id, log, tracing,
+    activities: createActivities({ api, workerId: config.workerId, workspaceId: session.workspace_id, log, tracing,archive,
       youtube: youtube ? { ...youtube, web: webCollector } : undefined,
       profiler: config.profileAgentUrl ? new ProfileClient(config.profileAgentUrl) : undefined,
       enter(planId) { running.set(planId, (running.get(planId) ?? 0) + 1); return () => { const count = running.get(planId)! - 1; if (count) running.set(planId, count); else running.delete(planId); }; },

@@ -30,7 +30,7 @@ async function found(t: Setup, text: string, category: string, channels: [number
     channels: channels.filter(([n]) => page.new_channel_ids.includes(channel(n))).map(([n, subs]) => ({ channel_id: channel(n), title: `Canal ${n}`, country: 'BR', subscriber_count: subs, hidden_subscribers: false, video_count: 5, view_count: 100 })) });
 }
 const reject = (run: () => Promise<unknown>, code: string) => assert.rejects(run, (e: unknown) => e instanceof StoreError && e.code === code);
-const queued = async (workspace: string) => (await pool.query(`SELECT channel_id,requested_by FROM m1.channel_imports WHERE workspace_id=$1 AND state='queued' ORDER BY channel_id`, [workspace])).rows;
+const queued = async (workspace: string) => (await pool.query(`SELECT channel_id,requested_by FROM control.channel_imports WHERE workspace_id=$1 AND state='queued' ORDER BY channel_id`, [workspace])).rows;
 
 test('qualified candidates join the import queue a few at a time, taking turns across categories', async () => {
   const t = setup({ import_buffer: 3 });
@@ -39,7 +39,7 @@ test('qualified candidates join the import queue a few at a time, taking turns a
   assert.deepEqual((await t.store.admitCandidates(t.workspace_id)).sort(), [channel(1), channel(2), channel(5)], 'best of each category first, then the next best');
   assert.deepEqual((await queued(t.workspace_id)).map(r => [r.channel_id, r.requested_by]), [[channel(1), 'discovery'], [channel(2), 'discovery'], [channel(5), 'discovery']]);
   assert.deepEqual(await t.store.admitCandidates(t.workspace_id), [], 'the queue is full');
-  await pool.query(`UPDATE m1.channel_imports SET state='planned' WHERE workspace_id=$1 AND channel_id=$2`, [t.workspace_id, channel(1)]);
+  await pool.query(`UPDATE control.channel_imports SET state='planned' WHERE workspace_id=$1 AND channel_id=$2`, [t.workspace_id, channel(1)]);
   assert.deepEqual(await t.store.admitCandidates(t.workspace_id), [channel(6)], 'one place freed: Food takes its turn before Music\'s third');
   const summary = await t.store.candidateSummary(t.reader);
   assert.deepEqual([summary.by_state.ADMITTED, summary.by_state.QUALIFIED, summary.by_state.UNQUALIFIED, summary.admitted_today, summary.import_queue], [4, 1, 1, 4, 3]);
@@ -60,11 +60,11 @@ test('operators reject candidates, admit below the threshold, and withdraw an ad
   const withdrawn = await t.store.candidateCommand(t.op, channel(2), { action: 'reject', reason: 'changed my mind', expected_version: 2 });
   assert.deepEqual([withdrawn.state, withdrawn.import_state], ['REJECTED', null], 'the queued import is withdrawn');
   const started = await t.store.candidateCommand(t.op, channel(3), { action: 'admit', expected_version: 1 });
-  await pool.query(`UPDATE m1.channel_imports SET state='planned' WHERE workspace_id=$1 AND channel_id=$2`, [t.workspace_id, channel(3)]);
+  await pool.query(`UPDATE control.channel_imports SET state='planned' WHERE workspace_id=$1 AND channel_id=$2`, [t.workspace_id, channel(3)]);
   await reject(() => t.store.candidateCommand(t.op, channel(3), { action: 'reject', reason: 'late', expected_version: started.version }), 'CONFLICT');
   await reject(() => t.store.candidateCommand(t.reader, channel(3), { action: 'reject', reason: 'x', expected_version: started.version }), 'FORBIDDEN');
   await reject(() => t.store.candidateCommand(t.op, channel(3), { action: 'admit', expected_version: started.version }), 'CONFLICT');
-  await pool.query(`UPDATE m1.channel_imports SET state='failed' WHERE workspace_id=$1 AND channel_id=$2`, [t.workspace_id, channel(3)]);
+  await pool.query(`UPDATE control.channel_imports SET state='failed' WHERE workspace_id=$1 AND channel_id=$2`, [t.workspace_id, channel(3)]);
   const retried = await t.store.candidateCommand(t.op, channel(3), { action: 'admit', reason: 'retry', expected_version: started.version });
   assert.deepEqual([retried.state, retried.import_state], ['ADMITTED', 'queued'], 'a failed first collection is retried by admitting again');
   const search = await t.store.candidates(t.reader, 20, 0, { search: 'canal 3' });
