@@ -10,6 +10,9 @@ import { aboutPage, ScrapeError, session, shortsIds, topComments } from './youtu
 import { toChannelFacts, toVideoFacts, unavailableVideo } from './youtube/map.ts';
 import { LeaseClient, ProxyUnavailable, proxiedFetch, type Outcome } from './youtube/transport.ts';
 import type { ProfileClient } from './profile-client.ts';
+import type { WebCollector, CollectionContext } from './youtube/web-collector.ts';
+import { ArchiveError } from './raw-archive.ts';
+import { FingerprintError } from './youtube/fingerprint.ts';
 
 export interface ExecutionDescriptor { deadlineAt: number; maxAttempts: number; status: PlanStatus; sourceMode?: 'fixture' | 'youtube'; videoBatches?: number | null; requiresAgent?: boolean; }
 export const VIDEO_BATCH = 10;
@@ -19,13 +22,14 @@ export interface ActivityOptions {
   log: (record: Record<string, unknown>) => void;
   tracing?: RequestTracing;
   /** Real collection: Data API (direct, keyed) and this node's Proxy Manager (or 'direct' for local development only). */
-  youtube?: { dataApi: DataApi; proxies: LeaseClient | 'direct' };
+  youtube?: { dataApi: DataApi; proxies: LeaseClient | 'direct'; web?: WebCollector };
   /** Profile Agent (local models) producing the AGENT domain from the Store's input snapshot. */
   profiler?: ProfileClient;
 }
 /** Collector failures as execution errors: transient upstream/proxy trouble retries; missing targets and quota do not. */
 function collectorError(error: unknown): ExecutionApiError {
   if (error instanceof ExecutionApiError) return error;
+  if (error instanceof ArchiveError || error instanceof FingerprintError) return new ExecutionApiError('UNAVAILABLE', true);
   if (error instanceof DataApiError) return new ExecutionApiError(error.kind === 'quota' ? 'BUDGET_EXHAUSTED' : error.kind === 'not_found' ? 'NOT_FOUND' : error.kind === 'forbidden' ? 'FORBIDDEN' : error.kind === 'invalid' ? 'INVALID_REQUEST' : 'UNAVAILABLE', error.retryable);
   if (error instanceof ScrapeError) return new ExecutionApiError(error.kind === 'not_found' ? 'NOT_FOUND' : 'UNAVAILABLE', error.kind !== 'not_found');
   return new ExecutionApiError('INTERNAL_ERROR', false);
@@ -139,6 +143,11 @@ export function createActivities(options: ActivityOptions) {
     };
   };
 
+  const collection = (ref: WorkflowInput, input: YoutubeFrozenInput, scope: TraceScope, deadline: number): CollectionContext => ({
+    owner: ref, channelId: input.channel_id, signal: AbortSignal.any([Context.current().cancellationSignal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]), deadline,
+    guard: permit(ref, scope, deadline), note: message => event(ref, scope, 'PROGRESS', 'COLLECTOR', message, 'VIDEO').then(() => undefined).catch(() => undefined),
+  });
+
 
   return {
     /** YouTube ABOUT: About page through a proxy plus exact counts from the Data API. */
@@ -148,10 +157,15 @@ export function createActivities(options: ActivityOptions) {
         const done = () => ({ plan_id: ref.plan_id, status: value.plan.status });
         if (terminal(value.plan.status) || !input.required_domains.includes('ABOUT') || value.domains.find(d => d.domain === 'ABOUT')?.state === 'APPLIED') return done();
         await event(ref, scope, 'STARTED', 'ABOUT', `Collecting channel ${input.channel_id}`, 'ABOUT');
-        const channel = await youtube().dataApi.channel(input.channel_id, permit(ref, scope, descriptor.deadlineAt));
-        if (!channel) throw new ExecutionApiError('NOT_FOUND', false);
-        const about = await withProxy(ref, scope, descriptor.deadlineAt, async fetcher => aboutPage(await session(fetcher), input.channel_id));
-        const receipt = await submitOnce(ref, value, submissionOf(ref, 'ABOUT', 'about:channel', toChannelFacts(channel, about, new Date().toISOString()), true), descriptor.deadlineAt);
+        let facts;
+        if (youtube().web) facts = await youtube().web!.about(collection(ref, input, scope, descriptor.deadlineAt));
+        else {
+          const channel = await youtube().dataApi.channel(input.channel_id, permit(ref, scope, descriptor.deadlineAt));
+          if (!channel) throw new ExecutionApiError('NOT_FOUND', false);
+          const about = await withProxy(ref, scope, descriptor.deadlineAt, async fetcher => aboutPage(await session(fetcher), input.channel_id));
+          facts = toChannelFacts(channel, about, new Date().toISOString());
+        }
+        const receipt = await submitOnce(ref, value, submissionOf(ref, 'ABOUT', 'about:channel', facts, true), descriptor.deadlineAt);
         await event(ref, scope, 'PROGRESS', 'ABOUT', `APPLIED receipt=${receipt?.submission_id ?? 'existing'}`, 'ABOUT');
         return { plan_id: ref.plan_id, status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
       });
@@ -164,18 +178,20 @@ export function createActivities(options: ActivityOptions) {
         if (!input.required_domains.includes('VIDEO') || terminal(value.plan.status)) return { batches: 0, status: value.plan.status };
         if (!value.video_targets && input.plan_kind === 'UPDATE') {
           // Incremental update: only uploads above the newest known videos (legacy discovery anchors).
-          const found = await youtube().dataApi.uploadsUntilAnchor(`UU${input.channel_id.slice(2)}`, input.discovery_anchor_ids ?? [], permit(ref, scope, descriptor.deadlineAt));
+          const found = youtube().web ? await youtube().web!.targets(collection(ref, input, scope, descriptor.deadlineAt), 100, input.discovery_anchor_ids ?? [])
+            : await youtube().dataApi.uploadsUntilAnchor(`UU${input.channel_id.slice(2)}`, input.discovery_anchor_ids ?? [], permit(ref, scope, descriptor.deadlineAt));
           const manifest = { kind: 'discovery', channel_id: input.channel_id, video_ids: found.ids, listed_at: new Date().toISOString(), scanned_count: found.scanned,
-            pages: found.pages, matched_anchor_id: found.matched_anchor_id, stop_reason: found.stop_reason, source: 'data_api:playlistItems' };
+            pages: found.pages, matched_anchor_id: found.matched_anchor_id, stop_reason: found.stop_reason, source: youtube().web ? 'youtubei:uploads' : 'data_api:playlistItems' };
           await submitOnce(ref, value, submissionOf(ref, 'VIDEO', 'video:discovery', manifest, found.ids.length === 0 && !resamples(input)), descriptor.deadlineAt);
           const how = { anchor_matched: 'reached the newest known video', list_end: 'reached the end of the uploads', gap_abandoned_latest_30: 'too many new uploads; kept the newest 30' }[found.stop_reason];
           await event(ref, scope, 'PROGRESS', 'DISCOVERY', `Found ${found.ids.length} new videos (${how})`, 'VIDEO');
           value = await read(ref, scope, descriptor.deadlineAt);
         }
         if (!value.video_targets) {
-          const windowStart = new Date(Date.parse(input.reference_time) - input.scope.max_age_days * 86_400_000).toISOString();
-          const listed = await youtube().dataApi.recentUploads(`UU${input.channel_id.slice(2)}`, windowStart, input.scope.video_limit, permit(ref, scope, descriptor.deadlineAt));
-          const manifest = { kind: 'targets', channel_id: input.channel_id, video_ids: listed.ids, listed_at: new Date().toISOString(), window_start: windowStart, exhausted: listed.exhausted, source: 'data_api:playlistItems' };
+          const windowStart = new Date(youtube().web ? 0 : Date.parse(input.reference_time) - input.scope.max_age_days * 86_400_000).toISOString();
+          const listed = youtube().web ? await youtube().web!.targets(collection(ref, input, scope, descriptor.deadlineAt), input.scope.video_limit)
+            : await youtube().dataApi.recentUploads(`UU${input.channel_id.slice(2)}`, windowStart, input.scope.video_limit, permit(ref, scope, descriptor.deadlineAt));
+          const manifest = { kind: 'targets', channel_id: input.channel_id, video_ids: listed.ids, listed_at: new Date().toISOString(), window_start: windowStart, exhausted: listed.exhausted, source: youtube().web ? 'youtubei:uploads' : 'data_api:playlistItems' };
           await submitOnce(ref, value, submissionOf(ref, 'VIDEO', 'video:targets', manifest, listed.ids.length === 0), descriptor.deadlineAt);
           await event(ref, scope, 'PROGRESS', 'TARGETS', `Frozen ${listed.ids.length} video targets since ${windowStart.slice(0, 10)}${listed.exhausted ? '' : ' (limit reached)'}`, 'VIDEO');
           value = await read(ref, scope, descriptor.deadlineAt);
@@ -191,9 +207,9 @@ export function createActivities(options: ActivityOptions) {
         const key = `video:batch:${index}`, last = (index + 1) * VIDEO_BATCH >= targets.length;
         if (terminal(value.plan.status) || !batch.length || value.receipts.some(r => r.logical_batch_key === key)) return { status: value.plan.status };
         const observed = new Date().toISOString();
-        const facts = await youtube().dataApi.videos(batch, permit(ref, scope, descriptor.deadlineAt));
+        const facts = youtube().web ? [] : await youtube().dataApi.videos(batch, permit(ref, scope, descriptor.deadlineAt));
         const byId = new Map(facts.map(v => [v.id, v]));
-        const items: VideoItem[] = await withProxy(ref, scope, descriptor.deadlineAt, async fetcher => {
+        const items: VideoItem[] = youtube().web ? await youtube().web!.videos(collection(ref, input, scope, descriptor.deadlineAt), batch, input.scope.comments_per_video, `VIDEO-${index}`) : await withProxy(ref, scope, descriptor.deadlineAt, async fetcher => {
           const yt = await session(fetcher);
           const shorts = await shortsIds(yt, input.channel_id).catch(() => null);
           const out: VideoItem[] = [];
@@ -219,14 +235,15 @@ export function createActivities(options: ActivityOptions) {
         const ids = input.recent_sampling?.video_ids ?? [];
         if (terminal(value.plan.status) || !input.required_domains.includes('VIDEO') || !ids.length || value.receipts.some(r => r.logical_batch_key === key)) return { status: value.plan.status };
         const observed = new Date().toISOString();
-        const byId = new Map((await youtube().dataApi.videos(ids, permit(ref, scope, descriptor.deadlineAt))).map(v => [v.id, v]));
+        const byId = new Map((youtube().web ? [] : await youtube().dataApi.videos(ids, permit(ref, scope, descriptor.deadlineAt))).map(v => [v.id, v]));
+        const webItems = youtube().web ? await youtube().web!.videos(collection(ref, input, scope, descriptor.deadlineAt), ids, 0, 'SAMPLING', true) : null;
         const count = (text?: string) => text !== undefined && /^\d+$/.test(text) ? Number(text) : null;
-        const items = ids.filter(id => byId.get(id)?.snippet.channelId === input.channel_id).map(id => {
+        const items = webItems ? webItems.filter((v): v is import('@crawlsystem/contracts').VideoFacts => !('unavailable' in v)).map(v => ({ video_id: v.source_content_id, view_count: v.view_count.value, like_count: v.like_count.value, comment_count: v.comment_count.value })) : ids.filter(id => byId.get(id)?.snippet.channelId === input.channel_id).map(id => {
           const stats = byId.get(id)!.statistics ?? {};
           return { video_id: id, view_count: count(stats.viewCount), like_count: count(stats.likeCount), comment_count: count(stats.commentCount) };
         });
         const missing = ids.filter(id => !items.some(item => item.video_id === id));
-        const receipt = await submitOnce(ref, value, submissionOf(ref, 'VIDEO', key, { kind: 'samples', observed_at: observed, source: 'data_api:videos', items, missing_video_ids: missing }, true), descriptor.deadlineAt);
+        const receipt = await submitOnce(ref, value, submissionOf(ref, 'VIDEO', key, { kind: 'samples', observed_at: observed, source: youtube().web ? 'youtubei:video_or_api_fallback' : 'data_api:videos', items, missing_video_ids: missing }, true), descriptor.deadlineAt);
         await event(ref, scope, 'PROGRESS', 'SAMPLING', `Re-read ${items.length} recent videos${missing.length ? `, ${missing.length} no longer available` : ''}; receipt=${receipt?.submission_id ?? 'existing'}`, 'VIDEO');
         return { status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };
       });

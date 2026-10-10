@@ -1,15 +1,18 @@
 import { Innertube, Log } from 'youtubei.js';
 import type { AboutPage, CommentsResult, ScrapedComment } from './map.ts';
+import { parseCount } from './map.ts';
+import { FingerprintError } from './fingerprint.ts';
 
 // youtubei.js is confined to this file: parsed nodes are reduced to plain fields
 // here, so parser changes in a new youtubei.js version surface in one place.
 Log.setLevel(Log.Level.NONE);
 export class ScrapeError extends Error {
-  constructor(readonly kind: 'blocked' | 'network' | 'not_found' | 'parse', message: string) { super(message); this.name = 'ScrapeError'; }
+  constructor(readonly kind: 'blocked' | 'network' | 'not_found' | 'parse' | 'upstream', message: string) { super(message); this.name = 'ScrapeError'; }
 }
 const text = (value: unknown): string | null => { const s = (value as { toString?: () => string } | null | undefined)?.toString?.(); return s && s !== '[object Object]' && s !== 'N/A' ? s : null; };
-function classify(error: unknown): ScrapeError {
+export function classify(error: unknown): ScrapeError {
   if (error instanceof ScrapeError) return error;
+  if (error instanceof FingerprintError) return new ScrapeError(error.penalizeProxy ? 'network' : 'upstream', error.message);
   const message = error instanceof Error ? error.message : String(error);
   const status = (error as { info?: { status?: number }; status?: number })?.info?.status ?? (error as { status?: number })?.status;
   if (status === 429 || /429|too many requests|unusual traffic|confirm you.re not a bot/i.test(message)) return new ScrapeError('blocked', 'YouTube rate limited or challenged this client');
@@ -74,10 +77,20 @@ const EMPTY_COMMENTS = /comments page did not have any content/i;
  * (restricted or held), recorded as unavailable instead of failing the video batch. Other parse
  * failures still fail, so a YouTube change is not silently absorbed.
  */
-export async function topComments(yt: Innertube, videoId: string, apiCommentCount: string | undefined): Promise<CommentsResult> {
+export async function topComments(yt: Innertube, videoId: string, apiCommentCount: string | undefined, locale = 'en'): Promise<CommentsResult> {
   const collected_at = new Date().toISOString();
   try {
-    const page = await yt.getComments(videoId, 'TOP_COMMENTS') as unknown as { header?: { comments_count?: unknown }; contents?: { comment?: Record<string, unknown> }[] };
+    let page: { header?: { comments_count?: unknown }; contents?: { comment?: Record<string, unknown> }[] };
+    let sort: 'TOP_COMMENTS' | 'NEWEST_FIRST' = 'TOP_COMMENTS';
+    try { page = await yt.getComments(videoId, 'TOP_COMMENTS') as unknown as typeof page; }
+    catch (error) {
+      if (!(error instanceof Error) || !EMPTY_COMMENTS.test(error.message) || !(Number(apiCommentCount) > 0)) throw error;
+      page = await yt.getComments(videoId, 'NEWEST_FIRST') as unknown as typeof page; sort = 'NEWEST_FIRST';
+    }
+    const total = parseCount(text(page.header?.comments_count), locale)?.value ?? (apiCommentCount === undefined ? null : Number(apiCommentCount));
+    if (sort === 'TOP_COMMENTS' && total !== null && total > 0 && !page.contents?.length) {
+      try { page = await yt.getComments(videoId, 'NEWEST_FIRST') as unknown as typeof page; sort = 'NEWEST_FIRST'; } catch { /* Keep the observed TOP page; comments are best effort. */ }
+    }
     const comments: ScrapedComment[] = (page.contents ?? []).map(t => t.comment).filter((c): c is Record<string, unknown> => !!c && typeof c.comment_id === 'string').map(c => {
       const author = (c.author ?? {}) as { name?: string; id?: string; url?: string; is_verified?: boolean; best_thumbnail?: { url?: string } };
       return { comment_id: c.comment_id as string, text: text(c.content) ?? '', author_name: author.name ?? null, author_channel_id: author.id && /^UC[\w-]{22}$/.test(author.id) ? author.id : null,
@@ -86,11 +99,11 @@ export async function topComments(yt: Innertube, videoId: string, apiCommentCoun
         is_pinned: typeof c.is_pinned === 'boolean' ? c.is_pinned : null, is_channel_owner: typeof c.author_is_channel_owner === 'boolean' ? c.author_is_channel_owner : null,
         is_verified: typeof author.is_verified === 'boolean' ? author.is_verified : null, is_hearted: typeof c.is_hearted === 'boolean' ? c.is_hearted : null };
     });
-    return { kind: 'page', total_text: text(page.header?.comments_count), comments, collected_at };
+    return { kind: 'page', total_text: text(page.header?.comments_count) ?? (total === null ? null : String(total)), comments, collected_at, sort, locale };
   } catch (error) {
     const classified = classify(error);
     if (classified.kind !== 'parse') throw classified;
-    if (apiCommentCount === undefined) return { kind: 'disabled', collected_at };
+    if (apiCommentCount === undefined) return { kind: 'unavailable', collected_at };
     if (error instanceof Error && EMPTY_COMMENTS.test(error.message)) return apiCommentCount === '0' ? { kind: 'page', total_text: null, comments: [], collected_at } : { kind: 'unavailable', collected_at };
     throw classified;
   }

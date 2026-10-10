@@ -4,7 +4,7 @@ import type { ProxyPool } from './pool.ts';
 
 // Node-local API for Workers on this server. Reachable only through a Service with
 // internalTrafficPolicy: Local and a NetworkPolicy admitting execution-worker Pods.
-const Acquire = z.strictObject({ ttl_ms: z.number().int().min(5_000).max(600_000).default(120_000) });
+const Acquire = z.strictObject({ ttl_ms: z.number().int().min(5_000).max(600_000).default(120_000), required_egress_country: z.string().regex(/^[A-Z]{2}$/).optional() });
 const Release = z.strictObject({ lease_id: z.uuid(), outcome: z.enum(['success', 'failure', 'blocked', 'timeout']),
   latency_ms: z.number().int().nonnegative().max(600_000).optional(), error_class: z.string().max(60).regex(/^[a-z0-9_.-]+$/).optional() });
 async function body(request: IncomingMessage): Promise<unknown> {
@@ -18,8 +18,8 @@ export function localServer(pool: ProxyPool): Server {
     try {
       if (request.method === 'GET' && request.url === '/healthz') return send(200, { status: 'ok', ...pool.stats() });
       if (request.method === 'POST' && request.url === '/v1/lease') {
-        const { ttl_ms } = Acquire.parse(await body(request));
-        const lease = pool.acquire(ttl_ms);
+        const { ttl_ms, required_egress_country } = Acquire.parse(await body(request));
+        const lease = pool.acquire(ttl_ms, required_egress_country);
         return 'lease_id' in lease ? send(200, lease) : send(503, { error: { code: 'UNAVAILABLE', reason: lease.reason, wait_ms: lease.wait_ms } });
       }
       if (request.method === 'POST' && request.url === '/v1/release') {

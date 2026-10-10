@@ -25,6 +25,12 @@ case "${1:-}" in
   execution-temporal) command=(npm run test:temporal) ;;
   execution-live) command=(node --env-file=.runtime/main-joint.env --import tsx apps/execution-worker/scripts/live-with-dependencies.ts) ;;
   execution-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-execution-console.ts) ;;
+  collection-unit) command=(node --import tsx --test --test-concurrency=1 apps/execution-worker/test/identity.test.ts apps/execution-worker/test/fingerprint.test.ts apps/execution-worker/test/raw-archive.test.ts apps/execution-worker/test/web-scrape.test.ts apps/execution-worker/test/web-collector.test.ts) ;;
+  collection-storage) command=(node --import tsx scripts/dev/verify-r2-storage.ts) ;;
+  collection-preview) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-preview.ts "${@:2}") ;;
+  fingerprint-gateway)
+    command=(env LD_LIBRARY_PATH=.runtime/profile-agent/python/usr/local/lib PYTHONPATH=apps/fingerprint-gateway:.runtime/fingerprint-gateway/site PYTHONDONTWRITEBYTECODE=1 .runtime/profile-agent/python/usr/local/bin/python3.12 -m unittest discover -s apps/fingerprint-gateway/tests)
+    ;;
   build-console) heap_mib=512; command=(npm run build:console) ;;
   browser) command=(npm run test:browser) ;;
   # Python Profile Agent with the pinned interpreter, wheels and verified model bundle (prepared on first use).

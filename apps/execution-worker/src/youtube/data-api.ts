@@ -15,6 +15,7 @@ export type DataApiEndpoint = 'channels' | 'playlistItems' | 'videos';
 export interface RequestGuard {
   permit(endpoint: DataApiEndpoint): Promise<string | undefined>;
   failed?(requestId: string | undefined, endpoint: DataApiEndpoint, error: DataApiError): Promise<void>;
+  response?(endpoint: DataApiEndpoint, status: number, body: string): void;
 }
 export class DataApi {
   units = 0;
@@ -23,20 +24,22 @@ export class DataApi {
   }
   private async get<T>(path: DataApiEndpoint, params: Record<string, string>, guard?: RequestGuard): Promise<T> {
     const requestId = await guard?.permit(path);
-    try { return await this.send<T>(path, params); }
+    try { return await this.send<T>(path, params, guard); }
     catch (error) {
       if (error instanceof DataApiError) await guard?.failed?.(requestId, path, error).catch(() => undefined);
       throw error;
     }
   }
-  private async send<T>(path: DataApiEndpoint, params: Record<string, string>): Promise<T> {
+  private async send<T>(path: DataApiEndpoint, params: Record<string, string>, guard?: RequestGuard): Promise<T> {
     const url = new URL(`${this.base}/${path}`);
     for (const [k, v] of Object.entries({ ...params, key: this.key })) url.searchParams.set(k, v);
     let response: Response;
     try { response = await this.fetcher(url, { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } }); }
     catch { throw new DataApiError('unavailable', 'network'); }
     this.units++;
-    const body = await response.json().catch(() => ({})) as { error?: { errors?: { reason?: string }[] } };
+    const raw = await response.text(); guard?.response?.(path, response.status, raw);
+    let body: { error?: { errors?: { reason?: string }[] } };
+    try { body = JSON.parse(raw); } catch { throw new DataApiError('unavailable', 'invalid_json'); }
     if (response.ok) return body as T;
     // Never surface the URL (it carries the key) or the raw message.
     const reason = body.error?.errors?.[0]?.reason ?? `http_${response.status}`;

@@ -111,8 +111,8 @@ export type AgentResult = z.infer<typeof AgentResultSchema>;
 export const AgentProfileSchema = z.strictObject({ model_version: IdSchema, taxonomy_version: IdSchema, observed_at: Timestamp, facts: AgentFactsSchema, diagnostics: z.array(z.string().max(120)).max(50) });
 export type AgentProfile = z.infer<typeof AgentProfileSchema>;
 
-/** Frozen collection scope. Defaults follow the previous system: 30 recent uploads within
- * 90 days of reference_time, first page of Top comments (at most 20) per video. */
+/** Frozen collection scope. Web collection takes the latest 30 uploads, up to 100.
+ * max_age_days remains for pre-R2 plans; web collection has no age cutoff. */
 export const CollectionScopeSchema = z.strictObject({
   video_limit: z.number().int().min(1).max(100).default(30),
   max_age_days: z.number().int().min(1).max(3650).default(90),
@@ -160,7 +160,7 @@ export type VideoTargetManifest = z.infer<typeof VideoTargetManifestSchema>;
 export const DISCOVERY_STOP_REASONS = ['anchor_matched', 'list_end', 'gap_abandoned_latest_30'] as const;
 /** Incremental Video (UPDATE): the uploads newer than the first anchor met; they become the plan's video targets. */
 export const VideoDiscoveryManifestSchema = z.strictObject({
-  kind: z.literal('discovery'), channel_id: IdSchema, video_ids: z.array(YoutubeVideoIdSchema).max(30), listed_at: Timestamp,
+  kind: z.literal('discovery'), channel_id: IdSchema, video_ids: z.array(YoutubeVideoIdSchema).max(100), listed_at: Timestamp,
   scanned_count: z.number().int().nonnegative().max(1000), pages: z.number().int().nonnegative().max(100),
   matched_anchor_id: YoutubeVideoIdSchema.nullable(), stop_reason: z.enum(DISCOVERY_STOP_REASONS), source: z.string().min(1).max(120),
 }).refine(m => new Set(m.video_ids).size === m.video_ids.length, 'duplicate video targets')
@@ -197,9 +197,14 @@ export interface ApiError { error: { code: ErrorCode; message: string; retryable
 export const ExecutionEventSchema = z.strictObject({ event_id: z.uuid(), execution_epoch: z.number().int().positive(), worker_id: IdSchema, phase: z.string().min(1).max(80), kind: z.enum(['STARTED','PROGRESS','WAITING','ERROR','FAILED']), domain: DomainSchema.nullable(), message: z.string().max(1000), error_code: ErrorCodeSchema.optional() });
 export type ExecutionEvent = z.infer<typeof ExecutionEventSchema>;
 export interface StoredEvent extends ExecutionEvent { plan_id: string; created_at: string; }
-export const HeartbeatSchema = z.strictObject({ worker_id: IdSchema, server_id: IdSchema, build_version: z.string().min(1).max(120), accepting_work: z.boolean(), capacity: z.number().int().min(0).max(100), running_plan_ids: z.array(z.uuid()).max(100) });
+export const CollectorDiagnosticsSchema = z.strictObject({ gateway: z.enum(['ready', 'unavailable']), browser: z.string().max(80),
+  requests_last_hour: z.number().int().nonnegative(), blocked_last_hour: z.number().int().nonnegative(), identity_policy: IdSchema,
+  language: z.string().max(30), country: z.string().regex(/^[A-Z]{2}$/), timezone: z.string().max(80), enforce_egress_country: z.boolean(),
+  active_leases: z.number().int().nonnegative().max(100), compliant_leases: z.number().int().nonnegative().max(100),
+  last_profile: z.strictObject({ profile_id: IdSchema, created_at: Timestamp, saved_at: Timestamp }).nullable() });
+export const HeartbeatSchema = z.strictObject({ worker_id: IdSchema, server_id: IdSchema, build_version: z.string().min(1).max(120), accepting_work: z.boolean(), capacity: z.number().int().min(0).max(100), running_plan_ids: z.array(z.uuid()).max(100), collector: CollectorDiagnosticsSchema.optional() });
 export type Heartbeat = z.infer<typeof HeartbeatSchema>;
-export interface Worker extends Heartbeat { last_heartbeat_at: string; stale: boolean; proxy_status: 'NOT_CONFIGURED'; }
+export interface Worker extends Heartbeat { last_heartbeat_at: string; stale: boolean; proxy_status: 'NOT_CONFIGURED' | 'CONFIGURED'; }
 export interface PlanDetail extends PlanInput { events: StoredEvent[]; }
 export interface ChannelSummary { channel_id: string; title: string | null; source_mode: SourceMode; updated_at: string; latest_plan_id: string; }
 /** A channel row for list pages: the summary plus current facts cheap to read in one query. */
@@ -279,7 +284,7 @@ export type ChannelClockOverride = z.infer<typeof ChannelClockOverrideSchema>;
 export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoItemSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema, management: ChannelManagementSchema });
 export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema, management_state: ManagementStateSchema.nullable(), next_due_at: Timestamp.nullable(),
   clocks: z.array(z.strictObject({ clock: z.enum(CLOCK_NAMES), next_due_at: Timestamp, interval_days: z.number().int().min(1).max(365), retry_at: Timestamp.nullable(), override_days: z.number().int().min(1).max(365).nullable() })).max(3) });
-export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.literal('NOT_CONFIGURED') });
+export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.enum(['NOT_CONFIGURED', 'CONFIGURED']) });
 export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, server_id: IdSchema.optional(), contract_version: z.literal(CONTRACT_VERSION) });
 // Kubernetes ServiceAccount token exchange: subject is the Pod, server_id the node reported by TokenReview.
 // Temporal namespace token for the gRPC Authorization header; permissions name one namespace and role.
@@ -416,11 +421,11 @@ export const ProxySyncRequestSchema = z.strictObject({
 });
 export type ProxySyncRequest = z.infer<typeof ProxySyncRequestSchema>;
 /** `tls_insecure`: an HTTPS proxy whose own certificate is not verified (only credential-free endpoints; the tunnelled TLS to the target is always verified). */
-export interface ProxyAssignment { proxy_id: string; generation: number; protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null; kind: 'static' | 'rotating'; max_concurrency: number; tls_insecure: boolean; }
+export interface ProxyAssignment { proxy_id: string; generation: number; protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null; kind: 'static' | 'rotating'; max_concurrency: number; tls_insecure: boolean; egress_country?: string | null; }
 export interface ProxySyncResponse { server_id: string; lease_expires_at: string; assignments: ProxyAssignment[]; }
 export const ProxySyncResponseSchema: z.ZodType<ProxySyncResponse> = z.strictObject({ server_id: IdSchema, lease_expires_at: Timestamp, assignments: z.array(z.strictObject({
   proxy_id: z.uuid(), generation: z.number().int().nonnegative(), protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: z.number().int(), username: z.string().nullable(),
-  password: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int(), tls_insecure: z.boolean() })).max(MAX_PROXIES_PER_SERVER) });
+  password: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int(), tls_insecure: z.boolean(), egress_country: z.string().regex(/^[A-Z]{2}$/).nullable().optional() })).max(MAX_PROXIES_PER_SERVER) });
 /** Subscription source: an HTTPS URL listing endpoints (host:port or scheme://[user:pass@]host:port per line), refreshed on a schedule. */
 const SourceFields = {
   name: GroupName, url: z.url().max(2048).refine(u => u.startsWith('https://'), 'HTTPS only'),

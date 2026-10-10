@@ -46,10 +46,10 @@ test('video facts classify type, respect the comment limit and keep missing coun
   assert.deepEqual([hidden.like_count.status, hidden.comment_count.status, hidden.comment_count.value, hidden.comments_disabled], ['unavailable', 'disabled', 0, true]);
   assert.equal(unavailableVideo(channel.id, 'abcdefghijk', now).unavailable, true);
 });
-test('an empty comment section means turned off, no comments yet, or unavailable, by the Data API count', async () => {
+test('an empty comment section keeps unknown counts unknown and preserves observed API counts', async () => {
   const yt = (message: string) => ({ getComments: async () => { throw new Error(message); } }) as unknown as Innertube;
   const empty = yt('The comments page did not have any content');
-  assert.equal((await topComments(empty, 'YDCB8Bk1OBE', undefined)).kind, 'disabled');
+  assert.equal((await topComments(empty, 'YDCB8Bk1OBE', undefined)).kind, 'unavailable', 'an absent count is not evidence that comments are disabled');
   assert.deepEqual(await topComments(empty, 'YDCB8Bk1OBE', '0').then(r => r.kind === 'page' ? r.comments.length : r.kind), 0);
   const unavailable = await topComments(empty, 'YDCB8Bk1OBE', '15');
   assert.equal(unavailable.kind, 'unavailable', 'counted comments YouTube did not serve do not fail the batch');

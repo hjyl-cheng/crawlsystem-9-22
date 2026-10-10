@@ -11,7 +11,7 @@ import {temporalJwks,temporalKeyId} from '@crawlsystem/http/temporal-token';
 // Secrets; nothing secret is read into this process's output or written to Git.
 const kubectl=(args:string[],input?:string)=>execFileSync('kubectl',args,{encoding:'utf8',input,stdio:['pipe','pipe','pipe']}).trim();
 const git=(...args:string[])=>execFileSync('git',args,{encoding:'utf8'}).trim();
-const build=JSON.parse(readFileSync('.runtime/latest-images.json','utf8')) as {revision:string;control:{image:string;tarball:string};worker:{image:string;tarball:string};profile:{image:string;tarball:string}};
+const build=JSON.parse(readFileSync('.runtime/latest-images.json','utf8')) as {revision:string;control:{image:string;tarball:string};worker:{image:string;tarball:string};profile:{image:string;tarball:string};fingerprint:{image:string;tarball:string}};
 if(build.revision!==git('rev-parse','HEAD'))throw new Error('latest-images.json is not built from HEAD; rebuild first');
 if(git('status','--porcelain'))throw new Error('Deploy only from a clean, committed tree');
 const tagOf=(image:string)=>image.split(':').at(-1)!;
@@ -33,7 +33,7 @@ async function importImage(node:string,image:string,tarball:string){
   return 'imported';
 }
 const imports:Record<string,Record<string,string>>={};
-for(const node of nodes){imports[node]={};for(const artifact of [build.control,build.worker,build.profile])imports[node]![artifact.image]=await importImage(node,artifact.image,artifact.tarball);step(`images on ${node}: ${JSON.stringify(imports[node])}`);}
+for(const node of nodes){imports[node]={};for(const artifact of [build.control,build.worker,build.profile,build.fingerprint])imports[node]![artifact.image]=await importImage(node,artifact.image,artifact.tarball);step(`images on ${node}: ${JSON.stringify(imports[node])}`);}
 
 // 2. Record what runs now, for rollback.
 const current=(namespace:string,kind:string,name:string)=>{try{return kubectl(['-n',namespace,'get',kind,name,'-o','jsonpath={.spec.template.spec.containers[0].image}']);}catch{return null;}};
@@ -41,7 +41,8 @@ const previous={control:current('control','deployment','control-api-preview'),in
   dispatcher:current('control','deployment','intent-dispatcher'),worker:current('crawler','statefulset','execution-worker'),profile:current('crawler','deployment','profile-agent')};
 
 const render=(file:string)=>readFileSync(file,'utf8').replaceAll('control-api:IMAGE_TAG',`control-api:${tagOf(build.control.image)}`)
-  .replaceAll('execution-worker:IMAGE_TAG',`execution-worker:${tagOf(build.worker.image)}`).replaceAll('profile-agent:PROFILE_TAG',`profile-agent:${tagOf(build.profile.image)}`).replaceAll('BUILD_REVISION',build.revision);
+  .replaceAll('execution-worker:IMAGE_TAG',`execution-worker:${tagOf(build.worker.image)}`).replaceAll('profile-agent:PROFILE_TAG',`profile-agent:${tagOf(build.profile.image)}`)
+  .replaceAll('fingerprint-gateway:FINGERPRINT_TAG',`fingerprint-gateway:${tagOf(build.fingerprint.image)}`).replaceAll('BUILD_REVISION',build.revision);
 const apply=(file:string)=>step(kubectl(['apply','-f','-'],render(file)).split('\n').join('; '));
 const secretData=(namespace:string,name:string)=>JSON.parse(kubectl(['-n',namespace,'get','secret',name,'-o','json'])).data as Record<string,string>;
 const putSecret=(namespace:string,name:string,data:Record<string,string>)=>kubectl(['apply','-f','-'],JSON.stringify({apiVersion:'v1',kind:'Secret',type:'Opaque',metadata:{name,namespace},data}));
@@ -68,6 +69,10 @@ if(!existsSync('.runtime/proxy-credential.key'))writeFileSync('.runtime/proxy-cr
 if(!existsSync('.runtime/youtube-data-api-key'))throw new Error('.runtime/youtube-data-api-key is required for the collector');
 putSecret('crawler','youtube-data-api',{key:Buffer.from(readFileSync('.runtime/youtube-data-api-key','utf8').trim()).toString('base64')});
 putSecret('control','proxy-credential-key',{key:Buffer.from(readFileSync('.runtime/proxy-credential.key','utf8')).toString('base64')});
+// Browser identities must survive Pod replacement; keep the encryption key independently of images.
+if(!kubectl(['-n','crawler','get','secret','browser-identity-key','--ignore-not-found','-o','name']))
+  putSecret('crawler','browser-identity-key',{key:Buffer.from(randomBytes(32).toString('hex')).toString('base64')});
+for(const name of ['minio-crawl-worker','kafka-crawl-worker']) secretData('crawler',name);
 step(`secrets ready: control/temporal-client-dispatcher, control/proxy-credential-key, crawler/temporal-client-worker, ingest/ingest-preview, Temporal signing key ${temporalKeyId(signing)}`);
 
 // 6. Roll out in dependency order: Control (token exchange) and Ingest before Workers.
@@ -77,7 +82,7 @@ for(const [file,namespace,resource] of rollouts){
   apply(`deploy/m1-preview/${file}.yaml`);
   kubectl(['-n',namespace,'rollout','status',resource,'--timeout=240s']);step(`${resource} rolled out`);
 }
-const record={revision:build.revision,deployed_at:new Date().toISOString(),control_image:build.control.image,worker_image:build.worker.image,profile_image:build.profile.image,imports,previous,
+const record={revision:build.revision,deployed_at:new Date().toISOString(),control_image:build.control.image,worker_image:build.worker.image,profile_image:build.profile.image,fingerprint_image:build.fingerprint.image,imports,previous,
   rollback:'kubectl set image to the previous images (still imported on every node); delete intent-dispatcher / execution-worker if previous is null.'};
 writeFileSync(`.runtime/deploy-${build.revision.slice(0,12)}.json`,JSON.stringify(record,null,2)+'\n');
 console.log(JSON.stringify(record,null,2));

@@ -618,7 +618,7 @@ export class Store {
     if (owned.rowCount!==ids.length) throw new StoreError('NOT_FOUND','Running plan not found',404);
     const result = await this.pool.query(`INSERT INTO m1.workers(workspace_id,worker_id,heartbeat) VALUES($1,$2,$3)
       ON CONFLICT(workspace_id,worker_id) DO UPDATE SET heartbeat=EXCLUDED.heartbeat,last_heartbeat_at=clock_timestamp() RETURNING last_heartbeat_at`,[principal.workspace_id,input.worker_id,input]);
-    return {...input,last_heartbeat_at:iso(result.rows[0]!.last_heartbeat_at),stale:false,proxy_status:'NOT_CONFIGURED'};
+    return {...input,last_heartbeat_at:iso(result.rows[0]!.last_heartbeat_at),stale:false,proxy_status:input.collector ? 'CONFIGURED' : 'NOT_CONFIGURED'};
   }
   async event(principal: Principal, planId: string, raw: ExecutionEvent): Promise<{accepted:true}> {
     requireRole(principal,'worker');
@@ -652,7 +652,7 @@ export class Store {
   async listWorkers(principal: Principal, limit=20, offset=0): Promise<Page<Worker>> {
     requireRole(principal,'reader','operator');
     const rows = await this.pool.query("SELECT *,last_heartbeat_at < clock_timestamp()-($2 * interval '1 second') AS stale FROM m1.workers WHERE workspace_id=$1 ORDER BY worker_id LIMIT $3 OFFSET $4",[principal.workspace_id,WORKER_STALE_SECONDS,limit+1,offset]);
-    return page(rows.rows.map(r => ({...r.heartbeat,last_heartbeat_at:iso(r.last_heartbeat_at),stale:r.stale,proxy_status:'NOT_CONFIGURED'} as Worker)),limit,offset);
+    return page(rows.rows.map(r => ({...r.heartbeat,last_heartbeat_at:iso(r.last_heartbeat_at),stale:r.stale,proxy_status:r.heartbeat.collector ? 'CONFIGURED' : 'NOT_CONFIGURED'} as Worker)),limit,offset);
   }
   async listErrors(principal: Principal, limit=20, offset=0, mode: SourceMode='youtube'): Promise<Page<StoredEvent>> {
     requireRole(principal,'reader','operator');

@@ -1,8 +1,9 @@
 import {execFileSync} from 'node:child_process';
-import {cpSync,existsSync,mkdirSync,readdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {chmodSync,cpSync,existsSync,mkdirSync,readdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {dirname,join,relative,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {ensureProfileRuntime,PYTHON_BASE} from './profile-agent-runtime.ts';
+import {ensureFingerprintRuntime} from './fingerprint-runtime.ts';
 import {build} from 'esbuild';
 import {bundleWorkflowCode} from '@temporalio/worker';
 
@@ -92,7 +93,23 @@ if(!existsSync(profileTar)){
 }
 const profile={image:profileTag,tarball:profileTar,content_sha256:profileHash,base:PYTHON_BASE};
 
-const metadata={revision,built_at:new Date().toISOString(),control,worker,profile,worker_packages:copied.length};
+const fingerprintRuntime=await ensureFingerprintRuntime();
+const fingerprintFiles=[...profileSources('apps/fingerprint-gateway/fingerprint_gateway'),'apps/fingerprint-gateway/requirements.lock'];
+const fingerprintHash=createHash('sha256').update(PYTHON_BASE).update(sha(...fingerprintFiles)).digest('hex');
+const fingerprintTag=`docker.io/crawlsystem/fingerprint-gateway:${fingerprintHash.slice(0,16)}`,fingerprintTar=resolve('.runtime/fingerprint-gateway/images',`${fingerprintHash.slice(0,16)}.tar`);
+if(!existsSync(fingerprintTar)){
+  const stage=join(out,'fingerprint'),layer=join(out,'fingerprint-layer.tar'); mkdirSync(stage+'/app/src',{recursive:true});
+  execFileSync('cp',['-al',fingerprintRuntime.site,stage+'/app/site']);
+  chmodSync(stage+'/app/site',0o755);
+  cpSync('apps/fingerprint-gateway/fingerprint_gateway',stage+'/app/src/fingerprint_gateway',{recursive:true,filter:src=>!src.includes('__pycache__')});
+  execFileSync('tar',['--sort=name','--mtime=@0','--owner=0','--group=0','--numeric-owner','--exclude=.prepared','-C',stage,'-cf',layer,'app'],{stdio:'inherit'});
+  mkdirSync(dirname(fingerprintTar),{recursive:true});
+  execFileSync('crane',['append','--platform','linux/amd64','--base',PYTHON_BASE,'--new_layer',layer,'--new_tag',fingerprintTag,'--output',fingerprintTar],{stdio:'inherit',timeout:180000});
+  rmSync(layer);rmSync(stage,{recursive:true,force:true});
+}
+const fingerprint={image:fingerprintTag,tarball:fingerprintTar,content_sha256:fingerprintHash,base:PYTHON_BASE};
+
+const metadata={revision,built_at:new Date().toISOString(),control,worker,profile,fingerprint,worker_packages:copied.length};
 writeFileSync(join(out,'build.json'),JSON.stringify(metadata,null,2)+'\n');
 writeFileSync('.runtime/latest-images.json',JSON.stringify(metadata,null,2)+'\n');
 console.log(JSON.stringify(metadata,null,2));

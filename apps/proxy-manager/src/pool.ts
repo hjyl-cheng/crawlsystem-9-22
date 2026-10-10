@@ -5,7 +5,7 @@ import { proxyUrlOf } from '@crawlsystem/execution-client/proxy-connect';
 // Node-local proxy selection (24.8 §10.2): one pool per server, shared by every Worker on
 // it, so per-proxy concurrency and cooldown are enforced once rather than per Pod.
 export type Outcome = 'success' | 'failure' | 'blocked' | 'timeout';
-export interface Lease { lease_id: string; proxy_id: string; generation: number; proxy_url: string; expires_at: number; }
+export interface Lease { lease_id: string; proxy_id: string; generation: number; proxy_url: string; expires_at: number; egress_country?: string | null; }
 interface Health {
   inflight: number; consecutiveFailures: number; cooldownUntil: number; cooldowns: number;
   lastSuccess: number | null; lastFailure: number | null; lastError: string | null;
@@ -42,12 +42,12 @@ export class ProxyPool {
     if (!h) { h = { inflight: 0, consecutiveFailures: 0, cooldownUntil: 0, cooldowns: 0, lastSuccess: null, lastFailure: null, lastError: null, requests: 0, failures: 0, latencyMs: null, probedAt: null, qualified: false, trialPasses: 0 }; this.health.set(id, h); }
     return h;
   }
-  acquire(ttlMs = 120_000): Lease | { wait_ms: number; reason: 'unauthorized' | 'no_proxies' | 'in_trial' | 'all_busy_or_cooling' } {
+  acquire(ttlMs = 120_000, requiredCountry?: string): Lease | { wait_ms: number; reason: 'unauthorized' | 'no_proxies' | 'in_trial' | 'all_busy_or_cooling' } {
     this.expire();
     const now = this.now();
     if (!this.authorized) return { wait_ms: 30_000, reason: 'unauthorized' };
     if (!this.assignments.size) return { wait_ms: 60_000, reason: 'no_proxies' };
-    const ready = [...this.assignments.values()].filter(a => { const h = this.state(a.proxy_id); return h.qualified && h.cooldownUntil <= now && h.inflight < a.max_concurrency; });
+    const ready = [...this.assignments.values()].filter(a => { const h = this.state(a.proxy_id); return (!requiredCountry || a.egress_country === requiredCountry) && h.qualified && h.cooldownUntil <= now && h.inflight < a.max_concurrency; });
     if (!ready.length) {
       if (![...this.assignments.keys()].some(id => this.state(id).qualified)) return { wait_ms: 30_000, reason: 'in_trial' };
       const soonest = Math.min(...[...this.assignments.keys()].map(id => this.state(id).cooldownUntil).filter(t => t > now), now + 5_000);
@@ -57,7 +57,7 @@ export class ProxyPool {
     const score = (a: ProxyAssignment) => { const h = this.state(a.proxy_id); return h.consecutiveFailures * 10 + h.inflight / a.max_concurrency + this.random() * 0.5; };
     const chosen = ready.sort((x, y) => score(x) - score(y))[0]!;
     this.state(chosen.proxy_id).inflight++;
-    const lease: Lease = { lease_id: randomUUID(), proxy_id: chosen.proxy_id, generation: chosen.generation, proxy_url: proxyUrl(chosen), expires_at: Math.min(now + ttlMs, this.leaseUntil) };
+    const lease: Lease = { lease_id: randomUUID(), proxy_id: chosen.proxy_id, generation: chosen.generation, proxy_url: proxyUrl(chosen), expires_at: Math.min(now + ttlMs, this.leaseUntil), egress_country: chosen.egress_country ?? null };
     this.leases.set(lease.lease_id, lease);
     return lease;
   }

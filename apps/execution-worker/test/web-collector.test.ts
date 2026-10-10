@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { WebCollector, webOperations, type CollectionContext } from '../src/youtube/web-collector.ts';
+import { RawArchive } from '../src/raw-archive.ts';
+import { DataApi } from '../src/youtube/data-api.ts';
+import { ScrapeError } from '../src/youtube/scrape.ts';
+import { fixtureContext } from './support.ts';
+test('successful units are saved immediately; fallback occurs after three attempts and retries reuse durable results', async () => {
+  const { ref, value } = fixtureContext(), objects = new Map<string, Uint8Array>(), events: string[] = [];
+  const archive = new RawArchive({ async get(key) { return objects.get(key) ?? null; }, async put(key, data) { objects.set(key, data); } }, { async send(topic) { events.push(topic); } });
+  let attempts = 0, apiCalls = 0;
+  const api = new DataApi('k'.repeat(30), async () => { apiCalls++; assert.equal(attempts, 3); assert.ok(objects.size, 'the first completed video was already stored'); return Response.json({ items: [] }); });
+  const gateway = { async withProfile(_lease: unknown, _signal: AbortSignal, work: (t: unknown) => unknown) { return work({ fetch, identity: { profile_id: 'p' } }); } };
+  const releases: string[] = [];
+  const proxies = { async acquire() { return { proxy_id: 'proxy', lease_id: 'lease', proxy_url: 'http://localhost:1', expires_at: Date.now() + 60_000 }; }, async release(_l: unknown, outcome: string) { releases.push(outcome); } };
+  const first = value.input.source_mode === 'fixture' ? value.input.sample.videos[0]! : null;
+  const ops = { ...webOperations, async browserSession() { return {} as never; }, async videoDetail(_yt: unknown, _channel: string, id: string) { if (id === 'ok') return first!; attempts++; throw new ScrapeError('parse', 'failure'); } };
+  const collector = new WebCollector(gateway as never, proxies as never, archive, api, false, ops);
+  const ctx: CollectionContext = { owner: ref, channelId: value.input.channel_id, deadline: Date.now() + 60_000, signal: new AbortController().signal, note: async () => {}, guard: { async permit() { return 'permit'; } } };
+  const results = await collector.videos(ctx, ['ok', 'bad'], 0, 'VIDEO');
+  assert.equal(results.length, 2); assert.equal(apiCalls, 1); assert.ok(releases.every(outcome => outcome === 'success'), 'parse failures never penalize proxies');
+  await collector.videos(ctx, ['ok', 'bad'], 0, 'VIDEO');
+  assert.equal(attempts, 3); assert.equal(apiCalls, 1); assert.equal(events.filter(e => e === 'crawl.step').length, 2);
+});

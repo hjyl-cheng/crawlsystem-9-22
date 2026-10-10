@@ -7,8 +7,16 @@ export const EXTRACTOR_VERSION = 'yt-collector/1 (youtubei.js 18.1.0 + data-api 
 type Metric = VideoFacts['view_count'];
 const metric = (value: number | null, status: Metric['status'], source: string, observed_at: string): Metric => ({ value, status, source, observed_at });
 /** "2.67M subscribers" / "359,612,169 views" / "1.2K" → number; K/M/B abbreviations are estimates. */
-export function parseCount(text: string | null | undefined): { value: number; exact: boolean } | null {
+export function parseCount(text: string | null | undefined, locale = 'en'): { value: number; exact: boolean } | null {
   if (!text) return null;
+  if (locale.startsWith('pt')) {
+    const match = /([\d.,]+)\s*(milh(?:ão|ões)|bilh(?:ão|ões)|mil|mi|bi|[KMB])?\b/i.exec(text.replace(/ /g, ' '));
+    if (!match) return null;
+    const unit = match[2]?.toLowerCase();
+    const multiplier = !unit ? 1 : /^(milh|mi$|m$)/.test(unit) ? 1e6 : /^(bilh|bi$|b$)/.test(unit) ? 1e9 : 1e3;
+    const value = Number(multiplier === 1 ? match[1]!.replace(/[.,]/g, '') : match[1]!.includes(',') ? match[1]!.replace(/\./g, '').replace(',', '.') : match[1]) * multiplier;
+    return Number.isSafeInteger(Math.round(value)) && value >= 0 ? { value: Math.round(value), exact: multiplier === 1 } : null;
+  }
   const m = /([\d.,]+)\s*([KMB])?/i.exec(text.replace(/ /g, ' '));
   if (!m) return /\bno\b/i.test(text) ? { value: 0, exact: true } : null;
   const unit = m[2]?.toUpperCase(), number = Number(m[1]!.replace(/,/g, ''));
@@ -74,7 +82,7 @@ export interface ApiVideo { id: string; snippet: { channelId: string; title: str
 export interface ScrapedComment { comment_id: string; text: string; author_name: string | null; author_channel_id: string | null; author_url: string | null; author_avatar_url: string | null;
   published_text: string | null; like_text: string | null; reply_text: string | null; is_pinned: boolean | null; is_channel_owner: boolean | null; is_verified: boolean | null; is_hearted: boolean | null }
 /** `unavailable`: the section exists (the API counts comments) but YouTube served none; facts keep the API count and no page. */
-export type CommentsResult = { kind: 'page'; total_text: string | null; comments: ScrapedComment[]; collected_at: string } | { kind: 'disabled'; collected_at: string }
+export type CommentsResult = { kind: 'page'; total_text: string | null; comments: ScrapedComment[]; collected_at: string; sort?: 'TOP_COMMENTS' | 'NEWEST_FIRST'; locale?: string } | { kind: 'disabled'; collected_at: string }
   | { kind: 'unavailable'; collected_at: string } | { kind: 'skipped' };
 
 export function toVideoFacts(api: ApiVideo, isShort: boolean | null, comments: CommentsResult, commentLimit: number, observed_at: string): VideoFacts {
@@ -84,13 +92,13 @@ export function toVideoFacts(api: ApiVideo, isShort: boolean | null, comments: C
   const duration = parseIsoDuration(api.contentDetails?.duration);
   const count = (raw: string | undefined, missing: Metric['status']) => raw !== undefined ? metric(Number(raw), 'exact', src, observed_at) : metric(null, missing, src, observed_at);
   const disabled = comments.kind === 'disabled';
-  const page = comments.kind === 'page' ? CommentPageSchema.parse({ version: 1, collected_at: comments.collected_at, sort: 'TOP_COMMENTS',
-    total_count: parseCount(comments.total_text)?.value ?? (stats.commentCount !== undefined ? Number(stats.commentCount) : null),
+  const page = comments.kind === 'page' ? CommentPageSchema.parse({ version: 1, collected_at: comments.collected_at, sort: comments.sort ?? 'TOP_COMMENTS',
+    total_count: parseCount(comments.total_text, comments.locale)?.value ?? (stats.commentCount !== undefined ? Number(stats.commentCount) : null),
     returned_count: Math.min(comments.comments.length, commentLimit), comments: comments.comments.slice(0, commentLimit).map((c, i) => {
       const estimated = c.published_text ? estimateRelative(c.published_text, comments.collected_at) : null;
       return { comment_id: c.comment_id, position: i + 1, text: c.text.slice(0, 20_000), author_name: c.author_name, author_channel_id: c.author_channel_id, author_url: c.author_url, author_avatar_url: c.author_avatar_url,
         published_at_utc: estimated, published_text_raw: c.published_text, published_at_status: estimated ? 'estimated_relative' : 'unresolved',
-        is_edited: c.published_text ? /edited/i.test(c.published_text) : null, like_count: parseCount(c.like_text)?.value ?? null, reply_count: parseCount(c.reply_text)?.value ?? null,
+        is_edited: c.published_text ? /edited|editado/i.test(c.published_text) : null, like_count: parseCount(c.like_text, comments.locale)?.value ?? null, reply_count: parseCount(c.reply_text, comments.locale)?.value ?? null,
         is_pinned: c.is_pinned, is_channel_owner: c.is_channel_owner, is_verified: c.is_verified, is_hearted: c.is_hearted };
     }) }) : null;
   return VideoFactsSchema.parse({

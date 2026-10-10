@@ -66,6 +66,15 @@ spec:
             # Real YouTube collection: node-local proxy leases and the Data API key.
             - { name: PROXY_MANAGER_URL, value: "http://proxy-manager.crawler.svc.cluster.local:18110" }
             - { name: YOUTUBE_DATA_API_KEY_FILE, value: /youtube/key }
+            - { name: YOUTUBE_COLLECTION_MODE, value: web }
+            - { name: FINGERPRINT_GATEWAY_URL, value: "http://127.0.0.1:3099" }
+            - { name: BROWSER_IDENTITY_DIR, value: /browser-state }
+            - { name: BROWSER_IDENTITY_KEY_FILE, value: /browser-key/key }
+            - { name: MINIO_ENDPOINT, value: "http://minio.storage.svc.cluster.local:9000" }
+            - { name: MINIO_CREDENTIAL_DIR, value: /minio }
+            - { name: KAFKA_CREDENTIAL_DIR, value: /kafka }
+            # REQUIRED_EGRESS_COUNTRY remains unset: pt-BR/BR identity, any existing qualified egress.
+            - { name: QUERY_RUNNER_SLOTS, value: "0" }
             # AGENT domain: local-model profiling of the collected facts.
             - { name: PROFILE_AGENT_URL, value: "http://profile-agent.crawler.svc.cluster.local:18120" }
             - { name: TEMPORAL_ADDRESS, value: "temporal-frontend.temporal.svc.cluster.local:7233" }
@@ -80,6 +89,10 @@ spec:
             - { name: temporal, mountPath: /temporal, readOnly: true }
             - { name: tmp, mountPath: /tmp }
             - { name: youtube, mountPath: /youtube, readOnly: true }
+            - { name: browser-state, mountPath: /browser-state }
+            - { name: browser-key, mountPath: /browser-key, readOnly: true }
+            - { name: minio, mountPath: /minio, readOnly: true }
+            - { name: kafka, mountPath: /kafka, readOnly: true }
           resources:
             requests: { cpu: 50m, memory: 192Mi }
             limits: { cpu: "1", memory: 512Mi }
@@ -87,6 +100,32 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
+        - name: fingerprint-gateway
+          image: docker.io/crawlsystem/fingerprint-gateway:FINGERPRINT_TAG
+          imagePullPolicy: Never
+          command: ["python3", "-m", "fingerprint_gateway.gateway", "--host", "127.0.0.1", "--port", "3099"]
+          env:
+            - { name: PYTHONPATH, value: /app/src:/app/site }
+            - { name: PYTHONDONTWRITEBYTECODE, value: "1" }
+            - { name: PYTHONUNBUFFERED, value: "1" }
+          readinessProbe:
+            exec: { command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3099/health', timeout=2)"] }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            exec: { command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3099/health', timeout=2)"] }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: "500m", memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: gateway-tmp, mountPath: /tmp }
       volumes:
         - name: control-token
           projected:
@@ -98,3 +137,24 @@ spec:
           emptyDir: { sizeLimit: 64Mi }
         - name: youtube
           secret: { secretName: youtube-data-api, defaultMode: 0440, items: [{ key: key, path: key }] }
+        - name: browser-state
+          persistentVolumeClaim: { claimName: execution-browser-state }
+        - name: browser-key
+          secret: { secretName: browser-identity-key, defaultMode: 0440 }
+        - name: minio
+          secret: { secretName: minio-crawl-worker, defaultMode: 0440 }
+        - name: kafka
+          secret: { secretName: kafka-crawl-worker, defaultMode: 0440 }
+        - name: gateway-tmp
+          emptyDir: { sizeLimit: 32Mi }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: execution-browser-state
+  namespace: crawler
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 256Mi }

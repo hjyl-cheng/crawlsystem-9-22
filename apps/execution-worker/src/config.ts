@@ -17,6 +17,15 @@ export function workerConfig(env: NodeJS.ProcessEnv = process.env) {
   const tokenFile = env.WORKER_TOKEN_FILE || undefined, identityTokenFile = env.WORKLOAD_IDENTITY_TOKEN_FILE || undefined;
   if (!tokenFile === !identityTokenFile) throw new Error('Set exactly one of WORKER_TOKEN_FILE or WORKLOAD_IDENTITY_TOKEN_FILE');
   if (buildVersion.length > 120) throw new Error('BUILD_VERSION must be at most 120 characters');
+  if (env.YOUTUBE_COLLECTION_MODE && !['web', 'legacy'].includes(env.YOUTUBE_COLLECTION_MODE)) throw new Error('Invalid YOUTUBE_COLLECTION_MODE');
+  const web = env.YOUTUBE_COLLECTION_MODE === 'web';
+  const collection = web ? {
+    gatewayUrl: validateApiUrl(required('FINGERPRINT_GATEWAY_URL')), identityDirectory: required('BROWSER_IDENTITY_DIR'), identityKeyFile: required('BROWSER_IDENTITY_KEY_FILE'),
+    minioUrl: validateApiUrl(required('MINIO_ENDPOINT')), minioCredentials: required('MINIO_CREDENTIAL_DIR'), kafkaCredentials: required('KAFKA_CREDENTIAL_DIR'),
+    enforceBrazil: env.REQUIRED_EGRESS_COUNTRY === 'BR',
+  } : undefined;
+  if (web && (!env.YOUTUBE_DATA_API_KEY_FILE || !env.PROXY_MANAGER_URL || env.COLLECTOR_PROXY === 'direct')) throw new Error('Web collection requires a proxy manager and API fallback key');
+  if (env.REQUIRED_EGRESS_COUNTRY && env.REQUIRED_EGRESS_COUNTRY !== 'BR') throw new Error('Only the BR egress policy is supported');
   return {
     temporal: temporalOptions(env), controlUrl: validateApiUrl(required('CONTROL_API_URL')), ingestUrl: validateApiUrl(required('INGEST_API_URL')),
     tokenFile, identityTokenFile, workerId: IdSchema.parse(required('WORKER_ID')), serverId: IdSchema.parse(required('SERVER_ID')),
@@ -29,5 +38,6 @@ export function workerConfig(env: NodeJS.ProcessEnv = process.env) {
     profileAgentUrl: env.PROFILE_AGENT_URL ? validateApiUrl(env.PROFILE_AGENT_URL) : undefined,
     // Query search runs claimed in parallel by this Worker (0 turns search execution off here).
     queryRunnerSlots: integer('QUERY_RUNNER_SLOTS', 1, 0, 4),
+    collection,
   };
 }

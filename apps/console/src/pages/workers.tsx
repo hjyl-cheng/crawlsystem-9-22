@@ -41,7 +41,17 @@ function RealDetail({ worker }: { worker?: Worker }) {
     <div className="detail-tabs" role="tablist"><button role="tab" aria-selected="true" className="on">基本信息</button><button role="tab" aria-selected="false" disabled title={NO_METRICS}>资源监控</button><button role="tab" aria-selected="false" disabled title="日志请在运维工具查看">日志</button></div>
     <div className="detail-body">
       <dl><Row label="所属服务器"><span className="mono">{worker.server_id}</span></Row><Row label="版本"><span className="mono">{worker.build_version}</span></Row><Row label="并发容量">{worker.capacity}</Row>
-        <Row label="接单">{worker.accepting_work ? '接单中' : '已暂停'}</Row><Row label="在线">{worker.stale ? '失联（服务端判定）' : '在线'}</Row><Row label="代理">未配置</Row><Row label="CPU / 内存">—</Row></dl>
+        <Row label="接单">{worker.accepting_work ? '接单中' : '已暂停'}</Row><Row label="在线">{worker.stale ? '失联（服务端判定）' : '在线'}</Row><Row label="代理">{worker.collector ? `租用 ${worker.collector.active_leases} · 巴西出口 ${worker.collector.compliant_leases}` : '尚未上报'}</Row><Row label="CPU / 内存">—</Row></dl>
+      {worker.collector && <><h3>网页采集</h3><dl>
+        <Row label="指纹网关">{worker.collector.gateway === 'ready' ? '正常' : '不可用'} · {worker.collector.browser}</Row>
+        <Row label="近一小时">{worker.collector.requests_last_hour} 次请求 · {worker.collector.blocked_last_hour} 次被拦</Row>
+        <Row label="采集身份">{worker.collector.identity_policy}</Row>
+        <Row label="语言 / 地区">{worker.collector.language} / {worker.collector.country}</Row><Row label="时区">{worker.collector.timezone}</Row>
+        <Row label="强制巴西出口">{worker.collector.enforce_egress_country ? '开启' : '关闭'}</Row>
+        <Row label="最近浏览器档案">{worker.collector.last_profile?.profile_id ?? '尚未采集'}</Row>
+        <Row label="档案创建">{worker.collector.last_profile ? time(worker.collector.last_profile.created_at) : '—'}</Row>
+        <Row label="Cookie 保存">{worker.collector.last_profile ? time(worker.collector.last_profile.saved_at) : '—'}</Row>
+      </dl></>}
       <h3>运行中的计划</h3>
       {worker.running_plan_ids.length ? <ul className="plan-links">{worker.running_plan_ids.map(id => <li key={id}><Link to={planPath(id)} className="mono">{shortId(id)}</Link></li>)}</ul> : <p className="detail-note">当前没有上报的运行计划。</p>}
     </div>
@@ -79,7 +89,7 @@ export default function Workers() {
               <tbody>{page.items.map(w => <tr key={w.worker_id} className={`${w.worker_id === current ? 'selected' : ''} ${w.worker_id === highlight ? 'highlight-row' : ''}`} onClick={() => setSelected(w.worker_id)} aria-selected={w.worker_id === current}>
                 <td className="mono query-term">{w.worker_id}</td><td><span className={`status-chip ${w.stale ? 'red' : 'green'}`}><i/>{w.stale ? '心跳失联' : '心跳正常'}</span></td><td>{w.accepting_work ? '上报接单中' : '上报停止接单'}</td>
                 <td className="mono">{w.server_id}</td><td className="mono">{w.build_version}</td><td className="num">{w.capacity}</td><td className="num">{w.running_plan_ids.length}</td><td>{time(w.last_heartbeat_at)}</td>
-                <td><span className="cell-title">未配置</span><small className="cell-sub">节点代理管理尚未部署</small></td><td className="text-muted" title={NO_METRICS}>—</td>
+                <td><span className="cell-title">{w.collector ? `租用 ${w.collector.active_leases}` : '尚未上报'}</span><small className="cell-sub">{w.collector ? `网关${w.collector.gateway === 'ready' ? '正常' : '不可用'} · 巴西出口 ${w.collector.compliant_leases}` : '等待采集器状态'}</small></td><td className="text-muted" title={NO_METRICS}>—</td>
               </tr>)}</tbody></table></div> : <Empty title="尚无登记的 Worker">等待执行节点注册并上报心跳。</Empty>}
             <Pagination cursor={paging.cursor} next={page.next_cursor} count={page.items.length} go={paging.go}/></>}</ResourceView>
       </section>

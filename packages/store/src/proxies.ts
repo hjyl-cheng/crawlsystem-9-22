@@ -188,10 +188,10 @@ export class ProxyStore {
       // Assignment enforces the cap; the limit here only keeps a sync response within the contract.
       const lease = (await client.query(`UPDATE m1.proxies SET lease_expires_at=clock_timestamp()+($3*interval '1 second')
         WHERE (workspace_id, proxy_id) IN (SELECT workspace_id, proxy_id FROM m1.proxies WHERE workspace_id=$1 AND server_id=$2 AND enabled ORDER BY created_at, proxy_id LIMIT $4)
-        RETURNING proxy_id, generation, protocol, host, port, username, credential, kind, max_concurrency, tls_insecure, lease_expires_at`, [principal.workspace_id, server, LEASE_SECONDS, MAX_PROXIES_PER_SERVER])).rows;
+        RETURNING proxy_id, generation, protocol, host, port, username, credential, kind, max_concurrency, tls_insecure, lease_expires_at, exit_country`, [principal.workspace_id, server, LEASE_SECONDS, MAX_PROXIES_PER_SERVER])).rows;
       const expires = lease[0]?.lease_expires_at ?? (await client.query(`SELECT clock_timestamp()+($1*interval '1 second') AS t`, [LEASE_SECONDS])).rows[0]!.t;
       const assignments: ProxyAssignment[] = lease.map(r => ({ proxy_id: r.proxy_id, generation: Number(r.generation), protocol: r.protocol, host: r.host, port: r.port, username: r.username,
-        password: r.credential === null ? null : this.sealer().open(r.credential, context(principal.workspace_id, r.proxy_id)), kind: r.kind, max_concurrency: r.max_concurrency, tls_insecure: r.tls_insecure === true }));
+        password: r.credential === null ? null : this.sealer().open(r.credential, context(principal.workspace_id, r.proxy_id)), kind: r.kind, max_concurrency: r.max_concurrency, tls_insecure: r.tls_insecure === true, egress_country: r.exit_country ?? null }));
       return { server_id: server, lease_expires_at: iso(expires)!, assignments };
     });
   }

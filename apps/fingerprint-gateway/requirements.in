@@ -1,0 +1,3 @@
+# Browser-fingerprint transport for YouTube collection (plan R2): same versions as the legacy gateway.
+aiohttp==3.14.3
+curl-cffi==0.15.0
