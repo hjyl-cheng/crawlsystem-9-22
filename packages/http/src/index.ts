@@ -12,8 +12,8 @@ export interface ServerOptions { store:Store; signingKey:Uint8Array; logger?:boo
 // Business views count real channels only; fixture (test sample) plans are listed on explicit request.
 const SourceQuery={source_mode:SourceModeSchema.default('youtube')};
 export function sourceMode(query:unknown):SourceMode {return z.strictObject(SourceQuery).parse(query ?? {}).source_mode;}
-export function pagination(query:unknown): {limit:number;offset:number;status?:string;sourceMode:SourceMode} {
-  const q=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(20),cursor:z.string().regex(/^\d{1,6}$/).default('0'),status:PlanStatusSchema.optional(),...SourceQuery}).parse(query);
+export function pagination(query:unknown,filters:z.ZodRawShape={}): {limit:number;offset:number;status?:string;sourceMode:SourceMode} {
+  const q=z.strictObject({...filters,limit:z.coerce.number().int().min(1).max(100).default(20),cursor:z.string().regex(/^\d{1,6}$/).default('0'),status:PlanStatusSchema.optional(),...SourceQuery}).parse(query);
   const offset=Number(q.cursor);if(offset>100000) throw new StoreError('INVALID_REQUEST','Cursor exceeds maximum',400);
   return {limit:q.limit,offset,status:q.status,sourceMode:q.source_mode};
 }

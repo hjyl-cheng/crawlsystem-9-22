@@ -72,7 +72,8 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.get(ApiRoutes.completeness,async request=>store.completeness(request.principal,sourceMode(request.query)));
   app.get(ApiRoutes.updatesSummary,async request=>(await store.updates(request.principal,1)).summary);
   app.get(ApiRoutes.updates,async request=>{
-    const q=pagination(request.query), filter=z.object({state:UpdateStateSchema.optional(),search:z.string().max(160).optional()}).parse(request.query);
+    const schema=z.object({state:UpdateStateSchema.optional(),search:z.string().max(160).optional()});
+    const q=pagination(request.query,schema.shape), filter=schema.parse(request.query);
     return (await store.updates(request.principal,q.limit,q.offset,filter)).page;
   });
   app.post(ApiRoutes.dataApiPermit,{bodyLimit:2048},async request=>store.dataApiPermit(request.principal,request.body));
@@ -80,19 +81,22 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.get(ApiRoutes.dataApiSummary,async request=>store.dataApiSummary(request.principal));
   app.get(ApiRoutes.agentSummary,async request=>store.agentSummary(request.principal));
   app.get(ApiRoutes.agentTasks,async request=>{
-    const q=pagination(request.query), filter=z.object({state:AgentTaskStateSchema.optional()}).parse(request.query);
+    const schema=z.object({state:AgentTaskStateSchema.optional()});
+    const q=pagination(request.query,schema.shape), filter=schema.parse(request.query);
     return store.agentTasks(request.principal,q.limit,q.offset,filter.state);
   });
   app.get(ApiRoutes.queriesSummary,async request=>store.querySummary(request.principal));
   app.get(ApiRoutes.queries,async request=>{
-    const q=pagination(request.query), filter=z.object({state:QueryStateSchema.optional(),category:BusinessCategorySchema.optional(),country:z.string().regex(/^[A-Z]{2}$/).optional(),search:z.string().max(200).optional()}).parse(request.query);
+    const schema=z.object({state:QueryStateSchema.optional(),category:BusinessCategorySchema.optional(),country:z.string().regex(/^[A-Z]{2}$/).optional(),search:z.string().max(200).optional()});
+    const q=pagination(request.query,schema.shape), filter=schema.parse(request.query);
     return store.queries(request.principal,q.limit,q.offset,filter);
   });
   app.post(ApiRoutes.queries,{bodyLimit:4096},async request=>store.createQuery(request.principal,request.body));
   app.post('/v1/queries/:id',{bodyLimit:4096},async request=>store.queryCommand(request.principal,z.object({id:z.uuid()}).parse(request.params).id,request.body));
   app.get(ApiRoutes.candidatesSummary,async request=>store.candidateSummary(request.principal));
   app.get(ApiRoutes.candidates,async request=>{
-    const q=pagination(request.query), filter=z.object({state:CandidateStateSchema.optional(),category:BusinessCategorySchema.optional(),search:z.string().max(200).optional()}).parse(request.query);
+    const schema=z.object({state:CandidateStateSchema.optional(),category:BusinessCategorySchema.optional(),search:z.string().max(200).optional()});
+    const q=pagination(request.query,schema.shape), filter=schema.parse(request.query);
     return store.candidates(request.principal,q.limit,q.offset,filter);
   });
   app.post('/v1/candidates/:id',{bodyLimit:4096},async request=>store.candidateCommand(request.principal,z.object({id:YoutubeChannelIdSchema}).parse(request.params).id,request.body));
