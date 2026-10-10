@@ -40,10 +40,11 @@ const entries={'control-api':'apps/control-api/src/main.ts',ingest:'apps/ingest/
   'business-sink':'apps/business-sink/src/main.ts','delivery-receipts':'apps/delivery-receipts/src/main.ts'};
 for(const [name,entry] of Object.entries(entries))await build({...common,entryPoints:[entry],outfile:`${controlRoot}/app/${name}.mjs`});
 const control=image('control',controlRoot,sha(...Object.keys(entries).map(n=>`${controlRoot}/app/${n}.mjs`)));
-if(process.argv.includes('--control-only')){
-  mkdirSync('.runtime/r6',{recursive:true,mode:0o700});
+if(process.argv.includes('--control-only')||process.argv.includes('--c1-control-only')){
+  const metadataDirectory=process.argv.includes('--c1-control-only')?'.runtime/c1':'.runtime/r6';
+  mkdirSync(metadataDirectory,{recursive:true,mode:0o700});
   const metadata={revision,built_at:new Date().toISOString(),scope:'control',control};
-  writeFileSync('.runtime/r6/latest-control-image.json',JSON.stringify(metadata,null,2)+'\n',{mode:0o600});
+  writeFileSync(`${metadataDirectory}/latest-control-image.json`,JSON.stringify(metadata,null,2)+'\n',{mode:0o600});
   console.log(JSON.stringify(metadata));process.exit(0);
 }
 

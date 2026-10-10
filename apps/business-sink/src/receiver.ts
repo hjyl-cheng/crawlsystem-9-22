@@ -3,6 +3,7 @@ import {z} from 'zod';
 import {PostgresBusinessPublicationStore,PostgresBusinessPublicationActivator,PostgresBusinessPublicationProjector,normalizePublicationShard,type LegacyValue} from '../../../packages/legacy-publication/src/index.js';
 import {DeliveryReceiptSchema,type DeliveryReceipt} from '../../../packages/contracts/src/delivery.ts';
 export const DeliveryMessageSchema=z.strictObject({schema_version:z.literal('delivery.v1'),delivery_id:z.uuid(),stream_id:z.uuid(),channel_id:z.string().min(1).max(160),shard:z.record(z.string(),z.unknown()),version_vector:z.record(z.string(),z.unknown())});
+export function decodeDelivery(raw:string):unknown{const value:unknown=JSON.parse(raw);return typeof value==='string'?JSON.parse(value):value;}
 export class DeliveryValidationError extends Error {
  constructor(readonly code:string){super(code);}
 }

@@ -1,10 +1,15 @@
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
-import { Kafka, logLevel, type EachMessagePayload } from 'kafkajs';
+import { Kafka, logLevel, CompressionCodecs, CompressionTypes, type EachMessagePayload } from 'kafkajs';
+import {zstdCompress,zstdDecompress} from 'node:zlib';
+import {promisify} from 'node:util';
 import { ExecutionApi, ExecutionApiError, workloadTokenSource } from '@crawlsystem/execution-client/http';
 import {failureEnvelope} from './failure.ts';
 export const secret=async (dir:string,key:string)=>(await readFile(`${dir}/${key}`,'utf8')).trim();
+// Debezium's existing producer writes ZSTD record batches. Node 22.22 supplies
+// the codec, while KafkaJS requires an explicit registration before fetching.
+export function enableZstdCodec(){CompressionCodecs[CompressionTypes.ZSTD]=()=>({compress:promisify(zstdCompress),decompress:promisify(zstdDecompress)});}
 export async function pipelineApi() {
   const control=process.env.CONTROL_API_URL??'http://control-api.control.svc.cluster.local:18100',pod=process.env.POD_NAME;
   if(!pod) throw new Error('Pod identity is required');
@@ -12,6 +17,7 @@ export async function pipelineApi() {
   return new ExecutionApi({controlUrl:control,ingestUrl:control,token});
 }
 export async function pipelineKafka(groupId:string) {
+  enableZstdCodec();
   const dir=process.env.KAFKA_CREDENTIALS_DIRECTORY??'/var/run/crawlsystem/kafka';
   return new Kafka({clientId:groupId,brokers:(await secret(dir,'bootstrap')).split(','),ssl:{ca:[await secret(dir,'ca.crt')]},
     sasl:{mechanism:'scram-sha-512',username:await secret(dir,'username'),password:await secret(dir,'password')},logLevel:logLevel.NOTHING,

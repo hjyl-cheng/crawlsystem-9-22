@@ -55,6 +55,8 @@ case "${1:-}" in
   publication-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-c1-browser.ts) ;;
   publication-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-c1.ts) ;;
   publication-infra) command=(python3 scripts/dev/configure-c1.py) ;;
+  publication-control-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --c1-control-only) ;;
+  publication-control-deploy) command=(node --import tsx scripts/dev/deploy-c1-control.ts) ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;
   collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-browser.ts) ;;

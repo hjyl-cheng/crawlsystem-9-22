@@ -10,7 +10,7 @@ import {fixtureChannel,fixtureVideo} from '@crawlsystem/contracts/fixtures';
 import {AgentResultSchema,ChannelFactsSchema,type Principal,type VideoFacts} from '@crawlsystem/contracts';
 import {mapPublication,type PublicationSnapshot} from '../../packages/store/src/publication-map.ts';
 import {queuePublication,applyDeliveryReceipt,retryDelivery} from '../../packages/store/src/publication.ts';
-import {BusinessReceiver,DeliveryValidationError} from '../../apps/business-sink/src/receiver.ts';
+import {BusinessReceiver,DeliveryValidationError,decodeDelivery} from '../../apps/business-sink/src/receiver.ts';
 import {buildPublicationShard,normalizePublicationEnvelope,observationFactsHash} from '../../packages/legacy-publication/src/index.js';
 import type {DeliveryReceipt} from '../../packages/contracts/src/delivery.ts';
 const pool=createPool(),uri=process.env.BUSINESS_DATABASE_URL!;
@@ -46,6 +46,11 @@ test('duplicate delivery reissues a receipt without adding business snapshots',a
  await receiver.accept(m);await receipts();const before=(await biz.query('SELECT count(*)::int n FROM public.channel_snapshots WHERE channel_id=$1',[s.channel_id])).rows[0].n;
  await receiver.accept(m);const got=await receipts();assert.equal(got.find(r=>r.delivery_id===m.delivery_id)?.status,'DELIVERED');
  assert.equal((await biz.query('SELECT count(*)::int n FROM public.channel_snapshots WHERE channel_id=$1',[s.channel_id])).rows[0].n,before);
+});
+test('Debezium JSON text preserves nulls and distinct domain payloads through receipt generation',async()=>{
+ const s=snapshot(),id=await stream(),p=mapPublication(s,undefined,id,randomUUID()),m=message(p,id);
+ const decoded=decodeDelivery(JSON.stringify(JSON.stringify(m)));assert.deepEqual(decoded,m);
+ await receiver.accept(decoded);assert.equal((await receipts()).find(r=>r.delivery_id===m.delivery_id)?.status,'DELIVERED');
 });
 test('newer observations without business changes do not create a new revision',async()=>{
  const s=snapshot(),id=await stream(),p=mapPublication(s,undefined,id,randomUUID());

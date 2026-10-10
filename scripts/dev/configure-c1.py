@@ -43,10 +43,20 @@ config={
  'database.hostname':'crawler-pg-rw.db.svc.cluster.local','database.port':'5432','database.user':'crawlsystem_c1_cdc','database.password':'${file:/etc/c1-pg/credentials.properties:password}',
  'database.dbname':'crawlsystem_m1_main_test','database.sslmode':'verify-full','database.sslrootcert':'/etc/pg-ca/ca.crt','plugin.name':'pgoutput','slot.name':'c1_delivery_slot','slot.failover':'true','publication.name':'c1_publication','publication.autocreate.mode':'disabled',
  'topic.prefix':'c1','table.include.list':'delivery.outbox','snapshot.mode':'initial','tombstones.on.delete':'false',
- 'transforms':'outbox','transforms.outbox.type':'io.debezium.transforms.outbox.EventRouter','transforms.outbox.route.by.field':'aggregatetype','transforms.outbox.route.topic.replacement':'business.delivery','transforms.outbox.table.expand.json.payload':'true',
+ # Heterogeneous shard.items have distinct strict payloads. Keep the JSON text
+ # intact: schema inference over an expanded array drops fields and nulls.
+ 'transforms':'outbox','transforms.outbox.type':'io.debezium.transforms.outbox.EventRouter','transforms.outbox.route.by.field':'aggregatetype','transforms.outbox.route.topic.replacement':'business.delivery','transforms.outbox.table.expand.json.payload':'false',
  'predicates':'outboxTable','predicates.outboxTable.type':'org.apache.kafka.connect.transforms.predicates.TopicNameMatches','predicates.outboxTable.pattern':r'^c1\.delivery\.outbox$', 'transforms.outbox.predicate':'outboxTable',
  'heartbeat.interval.ms':'60000','topic.heartbeat.prefix':'business-heartbeat','heartbeat.action.query':'INSERT INTO delivery.heartbeat(id,beat_at) VALUES(1,now()) ON CONFLICT(id) DO UPDATE SET beat_at=EXCLUDED.beat_at',
  'key.converter':'org.apache.kafka.connect.storage.StringConverter','value.converter':'org.apache.kafka.connect.json.JsonConverter','value.converter.schemas.enable':'false'}
 k('-n','kafka','exec','-i','deployment/debezium-connect','--','curl','--fail','--silent','--show-error','--max-time','30','-X','PUT','-H','Content-Type: application/json','--data-binary','@-','http://127.0.0.1:8083/connectors/c1-delivery/config',data=json.dumps(config).encode())
+stable=0
+for attempt in range(30):
+ status=json.loads(k('-n','kafka','exec','deployment/debezium-connect','--','curl','--fail','--silent','http://127.0.0.1:8083/connectors/c1-delivery/status'))
+ if status['connector']['state']=='RUNNING' and status['tasks'] and all(t['state']=='RUNNING' for t in status['tasks']):stable+=1
+ else:stable=0
+ if stable>=3:break
+ time.sleep(2)
+else:raise RuntimeError('C1 Debezium task did not become RUNNING; inspect task status')
 (ROOT/'.runtime/c1/connector-config.json').write_text(json.dumps(config,indent=2))
 print('C1 Kafka topics, scoped identities, network access and Debezium connector configured')

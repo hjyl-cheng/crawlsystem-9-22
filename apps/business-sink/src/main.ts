@@ -1,7 +1,7 @@
 import {Pool} from 'pg';
 import {readFileSync} from 'node:fs';
 import {createServer} from 'node:http';
-import {BusinessReceiver,DeliveryMessageSchema,DeliveryValidationError} from './receiver.ts';
+import {BusinessReceiver,DeliveryMessageSchema,DeliveryValidationError,decodeDelivery} from './receiver.ts';
 import {DeliveryReceiptSchema} from '../../../packages/contracts/src/delivery.ts';
 import {pipelineKafka} from '../../raw-parser/src/runtime.ts';
 const url=process.env.BUSINESS_DATABASE_URL;if(!url||!process.env.PG_CA_FILE)throw new Error('Business database and TLS configuration required');
@@ -13,10 +13,10 @@ if(identity?.database_kind!=='business'||identity.database_name!==new URL(url).p
 const receiver=new BusinessReceiver(pool),kafka=await pipelineKafka('business-sink'),consumer=kafka.consumer({groupId:'business-sink',allowAutoTopicCreation:false,sessionTimeout:60000}),producer=kafka.producer({idempotent:true,maxInFlightRequests:1,allowAutoTopicCreation:false});
 let ready=false,busy=false,stopping=false,lastTick=Date.now();
 const server=createServer((req,res)=>{const ok=req.url==='/healthz'&&ready&&Date.now()-lastTick<120000;res.statusCode=ok?200:503;res.end(ok?'ok':'starting');});server.listen(18103,'0.0.0.0');
-await producer.connect();await consumer.connect();consumer.on(consumer.events.GROUP_JOIN,()=>{ready=true;});consumer.on(consumer.events.CRASH,e=>{ready=false;if(!stopping&&!e.payload.restart)process.exit(1);});
+await producer.connect();await consumer.connect();consumer.on(consumer.events.GROUP_JOIN,()=>{ready=true;});consumer.on(consumer.events.CRASH,e=>{ready=false;const diagnostic=JSON.stringify({service:'business-sink',code:'CONSUMER_CRASH',error_name:e.payload.error.name})+'\n';if(!stopping&&!e.payload.restart)process.stderr.write(diagnostic,()=>process.exit(1));else process.stderr.write(diagnostic);});
 await consumer.subscribe({topic:'business.delivery',fromBeginning:true});
 await consumer.run({partitionsConsumedConcurrently:1,eachMessage:async m=>{
- let value:unknown;try{value=JSON.parse(m.message.value!.toString());DeliveryMessageSchema.parse(value);}catch{
+ let value:unknown;try{value=decodeDelivery(m.message.value!.toString());DeliveryMessageSchema.parse(value);}catch{
   await producer.send({topic:'dlq.delivery',messages:[{key:m.message.key,value:JSON.stringify({stage:'BUSINESS',code:'INVALID_MESSAGE',topic:m.topic,partition:m.partition,offset:m.message.offset})}]});return;
  }
  try{await receiver.accept(value);}catch(e){
