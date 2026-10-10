@@ -1,13 +1,14 @@
 import {before,after,test} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 import {Store} from '@crawlsystem/store';
 import {createPool} from '@crawlsystem/store/config';
 import {contentHash} from '@crawlsystem/contracts/hash';
 import type {Principal} from '@crawlsystem/contracts';
 import {FailureReportSchema,OpsEventSchema} from '@crawlsystem/contracts/analytics';
 import {PgSink} from '../../apps/pg-sink/src/sink.ts';
-import {fixtureChannel} from '@crawlsystem/contracts/fixtures';
+import {fixtureChannel,fixtureVideo} from '@crawlsystem/contracts/fixtures';
 import {prepareDatabase} from './database-ready.ts';
 const pool=createPool(),store=new Store(pool,undefined,undefined,{enabled:true});
 before(()=>prepareDatabase(pool));after(()=>pool.end());
@@ -60,6 +61,15 @@ test('observation events preserve the entity and metrics, and plan creation has 
  const t=await setup();await new PgSink(pool).apply(t.fact);
  const events=await store.telemetryOutbox(t.analytics),fact=events.find(e=>e.kind==='FACT')!;
  assert.equal(events.filter(e=>e.kind==='PLAN_CREATED').length,1);assert.equal(fact.entity_id,'channel');assert.equal(fact.views,fixtureChannel.total_view_count.value);assert.equal(fact.subscribers,fixtureChannel.subscriber_count.value);
+});
+test('historical bootstrap keeps snapshot metrics separate and can safely run twice',async()=>{
+ const t=await setup(),video={...fixtureVideo,comments_first_page:null};await new PgSink(pool).apply(t.fact);
+ await pool.query('INSERT INTO crawl_data.videos(workspace_id,channel_id,video_id,source_revision,data) VALUES($1,$2,$3,$4,$5)',[t.op.workspace_id,t.plan.channel_id,video.source_content_id,t.plan.source_revision,video]);
+ const run=()=>JSON.parse(execFileSync(process.execPath,['--import','tsx','scripts/dev/backfill-r5.ts'],{encoding:'utf8',env:{...process.env,M1_WORKSPACE_ID:t.op.workspace_id},stdio:['ignore','pipe','pipe'],timeout:30000}).trim());
+ assert.equal(run().video_snapshots,1);
+ const rows=(await pool.query('SELECT event FROM telemetry.outbox WHERE workspace_id=$1',[t.op.workspace_id])).rows,snapshot=OpsEventSchema.parse(rows.find(r=>r.event.kind==='SNAPSHOT').event);
+ assert.equal(snapshot.entity_id,video.source_content_id);assert.equal(snapshot.metric_total,4);assert.equal(snapshot.metric_missing,0);assert.equal(snapshot.likes,10);
+ assert.equal(run().already_completed,true);assert.equal((await pool.query('SELECT count(*)::int AS n FROM telemetry.outbox WHERE workspace_id=$1',[t.op.workspace_id])).rows[0].n,rows.length);
 });
 test('worker failure evidence is owner scoped, archived separately and never reaches telemetry',async()=>{
  const t=await setup(),event={event_id:randomUUID(),execution_epoch:1,worker_id:t.worker.subject,kind:'ERROR' as const,phase:'AGENT',domain:'AGENT' as const,message:'Profile failed',error_code:'UNAVAILABLE' as const,

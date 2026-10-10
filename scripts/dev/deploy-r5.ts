@@ -1,5 +1,5 @@
 import {execFileSync,spawn} from 'node:child_process';
-import {createReadStream,readFileSync,writeFileSync} from 'node:fs';
+import {createReadStream,readFileSync,writeFileSync,existsSync} from 'node:fs';
 const kube=(args:string[],input?:string)=>execFileSync('kubectl',args,{encoding:'utf8',input,stdio:['pipe','pipe','pipe']}).trim();
 const git=(...args:string[])=>execFileSync('git',args,{encoding:'utf8'}).trim();
 if(git('status','--porcelain'))throw new Error('Deploy a clean committed revision');
@@ -8,7 +8,7 @@ if(build.revision!==git('rev-parse','HEAD'))throw new Error('Build revision diff
 const previous=[];
 for(const [ns,kind,name] of [['control','deployment','control-api-preview'],['control','deployment','intent-dispatcher'],['crawler','deployment','raw-parser'],['ingest','deployment','pg-sink'],['crawler','statefulset','execution-worker']] as const)
  previous.push({namespace:ns,kind,name,object:JSON.parse(kube(['-n',ns,'get',kind,name,'-o','json']))});
-writeFileSync('.runtime/r5/previous-deployments.json',JSON.stringify(previous),{mode:0o600});
+if(!existsSync('.runtime/r5/previous-deployments.json'))writeFileSync('.runtime/r5/previous-deployments.json',JSON.stringify(previous),{mode:0o600});
 for(const node of ['a1','a2','a3','s1','s2','s3']) {
  for(const artifact of [build.control,build.worker]) {
   const prefix=node==='a1'?[]:['ssh',`crawl-${node}`];
