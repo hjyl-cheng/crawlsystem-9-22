@@ -63,7 +63,7 @@ function CapacityRisk() {
   return <Panel title="存储与归档" extra={<More to="/storage" children="查看详情"/>} className="capacity-panel"><ResourceView resource={r} showMeta={false}>{s=><div className="capacity-items">
     <div><span><Cylinder size={12}/>PostgreSQL</span><strong>{(s.postgres_bytes/1024/1024).toFixed(1)} MiB</strong><small>数据库大小</small></div>
     <div><span><Cylinder size={12}/>ClickHouse</span><strong>{s.clickhouse.bytes===null?'—':`${(s.clickhouse.bytes/1024/1024).toFixed(1)} MiB`}</strong><small>{s.clickhouse.available?'正常':'暂时不可用'}</small></div>
-    <div><span>待归档事件</span><strong>{s.outbox.unarchived}</strong><small>保留至统计入库</small></div>
+    <div><span>待归档事件</span><strong>{s.outbox.unarchived}</strong><small>等待统计入库</small></div>
     <div><span>待处理失败</span><strong>{s.failures.open}</strong><small>重试中 {s.failures.retrying}</small></div>
   </div>}</ResourceView></Panel>;
 }

@@ -68,6 +68,7 @@ try{
   await expect.poll(()=>page.evaluate(()=>({x:document.documentElement.scrollWidth-innerWidth,y:document.documentElement.scrollHeight-innerHeight}))).toEqual({x:0,y:0});
   await expect.poll(()=>page.evaluate(()=>[...document.querySelectorAll('#pipeline .react-flow__node')].filter(n=>getComputedStyle(n).visibility==='hidden').length)).toBe(0);
   const columns=await page.evaluate(()=>[...document.querySelectorAll('.dashboard-row')].map(row=>[...row.children].map(cell=>Math.round(cell.getBoundingClientRect().left))));expect(columns[0]).toEqual(columns[1]);
+  await expect.poll(()=>page.evaluate(()=>{const row=document.querySelector('.recent-panel tbody tr'),panel=document.querySelector('.recent-panel'),view=document.querySelector('.recent-panel .table-scroll');return !!row&&!!panel&&!!view&&row.getBoundingClientRect().bottom<=Math.min(panel.getBoundingClientRect().bottom,view.getBoundingClientRect().bottom);})).toBe(true);
   layouts.push({width,height,horizontal_overflow:0,vertical_overflow:0});
   await page.screenshot({path:`${dir}/overview-${width}.png`,fullPage:true});
  }
