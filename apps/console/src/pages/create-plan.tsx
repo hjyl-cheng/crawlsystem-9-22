@@ -68,7 +68,7 @@ export default function CreatePlanPage() {
         <label className="scope-field wide">频道<input aria-label="频道 ID 或链接" placeholder="UC… 或 https://www.youtube.com/channel/UC…" value={channel} disabled={locked} onChange={e => setChannel(e.target.value)}/>
           <small>{channel && !channelId ? '需要 UC 开头的频道 ID 或 /channel/ 链接；@handle 暂不支持直接解析。' : channelId ? <span className="mono">{channelId}</span> : '规范频道 ID 作为计划身份，重试与恢复都针对同一频道。'}</small></label>
         <fieldset className="scope-grid" disabled={locked}><legend>采集范围（创建时冻结）</legend>
-          {number('video_limit', '最近视频数', 1, 100, '个')}{number('max_age_days', '发布时间窗口', 1, 3650, '天')}{number('comments_per_video', '每个视频的首屏评论', 0, 100, '条')}</fieldset>
+          {number('video_limit', '最近视频数', 1, 100, '个')}{number('comments_per_video', '每个视频的首屏评论', 0, 100, '条')}</fieldset>
         <div className="notice">必需领域：频道基础信息、视频与评论、Agent 画像。任一领域未完成，计划不会显示为完成。</div>
       </> : <>
         <div className="sample-choice"><SampleBadge/><strong>频道基础样本</strong><code>channel-basic-v1</code><p>验证频道资料、1 条视频与首屏评论的持久入库。</p></div>

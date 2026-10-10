@@ -62,7 +62,7 @@ function Content({ detail, refresh, refreshing }: { detail: PlanDetail; refresh:
     {applied > 0 && applied < plan.required_domains.length && <div className="notice warning">部分必需领域已有入库结果（{applied} / {plan.required_domains.length}）。请继续核对本轮计划状态与未完成领域。</div>}
     <div className="detail-grid"><Panel title="本轮目标与业务身份"><Fields rows={[
       ['Plan ID', <code>{plan.plan_id}</code>], ['业务轮次 ID', <code>{plan.run_id}</code>], ['频道', <Link to={channelPath(plan.channel_id)}>{plan.channel_id}</Link>], ['工作空间', plan.workspace_id],
-      ['来源', plan.source_mode === 'fixture' ? `固定样本 ${plan.fixture_id}` : input.source_mode === 'youtube' ? `YouTube 真实采集 · 最近 ${input.scope.video_limit} 个视频 / ${input.scope.max_age_days} 天 · 每视频首屏评论 ≤${input.scope.comments_per_video}` : '—'], ['必需领域', plan.required_domains.map(domain => domainLabels[domain]).join('、')], ['目标视频', detail.video_targets ? detail.video_targets.join('、') || '窗口内没有视频（已列尽）' : '尚未列出（执行时冻结）'],
+      ['来源', plan.source_mode === 'fixture' ? `固定样本 ${plan.fixture_id}` : input.source_mode === 'youtube' ? `YouTube 真实采集 · 最近 ${input.scope.video_limit} 个视频 · 每视频首屏评论 ≤${input.scope.comments_per_video}` : '—'], ['必需领域', plan.required_domains.map(domain => domainLabels[domain]).join('、')], ['目标视频', detail.video_targets ? detail.video_targets.join('、') || '没有上传视频（已列尽）' : '尚未列出（执行时冻结）'],
       ['输入版本', <code>{plan.input_hash}</code>], ['来源修订', plan.source_revision], ['计划版本', plan.version], ['创建时间', time(plan.created_at)], ['总期限', time(plan.deadline_at)], ['结束时间', plan.finished_at ? time(plan.finished_at) : '尚未结束'],
     ]}/></Panel><div><Panel title="必需领域结果"><div className="domain-list">{plan.required_domains.map(domain => {
       const result = domains.find(item => item.domain === domain);

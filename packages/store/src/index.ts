@@ -523,7 +523,9 @@ export class Store {
           if (frozen.source_mode !== 'youtube') throw new StoreError('TARGET_MISMATCH','Fixture targets are frozen at creation');
           if (incremental) throw new StoreError('TARGET_MISMATCH','An update discovers new videos instead of listing a window');
           if (targets) throw new StoreError('CONFLICT','Video targets are already frozen for this plan');
-          const windowStart = new Date(Date.parse(frozen.reference_time) - frozen.scope.max_age_days * 86_400_000).toISOString();
+          // Web uploads freeze the latest N videos without an age cutoff; legacy API manifests retain their frozen window.
+          const windowStart = manifest.source === 'youtubei:uploads' ? new Date(0).toISOString()
+            : new Date(Date.parse(frozen.reference_time) - frozen.scope.max_age_days * 86_400_000).toISOString();
           if (manifest.channel_id !== row.channel_id || manifest.video_ids.length > frozen.scope.video_limit || manifest.window_start !== windowStart
             || manifest.video_ids.some(id => !YoutubeVideoIdSchema.safeParse(id).success)) throw new StoreError('TARGET_MISMATCH','Target manifest is outside the frozen scope');
           await client.query('INSERT INTO m1.plan_video_targets(plan_id,submission_id,manifest) VALUES($1,$2,$3)',[input.plan_id,input.submission_id,manifest]);
