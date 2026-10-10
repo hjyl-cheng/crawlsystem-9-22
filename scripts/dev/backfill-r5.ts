@@ -3,7 +3,7 @@ import {OpsEventSchema} from '@crawlsystem/contracts/analytics';
 const pool=createPool(),workspace=process.env.M1_WORKSPACE_ID??'m1-main';
 const client=await pool.connect();
 try {
- await client.query('BEGIN');await client.query("SELECT pg_advisory_xact_lock(hashtext('r5-bootstrap:'||$1))",[workspace]);
+ await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');await client.query("SELECT pg_advisory_xact_lock(hashtext('r5-bootstrap:'||$1))",[workspace]);
  const done=(await client.query('SELECT counts FROM telemetry.bootstrap WHERE workspace_id=$1',[workspace])).rows[0];
  if(done){console.log(JSON.stringify({already_completed:true,...done.counts}));}
  else {
@@ -22,12 +22,14 @@ try {
   await client.query(`SELECT telemetry.emit(d.workspace_id,'api:'||d.request_id||':'||d.failure,jsonb_build_object('at',d.failed_at,'source_mode',coalesce(p.source_mode,'youtube'),'kind','DATA_API','domain',coalesce(d.endpoint,'unknown'),'status','FAILED','code',d.failure,'plan_id',coalesce(d.plan_id::text,d.run_id::text,''),'channel_id',coalesce(p.channel_id,''))) FROM control.data_api_permits d LEFT JOIN control.plans p USING(plan_id) WHERE d.workspace_id=$1 AND d.failure IS NOT NULL`,[workspace]);
   await client.query(`SELECT telemetry.emit(p.workspace_id,'agent:'||p.plan_id||':'||p.status,jsonb_build_object('at',coalesce(p.finished_at,p.updated_at),'source_mode',p.source_mode,'kind','AGENT_TASK','domain','AGENT','status',p.status,
    'plan_id',p.plan_id,'channel_id',p.channel_id,'duration_ms',greatest(0,extract(epoch FROM coalesce(p.finished_at,p.updated_at)-p.created_at)*1000))) FROM control.plans p WHERE workspace_id=$1 AND 'AGENT'=ANY(required_domains) AND status IN ('COMPLETED','FAILED','CANCELLED')`,[workspace]);
-  await client.query(`SELECT telemetry.emit(v.workspace_id,'baseline:'||v.workspace_id||':'||v.channel_id||':'||v.video_id,jsonb_build_object('kind','SNAPSHOT','domain','VIDEO','status',CASE WHEN v.data->>'unavailable'='true' THEN 'UNAVAILABLE' WHEN m.missing>0 THEN 'PARTIAL' ELSE 'APPLIED' END,
+  const videoCount=(await client.query('SELECT count(*)::int AS n FROM crawl_data.videos WHERE workspace_id=$1',[workspace])).rows[0].n;
+  for(let offset=0;offset<videoCount;offset+=500)await client.query(`WITH batch AS MATERIALIZED(SELECT * FROM crawl_data.videos WHERE workspace_id=$1 ORDER BY channel_id,video_id LIMIT 500 OFFSET $2)
+   SELECT telemetry.emit(v.workspace_id,'baseline:'||v.workspace_id||':'||v.channel_id||':'||v.video_id,jsonb_build_object('kind','SNAPSHOT','domain','VIDEO','status',CASE WHEN v.data->>'unavailable'='true' THEN 'UNAVAILABLE' WHEN m.missing>0 THEN 'PARTIAL' ELSE 'APPLIED' END,
    'source_mode',coalesce(p.source_mode,'youtube'),'plan_id',coalesce(p.plan_id::text,''),'channel_id',v.channel_id,'entity_id',v.video_id,'units',1,'metric_total',m.total,'metric_missing',m.missing,
-   'views',coalesce(v.data->'view_count'->'value','null'),'likes',coalesce(v.data->'like_count'->'value','null'),'comments',coalesce(v.data->'comment_count'->'value','null'),'duration_seconds',coalesce(v.data->'duration_seconds'->'value','null'))) FROM crawl_data.videos v LEFT JOIN control.plans p ON p.source_revision=v.source_revision
-   CROSS JOIN LATERAL (SELECT count(k) FILTER(WHERE v.data->>'unavailable' IS DISTINCT FROM 'true') AS total,count(k) FILTER(WHERE v.data->>'unavailable' IS DISTINCT FROM 'true' AND (v.data->k->>'status' NOT IN ('exact','estimated','empty','disabled') OR v.data->k->>'value' IS NULL)) AS missing FROM unnest(ARRAY['view_count','like_count','comment_count','duration_seconds']) k) m WHERE v.workspace_id=$1`,[workspace]);
+   'views',coalesce(v.data->'view_count'->'value','null'),'likes',coalesce(v.data->'like_count'->'value','null'),'comments',coalesce(v.data->'comment_count'->'value','null'),'duration_seconds',coalesce(v.data->'duration_seconds'->'value','null'))) FROM batch v LEFT JOIN control.plans p ON p.source_revision=v.source_revision
+   CROSS JOIN LATERAL (SELECT count(k) FILTER(WHERE v.data->>'unavailable' IS DISTINCT FROM 'true') AS total,count(k) FILTER(WHERE v.data->>'unavailable' IS DISTINCT FROM 'true' AND (v.data->k->>'status' NOT IN ('exact','estimated','empty','disabled') OR v.data->k->>'value' IS NULL)) AS missing FROM unnest(ARRAY['view_count','like_count','comment_count','duration_seconds']) k) m`,[workspace,offset]);
   const events=(await client.query('SELECT event FROM telemetry.outbox WHERE workspace_id=$1',[workspace])).rows;events.forEach(r=>OpsEventSchema.parse(r.event));
-  const counts={events:events.length,video_snapshots:(await client.query('SELECT count(*)::int AS n FROM crawl_data.videos WHERE workspace_id=$1',[workspace])).rows[0].n};
+  const counts={events:events.length,video_snapshots:videoCount};
   await client.query('INSERT INTO telemetry.bootstrap(workspace_id,counts) VALUES($1,$2)',[workspace,counts]);console.log(JSON.stringify(counts));
  }
  await client.query('COMMIT');
