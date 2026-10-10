@@ -90,10 +90,12 @@ class ChannelProfileProcessor:
 
         features = build_channel_features(snapshot, self.language_identifier)
         if features.comments.has_comments:
+            newest = any(content.comments_first_page and content.comments_first_page.sort == "NEWEST_FIRST" for content in snapshot.contents)
             diagnostics.append({
-                "code": "TOP_COMMENTS_SAMPLE_USED",
+                "code": "FIRST_PAGE_COMMENTS_SAMPLE_USED" if newest else "TOP_COMMENTS_SAMPLE_USED",
                 "severity": "info",
-                "message": "First-page Top comments were used as biased public evidence, not Analytics truth.",
+                "message": "First-page comments were used as biased public evidence, not Analytics truth." if newest
+                    else "First-page Top comments were used as biased public evidence, not Analytics truth.",
                 "comment_sample_count": int(features.comments.numeric["comment_sample_count"]),
                 "comment_unique_author_count": int(features.comments.numeric["comment_unique_author_count"]),
                 "comment_page_count": int(features.comments.numeric["comment_page_count"]),

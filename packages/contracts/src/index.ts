@@ -661,7 +661,10 @@ export const QueryRunPageSchema = z.strictObject({
   items: z.array(z.strictObject({ video_id: z.string().regex(/^[A-Za-z0-9_-]{11}$/), channel_id: YoutubeChannelIdSchema })).max(200),
 });
 export type QueryRunPage = z.infer<typeof QueryRunPageSchema>;
-export const QueryRunPageResultSchema = z.strictObject({ new_channel_ids: z.array(YoutubeChannelIdSchema).max(200), continue: z.boolean() });
+export const QueryRunPageResultSchema = z.strictObject({ new_channel_ids: z.array(YoutubeChannelIdSchema).max(200), continue: z.boolean(),
+  /** Frozen legacy retries qualify all previously discovered identities, even if refreshed pages change. */
+  qualification_channel_ids: z.array(YoutubeChannelIdSchema).max(4000).optional(),
+});
 export const QueryRunChannelSchema = z.strictObject({
   channel_id: YoutubeChannelIdSchema, title: z.string().max(300).nullable(), country: z.string().max(10).nullable(),
   subscriber_count: Count.nullable(), hidden_subscribers: z.boolean(), video_count: Count.nullable(), view_count: Count.nullable(),

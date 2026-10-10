@@ -113,7 +113,11 @@ export async function recordPage(client: PoolClient, workspace: string, worker: 
     FROM unnest($4::text[],$5::text[]) u(channel_id,video_id) ON CONFLICT DO NOTHING`, [runId, workspace, page.page, order.map(o => o[0]), order.map(o => o[1])]);
   const fresh = new Set((await client.query('SELECT channel_id FROM control.query_run_channels WHERE run_id=$1 AND channel_id=ANY($2::text[]) AND NOT known_before AND page=$3', [runId, order.map(o => o[0]),page.page])).rows.map(r => r.channel_id as string));
   const newIds = order.map(o => o[0]).filter(id => fresh.has(id));
-  return { new_channel_ids: newIds, continue: newIds.length >= params.continue_min_new && page.page < params.max_pages };
+  const qualification = params.policy_version===LEGACY_QUERY_POLICY_VERSION && run.attempt>1
+    ? (await client.query('SELECT channel_id FROM control.query_run_channels WHERE run_id=$1 AND NOT known_before ORDER BY channel_id',[runId])).rows.map(r=>r.channel_id as string)
+    : undefined;
+  return { new_channel_ids: newIds, continue: newIds.length >= params.continue_min_new && page.page < params.max_pages,
+    ...(qualification ? {qualification_channel_ids:qualification} : {}) };
 }
 
 const resultOf = (run: Record<string, any>, binding: Record<string, any>) => ({ run_id: run.run_id as string, state: 'SUCCEEDED' as const, new_channels: run.new_channels as number, qualified_new: run.qualified_new as number,

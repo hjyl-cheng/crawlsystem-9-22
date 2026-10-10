@@ -118,6 +118,22 @@ test('failures retry the same run with its frozen parameters; repeated failures 
   assert.equal((await t.store.claimQueryRun(t.worker)).idle_reason, 'no_due');
 });
 
+test('a frozen legacy retry qualifies discoveries missing from refreshed search pages', async () => {
+  const t=setup();await bind(t.workspace_id,[{text:'changing search results',category:'Gaming'}]);
+  const first=(await t.store.claimQueryRun(t.worker)).run!;
+  await t.store.queryRunPage(t.worker,first.run_id,page(1,1,[1,2]));
+  await t.store.queryRunFail(t.worker,first.run_id,{attempt:1,reason:'parse',retryable:true});
+  await pool.query('UPDATE control.query_runs SET retry_at=now() WHERE run_id=$1',[first.run_id]);
+  const retry=(await t.store.claimQueryRun(t.worker)).run!;
+  const refreshed=await t.store.queryRunPage(t.worker,retry.run_id,page(retry.attempt,1,[1,3]));
+  assert.deepEqual(refreshed.new_channel_ids,[channel(1),channel(3)]);
+  assert.equal(refreshed.continue,false,'pagination still uses this page only');
+  assert.deepEqual(refreshed.qualification_channel_ids,[channel(1),channel(2),channel(3)]);
+  const completed=await t.store.queryRunComplete(t.worker,retry.run_id,{attempt:retry.attempt,pages:1,stop_reason:'low_yield',
+    channels:[facts(1,2000),facts(2,2000),facts(3,2000)],missing_channel_ids:[]});
+  assert.equal(completed.new_channels,3);assert.equal(completed.qualified_new,3);assert.equal(completed.binding.cadence,'WEEK');
+});
+
 test('limits pause searching: switched off, daily runs, backlog and the Data API reserve', async () => {
   assert.equal((await setup({ enabled: false }).store.claimQueryRun(setup().worker)).idle_reason, 'disabled');
   const daily = setup({ daily_run_limit: 1 });

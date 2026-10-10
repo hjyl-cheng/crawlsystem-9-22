@@ -90,7 +90,8 @@ async function search(options: QueryRunnerOptions, run: Run, signal: AbortSignal
         raw_reference={bucket:'crawl-raw' as const,key,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};
       }
       const result = await options.api.queryRunPage(run.run_id, { attempt: run.attempt, page: pages, items: page.items.slice(0, 200),...(raw_reference?{raw_reference}:{}) }, { signal });
-      for (const id of result.new_channel_ids) if (!newIds.includes(id)) newIds.push(id);
+      const qualifyIds=params.policy_version==='query-clock-1' ? result.qualification_channel_ids??result.new_channel_ids : result.new_channel_ids;
+      for (const id of qualifyIds) if (!newIds.includes(id)) newIds.push(id);
       if (!page.more) return { pages, newIds, stop_reason: 'list_end' as const };
       if (!result.continue) return { pages, newIds, stop_reason: pages >= params.max_pages ? 'max_pages' as const : 'low_yield' as const };
     }

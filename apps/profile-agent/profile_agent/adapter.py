@@ -99,7 +99,9 @@ def snapshot_value(agent_input: dict[str, Any]) -> dict[str, Any]:
         "contents": contents,
         "as_of": max(_observations(agent_input)).isoformat(),
         "replay_quality": "current_exact",
-        "provenance": {"data_lineage_version": "crawlsystem-m2", "comment_page_source_status": "top_comments_first_page"},
+        "provenance": {"data_lineage_version": "crawlsystem-m2", "comment_page_source_status":
+            "mixed_first_page" if any(row.get("comments_first_page", {}).get("sort") == "NEWEST_FIRST" for row in contents)
+            else "top_comments_first_page"},
     }
 
 

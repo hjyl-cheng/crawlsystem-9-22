@@ -163,8 +163,8 @@ class CommentPageRecord:
         if version != 1:
             raise SnapshotError("comments_first_page.version must be 1")
         sort = str(value.get("sort") or "").strip()
-        if sort != "TOP_COMMENTS":
-            raise SnapshotError("comments_first_page.sort must be TOP_COMMENTS")
+        if sort not in ("TOP_COMMENTS", "NEWEST_FIRST"):
+            raise SnapshotError("comments_first_page.sort must be TOP_COMMENTS or NEWEST_FIRST")
         collected_at = parse_datetime(
             value.get("collected_at"),
             field_name="comments_first_page.collected_at",

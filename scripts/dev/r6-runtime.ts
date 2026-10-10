@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {existsSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {gunzipSync} from 'node:zlib';
 import {createPool} from '@crawlsystem/store/config';
 import {issueToken,loadSigningKey} from '@crawlsystem/http/auth';
-import {ApiRoutes,PlanDetailSchema} from '@crawlsystem/contracts';
+import {ApiRoutes,CommentPageSchema,ObjectStorageReferenceSchema,PlanDetailSchema} from '@crawlsystem/contracts';
+import {MinioStore} from '../../apps/execution-worker/src/raw-archive.ts';
 
 // Target the running R5 images: restoring scheduling requires no image rebuild or migration.
 const mode=process.argv[2]??'snapshot';
@@ -12,7 +15,7 @@ const directory='.runtime/r6',workspace='m1-main';
 mkdirSync(directory,{recursive:true,mode:0o700});
 const save=(name:string,value:unknown)=>writeFileSync(`${directory}/${name}.json`,JSON.stringify(value,null,2),{mode:0o600});
 const kube=(args:string[])=>execFileSync('kubectl',args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:190_000}).trim();
-const workloads=[['control','deployment','control-api-preview'],['control','deployment','intent-dispatcher'],['crawler','statefulset','execution-worker'],['crawler','deployment','raw-parser'],['ingest','deployment','pg-sink'],['analytics','deployment','crawl-analytics']] as const;
+const workloads=[['control','deployment','control-api-preview'],['control','deployment','intent-dispatcher'],['crawler','statefulset','execution-worker'],['crawler','deployment','profile-agent'],['crawler','deployment','raw-parser'],['ingest','deployment','pg-sink'],['analytics','deployment','crawl-analytics']] as const;
 const objects=()=>workloads.map(([namespace,kind,name])=>({namespace,kind,name,object:JSON.parse(kube(['-n',namespace,'get',kind,name,'-o','json']))}));
 const settings={
   QUERY_RUNS_ENABLED:'true',QUERY_AUTO_ADMIT:'true',QUERY_MAX_ACTIVE_RUNS:'2',QUERY_DAILY_RUN_LIMIT:'300',
@@ -41,9 +44,13 @@ async function snapshot() {
     automatic_admissions:await query(`SELECT count(*)::int AS n FROM control.channel_candidates WHERE workspace_id=$1 AND decided_by='auto' AND decided_at>=$2`),
     imports:await query(`SELECT state,count(*)::int AS n FROM control.channel_imports WHERE workspace_id=$1 AND $2::timestamptz IS NOT NULL GROUP BY state ORDER BY state`),
     new_failures:await query(`SELECT stage,code,state,count(*)::int AS n FROM control.failures WHERE workspace_id=$1 AND first_at>=$2 GROUP BY 1,2,3 ORDER BY 1,2,3`),
+    unrecovered_plans:await query(`SELECT count(*)::int AS n FROM control.plans p WHERE p.workspace_id=$1 AND p.created_at>=$2 AND p.status='FAILED'
+      AND NOT EXISTS(SELECT 1 FROM control.failures f JOIN control.plans retry ON retry.plan_id=f.retry_plan_id WHERE f.plan_id=p.plan_id AND f.state='RESOLVED' AND retry.status='COMPLETED')`),
     video_counts:await query(`SELECT count(*)::int AS videos,count(*) FILTER(WHERE data->'comments_ref' IS NOT NULL AND data->'comments_ref'<>'null'::jsonb)::int AS comment_refs,
       count(*) FILTER(WHERE data->'comments_first_page' IS NOT NULL AND data->'comments_first_page'<>'null'::jsonb)::int AS comment_bodies,
-      count(*) FILTER(WHERE observed_at>=$2)::int AS observations FROM crawl_data.videos WHERE workspace_id=$1`),
+      count(*) FILTER(WHERE observed_at>=$2)::int AS observations,
+      coalesce(sum((data->'comments_summary'->>'returned_count')::int) FILTER(WHERE observed_at>=$2),0)::int AS new_returned_comments
+      FROM crawl_data.videos WHERE workspace_id=$1`),
     outbox:await query(`SELECT count(*) FILTER(WHERE archived_at IS NULL)::int AS unarchived,min(created_at) FILTER(WHERE archived_at IS NULL) AS oldest
       FROM telemetry.outbox WHERE workspace_id=$1 AND $2::timestamptz IS NOT NULL`),
     workers:await query(`SELECT worker_id,last_heartbeat_at,heartbeat->>'accepting_work' AS accepting,heartbeat->'running_plan_ids' AS running
@@ -51,7 +58,7 @@ async function snapshot() {
   };
   const services=objects().map(({namespace,name,object})=>({namespace,name,ready:object.status.readyReplicas??0,desired:object.spec.replicas,
     containers:object.spec.template.spec.containers.map((c:any)=>({name:c.name,image:c.image,settings:Object.fromEntries((c.env??[]).filter((e:any)=>Object.hasOwn(settings,e.name)||['UPDATE_AUTO_DOMAINS','QUERY_RUNNER_SLOTS','REQUIRED_EGRESS_COUNTRY','PIPELINE_ENABLED'].includes(e.name)).map((e:any)=>[e.name,e.value]))}))}));
-  const pods=JSON.parse(kube(['get','pods','-A','-o','json'])).items.filter((p:any)=>['control','crawler','ingest','analytics'].includes(p.metadata.namespace)&&p.metadata.labels?.['app.kubernetes.io/name']&&['control-api-preview','intent-dispatcher','execution-worker','raw-parser','pg-sink','crawl-analytics'].includes(p.metadata.labels['app.kubernetes.io/name']))
+  const pods=JSON.parse(kube(['get','pods','-A','-o','json'])).items.filter((p:any)=>['control','crawler','ingest','analytics'].includes(p.metadata.namespace)&&p.metadata.labels?.['app.kubernetes.io/name']&&['control-api-preview','intent-dispatcher','execution-worker','profile-agent','raw-parser','pg-sink','crawl-analytics'].includes(p.metadata.labels['app.kubernetes.io/name']))
     .map((p:any)=>({namespace:p.metadata.namespace,name:p.metadata.name,uid:p.metadata.uid,phase:p.status.phase,created_at:p.metadata.creationTimestamp,containers:(p.status.containerStatuses??[]).map((c:any)=>({name:c.name,ready:c.ready,restarts:c.restartCount,last_reason:c.lastState?.terminated?.reason??null}))}));
   const result={at:new Date().toISOString(),started_at:state.started_at,rows,services,pods,
     summaries:{queries:await api(ApiRoutes.queriesSummary),candidates:await api(ApiRoutes.candidatesSummary),updates:await api(ApiRoutes.updatesSummary),storage:await api('/v1/storage')}};
@@ -60,7 +67,7 @@ async function snapshot() {
   return result;
 }
 function setEnv(namespace:string,kind:string,name:string,env:Record<string,string>) {
-  kube(['-n',namespace,'set','env',`${kind}/${name}`,...Object.entries(env).map(([key,value])=>`${key}=${value}`)]);
+  kube(['-n',namespace,'set','env',`${kind}/${name}`,...(name==='execution-worker'?['--containers=worker']:[]),...Object.entries(env).map(([key,value])=>`${key}=${value}`)]);
   kube(['-n',namespace,'rollout','status',`${kind}/${name}`,'--timeout=180s']);
   console.log(JSON.stringify({phase:'ready',namespace,name}));
 }
@@ -100,9 +107,13 @@ try {
       assert.ok(count('UPDATE','COMPLETED')>=2,'At least two scheduled updates');
       assert.ok(result.rows.searches.some(r=>r.state==='SUCCEEDED'&&r.n>=2),'At least two automatic searches');
       assert.ok(result.rows.automatic_admissions[0]!.n>=2);
+      assert.equal(result.rows.unrecovered_plans[0]!.n,0,'Every failed acceptance plan recovered through a completed retry');
+      assert.ok(!result.rows.new_failures.some(r=>r.state==='OPEN'||r.state==='RETRYING'),'Every new failure is handled');
       assert.ok(result.rows.video_counts[0]!.observations>0);assert.equal(result.rows.video_counts[0]!.comment_bodies,0);
       assert.ok(result.summaries.storage.clickhouse.available);assert.ok(result.rows.outbox[0]!.unarchived<100,'No sustained archive backlog');
+      if(result.rows.outbox[0]!.oldest)assert.ok(Date.now()-new Date(result.rows.outbox[0]!.oldest).getTime()<60_000,'Archive continues to catch up');
       assert.ok(result.services.every(s=>s.ready===s.desired));
+      assert.ok(result.pods.every((p:any)=>p.phase==='Running'&&p.containers.every((c:any)=>c.ready&&c.restarts===0)),'No process crash or OOM after restoring automation');
       for(const service of result.services.filter(s=>s.namespace==='control'))for(const container of service.containers) {
         for(const [key,value] of Object.entries(settings))assert.equal(container.settings[key],value);
         assert.equal(container.settings.UPDATE_AUTO_DOMAINS,'ABOUT,VIDEO,AGENT');assert.equal(container.settings.PIPELINE_ENABLED,'true');
@@ -118,7 +129,20 @@ try {
         assert.equal(detail.input.source_mode,'youtube');assert.ok(detail.input.source_mode==='youtube'&&detail.input.pipeline_version==='r3.v1');
         assert.ok(detail.domains.every(d=>d.state==='APPLIED'));
       }
-      const evidence={result:'PASSED',...result,preserved_video_identities:before.length};save('final-evidence',evidence);
+      // Verify actual nonempty comments at their new storage location without exporting comment text.
+      const credentials=JSON.parse(kube(['-n','crawler','get','secret','minio-crawl-parser','-o','json'])).data;
+      const commentsStore=new MinioStore(`http://${kube(['-n','storage','get','svc','minio','-o','jsonpath={.spec.clusterIP}'])}:9000`,'crawl-parsed',
+        Buffer.from(credentials.access_key,'base64').toString(),Buffer.from(credentials.secret_key,'base64').toString());
+      const samples=(await pool.query(`SELECT data->'comments_ref' AS ref,data->'comments_summary' AS summary FROM crawl_data.videos
+        WHERE workspace_id=$1 AND observed_at>=$2 AND (data->'comments_summary'->>'returned_count')::int>0 ORDER BY video_id LIMIT 3`,[workspace,result.started_at])).rows;
+      assert.equal(samples.length,3,'At least three real nonempty comment objects');
+      for(const sample of samples) {
+        const ref=ObjectStorageReferenceSchema.parse(sample.ref);assert.equal(ref.bucket,'crawl-parsed');
+        const bytes=await commentsStore.get(ref.key,AbortSignal.timeout(20000));assert.ok(bytes);assert.equal(bytes.length,ref.bytes);
+        assert.equal(createHash('sha256').update(bytes).digest('hex'),ref.sha256);
+        const comments=CommentPageSchema.parse(JSON.parse(gunzipSync(bytes).toString()));assert.equal(comments.returned_count,sample.summary.returned_count);
+      }
+      const evidence={result:'PASSED',...result,preserved_video_identities:before.length,verified_nonempty_comment_objects:samples.length};save('final-evidence',evidence);
       console.log(JSON.stringify({result:'PASSED',full_completed:count('FULL','COMPLETED'),updates_completed:count('UPDATE','COMPLETED'),preserved_video_identities:before.length}));
     }
   }

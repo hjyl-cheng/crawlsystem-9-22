@@ -56,6 +56,24 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(len(result["facts"]), 10)
         self.assertTrue(all(fact["value"] is not None for fact in result["facts"].values()))
 
+    def test_newest_comment_fallback_profiles_without_changing_its_provenance(self) -> None:
+        newest = copy.deepcopy(INPUT)
+        newest["videos"][0]["comments_first_page"]["sort"] = "NEWEST_FIRST"
+        snapshot = snapshot_value(newest)
+        self.assertEqual(snapshot["contents"][0]["comments_first_page"]["sort"], "NEWEST_FIRST")
+        self.assertEqual(snapshot["provenance"]["comment_page_source_status"], "mixed_first_page")
+        result = profiler().profile(newest)
+        self.assertEqual(len(result["facts"]), 10)
+        self.assertIn("FIRST_PAGE_COMMENTS_SAMPLE_USED", result["diagnostics"])
+        self.assertNotIn("TOP_COMMENTS_SAMPLE_USED", result["diagnostics"])
+        self.assertEqual(result, profiler().profile(copy.deepcopy(newest)))
+
+    def test_unknown_comment_sort_is_rejected(self) -> None:
+        broken = copy.deepcopy(INPUT)
+        broken["videos"][0]["comments_first_page"]["sort"] = "UNKNOWN"
+        with self.assertRaises(InputError):
+            profiler().profile(broken)
+
     def test_malformed_input_is_rejected(self) -> None:
         broken = copy.deepcopy(INPUT)
         del broken["about"]["channel_id"]
