@@ -17,6 +17,16 @@ function setup(limits: Partial<DiscoveryLimits> = {}, apiDailyLimit = 10_000) {
   const workspace_id = `test-runs-${randomUUID()}`;
   const as = (role: Principal['role'], subject: string): Principal => ({ workspace_id, subject, role });
   const store = new Store(pool, UpdateLimitsSchema.parse({ api_daily_limit: apiDailyLimit }), DiscoveryLimitsSchema.parse({ api_reserve: 0, ...limits }));
+  // Preserve coverage of frozen pre-R4 runs; current web/About policy has its own integration suite.
+  const claim=store.claimQueryRun.bind(store);
+  store.claimQueryRun=async principal=>{
+    const result=await claim(principal);
+    if(result.run && result.run.params.policy_version!=='query-clock-1') {
+      result.run.params.policy_version='query-clock-1';
+      await pool.query('UPDATE control.query_runs SET params=$2 WHERE run_id=$1',[result.run.run_id,result.run.params]);
+    }
+    return result;
+  };
   return { store, workspace_id, worker: as('worker', 'worker-a'), other: as('worker', 'worker-b'), op: as('operator', 'operator-1'), reader: as('reader', 'reader-1') };
 }
 const bind = (workspace: string, rows: { text: string; category: string; priority?: number; country?: string }[]) =>
@@ -47,7 +57,7 @@ test('pages report channels new to the system; completion makes candidates and s
   const p1 = await t.store.queryRunPage(t.worker, run!.run_id, page(1, 1, [1, 2, 3, 9, 1]));
   assert.deepEqual(p1, { new_channel_ids: [channel(1), channel(2), channel(3)], continue: true }, 'a queued import is known; three new reads on');
   const p2 = await t.store.queryRunPage(t.worker, run!.run_id, page(1, 2, [3, 4]));
-  assert.deepEqual(p2, { new_channel_ids: [channel(3), channel(4)], continue: false });
+  assert.deepEqual(p2, { new_channel_ids: [channel(4)], continue: false });
   await reject(() => t.store.queryRunComplete(t.worker, run!.run_id, { attempt: 1, pages: 2, stop_reason: 'low_yield', channels: [facts(1, 5000)], missing_channel_ids: [] }), 'INVALID_REQUEST');
   const body = { attempt: 1, pages: 2, stop_reason: 'low_yield' as const, channels: [facts(1, 5000), facts(2, 999), facts(3, null, true)], missing_channel_ids: [channel(4)] };
   await reject(() => t.store.queryRunComplete(t.other, run!.run_id, body), 'STALE_EXECUTION');
@@ -129,6 +139,7 @@ test('limits pause searching: switched off, daily runs, backlog and the Data API
   const owner = (await pool.query('SELECT run_id,plan_id FROM control.data_api_permits WHERE workspace_id=$1', [quota.workspace_id])).rows;
   assert.deepEqual(owner, [{ run_id: held.run_id, plan_id: null }]);
   await quota.store.queryRunFail(quota.worker, held.run_id, { attempt: 1, reason: 'quota', retryable: true });
+  await pool.query('UPDATE control.query_runs SET retry_at=now() WHERE run_id=$1',[held.run_id]);
   assert.equal((await quota.store.claimQueryRun(quota.worker)).idle_reason, 'api_quota');
 });
 

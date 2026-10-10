@@ -43,6 +43,7 @@ const control=image('control',controlRoot,sha(...Object.keys(entries).map(n=>`${
 // Worker image: /app/worker/src/main.mjs resolves ../dist/workflow-bundle.cjs exactly as in the repo.
 const workerRoot=join(out,'worker'),app=join(workerRoot,'app/worker');mkdirSync(app+'/src',{recursive:true});mkdirSync(app+'/dist');
 await build({...common,entryPoints:['apps/execution-worker/src/main.ts'],outfile:app+'/src/main.mjs',external:[...common.external,'@temporalio/*']});
+await build({...common,entryPoints:['apps/execution-worker/scripts/query-once.ts'],outfile:app+'/src/query-once.mjs',external:[...common.external,'@temporalio/*']});
 const workflow=await bundleWorkflowCode({workflowsPath:resolve('apps/execution-worker/src/workflows.ts'),logger:{log(){},trace(){},debug(){},info(){},warn(){},error(){}} as never});
 writeFileSync(app+'/dist/workflow-bundle.cjs',workflow.code);
 // Copy the installed dependency closure of the Temporal packages from the lockfile-installed tree.
@@ -72,7 +73,7 @@ const releases=join(app,'node_modules/@temporalio/core-bridge/releases');
 if(!existsSync(join(releases,'x86_64-unknown-linux-gnu')))throw new Error('Temporal core bridge linux-x64-gnu binary is missing');
 writeFileSync(app+'/package.json',JSON.stringify({name:'crawlsystem-execution-worker',private:true,type:'module'})+'\n');
 const lock=createHash('sha256').update(readFileSync('package-lock.json')).update(copied.join('\n')).digest('hex');
-const worker=image('worker',workerRoot,createHash('sha256').update(sha(app+'/src/main.mjs',app+'/dist/workflow-bundle.cjs')).update(lock).digest('hex'));
+const worker=image('worker',workerRoot,createHash('sha256').update(sha(app+'/src/main.mjs',app+'/src/query-once.mjs',app+'/dist/workflow-bundle.cjs')).update(lock).digest('hex'));
 
 // Profile Agent image: pinned CPython base + locked wheels + verified model bundle + inference source.
 // Tagged by content only, so an unchanged Agent is neither rebuilt nor re-imported on later deploys.

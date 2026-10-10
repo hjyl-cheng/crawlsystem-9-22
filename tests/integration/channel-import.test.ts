@@ -45,7 +45,7 @@ test('each pasted line is queued once, or reported as known, repeated, a handle 
   assert.equal(result.queued, 2);
   assert.deepEqual((await importLines(t, [a])).items.map(i => i.outcome), ['already_queued']);
   const imports = await t.store.channelImports(t.reader);
-  assert.deepEqual(imports.counts, { queued: 2, planned: 0, done: 0, failed: 0 });
+  assert.deepEqual(imports.counts, { queued: 2, planned: 0, done: 0, failed: 0, rejected:0 });
   await assert.rejects(() => t.store.importChannels(t.reader, { request_id: randomUUID(), lines: [a] }), (e: unknown) => e instanceof StoreError && e.code === 'FORBIDDEN');
 });
 
@@ -54,7 +54,7 @@ test('the scheduler admits imports oldest first within the active-plan limit; ou
   await importLines(t, [first]); await importLines(t, [second]);
   const admitted = await t.store.scheduleUpdates(t.op.workspace_id);
   assert.deepEqual(admitted.map(p => [p.channel_id, p.plan_kind, p.required_domains]), [[first, 'FULL', ['ABOUT', 'VIDEO', 'AGENT']]], 'one at a time, oldest first');
-  assert.deepEqual((await t.store.channelImports(t.reader)).counts, { queued: 1, planned: 1, done: 0, failed: 0 });
+  assert.deepEqual((await t.store.channelImports(t.reader)).counts, { queued: 1, planned: 1, done: 0, failed: 0, rejected:0 });
   assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id), [], 'the limit holds');
 
   // The first collection stops after the About page: the channel is known but not managed.

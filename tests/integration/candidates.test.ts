@@ -23,6 +23,9 @@ type Setup = ReturnType<typeof setup>;
 async function found(t: Setup, text: string, category: string, channels: [number, number][]) {
   await upsertBindings(pool, t.workspace_id, [{ text, country: 'BR', language: 'pt', category, source_type: 'MANUAL', source_ref: 'test' }]);
   const run = (await t.store.claimQueryRun(t.worker)).run!;
+  // Historical candidates still use their frozen Data API policy after an R4 rollout.
+  run.params.policy_version='query-clock-1';
+  await pool.query('UPDATE control.query_runs SET params=$2 WHERE run_id=$1',[run.run_id,run.params]);
   assert.equal(run.params.text, text);
   const page = await t.store.queryRunPage(t.worker, run.run_id, { attempt: 1, page: 1, items: channels.map(([n]) => ({ video_id: `v${String(n).padStart(10, '0')}`, channel_id: channel(n) })) });
   // As the Worker does: only the channels the page reported new are qualified and reported.
@@ -43,7 +46,7 @@ test('qualified candidates join the import queue a few at a time, taking turns a
   assert.deepEqual(await t.store.admitCandidates(t.workspace_id), [channel(6)], 'one place freed: Food takes its turn before Music\'s third');
   const summary = await t.store.candidateSummary(t.reader);
   assert.deepEqual([summary.by_state.ADMITTED, summary.by_state.QUALIFIED, summary.by_state.UNQUALIFIED, summary.admitted_today, summary.import_queue], [4, 1, 1, 4, 3]);
-  assert.deepEqual(summary.by_category, [{ category: 'Music', qualified: 1, admitted: 2 }, { category: 'Food', qualified: 0, admitted: 2 }]);
+  assert.deepEqual(summary.by_category, [{ category: 'Music', discovered:0, qualified: 1, admitted: 2 }, { category: 'Food', discovered:0, qualified: 0, admitted: 2 }]);
   assert.deepEqual(await setup({ auto_admit: false }).store.admitCandidates(t.workspace_id), [], 'automatic admission can be switched off');
 });
 

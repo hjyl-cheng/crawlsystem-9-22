@@ -10,11 +10,12 @@ import './overview.css';
 import './discover.css';
 
 const stateMeta: Record<Candidate['state'], { label: string; tone: string }> = {
+  DISCOVERED: {label:'新发现，待验证',tone:'blue'},
   QUALIFIED: { label: '合格，待准入', tone: 'blue' }, ADMITTED: { label: '已准入', tone: 'green' }, UNQUALIFIED: { label: '未达标', tone: 'slate' },
   UNAVAILABLE: { label: '频道不存在', tone: 'slate' }, REJECTED: { label: '已拒绝', tone: 'red' },
 };
-const reasonText: Record<NonNullable<Candidate['reason']>, string> = { below_threshold: '订阅不足 1000', hidden_subscribers: '隐藏了订阅数', not_found: 'YouTube 上已不存在' };
-const importText: Record<NonNullable<Candidate['import_state']>, string> = { queued: '排队等待采集', planned: '正在采集', done: '已采集', failed: '采集失败' };
+const reasonText: Record<NonNullable<Candidate['reason']>, string> = { below_threshold: '订阅未达到门槛', hidden_subscribers: '订阅数未知或隐藏', not_found: 'YouTube 上已不存在' };
+const importText: Record<NonNullable<Candidate['import_state']>, string> = { queued: '排队等待采集', planned: '正在采集', done: '已采集', failed: '采集失败', rejected:'订阅门槛未通过，已停止后续采集' };
 const fmt = (n?: number | null) => n === undefined || n === null ? '—' : n.toLocaleString('zh-CN');
 
 function Kpi({ label, tone, icon, value, foot }: { label: string; tone: string; icon: ReactNode; value?: ReactNode; foot: ReactNode }) {
@@ -33,7 +34,7 @@ export default function Candidates() {
   const refresh = () => { summary.refresh(); list.refresh(); };
   const set = (next: typeof filter) => { setFilter(next); setCursor('0'); };
   async function decide(c: Candidate, action: 'admit' | 'reject') {
-    const needsReason = action === 'reject' || !['QUALIFIED', 'ADMITTED'].includes(c.state);
+    const needsReason = action === 'reject' || !['DISCOVERED','QUALIFIED', 'ADMITTED'].includes(c.state);
     const reason = window.prompt(action === 'reject' ? '拒绝原因' : c.state === 'ADMITTED' ? '重新采集备注（可不填）' : needsReason ? '准入原因（未达标或已拒绝的频道需要说明）' : '准入备注（可不填）')?.trim();
     if (reason === undefined || (needsReason && !reason)) return;
     setBusy(c.channel_id); setError(undefined);
@@ -43,17 +44,17 @@ export default function Candidates() {
     } catch (cause) { setError(cause instanceof ApiFailure ? cause : new ApiFailure('操作失败，请刷新后重试')); }
     finally { setBusy(undefined); }
   }
-  const categoryMax = Math.max(1, ...(s?.by_category.map(c => c.qualified + c.admitted) ?? [1]));
+  const categoryMax = Math.max(1, ...(s?.by_category.map(c => (c.discovered??0)+c.qualified + c.admitted) ?? [1]));
   return <div className="dashboard discover">
     <header className="dashboard-heading">
-      <div><h1>候选频道</h1><p>自动搜索新发现的频道：订阅 ≥1000 为合格，按分类轮流自动进入采集队列；可以人工拒绝，或手动准入</p>
+      <div><h1>候选频道</h1><p>搜索发现新频道后进入候选池；首次采集频道资料时检查订阅门槛，通过后继续采集视频与画像</p>
         {s && <span className={`data-freshness ${s.auto_admit ? '' : 'failing'}`}><i/>{s.auto_admit ? `自动准入已开启：采集队列保持 ${fmt(s.import_buffer)} 个，当前排队 ${fmt(s.import_queue)} 个` : '自动准入已关闭，只能人工准入'}</span>}</div>
       <div className="dashboard-period"><button className="button small" onClick={refresh}><RefreshCw size={13}/>刷新</button></div>
     </header>
     {summary.error && <ErrorBox error={summary.error}/>} {error && <ErrorBox error={error}/>}
 
     <div className="discover-kpis">
-      <Kpi label="合格，待准入" tone="blue" icon={<Sparkles size={22}/>} value={fmt(s?.by_state.QUALIFIED)} foot="按分类轮流进入采集队列"/>
+      <Kpi label="待准入 / 验证" tone="blue" icon={<Sparkles size={22}/>} value={s?fmt((s.by_state.DISCOVERED??0)+s.by_state.QUALIFIED):undefined} foot="按分类轮流进入采集队列"/>
       <Kpi label="已准入" tone="green" icon={<UserCheck size={22}/>} value={fmt(s?.by_state.ADMITTED)} foot={s ? `今天 ${fmt(s.admitted_today)} 个` : '—'}/>
       <Kpi label="未达标 / 不存在" tone="amber" icon={<ListChecks size={22}/>} value={s ? `${fmt(s.by_state.UNQUALIFIED)} / ${fmt(s.by_state.UNAVAILABLE)}` : undefined} foot="不会自动采集，可人工准入"/>
       <Kpi label="已拒绝" tone="red" icon={<CircleX size={22}/>} value={fmt(s?.by_state.REJECTED)} foot="人工拒绝，保留原因"/>
@@ -75,23 +76,24 @@ export default function Candidates() {
             <td>{c.found_by.text}<small className="cell-sub">{c.found_by.country} · {categoryLabels[c.found_by.category]}{c.found_count > 1 ? ` · 共被搜到 ${c.found_count} 次` : ''}</small></td>
             <td><span className={`status-chip ${meta.tone}`}><i/>{meta.label}</span>
               {c.reason && <small className="cell-sub">{reasonText[c.reason]}</small>}
+              {c.qualification && <small className="cell-sub">{c.qualification.state==='PENDING'?'首次频道资料采集后验证':c.qualification.state==='PASSED'?'订阅门槛已通过':'未通过订阅门槛'} · ≥{fmt(c.qualification.min_subscribers)}</small>}
               {c.import_state && <small className="cell-sub">{importText[c.import_state]}</small>}
               {c.decided_by && c.decided_by !== 'auto' && <small className="cell-sub" title={c.decision_reason ?? ''}>{c.decided_by}{c.decision_reason ? `：${c.decision_reason}` : ''}</small>}</td>
             <td>{time(c.discovered_at)}</td>
             {operator && <td className="row-actions">
-              {['QUALIFIED', 'UNQUALIFIED', 'REJECTED'].includes(c.state) && <button className="text-button" disabled={!!busy} onClick={() => void decide(c, 'admit')}>准入</button>}
+              {['DISCOVERED','QUALIFIED', 'UNQUALIFIED', 'REJECTED'].includes(c.state) && <button className="text-button" disabled={!!busy} onClick={() => void decide(c, 'admit')}>准入</button>}
               {c.state === 'ADMITTED' && c.import_state === 'failed' && <button className="text-button" disabled={!!busy} onClick={() => void decide(c, 'admit')}>重新采集</button>}
-              {c.state !== 'REJECTED' && (c.state !== 'ADMITTED' || c.import_state === 'queued') && <button className="text-button" disabled={!!busy} onClick={() => void decide(c, 'reject')}>拒绝</button>}
+              {c.state !== 'REJECTED' && (c.state !== 'ADMITTED' || c.import_state === 'queued' || c.import_state==='failed') && <button className="text-button" disabled={!!busy} onClick={() => void decide(c, 'reject')}>拒绝</button>}
             </td>}
           </tr>; })}</tbody></table></div> : <Empty title="没有符合条件的候选频道">自动搜索发现新频道后会显示在这里。</Empty>}
           <footer className="pager"><span>每页最多 20 条</span><button className="button small" disabled={cursor === '0'} onClick={() => setCursor(String(Math.max(0, Number(cursor) - 20)))}>上一页</button><button className="button small" disabled={!page.next_cursor} onClick={() => setCursor(page.next_cursor!)}>下一页</button></footer></>}</ResourceView>
       </section>
       <section className="panel discover-card">
         <div className="panel-heading"><div><h2>业务分类</h2><p>待准入 / 已准入（按发现它的搜索词分类）</p></div></div>
-        {s?.by_category.length ? <div className="reason-bars">{s.by_category.map(c => <div key={c.category} title={`待准入 ${c.qualified}，已准入 ${c.admitted}`}><span>{categoryLabels[c.category]}</span><div className="dim-bar"><i style={{ width: `${((c.qualified + c.admitted) / categoryMax) * 100}%` }}/></div><b>{fmt(c.qualified)} / {fmt(c.admitted)}</b></div>)}</div>
-          : <Empty title="还没有合格候选">自动搜索发现合格频道后显示各分类的数量。</Empty>}
+        {s?.by_category.length ? <div className="reason-bars">{s.by_category.map(c => <div key={c.category} title={`待准入 ${(c.discovered??0)+c.qualified}，已准入 ${c.admitted}`}><span>{categoryLabels[c.category]}</span><div className="dim-bar"><i style={{ width: `${(((c.discovered??0)+c.qualified + c.admitted) / categoryMax) * 100}%` }}/></div><b>{fmt((c.discovered??0)+c.qualified)} / {fmt(c.admitted)}</b></div>)}</div>
+          : <Empty title="还没有候选频道">搜索发现新频道后显示各分类的数量。</Empty>}
       </section>
     </div>
-    <footer className="dashboard-foot"><span><CircleCheck size={12}/> 合格 = 订阅 ≥1000；采集队列有空位时，各分类轮流准入（近 7 天准入少的分类优先），同一分类内订阅多的优先。</span><span>统计时间：{s ? time(s.observed_at) : '—'}</span></footer>
+    <footer className="dashboard-foot"><span><CircleCheck size={12}/> 首次采集验证订阅数；未达标或订阅未知时停止后续采集。各分类轮流准入，未验证频道按发现时间排序；人工放行需说明原因。</span><span>统计时间：{s ? time(s.observed_at) : '—'}</span></footer>
   </div>;
 }

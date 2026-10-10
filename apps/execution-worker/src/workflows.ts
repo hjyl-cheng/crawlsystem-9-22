@@ -28,6 +28,8 @@ export async function channelPlanWorkflow(ref: WorkflowInput): Promise<PlanWorkf
       });
       const settled = (status: string) => ['COMPLETED', 'CANCELLED', 'FAILED'].includes(status);
       let status = (await collector.collectAbout(ref, descriptor)).status;
+      if (patched('r4-about-qualification') && descriptor.pipelineVersion==='r3.v1' && descriptor.requiresQualification && !settled(status))
+        status=(await collector.waitPipeline(ref,descriptor,false,true)).status;
       if (!settled(status)) {
         const targets = await collector.listTargets(ref, descriptor);
         status = targets.status;

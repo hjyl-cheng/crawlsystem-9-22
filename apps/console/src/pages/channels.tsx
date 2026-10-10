@@ -92,7 +92,7 @@ export default function Channels() {
       <Kpi label="逾期未更新" tone="red" icon={<TriangleAlert size={22}/>} value={c && fmt(c.management.overdue)} foot={c ? `持续更新中 ${fmt(c.management.managed)} 个` : '—'}/>
       <Kpi label="已暂停" tone="amber" icon={<CirclePause size={22}/>} value={c && fmt(c.management.paused)} foot="暂停期间到期不会自动更新"/>
     </div>
-    {q && q.queued + q.planned + q.failed + q.done > 0 && <div className="notice import-queue" role="status">导入队列：排队 <b>{q.queued}</b> · 首次采集中 <b>{q.planned}</b> · 已完成 <b>{q.done}</b> · 失败 <b>{q.failed}</b>
+    {q && q.queued + q.planned + q.failed + q.done + (q.rejected??0) > 0 && <div className="notice import-queue" role="status">导入队列：排队 <b>{q.queued}</b> · 首次采集中 <b>{q.planned}</b> · 已完成 <b>{q.done}</b> · 失败 <b>{q.failed}</b> · 门槛未通过 <b>{q.rejected??0}</b>
       {q.failed > 0 && <small>（失败的频道可以重新导入）</small>}</div>}
     <ChannelImport open={importing} onOpenChange={setImporting} onImported={() => { imports.refresh(); resource.refresh(); }}/>
 

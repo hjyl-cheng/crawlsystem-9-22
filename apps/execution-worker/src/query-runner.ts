@@ -6,17 +6,23 @@ import { DataApiError, type DataApi, type RequestGuard } from './youtube/data-ap
 import { toCandidateFacts } from './youtube/map.ts';
 import { ScrapeError, searchPages, session } from './youtube/scrape.ts';
 import { ProxyUnavailable, proxiedFetch, type LeaseClient, type Outcome } from './youtube/transport.ts';
+import { FingerprintClient, FingerprintError } from './youtube/fingerprint.ts';
+import { webSearchPages } from './youtube/web-search.ts';
+import { captureFetch, type ObjectStore, type RawResponse } from './raw-archive.ts';
+import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 
 /**
  * Search execution (plan step B2): claim a due query run from Control, read its result pages through a
- * leased proxy, qualify the channels new to the system with the Data API and report the result. Control
+ * leased fingerprint browser, archive responses and report newly discovered identities. Control
  * owns the run: a lost lease, a disabled query or a stale attempt stops the work, and failures are
- * retried by Control on the same run with the same frozen parameters.
+ * retried by Control on the same frozen run; only pre-R4 runs perform Data API qualification here.
  */
 type Run = NonNullable<QueryRunClaim['run']>;
 type FailReason = typeof QUERY_RUN_FAILURES[number];
 export interface QueryRunnerOptions {
-  api: ExecutionApi; dataApi: DataApi; proxies: LeaseClient | 'direct'; workerId: string; signal: AbortSignal;
+  api: ExecutionApi; dataApi?: DataApi; proxies: LeaseClient | 'direct'; workerId: string; signal: AbortSignal;
+  gateway?: FingerprintClient; searchStore?: ObjectStore; workspaceId?: string; enforceBrazil?: boolean;
   log: (record: Record<string, unknown>) => void;
 }
 /** Control no longer lets this attempt hold the run (cancelled, taken over or finished). */
@@ -39,14 +45,15 @@ export async function runQueries(options: QueryRunnerOptions): Promise<void> {
   }
 }
 
-async function runOne(options: QueryRunnerOptions, run: Run): Promise<void> {
+export async function runOne(options: QueryRunnerOptions, run: Run): Promise<void> {
   const { api, log } = options, attempt = run.attempt, started = Date.now();
   const lost = new AbortController(), signal = AbortSignal.any([options.signal, lost.signal]);
   const renew = setInterval(() => void api.queryRunHeartbeat(run.run_id, { attempt }, { attempts: 1 }).then(lease => { if (!lease.active) lost.abort(); }).catch(() => undefined), HEARTBEAT_MS);
   const record = { worker_id: options.workerId, phase: 'QUERY_RUN', run_id: run.run_id, attempt };
   try {
+    if(!['query-clock-1','query-clock-2-about'].includes(run.params.policy_version)) throw new Error('Unsupported frozen search policy');
     const found = await search(options, run, signal);
-    const facts = await qualify(options, run, found.newIds, signal);
+    const facts = run.params.policy_version==='query-clock-1' ? await qualify(options, run, found.newIds, signal) : {channels:[],missing:[]};
     const result = await api.queryRunComplete(run.run_id, { attempt, pages: found.pages, stop_reason: found.stop_reason, channels: facts.channels, missing_channel_ids: facts.missing }, { signal });
     log({ ...record, outcome: 'SUCCEEDED', pages: found.pages, new_channels: result.new_channels, qualified_new: result.qualified_new, binding_state: result.binding.state, cadence: result.binding.cadence, ms: Date.now() - started });
   } catch (error) {
@@ -62,14 +69,25 @@ async function runOne(options: QueryRunnerOptions, run: Run): Promise<void> {
 /** Result pages in order, while each page brings enough channels new to the system (Control decides). */
 async function search(options: QueryRunnerOptions, run: Run, signal: AbortSignal) {
   const { params } = run;
-  return withProxy(options, signal, async fetcher => {
-    const yt = await session(fetcher, { lang: params.language, location: params.country });
+  return withProxy(options, signal, async transport => {
+    const responses:RawResponse[]=[];
+    const fetcher=captureFetch(transport,responses);
+    const pagesSource=params.policy_version==='query-clock-1'
+      ? searchPages(await session(fetcher,{lang:params.language,location:params.country}),params.text,params.window)
+      : webSearchPages(fetcher,params);
     const newIds: string[] = [];
     let pages = 0;
-    for await (const page of searchPages(yt, params.text, params.window)) {
+    for await (const page of pagesSource) {
       signal.throwIfAborted();
       pages += 1;
-      const result = await options.api.queryRunPage(run.run_id, { attempt: run.attempt, page: pages, items: page.items.slice(0, 200) }, { signal });
+      let raw_reference;
+      if(options.searchStore && options.workspaceId) {
+        const key=`search/v1/${encodeURIComponent(options.workspaceId)}/${run.run_id}/${run.attempt}/page-${pages}.json.gz`;
+        const bytes=gzipSync(JSON.stringify({schema_version:'crawl.search.v1',run_id:run.run_id,attempt:run.attempt,page:pages,params,responses:responses.splice(0)}));
+        await options.searchStore.put(key,bytes,signal,true);
+        raw_reference={bucket:'crawl-raw' as const,key,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};
+      }
+      const result = await options.api.queryRunPage(run.run_id, { attempt: run.attempt, page: pages, items: page.items.slice(0, 200),...(raw_reference?{raw_reference}:{}) }, { signal });
       for (const id of result.new_channel_ids) if (!newIds.includes(id)) newIds.push(id);
       if (!page.more) return { pages, newIds, stop_reason: 'list_end' as const };
       if (!result.continue) return { pages, newIds, stop_reason: pages >= params.max_pages ? 'max_pages' as const : 'low_yield' as const };
@@ -94,6 +112,7 @@ async function qualify(options: QueryRunnerOptions, run: Run, ids: string[], sig
   const wanted = new Set(ids), channels: ReturnType<typeof toCandidateFacts>[] = [];
   for (let i = 0; i < ids.length; i += 50) {
     signal.throwIfAborted();
+    if(!options.dataApi) throw new Error('Legacy search retry requires a Data API client');
     for (const api of await options.dataApi.channelFacts(ids.slice(i, i + 50), guard)) {
       if (wanted.delete(api.id)) channels.push(toCandidateFacts(api));
     }
@@ -109,19 +128,25 @@ async function withProxy<T>(options: QueryRunnerOptions, signal: AbortSignal, wo
   for (;;) {
     signal.throwIfAborted();
     let lease;
-    try { lease = await proxies.acquire(); }
+    try { lease = await proxies.acquire(180_000,options.enforceBrazil?'BR':undefined); }
     catch (error) {
       if (!(error instanceof ProxyUnavailable) || Date.now() + error.waitMs > giveUpAt) throw error;
       await delay(Math.min(error.waitMs, 30_000), undefined, { signal });
       continue;
     }
-    const transport = proxiedFetch(lease.proxy_url), started = Date.now();
+    const started = Date.now();
     let outcome: Outcome = 'success', errorClass: string | undefined;
-    try { return await work(transport.fetch); }
+    try {
+      if(options.gateway) return await options.gateway.withProfile(lease,signal,async transport=>{
+        try{return await work(transport.fetch);}finally{if(transport.failureKind?.()){outcome=transport.failureKind()==='blocked'?'blocked':'failure';errorClass=`search_${outcome}`;}}
+      });
+      const transport=proxiedFetch(lease.proxy_url);
+      try {return await work(transport.fetch);} finally {await transport.close().catch(()=>{});}
+    }
     catch (error) {
-      if (error instanceof ScrapeError && (error.kind === 'blocked' || error.kind === 'network')) { outcome = error.kind === 'blocked' ? 'blocked' : 'failure'; errorClass = `scrape_${error.kind}`; }
+      if (error instanceof ScrapeError && (error.kind === 'blocked' || error.kind === 'network') || error instanceof FingerprintError && error.penalizeProxy) { outcome = error instanceof ScrapeError && error.kind === 'blocked' ? 'blocked' : 'failure'; errorClass = `scrape_${outcome}`; }
       throw error;
-    } finally { await transport.close().catch(() => undefined); await proxies.release(lease, outcome, Date.now() - started, errorClass); }
+    } finally { await proxies.release(lease, outcome, Date.now() - started, errorClass); }
   }
 }
 

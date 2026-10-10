@@ -41,12 +41,13 @@ let worker: Worker | undefined;
 // Real collection (optional): the Data API key and this node's Proxy Manager (or 'direct' for local development only).
 const youtube = config.youtubeKeyFile && config.proxyManagerUrl
   ? { dataApi: new DataApi((await readFile(config.youtubeKeyFile, 'utf8')).trim()), proxies: config.proxyManagerUrl === 'direct' ? 'direct' as const : new LeaseClient(config.proxyManagerUrl) } : undefined;
-let publisher: KafkaPublisher | undefined, webCollector: WebCollector | undefined, archive:RawArchive|undefined;
+let publisher: KafkaPublisher | undefined, webCollector: WebCollector | undefined, archive:RawArchive|undefined, fingerprint:FingerprintClient|undefined, searchStore:MinioStore|undefined;
 if (config.collection && youtube && youtube.proxies !== 'direct') {
   const c = config.collection, secret = async (dir: string, name: string) => (await readFile(`${dir}/${name}`, 'utf8')).trim();
   publisher = new KafkaPublisher((await secret(c.kafkaCredentials, 'bootstrap')).split(','), await secret(c.kafkaCredentials, 'username'), await secret(c.kafkaCredentials, 'password'), await secret(c.kafkaCredentials, 'ca.crt'));
-  archive = new RawArchive(new MinioStore(c.minioUrl, 'crawl-raw', await secret(c.minioCredentials, 'access_key'), await secret(c.minioCredentials, 'secret_key')), publisher);
-  const fingerprint = new FingerprintClient(c.gatewayUrl, new IdentityStore(c.identityDirectory, (await readFile(c.identityKeyFile, 'utf8')).trim(), config.workerId));
+  searchStore = new MinioStore(c.minioUrl, 'crawl-raw', await secret(c.minioCredentials, 'access_key'), await secret(c.minioCredentials, 'secret_key'));
+  archive = new RawArchive(searchStore, publisher);
+  fingerprint = new FingerprintClient(c.gatewayUrl, new IdentityStore(c.identityDirectory, (await readFile(c.identityKeyFile, 'utf8')).trim(), config.workerId));
   webCollector = new WebCollector(fingerprint, youtube.proxies, archive, youtube.dataApi, c.enforceBrazil);
 }
 let heartbeatLoop: Promise<void> | undefined;
@@ -86,7 +87,7 @@ try {
     })();
     log({ worker_id: config.workerId, phase: 'READY', build_version: config.buildVersion, workspace_id: session.workspace_id });
     // Query searches run beside the Temporal Worker, claimed from Control under a lease.
-    if (youtube) queryLoops = Array.from({ length: config.queryRunnerSlots }, () => runQueries({ api, dataApi: youtube.dataApi, proxies: youtube.proxies, workerId: config.workerId, signal: queryStop.signal, log })
+    if (youtube) queryLoops = Array.from({ length: config.queryRunnerSlots }, () => runQueries({ api, dataApi: youtube.dataApi, proxies: youtube.proxies, gateway:fingerprint,searchStore,workspaceId:session.workspace_id,enforceBrazil:config.collection?.enforceBrazil,workerId: config.workerId, signal: queryStop.signal, log })
       .catch(() => { log({ worker_id: config.workerId, phase: 'QUERY_RUNNER', error_code: 'INTERNAL_ERROR', retryable: false }); }));
     await worker.run();
   }

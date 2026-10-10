@@ -36,6 +36,8 @@ case "${1:-}" in
   pipeline-replay) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r3-replay.ts) ;;
   pipeline-preview) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r3-preview.ts "${@:2}") ;;
   pipeline-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r3-browser.ts) ;;
+  discovery-preview) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r4-preview.ts "${@:2}") ;;
+  discovery-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r4-browser.ts) ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;
   collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-browser.ts) ;;

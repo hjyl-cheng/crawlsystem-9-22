@@ -13,7 +13,7 @@ import { UpdateLimitsSchema, ChannelUpdateSchema, DataApiPermitRequestSchema, Da
 import { readAgentSummary, readAgentTasks, readDataApiSummary } from './operations-view.ts';
 import { commandQuery, createQuery, DiscoveryError, listBindings, querySummary, type BindingFilter } from './discovery.ts';
 import { CreateQuerySchema, DiscoveryLimitsSchema, QueryCommandSchema, type DiscoveryLimits, type QueryBinding, type QueryRunClaim, type QuerySummary, type Candidate, type CandidateSummary } from '@crawlsystem/contracts';
-import { claimRun, completeRun, extendLease, failRun, recordPage, runPermit, runPermitFailure } from './query-runs.ts';
+import { claimRun, completeRun, extendLease, failRun, recordPage, runPermit, runPermitFailure, settleQualifiedRun } from './query-runs.ts';
 import { admitCandidates, candidateSummary, commandCandidate, listCandidates, type CandidateFilter } from './candidates.ts';
 import { apiBudget, estimateApiUnits, releaseApiReservation, schedulerState } from './update-budget.ts';
 import { readUpdates } from './update-view.ts';
@@ -108,6 +108,16 @@ export class Store {
         }
         if ((await client.query("SELECT 1 FROM control.plans WHERE workspace_id=$1 AND channel_id=$2 AND plan_kind='UPDATE' AND status IN ('QUEUED','RUNNING','WAITING')", [principal.workspace_id, frozen.channel_id])).rowCount)
           throw new StoreError('CONFLICT', 'A channel update is already active');
+        // Same candidate -> import lock order as manual decisions: a withdrawn queue cannot start a plan.
+        const candidate = (await client.query('SELECT state,first_run_id,min_subscribers,qualification_state FROM control.channel_candidates WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[workspace,frozen.channel_id])).rows[0];
+        const queued = (await client.query('SELECT discovery_qualification FROM control.channel_imports WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[workspace,frozen.channel_id])).rows[0];
+        if(candidate?.state==='REJECTED') throw new StoreError('CONFLICT','Candidate was rejected; admit it with a reason before collection');
+        const managed=(await client.query('SELECT management_state FROM control.channels WHERE workspace_id=$1 AND channel_id=$2',[workspace,frozen.channel_id])).rows[0]?.management_state;
+        const qualification = !managed ? queued?.discovery_qualification ?? (candidate?.qualification_state ? {run_id:candidate.first_run_id,min_subscribers:candidate.min_subscribers,policy_version:'r4.about.v1',override:false} : undefined) : undefined;
+        if (qualification) {
+          if (!frozen.required_domains.includes('ABOUT')) throw new StoreError('INVALID_REQUEST','Search-origin collection must check ABOUT first');
+          frozen = FrozenInputSchema.parse({...frozen,discovery_qualification:qualification});
+        }
       }
       const inserted = await client.query(`INSERT INTO control.plans(plan_id,run_id,workspace_id,request_id,request_hash,channel_id,source_mode,fixture_id,required_domains,status,frozen_input,input_hash,workflow_id,deadline_at,trace_context)
         VALUES($1,$2,$3,$4,$5,$6,$14,$7,$8,'QUEUED',$9,$10,$11,$12,$13) ON CONFLICT(workspace_id,request_id) DO NOTHING RETURNING *`,
@@ -118,6 +128,7 @@ export class Store {
         return toPlan(old);
       }
       const row = inserted.rows[0]!;
+      if(frozen.source_mode==='youtube') await client.query("UPDATE control.channel_imports SET state='planned',plan_id=$3,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2 AND state='queued'",[workspace,frozen.channel_id,planId]);
       await client.query("INSERT INTO control.domains(plan_id,domain) SELECT $1,unnest($2::text[])", [planId, input.required_domains]);
       await client.query(`INSERT INTO control.channels(workspace_id,channel_id,latest_plan_id,latest_plan_revision) VALUES($1,$2,$3,$4)
         ON CONFLICT(workspace_id,channel_id) DO UPDATE SET latest_plan_id=EXCLUDED.latest_plan_id,latest_plan_revision=EXCLUDED.latest_plan_revision,updated_at=clock_timestamp()
@@ -219,7 +230,7 @@ export class Store {
   async channelImports(principal: Principal): Promise<ChannelImports> {
     requireRole(principal, 'reader', 'operator');
     const counts = (await this.pool.query(`SELECT count(*) FILTER(WHERE state='queued')::int AS queued,count(*) FILTER(WHERE state='planned')::int AS planned,
-      count(*) FILTER(WHERE state='done')::int AS done,count(*) FILTER(WHERE state='failed')::int AS failed FROM control.channel_imports WHERE workspace_id=$1`, [principal.workspace_id])).rows[0]!;
+      count(*) FILTER(WHERE state='done')::int AS done,count(*) FILTER(WHERE state='failed')::int AS failed,count(*) FILTER(WHERE state='rejected')::int AS rejected FROM control.channel_imports WHERE workspace_id=$1`, [principal.workspace_id])).rows[0]!;
     const items = (await this.pool.query(`SELECT i.channel_id,i.state,i.requested_at,i.plan_id,c.about->>'title' AS title FROM control.channel_imports i
       LEFT JOIN control.channel_overview c USING(workspace_id,channel_id) WHERE i.workspace_id=$1
       ORDER BY CASE i.state WHEN 'planned' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END,i.updated_at DESC,i.channel_id LIMIT 100`, [principal.workspace_id])).rows;
@@ -239,7 +250,7 @@ export class Store {
       if (budget.used + budget.reserved + units > limits.api_daily_limit) break;
       const planId = randomUUID(), deadline = new Date(now.getTime() + 120 * 60_000).toISOString();
       const frozen = FrozenInputSchema.parse({ schema_version: CONTRACT_VERSION, source_mode: 'youtube', channel_id, required_domains: input.required_domains,
-        scope: input.scope, reference_time: now.toISOString(), deadline_at: deadline, max_attempts: 3 });
+        scope: input.scope, reference_time: now.toISOString(), deadline_at: deadline, max_attempts: 3, ...(this.pipeline.enabled ? {pipeline_version:'r3.v1'} : {}) });
       const plan = await this.insertCreatedPlan(client, workspace, input, frozen, contentHash(input), planId, deadline, null);
       await client.query('UPDATE control.data_api_budget SET reserved_units=reserved_units+$3 WHERE workspace_id=$1 AND quota_day=$2', [workspace, budget.day, units]);
       await client.query('INSERT INTO control.plan_api_reservations(plan_id,workspace_id,quota_day,remaining) VALUES($1,$2,$3,$4)', [plan.plan_id, workspace, budget.day, units]);
@@ -521,6 +532,8 @@ export class Store {
       if (frozen.pipeline_version === 'r3.v1' && !(input.domain==='VIDEO' && ['targets','discovery'].includes(input.payload.kind)))
         throw new StoreError('FORBIDDEN','R3 facts are accepted only through the Kafka sink',403);
       if (frozen.pipeline_version === 'r3.v1' && input.domain_complete) throw new StoreError('DOMAIN_INCOMPLETE','Navigation cannot complete a persisted domain');
+      if (frozen.source_mode==='youtube' && frozen.discovery_qualification && input.domain!=='ABOUT' && !(await client.query('SELECT 1 FROM control.plan_qualifications WHERE plan_id=$1 AND passed',[row.plan_id])).rowCount)
+        throw new StoreError('DOMAIN_INCOMPLETE','First ABOUT qualification has not passed');
       if (input.domain === 'AGENT' && frozen.source_mode === 'fixture') throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Fixture plans have no Agent producer');
       const proof = (await client.query('SELECT state FROM control.domains WHERE plan_id=$1 AND domain=$2',[input.plan_id,input.domain])).rows[0]!;
       if (proof.state === 'APPLIED') throw new StoreError('CONFLICT','Domain already sealed; replay the original submission');
@@ -601,6 +614,7 @@ export class Store {
       const now = (await client.query('SELECT clock_timestamp() AS now')).rows[0]!.now as Date;
       const receipt: Receipt = {schema_version:CONTRACT_VERSION,submission_id:input.submission_id,plan_id:input.plan_id,logical_batch_key:input.logical_batch_key,domain:input.domain,payload_hash:input.payload_hash,state:'APPLIED',applied_at:iso(now)};
       await client.query('INSERT INTO control.receipts(workspace_id,submission_id,plan_id,domain,logical_batch_key,payload_hash,receipt) VALUES($1,$2,$3,$4,$5,$6,$7)',[principal.workspace_id,input.submission_id,input.plan_id,input.domain,input.logical_batch_key,input.payload_hash,receipt]);
+      if (input.domain==='ABOUT' && frozen.source_mode==='youtube' && frozen.discovery_qualification && !await this.qualifyAbout(client,row,input.payload as ChannelFacts)) return receipt;
       const remaining = await client.query("SELECT domain FROM control.domains WHERE plan_id=$1 AND state <> 'APPLIED'",[input.plan_id]);
       const completed = remaining.rowCount === 0;
       // Only fixture plans wait on an Agent that does not exist; real plans run until settled.
@@ -641,6 +655,8 @@ export class Store {
       const row=await this.planRow(client,principal,m.owner.plan_id,true),frozen=row.frozen_input as FrozenInput;
       if(frozen.pipeline_version!=='r3.v1') return {recorded:false};
       if(row.execution_epoch!==m.owner.execution_epoch || terminal(row.status)) return {recorded:false};
+      if(frozen.source_mode==='youtube' && frozen.discovery_qualification && m.step!=='ABOUT' && !(await client.query('SELECT 1 FROM control.plan_qualifications WHERE plan_id=$1 AND passed',[row.plan_id])).rowCount)
+        throw new StoreError('DOMAIN_INCOMPLETE','First ABOUT qualification has not passed',409,true);
       if(row.input_hash!==m.owner.input_hash || row.workflow_id!==m.owner.workflow_id || row.channel_id!==m.channel_id
         || m.key!==`v1/${encodeURIComponent(principal.workspace_id)}/${row.plan_id}/${row.execution_epoch}/${m.step}/_manifest.json.gz`)
         throw new StoreError('INPUT_MISMATCH','Manifest owner differs');
@@ -676,6 +692,13 @@ export class Store {
         }
       }
       const domains=(await client.query('SELECT domain,state FROM control.domains WHERE plan_id=$1',[planId])).rows;
+      if (frozen.source_mode==='youtube' && frozen.discovery_qualification && complete.has('ABOUT')) {
+        const about=ledger.filter(l=>l.step==='ABOUT').map(l=>PipelineFactSchema.parse(l.fact)).find(f=>f.kind==='ABOUT');
+        if (!about || about.kind!=='ABOUT') throw new StoreError('DOMAIN_INCOMPLETE','ABOUT manifest has no durable channel fact');
+        await client.query("UPDATE control.domains SET state='APPLIED',completed_at=coalesce(completed_at,clock_timestamp()) WHERE plan_id=$1 AND domain='ABOUT'",[planId]);
+        domains.find(d=>d.domain==='ABOUT')!.state='APPLIED';
+        if (!await this.qualifyAbout(client,row,about.payload)) return toPlan(await this.planRow(client,principal,planId));
+      }
       for(const domain of domains.filter(d=>d.state!=='APPLIED')) {
         const steps=domain.domain==='VIDEO' ? [...expected.keys()].filter(s=>s==='TARGETS' || s==='SAMPLING' || s.startsWith('VIDEO-')) : [domain.domain];
         if(domain.domain==='VIDEO' && !targets || !steps.every(s=>complete.has(s))) continue;
@@ -698,6 +721,32 @@ export class Store {
       }
       return toPlan(row);
     });
+  }
+  /** The plan's own durable ABOUT observation decides admission; a newer channel row cannot replace it. */
+  private async qualifyAbout(client: PoolClient, plan: QueryResultRow, facts: ChannelFacts): Promise<boolean> {
+    const frozen=plan.frozen_input as FrozenInput;
+    if (frozen.source_mode!=='youtube' || !frozen.discovery_qualification) return true;
+    const prior=(await client.query('SELECT passed FROM control.plan_qualifications WHERE plan_id=$1',[plan.plan_id])).rows[0];
+    if (prior) return prior.passed;
+    const policy=frozen.discovery_qualification,subscribers=facts.subscriber_count.value;
+    const qualified=subscribers!==null && subscribers>=policy.min_subscribers;
+    const reason=qualified?null:subscribers===null?'hidden_subscribers':'below_threshold';
+    const passed=qualified || policy.override;
+    await client.query('INSERT INTO control.plan_qualifications(plan_id,passed,subscriber_count,reason) VALUES($1,$2,$3,$4)',[plan.plan_id,passed,subscribers,reason]);
+    await client.query(`UPDATE control.channel_candidates SET qualification_state=$3,reason=$4,title=$5,country=$6,subscriber_count=$7,video_count=$8,view_count=$9,
+      state=CASE WHEN $10 THEN CASE WHEN state IN ('DISCOVERED','QUALIFIED') THEN 'ADMITTED' ELSE state END ELSE 'UNQUALIFIED' END,
+      checked_at=clock_timestamp(),version=version+1 WHERE workspace_id=$1 AND channel_id=$2 AND first_run_id=$11`,
+      [plan.workspace_id,plan.channel_id,qualified?'PASSED':'REJECTED',reason,facts.title,facts.country,subscribers,facts.total_video_count.value,facts.total_view_count.value,passed,policy.run_id]);
+    await settleQualifiedRun(client,plan.workspace_id,policy.run_id);
+    const event: ExecutionEvent={event_id:randomUUID(),execution_epoch:plan.execution_epoch,worker_id:'control-qualification',phase:'QUALIFICATION',kind:'PROGRESS',domain:'ABOUT',
+      message:qualified?`订阅门槛通过：${subscribers} ≥ ${policy.min_subscribers}`:policy.override?`人工准入：订阅 ${subscribers??'未知'}，门槛 ${policy.min_subscribers}；不计入合格新频道`:`订阅门槛未通过：${subscribers??'未知'}，要求 ≥ ${policy.min_subscribers}；已停止后续视频和画像采集`};
+    await client.query('INSERT INTO control.events(plan_id,event_id,event_hash,data) VALUES($1,$2,$3,$4)',[plan.plan_id,event.event_id,contentHash(event),event]);
+    if (!passed) {
+      await client.query("UPDATE control.plans SET status='CANCELLED',version=version+1,updated_at=clock_timestamp(),finished_at=clock_timestamp() WHERE plan_id=$1",[plan.plan_id]);
+      await releaseApiReservation(client,plan.plan_id);
+      await client.query("UPDATE control.channel_imports SET state='rejected',updated_at=clock_timestamp() WHERE plan_id=$1 AND state='planned'",[plan.plan_id]);
+    }
+    return passed;
   }
   async pipelineProgress(principal: Principal,planId:string): Promise<PipelineProgress> {
     requireRole(principal,'reader','operator','worker','sink');

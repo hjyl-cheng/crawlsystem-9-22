@@ -5,7 +5,8 @@
  * the month's end). A failure only schedules a retry and never starts a new normal period.
  */
 
-export const QUERY_POLICY_VERSION = 'query-clock-1';
+export const LEGACY_QUERY_POLICY_VERSION = 'query-clock-1';
+export const QUERY_POLICY_VERSION = 'query-clock-2-about';
 /** New qualified channels in one run that make a binding weekly; fewer (but some) make it monthly. */
 export const WEEKLY_MIN_QUALIFIED = 3;
 /** Consecutive empty runs before COOLDOWN; one more empty run after the cool-down makes it DORMANT. */

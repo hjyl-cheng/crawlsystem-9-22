@@ -84,7 +84,7 @@ export async function listBindings(client: PoolClient | Pool, workspace: string,
   const rows = (await client.query(`SELECT b.*,t.text,
       coalesce((SELECT jsonb_agg(jsonb_build_object('type',s.source_type,'ref',s.source_ref) ORDER BY s.created_at) FROM (SELECT * FROM control.query_sources WHERE binding_id=b.binding_id ORDER BY created_at LIMIT 5) s),'[]') AS sources,
       (SELECT count(*)::int FROM control.query_sources WHERE binding_id=b.binding_id) AS source_count,
-      (SELECT jsonb_build_object('state',r.state,'new_channels',r.new_channels,'qualified_new',r.qualified_new,'finished_at',r.finished_at)
+      (SELECT jsonb_build_object('state',r.state,'new_channels',r.new_channels,'qualified_new',r.qualified_new,'finished_at',r.finished_at,'qualification_pending',r.qualification_pending)
         FROM control.query_runs r WHERE r.binding_id=b.binding_id ORDER BY r.created_at DESC LIMIT 1) AS last_run
     FROM control.query_bindings b JOIN control.query_terms t USING (term_id)
     WHERE b.workspace_id=$1 AND ($2::uuid IS NULL OR b.binding_id=$2) AND ($3::text IS NULL OR b.state=$3) AND ($4::text IS NULL OR b.category=$4)

@@ -147,5 +147,25 @@ test('Temporal SDK workflow coordination, waiting, retries, cancellation and his
         await Worker.runReplayHistory({workflowBundle},await handle.fetchHistory());
       });
     });
+    await t.test('R4 waits for ABOUT qualification before targets; rejection stops video and Agent and replays',async()=>{
+      for(const rejected of [false,true]) {
+        const queue=`execution-sdk-${randomUUID()}`,{ref}=fixtureContext(),calls:string[]=[];
+        const activities:Activities={...unusedCollector,
+          loadExecution:async()=>({deadlineAt:await env.currentTimeMs()+600000,maxAttempts:3,status:'QUEUED',sourceMode:'youtube',requiresAgent:false,pipelineVersion:'r3.v1',requiresQualification:true}),
+          executeFixture:unexpected,settleExecution:unexpected,
+          collectAbout:async()=>{calls.push('about');return {plan_id:ref.plan_id,status:'RUNNING'};},
+          waitPipeline:async(_r,_d,_final,aboutOnly)=>{calls.push(aboutOnly?'qualification':'data-ingested');return {plan_id:ref.plan_id,status:aboutOnly?(rejected?'CANCELLED':'RUNNING'):'COMPLETED'};},
+          listTargets:async()=>{assert.equal(calls.at(-1),'qualification');calls.push('targets');return {batches:0,status:'RUNNING'};},
+          sampleRecentVideos:async()=>({status:'RUNNING'}),
+        };
+        const worker=await Worker.create({connection:env.nativeConnection,namespace:env.namespace,taskQueue:queue,workflowBundle,activities,maxConcurrentActivityTaskExecutions:2,maxCachedWorkflows:5,shutdownGraceTime:'1 second'});
+        await worker.runUntil(async()=>{
+          await workflowStarter(env.client,queue).start(ref);const handle=env.client.workflow.getHandle(ref.workflow_id);
+          assert.equal((await handle.result() as {status:string}).status,rejected?'CANCELLED':'COMPLETED');
+          assert.deepEqual(calls,rejected?['about','qualification']:['about','qualification','targets','data-ingested']);
+          await Worker.runReplayHistory({workflowBundle},await handle.fetchHistory());
+        });
+      }
+    });
   } finally { await env.teardown(); }
 });

@@ -334,6 +334,19 @@ test('candidate channels list real candidates and let operators admit or reject 
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('new discoveries display the pending About gate and can be admitted without an override reason',async({page})=>{
+  const state=await mock(page);
+  state.candidates=[{...candidateFixture(),state:'DISCOVERED',subscriber_count:null,qualification:{state:'PENDING',min_subscribers:2000}}];
+  await login(page,'/discover/candidates');
+  const row=page.locator('.query-list tbody tr').first();
+  await expect(row).toContainText('新发现，待验证');
+  await expect(row).toContainText('首次频道资料采集后验证 · ≥2,000');
+  page.once('dialog',dialog=>dialog.accept(''));
+  await row.getByRole('button',{name:'准入',exact:true}).click();
+  await expect.poll(()=>state.candidateRequests.length).toBe(1);
+  expect(state.candidateRequests[0]).toEqual({action:'admit',expected_version:1});
+});
 test('full collection shows backend plan statistics next to the real plan list', async ({ page }) => {
   const state = await mock(page, detailFixture({ status: 'WAITING' }, ['ABOUT'])); state.strictSource = true; await login(page, '/plans');
   await expect(page.getByRole('heading', { name: '全量采集', exact: true })).toBeVisible();

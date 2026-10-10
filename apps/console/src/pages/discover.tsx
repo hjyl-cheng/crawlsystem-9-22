@@ -20,7 +20,7 @@ const fmt = (n?: number) => n === undefined ? '—' : n.toLocaleString('zh-CN');
 /** The latest search of a query, in words. */
 function lastRunText(run: QueryBinding['last_run']): string {
   if (!run) return '还没搜过';
-  if (run.state === 'SUCCEEDED') return `新频道 ${run.new_channels ?? 0}，合格 ${run.qualified_new ?? 0}`;
+  if (run.state === 'SUCCEEDED') return `新频道 ${run.new_channels ?? 0}，合格 ${run.qualified_new ?? 0}${run.qualification_pending?`，待验证 ${run.qualification_pending}`:''}`;
   return { PENDING: '失败，等待重试', RUNNING: '正在搜索', FAILED: '多次失败，明天再试', CANCELLED: '已取消' }[run.state];
 }
 
@@ -96,8 +96,8 @@ export default function Discover() {
       <div><small>失败待重试</small><strong>{fmt(s?.runs.pending_retry)}</strong></div>
       <div><small>今天放弃</small><strong>{fmt(s?.runs.failed_today)}</strong></div>
       <div><small>今天发现新频道</small><strong>{fmt(s?.runs.new_channels_today)}</strong></div>
-      <div><small>其中合格（订阅 ≥1000）</small><strong>{fmt(s?.runs.qualified_today)}</strong></div>
-      <div><small>候选频道：合格 / 不合格 / 不可用</small><strong>{s ? `${fmt(s.candidates.qualified)} / ${fmt(s.candidates.unqualified)} / ${fmt(s.candidates.unavailable)}` : '—'}</strong></div>
+      <div><small>已验证合格 / 待结算搜索</small><strong>{s?`${fmt(s.runs.qualified_today)} / ${fmt(s.runs.pending_qualification??0)}`:'—'}</strong></div>
+      <div><small>候选：待验证 / 合格 / 未达标</small><strong>{s ? `${fmt(s.candidates.discovered??0)} / ${fmt(s.candidates.qualified)} / ${fmt(s.candidates.unqualified)}` : '—'}</strong></div>
       <div><small>最近一次完成</small><strong className="small-value">{s?.runs.last_finished_at ? time(s.runs.last_finished_at) : '—'}</strong></div>
     </section>
 

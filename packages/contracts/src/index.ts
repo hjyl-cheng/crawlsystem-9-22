@@ -143,6 +143,8 @@ const FixtureFrozenSchema = z.strictObject({
 const YoutubeFrozenSchema = z.strictObject({
   schema_version: z.literal(CONTRACT_VERSION), source_mode: z.literal('youtube'), channel_id: YoutubeChannelIdSchema,
   pipeline_version: z.literal('r3.v1').optional(),
+  /** Search-origin admission policy, frozen before the first collection (including retries). */
+  discovery_qualification: z.strictObject({ run_id: z.uuid(), min_subscribers: z.number().int().nonnegative(), policy_version: z.literal('r4.about.v1'), override: z.boolean() }).optional(),
   plan_kind: z.literal('UPDATE').optional(),
   /** Existing videos frozen at creation for an Agent-only update. */
   agent_video_ids: z.array(YoutubeVideoIdSchema).max(100).optional(),
@@ -555,10 +557,10 @@ export const ChannelImportResultSchema = z.strictObject({
 });
 export type ChannelImportResult = z.infer<typeof ChannelImportResultSchema>;
 /** An imported channel: queued until admitted, then planned, then done or failed with its first collection. */
-export const ImportStateSchema = z.enum(['queued', 'planned', 'done', 'failed']);
+export const ImportStateSchema = z.enum(['queued', 'planned', 'done', 'failed','rejected']);
 export const ChannelImportItemSchema = z.strictObject({ channel_id: YoutubeChannelIdSchema, state: ImportStateSchema, requested_at: Timestamp, plan_id: z.uuid().nullable(), title: z.string().nullable() });
 export const ChannelImportsSchema = z.strictObject({
-  counts: z.strictObject({ queued: Count, planned: Count, done: Count, failed: Count }),
+  counts: z.strictObject({ queued: Count, planned: Count, done: Count, failed: Count, rejected: Count.optional() }),
   items: z.array(ChannelImportItemSchema).max(100),
 });
 export type ChannelImports = z.infer<typeof ChannelImportsSchema>;
@@ -588,6 +590,7 @@ export const QueryBindingSchema = z.strictObject({
   version: z.number().int().positive(), created_at: Timestamp,
   /** The binding's latest search (any outcome), if it has run. */
   last_run: z.strictObject({ state: z.enum(['PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED']), new_channels: Count.nullable(), qualified_new: Count.nullable(),
+    qualification_pending: Count.optional(),
     finished_at: Timestamp.nullable() }).nullable(),
 });
 export type QueryBinding = z.infer<typeof QueryBindingSchema>;
@@ -597,8 +600,9 @@ export const QuerySummarySchema = z.strictObject({
   by_country: z.array(z.strictObject({ country: CountryCode, bindings: Count })).max(50),
   /** Search execution today (UTC day) and the limits that pace it. */
   runs: z.strictObject({ enabled: z.boolean(), max_active_runs: Count, daily_run_limit: Count, running: Count, pending_retry: Count,
+    pending_qualification: Count.optional(),
     created_today: Count, succeeded_today: Count, failed_today: Count, new_channels_today: Count, qualified_today: Count, last_finished_at: Timestamp.nullable() }),
-  candidates: z.strictObject({ qualified: Count, unqualified: Count, unavailable: Count, admitted: Count, rejected: Count }),
+  candidates: z.strictObject({ discovered: Count.optional(), qualified: Count, unqualified: Count, unavailable: Count, admitted: Count, rejected: Count }),
 });
 export type QuerySummary = z.infer<typeof QuerySummarySchema>;
 /** Operator adds a query: one binding per country and category; an existing one gains a MANUAL source. */
@@ -626,11 +630,11 @@ export const DiscoveryLimitsSchema = z.strictObject({
   /** A page with at least this many channels new to the system is followed by the next page. */
   continue_min_new: z.number().int().min(1).max(50).default(3),
   min_subscribers: z.number().int().min(0).max(100_000_000).default(1000),
-  /** Data API units kept free for collection: searches stop qualifying channels below this many left today. */
+  /** Data API reserve applies only to frozen legacy search retries; current web searches use no quota. */
   api_reserve: z.number().int().min(0).max(1_000_000).default(3000),
-  /** Qualified candidates plus queued imports at which new searches pause (backpressure, Q-22). */
+  /** Undecided/qualified candidates and queued imports at which new searches pause (backpressure, Q-22). */
   backlog_limit: z.number().int().min(1).max(1_000_000).default(2000),
-  /** Qualified candidates move into the import queue by themselves ("自动准入 + 可人工干预"). */
+  /** New discoveries and historical qualified candidates enter the bounded import queue. */
   auto_admit: z.boolean().default(true),
   /** Queued imports kept topped up from qualified candidates; the rest wait as candidates, where operators can still reject them. */
   import_buffer: z.number().int().min(1).max(10_000).default(50),
@@ -653,6 +657,7 @@ export const QueryRunHeartbeatSchema = z.strictObject({ attempt: RunAttempt });
 export const QueryRunLeaseSchema = z.strictObject({ active: z.boolean(), lease_expires_at: Timestamp.nullable() });
 export const QueryRunPageSchema = z.strictObject({
   attempt: RunAttempt, page: z.number().int().min(1).max(20),
+  raw_reference: z.strictObject({bucket:z.literal('crawl-raw'),key:z.string().max(1024),sha256:z.string().regex(/^[a-f0-9]{64}$/),bytes:Count}).optional(),
   items: z.array(z.strictObject({ video_id: z.string().regex(/^[A-Za-z0-9_-]{11}$/), channel_id: YoutubeChannelIdSchema })).max(200),
 });
 export type QueryRunPage = z.infer<typeof QueryRunPageSchema>;
@@ -663,12 +668,13 @@ export const QueryRunChannelSchema = z.strictObject({
 });
 export const QueryRunCompleteSchema = z.strictObject({
   attempt: RunAttempt, pages: z.number().int().min(0).max(20), stop_reason: z.enum(['list_end', 'max_pages', 'low_yield']),
-  /** Data API facts of every channel the run found new (Q-09: replays return the stored result). */
-  channels: z.array(QueryRunChannelSchema).max(4000), missing_channel_ids: z.array(YoutubeChannelIdSchema).max(4000),
+  /** Only frozen pre-R4 runs report Data API facts. Current web runs send empty arrays. */
+  channels: z.array(QueryRunChannelSchema).max(4000).default([]), missing_channel_ids: z.array(YoutubeChannelIdSchema).max(4000).default([]),
 });
 export type QueryRunComplete = z.infer<typeof QueryRunCompleteSchema>;
 export const QueryRunResultSchema = z.strictObject({
   run_id: z.uuid(), state: z.literal('SUCCEEDED'), new_channels: Count, qualified_new: Count,
+  qualification_pending: Count.optional(),
   binding: z.strictObject({ state: QueryStateSchema, cadence: QueryCadenceSchema.nullable(), next_run_at: Timestamp.nullable() }),
 });
 export const QUERY_RUN_FAILURES = ['blocked', 'network', 'parse', 'proxy_unavailable', 'quota', 'data_api', 'interrupted', 'internal'] as const;
@@ -677,26 +683,26 @@ export const QueryRunFailResultSchema = z.strictObject({ state: z.enum(['PENDING
 export const QueryRunPermitRequestSchema = z.strictObject({ request_id: z.uuid(), attempt: RunAttempt, endpoint: z.literal('channels') });
 export const QueryRunPermitFailureSchema = z.strictObject({ request_id: z.uuid(), attempt: RunAttempt, reason: z.enum(DATA_API_FAILURES) });
 
-// ---- Candidate channels (plan step B3): channels a search found new to the system, qualified by subscribers.
-// Qualified ones are admitted into the import queue automatically, fairly across business categories;
-// operators can reject a candidate or admit one by hand (also below the threshold).
-export const CANDIDATE_STATES = ['QUALIFIED', 'UNQUALIFIED', 'UNAVAILABLE', 'ADMITTED', 'REJECTED'] as const;
+// ---- Candidate channels: discovery stores identities; first collection checks subscribers.
+// New discoveries and historical qualified candidates enter the bounded queue fairly across categories.
+export const CANDIDATE_STATES = ['DISCOVERED', 'QUALIFIED', 'UNQUALIFIED', 'UNAVAILABLE', 'ADMITTED', 'REJECTED'] as const;
 export const CandidateStateSchema = z.enum(CANDIDATE_STATES);
 export const CandidateSchema = z.strictObject({
   channel_id: YoutubeChannelIdSchema, title: z.string().max(300).nullable(), country: z.string().max(10).nullable(),
   subscriber_count: Count.nullable(), video_count: Count.nullable(), view_count: Count.nullable(),
   state: CandidateStateSchema, reason: z.enum(['below_threshold', 'hidden_subscribers', 'not_found']).nullable(),
+  qualification: z.strictObject({ state: z.enum(['PENDING','PASSED','REJECTED']), min_subscribers: Count }).optional(),
   found_by: z.strictObject({ binding_id: z.uuid(), text: z.string().max(200), country: CountryCode, category: BusinessCategorySchema }),
   /** Searches that found the channel (lineage, BC-16). */
   found_count: Count, discovered_at: Timestamp,
   decided_by: z.string().max(200).nullable(), decided_at: Timestamp.nullable(), decision_reason: z.string().max(300).nullable(),
-  import_state: z.enum(['queued', 'planned', 'done', 'failed']).nullable(), version: z.number().int().positive(),
+  import_state: z.enum(['queued', 'planned', 'done', 'failed', 'rejected']).nullable(), version: z.number().int().positive(),
 });
 export type Candidate = z.infer<typeof CandidateSchema>;
 export const CandidateSummarySchema = z.strictObject({
-  observed_at: Timestamp, by_state: z.record(CandidateStateSchema, Count), admitted_today: Count,
+  observed_at: Timestamp, by_state: z.preprocess(value=>value && typeof value==='object'?{DISCOVERED:0,...value}:value,z.record(CandidateStateSchema, Count)), admitted_today: Count,
   auto_admit: z.boolean(), import_buffer: Count, import_queue: Count,
-  by_category: z.array(z.strictObject({ category: BusinessCategorySchema, qualified: Count, admitted: Count })).max(19),
+  by_category: z.array(z.strictObject({ category: BusinessCategorySchema, discovered: Count.optional(), qualified: Count, admitted: Count })).max(19),
 });
 export type CandidateSummary = z.infer<typeof CandidateSummarySchema>;
 export const CandidateCommandSchema = z.discriminatedUnion('action', [

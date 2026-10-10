@@ -14,7 +14,7 @@ import type { WebCollector, CollectionContext } from './youtube/web-collector.ts
 import { ArchiveError, type RawArchive } from './raw-archive.ts';
 import { FingerprintError } from './youtube/fingerprint.ts';
 
-export interface ExecutionDescriptor { deadlineAt: number; maxAttempts: number; status: PlanStatus; sourceMode?: 'fixture' | 'youtube'; videoBatches?: number | null; requiresAgent?: boolean; pipelineVersion?: 'r3.v1'; }
+export interface ExecutionDescriptor { deadlineAt: number; maxAttempts: number; status: PlanStatus; sourceMode?: 'fixture' | 'youtube'; videoBatches?: number | null; requiresAgent?: boolean; pipelineVersion?: 'r3.v1'; requiresQualification?: boolean; }
 export const VIDEO_BATCH = 10;
 export interface ActivityOptions {
   api: ExecutionApi; workerId: string; workspaceId: string;
@@ -310,16 +310,16 @@ export function createActivities(options: ActivityOptions) {
       return activity(ref, 'INPUT', async scope => {
         const value = await read(ref, scope);
         return { deadlineAt: Date.parse(value.input.deadline_at), maxAttempts: value.input.max_attempts, status: value.plan.status, sourceMode: value.input.source_mode,
-          requiresAgent: value.input.required_domains.includes('AGENT'),pipelineVersion:value.input.pipeline_version };
+          requiresAgent: value.input.required_domains.includes('AGENT'),pipelineVersion:value.input.pipeline_version,requiresQualification:value.input.source_mode==='youtube' && !!value.input.discovery_qualification };
       });
     },
-    async waitPipeline(ref:WorkflowInput,descriptor:ExecutionDescriptor,final:boolean):Promise<PlanWorkflowResult> {
+    async waitPipeline(ref:WorkflowInput,descriptor:ExecutionDescriptor,final:boolean,aboutOnly=false):Promise<PlanWorkflowResult> {
       return activity(ref,'INGEST',async scope=>{
         await event(ref,scope,'WAITING','INGEST','Waiting for archived units to be parsed and durably ingested');
         for(;;) {
           await api.pipelineConfirm(ref.plan_id,{deadline:descriptor.deadlineAt,signal:Context.current().cancellationSignal,traceparent:scope.traceparent});
           const value=await read(ref,scope,descriptor.deadlineAt);
-          if(terminal(value.plan.status) || !final && value.domains.filter(d=>d.domain!=='AGENT').every(d=>d.state==='APPLIED')) return {plan_id:ref.plan_id,status:value.plan.status};
+          if(terminal(value.plan.status) || (aboutOnly ? value.domains.find(d=>d.domain==='ABOUT')?.state==='APPLIED' : !final && value.domains.filter(d=>d.domain!=='AGENT').every(d=>d.state==='APPLIED'))) return {plan_id:ref.plan_id,status:value.plan.status};
           await sleep(2000,undefined,{signal:Context.current().cancellationSignal});
         }
       });

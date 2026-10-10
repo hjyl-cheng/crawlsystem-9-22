@@ -41,6 +41,7 @@ export class PgSink {
       if (Number(plan.source_revision) !== fact.source_revision || plan.channel_id !== r.channel_id) throw new SinkFailure('INPUT_MISMATCH');
       const required = frozen.required_domains;
       const targets: string[] | null = frozen.source_mode === 'fixture' ? frozen.target_video_ids : plan.video_targets;
+      if(frozen.source_mode==='youtube' && frozen.discovery_qualification && fact.kind!=='ABOUT' && !plan.qualification_passed) throw new SinkFailure('DOMAIN_INCOMPLETE');
       if(['TARGETS','VIDEO'].includes(fact.kind) && !targets) throw new SinkFailure('DOMAIN_INCOMPLETE');
       if (fact.kind === 'ABOUT') {
         if (r.step !== 'ABOUT' || r.unit_id !== 'channel' || !required.includes('ABOUT') || fact.payload.channel_id !== r.channel_id) throw new SinkFailure('TARGET_MISMATCH');
