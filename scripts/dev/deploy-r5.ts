@@ -26,7 +26,10 @@ kube(['-n','control','rollout','status','deployment/control-api-preview','--time
 // Update images in place so all existing runtime settings, browser state and certificates persist.
 for(const item of previous.filter(x=>x.name!=='control-api-preview')) {
  const object=JSON.parse(kube(['-n',item.namespace,'get',item.kind,item.name,'-o','json']));
- for(const container of object.spec.template.spec.containers)if(container.image.startsWith('docker.io/crawlsystem/control-api:'))container.image=build.control.image;else if(container.image.startsWith('docker.io/crawlsystem/execution-worker:'))container.image=build.worker.image;
+ for(const container of object.spec.template.spec.containers)if(container.image.startsWith('docker.io/crawlsystem/control-api:'))container.image=build.control.image;else if(container.image.startsWith('docker.io/crawlsystem/execution-worker:')){
+  container.image=build.worker.image;container.env??=[];
+  const version=container.env.find((entry:{name:string})=>entry.name==='BUILD_VERSION');if(version)version.value=build.revision;else container.env.push({name:'BUILD_VERSION',value:build.revision});
+ }
  delete object.status;delete object.metadata.managedFields;
  kube(['replace','-f','-'],JSON.stringify(object));kube(['-n',item.namespace,'rollout','status',`${item.kind}/${item.name}`,'--timeout=180s']);console.log(`R5 ${item.name} ready`);
 }

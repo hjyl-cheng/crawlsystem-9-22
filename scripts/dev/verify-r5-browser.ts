@@ -14,6 +14,6 @@ try {
   if(path.startsWith('/history')){await expect(page.getByRole('columnheader',{name:'订阅',exact:true})).toBeVisible();await page.getByLabel('观察对象',{exact:true}).selectOption({index:1});await expect(page.getByRole('cell',{name:'存量快照',exact:true}).first()).toBeVisible();}
   await expect(page.getByRole('alert')).toHaveCount(0);await page.screenshot({path:`.runtime/r5/page-${path.split('?')[0]!.replaceAll('/','')||'overview'}.png`,fullPage:true});
  }
- await page.setViewportSize({width:390,height:844});await page.goto('http://127.0.0.1:18103/quality');await expect(page.getByRole('heading',{name:'质量分析',exact:true})).toBeVisible();await page.screenshot({path:'.runtime/r5/mobile-quality.png',fullPage:true});
+ await page.setViewportSize({width:390,height:844});await page.goto('http://127.0.0.1:18103/quality');await expect(page.getByRole('heading',{name:'质量分析',exact:true})).toBeVisible();await expect(page.getByText('正在加载…',{exact:true})).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'.runtime/r5/mobile-quality.png',fullPage:true});
  expect(errors).toEqual([]);const result={result:'PASSED',pages:pages.map(p=>p[0]),runtime_errors:0,mobile_verified:true,verified_at:new Date().toISOString()};writeFileSync('.runtime/r5/browser-evidence.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{await browser.close();}
