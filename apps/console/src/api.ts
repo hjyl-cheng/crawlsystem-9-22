@@ -5,7 +5,7 @@ import {FailureSchema,FailureCommandSchema,AnalyticsSchema,StorageSchema,Evidenc
 import { CommentPageSchema } from '@crawlsystem/contracts';
 import { UpdateSummarySchema, UpdateChannelSchema, ChannelUpdateSchema, AgentSummarySchema, AgentTaskSchema, DataApiSummarySchema, ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, QuerySummarySchema, QueryBindingSchema, CreateQuerySchema, QueryCommandSchema, CandidateSchema, CandidateSummarySchema, CandidateCommandSchema, type CandidateCommand, type AgentTask, type ChannelImport, type ChannelUpdate, type CreateQuery, type QueryCommand } from '@crawlsystem/contracts';
 import {
-  ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,
+  ApiRoutes, ApiErrorSchema, SessionSchema, PlanSchema, PlanDetailSchema,OverviewResourcesSchema,
   ChannelListItemSchema, ChannelDetailSchema, ChannelManagementSchema, ChannelManagementCommandSchema, ChannelClockOverrideSchema, CompletenessSchema, ConsoleAccountListSchema, PlansSummarySchema, WorkerSchema, StoredEventSchema,
   ReceiptSchema, CreatePlanSchema, CancelPlanSchema, LoginSchema, LogoutSchema, pageSchema, ProxyOverviewSchema, ProxyImportSchema, ProxyUpdateSchema, ProxyViewSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySourceViewSchema,
   type ChannelClockOverride, type ChannelManagementCommand, type CreatePlan, type ProxyImport, type ProxySourceCreate, type ErrorCode, type PlanStatus, type SourceMode, type Login,
@@ -127,6 +127,7 @@ export class ControlApi {
   channels = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.channels}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(ChannelListItemSchema), signal);
   plansSummary = (signal?: AbortSignal) => this.request(ApiRoutes.plansSummary, PlansSummarySchema, signal);
   completeness = (signal?: AbortSignal) => this.request(ApiRoutes.completeness, CompletenessSchema, signal);
+  overviewResources = (signal?:AbortSignal)=>this.request('/v1/overview/resources',OverviewResourcesSchema,signal);
   consoleAccounts = (signal?: AbortSignal) => this.request(ApiRoutes.consoleAccounts, ConsoleAccountListSchema, signal);
   channel = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.channel(id), ChannelDetailSchema, signal);
   manageChannel = (id: string, body: ChannelManagementCommand, signal?: AbortSignal) => this.request(ApiRoutes.channelManagement(id), ChannelManagementSchema, signal, ChannelManagementCommandSchema.parse(body));

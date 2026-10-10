@@ -6,12 +6,13 @@ import { authenticate } from '@crawlsystem/http/auth';
 import type { WorkloadIdentity } from '@crawlsystem/http/workload';
 import type { ProxyStore } from '@crawlsystem/store/proxies';
 import { ConsoleAuth } from './console-auth.ts';
-import { SubmissionSchema,AgentSummarySchema,DataApiSummarySchema,PlansSummarySchema } from '@crawlsystem/contracts';
+import { SubmissionSchema,AgentSummarySchema,DataApiSummarySchema,PlansSummarySchema,OverviewResourcesSchema } from '@crawlsystem/contracts';
+import {unknownNode,type Prometheus} from './monitoring.ts';
 import {FailureStateSchema,FailureCommandSchema,FailureSchema} from '@crawlsystem/contracts/analytics';
 import type {ClickHouse} from './analytics.ts';
 import type {Failure} from '@crawlsystem/contracts/analytics';
 
-export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore;clickhouse?:ClickHouse;evidencePreview?:(failure:Failure)=>Promise<unknown> }) {
+export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore;clickhouse?:ClickHouse;monitoring?:Prometheus;evidencePreview?:(failure:Failure)=>Promise<unknown> }) {
   const auth=options.consoleAuth,workload=options.workloadIdentity;
   const proxies=()=>{if(!options.proxies) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Proxy Control is not configured',503);return options.proxies;};
   const app=createServer('control',{...options,authenticateRequest:async request=>{
@@ -59,6 +60,14 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     if(!options.evidencePreview)throw new StoreError('UNAVAILABLE','Evidence reader is unavailable',503,true);return options.evidencePreview(f);
   });
   const analyticsCache=new Map<string,{until:number;value:unknown}>();
+  app.get('/v1/overview/resources',async request=>{
+    requireRole(request.principal,'reader','operator');z.strictObject({}).parse(request.query);
+    const [workers,ips]=await Promise.all([store.listWorkers(request.principal,100,0),proxies().resources(request.principal)]);
+    const ids=[...new Set(workers.items.map(w=>w.server_id))];
+    let nodes=ids.map(unknownNode),available=false;
+    if(options.monitoring)try{nodes=await options.monitoring.nodes(ids);available=true;}catch{/* Inventory remains usable during monitoring outages. */}
+    return OverviewResourcesSchema.parse({observed_at:new Date().toISOString(),proxies:ips,monitoring:{source:'prometheus',available,nodes}});
+  });
   app.get('/v1/analytics',async request=>{
     requireRole(request.principal,'reader','operator');const q=z.strictObject({days:z.coerce.number().int().min(1).max(365).default(7)}).parse(request.query);
     if(!options.clickhouse)throw new StoreError('UNAVAILABLE','Historical statistics are unavailable',503,true);

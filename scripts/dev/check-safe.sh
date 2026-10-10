@@ -57,6 +57,11 @@ case "${1:-}" in
   publication-infra) command=(python3 scripts/dev/configure-c1.py) ;;
   publication-control-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --c1-control-only) ;;
   publication-control-deploy) command=(node --import tsx scripts/dev/deploy-c1-control.ts) ;;
+  overview-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test tests/integration/overview-resources.test.ts) ;;
+  overview-control-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --c3-control-only) ;;
+  overview-control-deploy) command=(node --import tsx scripts/dev/deploy-c3-control.ts) ;;
+  overview-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-c3-browser.ts) ;;
+  overview-runtime) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-c3-runtime.ts "${@:2}") ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;
   collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-browser.ts) ;;

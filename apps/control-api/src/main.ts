@@ -16,6 +16,7 @@ import { MinioStore } from '../../execution-worker/src/raw-archive.ts';
 import { commentReader } from './comments.ts';
 import {clickHouseFromEnv} from './analytics.ts';
 import {evidenceReader} from './evidence.ts';
+import {Prometheus} from './monitoring.ts';
 const pool=createPool(),shared=new PgConsoleSessions(pool);
 const consolePool=process.env.CONSOLE_DATABASE_URL?createConsolePool():undefined;
 const secure=process.env.CONSOLE_COOKIE_SECURE!=='false',signingKey=loadSigningKey();
@@ -34,6 +35,6 @@ const loadComments=commentsDirectory?commentReader(new MinioStore(process.env.MI
   readFileSync(`${commentsDirectory}/access_key`,'utf8').trim(),readFileSync(`${commentsDirectory}/secret_key`,'utf8').trim())):undefined;
 const evidenceDirectory=process.env.EVIDENCE_CREDENTIALS_DIRECTORY;
 const evidencePreview=evidenceDirectory?evidenceReader(new MinioStore(process.env.MINIO_URL??'http://minio.storage.svc.cluster.local:9000','crawl-evidence',readFileSync(`${evidenceDirectory}/access_key`,'utf8').trim(),readFileSync(`${evidenceDirectory}/secret_key`,'utf8').trim())):undefined;
-const app=createControlApi({store:new Store(pool,updateLimits(),discoveryLimits(),{enabled:process.env.PIPELINE_ENABLED==='true',loadComments}),signingKey,workloadIdentity,proxies,logger:true,allowedOrigin:process.env.CONSOLE_ORIGIN,consoleAuth,clickhouse:clickHouseFromEnv(),evidencePreview,readiness:consolePool?async()=>{await consolePool.query('SELECT 1 FROM console.accounts LIMIT 0');await pool.query('SELECT 1 FROM control.console_login_limits LIMIT 0');}:undefined,metricsWorkspace:process.env.M1_WORKSPACE_ID});
+const app=createControlApi({store:new Store(pool,updateLimits(),discoveryLimits(),{enabled:process.env.PIPELINE_ENABLED==='true',loadComments}),signingKey,workloadIdentity,proxies,logger:true,allowedOrigin:process.env.CONSOLE_ORIGIN,consoleAuth,clickhouse:clickHouseFromEnv(),monitoring:process.env.PROMETHEUS_URL?new Prometheus(process.env.PROMETHEUS_URL):undefined,evidencePreview,readiness:consolePool?async()=>{await consolePool.query('SELECT 1 FROM console.accounts LIMIT 0');await pool.query('SELECT 1 FROM control.console_login_limits LIMIT 0');}:undefined,metricsWorkspace:process.env.M1_WORKSPACE_ID});
 if(consolePool)app.addHook('onClose',async()=>{await consolePool.end();});
 await listen(app,pool,Number(process.env.CONTROL_PORT??'18100'));

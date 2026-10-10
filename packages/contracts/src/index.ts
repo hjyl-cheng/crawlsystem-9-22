@@ -418,6 +418,20 @@ export const ProxyOverviewSchema: z.ZodType<ProxyOverview> = z.strictObject({
   availability_7d: z.array(z.strictObject({ day: z.iso.date(), requests: Tally, failures: Tally })).max(7),
   exit_countries: z.array(z.strictObject({ country: z.string().regex(/^[A-Z]{2}$/).nullable(), count: Tally })).max(250),
 });
+export const OverviewProxyResourcesSchema = z.strictObject({
+  total: Count, by_state: z.record(ProxyStateSchema, Count),
+  assignments: z.array(z.strictObject({server_id: IdSchema, assigned: Count})).max(1000),
+}).refine(s=>Object.values(s.by_state).reduce((a,b)=>a+b,0)===s.total,'proxy states must sum to inventory');
+export const NodeResourcesSchema = z.strictObject({
+  server_id: IdSchema, cpu_percent: z.number().min(0).max(100).nullable(),
+  memory_used_bytes: Count.nullable(), memory_total_bytes: Count.nullable(), sampled_at: Timestamp.nullable(),
+}).refine(n=>n.memory_used_bytes===null||n.memory_total_bytes!==null&&n.memory_used_bytes<=n.memory_total_bytes,'memory usage must fit total');
+export const OverviewResourcesSchema = z.strictObject({
+  observed_at: Timestamp, proxies: OverviewProxyResourcesSchema,
+  monitoring: z.strictObject({source:z.literal('prometheus'),available:z.boolean(),nodes:z.array(NodeResourcesSchema).max(100)}),
+});
+export type OverviewResources = z.infer<typeof OverviewResourcesSchema>;
+export type NodeResources = z.infer<typeof NodeResourcesSchema>;
 export const ProxyUpdateSchema = z.strictObject({ expected_version: z.number().int().positive(), enabled: z.boolean().optional(), server_id: IdSchema.nullable().optional() })
   .refine(u => u.enabled !== undefined || u.server_id !== undefined, 'nothing to update');
 /** Upper bound of endpoints assigned to one server; sync requests and responses carry at most this many. */

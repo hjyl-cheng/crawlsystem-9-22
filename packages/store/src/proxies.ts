@@ -56,6 +56,19 @@ export class ProxyStore {
       return { created, updated };
     });
   }
+  async resources(principal: Principal) {
+    requireRole(principal, 'reader', 'operator');
+    const rows=(await this.pool.query(`SELECT p.server_id,
+      CASE WHEN NOT p.enabled THEN 'disabled' WHEN p.server_id IS NULL THEN 'unassigned'
+        WHEN o.reported_at>statement_timestamp()-($2*interval '1 second') AND o.server_id=p.server_id AND o.generation=p.generation THEN o.state
+        ELSE 'unknown' END AS state,count(*)::int AS n,
+      count(*) FILTER(WHERE p.enabled)::int AS assigned
+      FROM control.proxies p LEFT JOIN control.proxy_observations o USING(workspace_id,proxy_id)
+      WHERE p.workspace_id=$1 GROUP BY 1,2`,[principal.workspace_id,OBSERVATION_FRESH_SECONDS])).rows;
+    const by_state={healthy:0,trial:0,degraded:0,cooldown:0,failed:0,disabled:0,unassigned:0,unknown:0},assignments=new Map<string,number>();
+    for(const row of rows){by_state[row.state as ProxyState]+=row.n;if(row.server_id&&row.assigned)assignments.set(row.server_id,(assignments.get(row.server_id)??0)+row.assigned);}
+    return {total:rows.reduce((n,r)=>n+r.n,0),by_state,assignments:[...assignments].map(([server_id,assigned])=>({server_id,assigned}))};
+  }
   async overview(principal: Principal): Promise<ProxyOverview> {
     requireRole(principal, 'reader', 'operator');
     const rows = (await this.pool.query(`SELECT p.*, o.server_id AS observed_server, o.generation AS observed_generation, o.state AS observed_state, o.cooldown_until, o.last_success_at, o.last_failure_at,

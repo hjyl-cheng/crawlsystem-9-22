@@ -13,9 +13,9 @@ export function TrendChart({data}:{data:Analytics}) {
   const max=Math.max(1,...data.trend.map(d=>d.videos+d.about+d.agent));
   return data.trend.length?<div className="analytics-trend" role="img" aria-label="每日采集趋势">{data.trend.map(d=><div className="trend-day" key={d.at} title={`${d.at.slice(0,10)}：视频 ${d.videos}、资料 ${d.about}、画像 ${d.agent}；完成 ${d.completed}、失败 ${d.failed}`}><strong>{number(d.collected)}</strong><div className="trend-bar" style={{height:`${Math.max(3,(d.videos+d.about+d.agent)/max*150)}px`}}><i style={{flex:d.videos||0,background:'var(--blue,#3b82f6)'}}/><i style={{flex:d.about||0,background:'#22c55e'}}/><i style={{flex:d.agent||0,background:'#a855f7'}}/></div><small>{d.at.slice(5,10)}</small></div>)}</div>:<Empty title="这段时间没有采集事件"/>;
 }
-export function OverviewTrends() {
-  const {api}=useAuth(),r=useResource('overview-analytics:7',signal=>api.analytics(7,signal));
-  return <Panel title="采集趋势" className="trend-panel" extra={<Link to="/analytics">查看统计 →</Link>}><ResourceView resource={r} showMeta={false}>{d=><TrendChart data={d}/>}</ResourceView></Panel>;
+export function OverviewTrends({days=7}:{days?:number}) {
+  const {api}=useAuth(),r=useResource(`overview-analytics:${days}`,signal=>api.analytics(days,signal),true,30000);
+  return <Panel title={`采集趋势 · ${days===1?'今天（UTC）':`近${days}天`}`} className="trend-panel" extra={<Link to="/analytics">查看统计 →</Link>}><ResourceView resource={r} showMeta={false}>{d=><TrendChart data={d}/>}</ResourceView></Panel>;
 }
 export default function AnalyticsPage({quality=false}:{quality?:boolean}) {
   const {api}=useAuth(),[days,setDays]=useState(7),resource=useResource(`analytics:${days}`,signal=>api.analytics(days,signal));

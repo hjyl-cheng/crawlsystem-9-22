@@ -15,11 +15,15 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (path === '/v1/auth/login') { state.authenticated = true; return json(session); }
     if (path === '/v1/auth/logout') { state.authenticated = false; return json({ ok: true }); }
     if (path === '/v1/session') return state.authenticated ? json(session) : failure(401, 'UNAUTHENTICATED');
-    if(path==='/v1/analytics')return json({source:'clickhouse',observed_at:new Date().toISOString(),days:7,totals:{collected:0,videos:0,about:0,agent:0,completed:0,failed:0,searches:0,raw_bytes:0,metric_total:0,metric_missing:0},trend:[],quality:[],failures:[],baseline:0,event_count:0,last_event_at:null});
+    if(path==='/v1/analytics'){state.reads.push(url.pathname+url.search);return json({source:'clickhouse',observed_at:new Date().toISOString(),days:Number(url.searchParams.get('days')??7),totals:{collected:0,videos:0,about:0,agent:0,completed:0,failed:0,searches:0,raw_bytes:0,metric_total:0,metric_missing:0},trend:[],quality:[],failures:[],baseline:0,event_count:0,last_event_at:null});}
     if(path==='/v1/storage')return json({observed_at:new Date().toISOString(),postgres_bytes:10000,outbox:{pending:0,unarchived:0,oldest_pending_at:null},failures:{open:0,retrying:0,evidence_pending:0},replays:{pending:0,failed:0},clickhouse:{available:true,bytes:1000,events:0,last_event_at:null},retention:{pg_days:30,events_days:180,evidence_days:90,loki_days:7,summaries:'long_term'},maintenance:{last_at:null,result:null}});
     if (method === 'GET') state.reads.push(url.pathname + url.search);
     if (state.fail) return failure(503, 'UNAVAILABLE');
     if (state.malformed) return json({ unexpected: true });
+    if(path==='/v1/overview/resources'){
+      const by_state={healthy:0,trial:0,degraded:0,cooldown:0,failed:0,disabled:0,unassigned:0,unknown:0};for(const p of state.proxies)by_state[p.state]++;
+      return json({observed_at:new Date().toISOString(),proxies:{total:state.proxies.length,by_state,assignments:[]},monitoring:{source:'prometheus',available:true,nodes:state.workers.map(w=>({server_id:w.server_id,cpu_percent:13.5,memory_used_bytes:2147483648,memory_total_bytes:8589934592,sampled_at:new Date().toISOString()}))}});
+    }
     if(path==='/v1/deliveries/summary')return json({enabled:true,target:'旧结构业务库',total:deliveries.length,pending:deliveries.filter(r=>r.status==='PENDING').length,delivered:deliveries.filter(r=>r.status==='DELIVERED').length,failed:0,not_ready:0,unchanged:0,delivered_today:deliveries.filter(r=>r.status==='DELIVERED').length,oldest_pending_at:deliveries.find(r=>r.status==='PENDING')?.created_at??null});
     if(path==='/v1/deliveries')return json({items:deliveries.filter(r=>!url.searchParams.get('status')||r.status===url.searchParams.get('status')),next_cursor:null});
     if(path.startsWith('/v1/deliveries/')){const r=deliveries.find(r=>path.includes(r.delivery_id));if(!r)return failure(404,'NOT_FOUND');if(method==='POST'){if(state.role==='reader')return failure(403,'FORBIDDEN');deliveryRetries.push(route.request().postDataJSON());r.attempts++;}return json(r);}
@@ -269,9 +273,29 @@ test('overview completeness shows the backend aggregate, not counts derived from
   await expect(card.locator('.completeness-metrics .blue strong')).toHaveText('1');
   await expect(card.locator('.completeness-metrics .green strong')).toHaveText('0');
   await expect(card.locator('.completeness-reasons div', { hasText: '视频 / 评论未入库' }).locator('b')).toHaveText('1');
-  await expect(card.locator('.completeness-metrics .pending strong').first()).toHaveText('—');
+  await expect(card.locator('.completeness-metrics .freshness strong').first()).toHaveText('0');
+});
+test('overview connects live queue aggregates, node resources and selectable history ranges',async({page})=>{
+ const state=await mock(page,detailFixture({status:'RUNNING'},['ABOUT']));state.workers=[workerFixture(false)];state.agentTasks=agentTaskFixtures();state.dataApiCalls=true;
+ await page.route('**/api/v1/updates/summary',route=>route.fulfill({json:{...updateSummaryFixture([]),managed:500,due:128,overdue:9,running:2,queued:3}}));
+ await page.route('**/api/v1/overview/resources',route=>route.fulfill({json:{observed_at:new Date().toISOString(),proxies:{total:1005,by_state:{healthy:3,trial:0,degraded:0,cooldown:0,failed:0,disabled:0,unassigned:2,unknown:1000},assignments:[{server_id:state.workers[0]!.server_id,assigned:30}]},monitoring:{source:'prometheus',available:true,nodes:[{server_id:state.workers[0]!.server_id,cpu_percent:13.5,memory_used_bytes:2147483648,memory_total_bytes:8589934592,sampled_at:new Date().toISOString()}]}}}));
+ await login(page);
+ const node=(id:string)=>page.locator(`.react-flow__node[data-id="${id}"]`);
+ await expect(node('discover').locator('.stage-value')).toHaveText('140');await expect(node('clock').locator('.stage-value')).toHaveText('128');await expect(node('update').locator('.stage-value')).toHaveText('2');
+ await expect(page.locator('.completeness-metrics .freshness strong').last()).toHaveText('9');await expect(node('agent')).toContainText('排队 1 · 运行 1');await expect(node('data-api')).toContainText('已用 120 / 10000');
+ await expect(page.locator('.ip-donut strong')).toHaveText('1,005');await expect(page.locator('.nodes-panel')).toContainText('13.5%');await expect(page.locator('.nodes-panel')).toContainText('2.0 / 8.0 GiB');await expect(page.locator('.nodes-panel tbody tr').first().locator('td').last()).toHaveText('30');
+ await expect(page.locator('#pipeline')).not.toContainText('未接入');await expect(page.locator('#pipeline')).not.toContainText('固定样本');
+ await page.getByRole('button',{name:'近30天',exact:true}).click();await expect.poll(()=>state.reads.some(r=>r.includes('analytics?days=30'))).toBe(true);await expect(page.getByRole('button',{name:'近30天',exact:true})).toHaveAttribute('aria-pressed','true');
+ await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'今天（UTC）',exact:true}).click();await expect.poll(()=>state.reads.some(r=>r.includes('analytics?days=1'))).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+test('overview reports a failed queue query instead of showing an empty queue and can refresh it',async({page})=>{
+ await mock(page);let unavailable=true;
+ await page.route('**/api/v1/queries/summary',route=>route.fulfill(unavailable?{status:503,json:{error:{code:'UNAVAILABLE',message:'dependency down',retryable:true,correlation_id:'c3-test'}}}:{json:querySummaryFixture([])}));
+ await login(page);await expect(page.locator('.react-flow__node[data-id="discover"] .stage-value')).toHaveText('查询失败');await expect(page.getByText('部分数据查询失败',{exact:false})).toBeVisible();
+ unavailable=false;await page.getByRole('button',{name:'刷新实时状态'}).click();await expect(page.locator('.react-flow__node[data-id="discover"] .stage-value')).toHaveText('140');
 });
 test('desktop overview fits one screen and card columns line up', async ({ page }) => {
+  const runtimeErrors:string[]=[];page.on('pageerror',error=>runtimeErrors.push(error.message));
   await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await page.setViewportSize({ width: 1920, height: 937 }); await login(page);
   await expect(page.locator('.completeness-metrics .green strong')).toHaveText('1');
   for (const [width, height] of [[1920, 937], [1586, 992]] as const) {
@@ -282,6 +306,7 @@ test('desktop overview fits one screen and card columns line up', async ({ page 
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0);
+  expect(runtimeErrors).toEqual([]);
 });
 test('overview polling updates the pipeline in place without hiding nodes or edges', async ({ page }) => {
   const state = await mock(page, detailFixture({ status: 'RUNNING' }, ['ABOUT'])); await page.clock.install(); await login(page);
