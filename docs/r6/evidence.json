@@ -1,0 +1,355 @@
+{
+  "result": "PASSED",
+  "verified_at": "2026-10-10T09:47:39.802Z",
+  "started_at": "2026-10-10T09:09:57.106Z",
+  "schema_version": 29,
+  "acceptance_scope": "User-approved short live acceptance; replaces the original three-day/one-week observation requirement.",
+  "control_revision": "1d79fcc0de027716c250586bba1aea56765347fe",
+  "worker_revision": "d02401fbe6684a3c60ef74fe985ce241cbd67d83",
+  "console_revision": "d7ed628a4177ac88b9ab88c06eecfc3841412167",
+  "services": [
+    {
+      "namespace": "control",
+      "name": "control-api-preview",
+      "ready": 2,
+      "desired": 2,
+      "containers": [
+        {
+          "name": "control-api",
+          "image": "docker.io/crawlsystem/control-api:main-1d79fcc0de02-df85850b",
+          "settings": {
+            "QUERY_DAILY_RUN_LIMIT": "300",
+            "QUERY_RUNS_ENABLED": "true",
+            "QUERY_AUTO_ADMIT": "true",
+            "PIPELINE_ENABLED": "true",
+            "UPDATE_SCHEDULER_ENABLED": "true",
+            "QUERY_MAX_ACTIVE_RUNS": "2",
+            "QUERY_MAX_PAGES": "5",
+            "QUERY_CONTINUE_MIN_NEW": "3",
+            "QUERY_MIN_SUBSCRIBERS": "1000",
+            "QUERY_API_RESERVE": "3000",
+            "QUERY_BACKLOG_LIMIT": "2000",
+            "QUERY_IMPORT_BUFFER": "50",
+            "UPDATE_MAX_ACTIVE_PLANS": "2",
+            "UPDATE_MAX_AGENT_PLANS": "1",
+            "UPDATE_DAILY_PLAN_LIMIT": "100",
+            "UPDATE_API_DAILY_LIMIT": "10000",
+            "UPDATE_AUTO_DOMAINS": "ABOUT,VIDEO,AGENT"
+          }
+        }
+      ]
+    },
+    {
+      "namespace": "control",
+      "name": "intent-dispatcher",
+      "ready": 1,
+      "desired": 1,
+      "containers": [
+        {
+          "name": "dispatcher",
+          "image": "docker.io/crawlsystem/control-api:main-1d79fcc0de02-df85850b",
+          "settings": {
+            "UPDATE_SCHEDULER_ENABLED": "true",
+            "QUERY_AUTO_ADMIT": "true",
+            "PIPELINE_ENABLED": "true",
+            "QUERY_RUNS_ENABLED": "true",
+            "QUERY_MAX_ACTIVE_RUNS": "2",
+            "QUERY_DAILY_RUN_LIMIT": "300",
+            "QUERY_MAX_PAGES": "5",
+            "QUERY_CONTINUE_MIN_NEW": "3",
+            "QUERY_MIN_SUBSCRIBERS": "1000",
+            "QUERY_API_RESERVE": "3000",
+            "QUERY_BACKLOG_LIMIT": "2000",
+            "QUERY_IMPORT_BUFFER": "50",
+            "UPDATE_MAX_ACTIVE_PLANS": "2",
+            "UPDATE_MAX_AGENT_PLANS": "1",
+            "UPDATE_DAILY_PLAN_LIMIT": "100",
+            "UPDATE_API_DAILY_LIMIT": "10000",
+            "UPDATE_AUTO_DOMAINS": "ABOUT,VIDEO,AGENT"
+          }
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "execution-worker",
+      "ready": 1,
+      "desired": 1,
+      "containers": [
+        {
+          "name": "worker",
+          "image": "docker.io/crawlsystem/execution-worker:main-d02401fbe668-5b2c491a",
+          "settings": {
+            "QUERY_RUNNER_SLOTS": "2"
+          }
+        },
+        {
+          "name": "fingerprint-gateway",
+          "image": "docker.io/crawlsystem/fingerprint-gateway:1ff2fbba98b3c83f",
+          "settings": {}
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "profile-agent",
+      "ready": 1,
+      "desired": 1,
+      "containers": [
+        {
+          "name": "profile-agent",
+          "image": "docker.io/crawlsystem/profile-agent:96bc1d79fdffbf8a",
+          "settings": {}
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "raw-parser",
+      "ready": 1,
+      "desired": 1,
+      "containers": [
+        {
+          "name": "parser",
+          "image": "docker.io/crawlsystem/control-api:main-1d79fcc0de02-df85850b",
+          "settings": {}
+        }
+      ]
+    },
+    {
+      "namespace": "ingest",
+      "name": "pg-sink",
+      "ready": 1,
+      "desired": 1,
+      "containers": [
+        {
+          "name": "sink",
+          "image": "docker.io/crawlsystem/control-api:main-1d79fcc0de02-df85850b",
+          "settings": {}
+        }
+      ]
+    },
+    {
+      "namespace": "analytics",
+      "name": "crawl-analytics",
+      "ready": 1,
+      "desired": 1,
+      "containers": [
+        {
+          "name": "analytics",
+          "image": "docker.io/crawlsystem/control-api:main-1d79fcc0de02-df85850b",
+          "settings": {}
+        }
+      ]
+    }
+  ],
+  "healthy_processes": true,
+  "automatic_run": {
+    "completed_full_plans": 5,
+    "completed_automatic_initial_collections": 4,
+    "completed_operator_recovery_collections": 1,
+    "running_full_plans": 2,
+    "completed_scheduled_updates": 98,
+    "observed_scheduled_domains": [
+      "ABOUT"
+    ],
+    "enabled_scheduled_domains": [
+      "ABOUT",
+      "VIDEO",
+      "AGENT"
+    ],
+    "automatic_admissions": 6,
+    "searches": [
+      {
+        "state": "SUCCEEDED",
+        "n": 3,
+        "discovered": 106,
+        "qualified": 0,
+        "qualification_pending": 106
+      }
+    ],
+    "search_details": [
+      {
+        "run_id": "a9a5170d-2201-413d-a892-497d23b8f246",
+        "state": "SUCCEEDED",
+        "policy_version": "query-clock-2-about",
+        "pages": 1,
+        "new_channels": 0,
+        "qualified_new": 0,
+        "qualification_pending": 0,
+        "clock_settled_at": "2026-10-10T09:16:03.238Z",
+        "last_error": null
+      },
+      {
+        "run_id": "7d1b1ec9-5bbe-44d0-ac08-68e95507c9a9",
+        "state": "SUCCEEDED",
+        "policy_version": "query-clock-2-about",
+        "pages": 5,
+        "new_channels": 54,
+        "qualified_new": 0,
+        "qualification_pending": 54,
+        "clock_settled_at": null,
+        "last_error": null
+      },
+      {
+        "run_id": "7082504c-8ff6-4ae2-b289-ea62df6ec419",
+        "state": "SUCCEEDED",
+        "policy_version": "query-clock-2-about",
+        "pages": 5,
+        "new_channels": 52,
+        "qualified_new": 0,
+        "qualification_pending": 52,
+        "clock_settled_at": null,
+        "last_error": null
+      }
+    ],
+    "qualification_pending_candidates": 106,
+    "unsettled_search_clocks": 2,
+    "video_counts": {
+      "videos": 8946,
+      "comment_refs": 8939,
+      "comment_bodies": 0,
+      "observations": 161,
+      "new_returned_comments": 1178
+    },
+    "import_counts": [
+      {
+        "state": "done",
+        "n": 340
+      },
+      {
+        "state": "failed",
+        "n": 1
+      },
+      {
+        "state": "planned",
+        "n": 2
+      },
+      {
+        "state": "queued",
+        "n": 48
+      },
+      {
+        "state": "rejected",
+        "n": 1
+      }
+    ]
+  },
+  "recovery": {
+    "retry_plan_id": "07fa3614-7cd4-46c5-ab7d-f7d012e0e92d",
+    "plan_recovered": true,
+    "import_recovered": true,
+    "search_run_id": "52562676-e7d4-4b20-9db9-487157c1ee71",
+    "legacy_search_recovered": true,
+    "legacy_search_result": {
+      "new_channels": 93,
+      "qualified_new": 61
+    },
+    "legacy_search_attempt": 4,
+    "legacy_search_pages": 5,
+    "legacy_search_execution": "Single targeted operator recovery after the official retry command; frozen parameters preserved; new automatic searches remain backlog-limited.",
+    "new_failures": [
+      {
+        "stage": "AGENT",
+        "code": "INVALID_REQUEST",
+        "state": "RESOLVED",
+        "n": 1
+      },
+      {
+        "stage": "SEARCH",
+        "code": "INTERNAL",
+        "state": "RESOLVED",
+        "n": 1
+      },
+      {
+        "stage": "SEARCH",
+        "code": "NETWORK",
+        "state": "RESOLVED",
+        "n": 1
+      },
+      {
+        "stage": "WORKER",
+        "code": "INVALID_REQUEST",
+        "state": "IGNORED",
+        "n": 1
+      },
+      {
+        "stage": "WORKER",
+        "code": "UNAVAILABLE",
+        "state": "RESOLVED",
+        "n": 6
+      }
+    ],
+    "unrecovered_acceptance_plans": 0,
+    "preexisting_open_failures": 18,
+    "verified_at": "2026-10-10T09:47:24.543Z"
+  },
+  "preservation": {
+    "all_workspaces": true,
+    "preserved_video_identities": 9692,
+    "verified_nonempty_comment_objects": 3,
+    "postgres_comment_bodies": 0
+  },
+  "statistics": {
+    "clickhouse_available": true,
+    "unarchived_events": 0,
+    "oldest_unarchived_at": null
+  },
+  "normal_waits": {
+    "search_backlog_limit": 2000,
+    "import_buffer": 50,
+    "daily_scheduled_plans": 100,
+    "daily_scheduled_plan_limit": 100,
+    "update_waiting": [
+      {
+        "reason": "daily_plans",
+        "channels": 80
+      }
+    ]
+  },
+  "tests": {
+    "unit_passed": 161,
+    "profile_agent_passed": 8,
+    "search_and_admission_integration_passed": 13,
+    "failure_import_cleanup_integration_passed": 11,
+    "isolated_integration_database": true,
+    "typecheck_passed": true,
+    "image_build_passed": true
+  },
+  "browser": {
+    "result": "PASSED",
+    "verified_at": "2026-10-10T09:48:11.474Z",
+    "pages": [
+      "/",
+      "/discover/queries",
+      "/discover/candidates",
+      "/plans",
+      "/update",
+      "/agent",
+      "/workers",
+      "/analytics",
+      "/storage"
+    ],
+    "runtime_errors": 0,
+    "failed_api_reads": 0,
+    "mobile_verified": true
+  },
+  "public_entry": {
+    "url": "https://controversy-roughly-kiss-genealogy.trycloudflare.com",
+    "http_status": {
+      "/": 200,
+      "/channels": 200,
+      "/update": 200,
+      "/discover/queries": 200
+    },
+    "tunnel_pid_preserved": 1882
+  },
+  "downstream": {
+    "status": "not_implemented",
+    "business_schema": "Use the old server business database schema and subsequent migrations, as confirmed by the user on 2026-10-10.",
+    "reference_snapshot": "oldsystem/database/bootstrap/business.sql",
+    "snapshot_date": "2026-09-10",
+    "snapshot_table_count": 64,
+    "snapshot_sha256": "8e2964ef1b322c95dea3ea00894213e3ce25030b70e718367782f00b45b1f3f5"
+  }
+}
