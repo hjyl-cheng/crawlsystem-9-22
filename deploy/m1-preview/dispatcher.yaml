@@ -42,9 +42,23 @@ spec:
           env:
             - { name: PG_POOL_MAX, value: "1" }
             - { name: M1_WORKSPACE_ID, value: "m1-main" }
-            # Paused 2026-10-09 while collection is reworked: no scheduled updates, imports or candidate admission.
-            - { name: UPDATE_SCHEDULER_ENABLED, value: "false" }
-            - { name: QUERY_AUTO_ADMIT, value: "false" }
+            # R6: same admission and scheduling limits as Control.
+            - { name: QUERY_RUNS_ENABLED, value: "true" }
+            - { name: QUERY_AUTO_ADMIT, value: "true" }
+            - { name: QUERY_MAX_ACTIVE_RUNS, value: "2" }
+            - { name: QUERY_DAILY_RUN_LIMIT, value: "300" }
+            - { name: QUERY_MAX_PAGES, value: "5" }
+            - { name: QUERY_CONTINUE_MIN_NEW, value: "3" }
+            - { name: QUERY_MIN_SUBSCRIBERS, value: "1000" }
+            - { name: QUERY_API_RESERVE, value: "3000" }
+            - { name: QUERY_BACKLOG_LIMIT, value: "2000" }
+            - { name: QUERY_IMPORT_BUFFER, value: "50" }
+            - { name: UPDATE_SCHEDULER_ENABLED, value: "true" }
+            - { name: UPDATE_AUTO_DOMAINS, value: "ABOUT,VIDEO,AGENT" }
+            - { name: UPDATE_MAX_ACTIVE_PLANS, value: "2" }
+            - { name: UPDATE_MAX_AGENT_PLANS, value: "1" }
+            - { name: UPDATE_DAILY_PLAN_LIMIT, value: "100" }
+            - { name: UPDATE_API_DAILY_LIMIT, value: "10000" }
             - { name: PIPELINE_ENABLED, value: "true" }
             - { name: PG_CA_FILE, value: /secrets/pg-ca.crt }
             - { name: PG_TLS_SERVERNAME, value: crawler-pg-pool.db.svc.cluster.local }

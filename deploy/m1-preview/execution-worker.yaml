@@ -74,7 +74,7 @@ spec:
             - { name: MINIO_CREDENTIAL_DIR, value: /minio }
             - { name: KAFKA_CREDENTIAL_DIR, value: /kafka }
             # REQUIRED_EGRESS_COUNTRY remains unset: pt-BR/BR identity, any existing qualified egress.
-            - { name: QUERY_RUNNER_SLOTS, value: "0" }
+            - { name: QUERY_RUNNER_SLOTS, value: "2" }
             # AGENT domain: local-model profiling of the collected facts.
             - { name: PROFILE_AGENT_URL, value: "http://profile-agent.crawler.svc.cluster.local:18120" }
             - { name: TEMPORAL_ADDRESS, value: "temporal-frontend.temporal.svc.cluster.local:7233" }

@@ -78,11 +78,23 @@ spec:
             - { name: CONSOLE_PG_POOL_MAX, value: "1" }
             - { name: M1_WORKSPACE_ID, value: "m1-main" }
             - { name: TRACE_SAMPLE_RATIO, value: "0.1" }
-            # Query search execution (plan B2): start at 300 new searches a day while it is watched.
+            # R6: bounded automatic search, admission and update collection.
             - { name: QUERY_DAILY_RUN_LIMIT, value: "300" }
-            # Paused 2026-10-09 while collection is reworked (raw data to MinIO, legacy collection flow).
-            - { name: QUERY_RUNS_ENABLED, value: "false" }
-            - { name: QUERY_AUTO_ADMIT, value: "false" }
+            - { name: QUERY_RUNS_ENABLED, value: "true" }
+            - { name: QUERY_AUTO_ADMIT, value: "true" }
+            - { name: QUERY_MAX_ACTIVE_RUNS, value: "2" }
+            - { name: QUERY_MAX_PAGES, value: "5" }
+            - { name: QUERY_CONTINUE_MIN_NEW, value: "3" }
+            - { name: QUERY_MIN_SUBSCRIBERS, value: "1000" }
+            - { name: QUERY_API_RESERVE, value: "3000" }
+            - { name: QUERY_BACKLOG_LIMIT, value: "2000" }
+            - { name: QUERY_IMPORT_BUFFER, value: "50" }
+            - { name: UPDATE_SCHEDULER_ENABLED, value: "true" }
+            - { name: UPDATE_AUTO_DOMAINS, value: "ABOUT,VIDEO,AGENT" }
+            - { name: UPDATE_MAX_ACTIVE_PLANS, value: "2" }
+            - { name: UPDATE_MAX_AGENT_PLANS, value: "1" }
+            - { name: UPDATE_DAILY_PLAN_LIMIT, value: "100" }
+            - { name: UPDATE_API_DAILY_LIMIT, value: "10000" }
             - { name: PIPELINE_ENABLED, value: "true" }
             - name: PIPELINE_SERVICE_ACCOUNTS
               value: '{"system:serviceaccount:crawler:raw-parser":"parser","system:serviceaccount:ingest:pg-sink":"sink","system:serviceaccount:analytics:crawl-analytics":"analytics"}'

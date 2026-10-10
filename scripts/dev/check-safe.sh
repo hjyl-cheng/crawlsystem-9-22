@@ -43,6 +43,7 @@ case "${1:-}" in
   pipeline-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r3-browser.ts) ;;
   discovery-preview) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r4-preview.ts "${@:2}") ;;
   discovery-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r4-browser.ts) ;;
+  automation-runtime) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/r6-runtime.ts "${@:2}") ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;
   collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-browser.ts) ;;
