@@ -11,7 +11,7 @@ data:
     \ from: '2026-01-01'\n    store: tsdb\n    object_store: filesystem\n    schema:\
     \ v13\n    index:\n      prefix: index_\n      period: 24h\ncompactor:\n  working_directory:\
     \ /loki/compactor\n  retention_enabled: true\n  delete_request_store: filesystem\n\
-    limits_config:\n  retention_period: 72h\n  ingestion_rate_mb: 0.02\n  ingestion_burst_size_mb:\
+    limits_config:\n  retention_period: 168h\n  ingestion_rate_mb: 0.02\n  ingestion_burst_size_mb:\
     \ 1\n  max_query_parallelism: 2\nanalytics:\n  reporting_enabled: false\n"
 ---
 apiVersion: v1

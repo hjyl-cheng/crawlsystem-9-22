@@ -46,10 +46,15 @@ export class WebCollector {
   private async unit<T>(ctx: CollectionContext, step: string, unitId: string, work: (responses: RawResponse[]) => Promise<T>) {
     const reused = await this.archive.reuse<T>(ctx.owner, ctx.channelId, step, unitId, ctx.signal);
     if (reused) return reused;
-    const responses: RawResponse[] = [], result = await work(responses);
+    const responses: RawResponse[] = [];let result:T;
+    try{result=await work(responses);}catch(error){await this.preserveFailure(ctx,step,unitId,responses,error);throw error;}
     const reference = await this.archive.save({ schema_version: 'crawl.unit.v1', owner: ctx.owner, channel_id: ctx.channelId, step, unit_id: unitId,
       captured_at: new Date().toISOString(), responses, result }, ctx.signal);
     return { result, reference };
+  }
+  private async preserveFailure(ctx:CollectionContext,step:string,unit:string,responses:RawResponse[],error:unknown) {
+    if(ctx.signal.aborted||!(error instanceof Error))return;
+    try {Object.assign(error,{raw_evidence:await this.archive.failure(ctx.owner,step,unit,responses,'COLLECTION_FAILED')});}catch{ /* The execution error still survives a storage outage. */ }
   }
   async about(ctx: CollectionContext): Promise<ChannelFacts> {
     const unit = await this.unit(ctx, 'ABOUT', 'channel', responses => this.web(ctx, responses, yt => this.operations.channelFacts(yt, ctx.channelId)));
@@ -75,9 +80,9 @@ export class WebCollector {
         try { result = await this.web(ctx, responses, yt => this.operations.videoDetail(yt, ctx.channelId, id, commentLimit, metricsOnly, responses)); break; }
         catch (error) {
           ctx.signal.throwIfAborted();
-          if (!(error instanceof ScrapeError) && !(error instanceof FingerprintError)) throw error;
+          if (!(error instanceof ScrapeError) && !(error instanceof FingerprintError)) {await this.preserveFailure(ctx,step,id,responses,error);throw error;}
           if (error instanceof ScrapeError && error.kind === 'not_found') { result = unavailableVideo(ctx.channelId, id, new Date().toISOString()); result.source = 'youtubei:video'; break; }
-          if (error instanceof FingerprintError && error.kind === 'gateway' || error instanceof ScrapeError && error.kind === 'upstream') throw error;
+          if (error instanceof FingerprintError && error.kind === 'gateway' || error instanceof ScrapeError && error.kind === 'upstream') {await this.preserveFailure(ctx,step,id,responses,error);throw error;}
           await ctx.note(`video=${id}; web_attempt=${attempt}; result=${error instanceof ScrapeError ? error.kind : 'transport'}`);
         }
       }
@@ -90,7 +95,9 @@ export class WebCollector {
     for (let start = 0; start < failedIds.length; start += 50) {
       const batch = failedIds.slice(start, start + 50), apiResponses: RawResponse[] = [];
       const guard: RequestGuard = { ...ctx.guard, response: (endpoint, status, body) => { apiResponses.push({ endpoint: `https://www.googleapis.com/youtube/v3/${endpoint}`, method: 'GET', status, body, captured_at: new Date().toISOString() }); } };
-      const apiVideos = new Map((await this.dataApi.videos(batch, guard)).map(v => [v.id, v]));
+      let apiVideos:Map<string,import('./map.ts').ApiVideo>;
+      try{apiVideos=new Map((await this.dataApi.videos(batch,guard)).map(v=>[v.id,v]));}
+      catch(error){await this.preserveFailure(ctx,step,batch[0]!,[...batch.flatMap(id=>fallback.get(id)??[]),...apiResponses],error);throw error;}
       await ctx.note(`Data API fallback: ${batch.length} videos after ${metricsOnly ? 'lightweight web detail failure' : '3 web attempts'}`);
       for (const id of batch) {
         const api = apiVideos.get(id), responses = [...fallback.get(id)!, ...apiResponses];

@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {OpsEventSchema} from '@crawlsystem/contracts/analytics';
+import {r5ClickHouse} from './r5-clickhouse.ts';
+const ch=r5ClickHouse(),workspace='r5-ch-'+randomUUID();
+const event=OpsEventSchema.parse({schema_version:'crawl.ops.v1',event_id:workspace+':1',workspace_id:workspace,at:new Date().toISOString(),source_mode:'youtube',kind:'FACT',domain:'VIDEO',status:'PARTIAL',code:'',plan_id:randomUUID(),channel_id:'test-channel',entity_id:'test-video',units:1,bytes:100,duration_ms:0,metric_total:4,metric_missing:1,views:500,subscribers:null,likes:40,comments:3,duration_seconds:60});
+await ch.insert([event,event,event]);await ch.rebuild([event,event]);
+let summary=await ch.statistics(workspace,7);assert.equal(summary.totals.videos,1);assert.equal(summary.totals.raw_bytes,100);assert.equal(summary.totals.metric_missing,1);
+await ch.insert([event]);await ch.rebuild([event]);summary=await ch.statistics(workspace,7);assert.equal(summary.totals.videos,1);
+const second={...event,event_id:workspace+':2',at:new Date(Date.now()-86400000).toISOString(),metric_missing:0,status:'APPLIED'};
+await ch.insert([second,second]);await ch.rebuild([second]);summary=await ch.statistics(workspace,7);assert.equal(summary.totals.videos,2);assert.equal(summary.trend.length,2);
+assert.equal((await ch.rows<{n:number}>('SELECT toFloat64(count()) AS n FROM crawl.events FINAL WHERE workspace_id={workspace:String}',{workspace}))[0]?.n,2);
+const history=await ch.channelHistory(workspace,'test-channel',7);assert.equal(history.points.length,2);assert.equal(history.points[0]?.entity_id,'test-video');assert.equal(history.points[1]?.likes,40);assert.equal(history.points[1]?.comments,3);assert.equal(history.points[1]?.duration_seconds,60);assert.equal((await ch.channelHistory(workspace+'-other','test-channel',7)).points.length,0);
+const result={result:'PASSED',duplicate_inserts:6,unique_events:2,daily_count:summary.totals.videos,hourly_count:(await ch.rows<{n:number}>('SELECT toFloat64(sum(count)) AS n FROM crawl.hourly FINAL WHERE workspace_id={workspace:String}',{workspace}))[0]?.n,late_event_rebuilt:true,quality_missing:summary.totals.metric_missing,channel_history_verified:true,workspace_history_isolated:true,tls_verified:true,test_workspace:workspace};
+writeFileSync('.runtime/r5/clickhouse-evidence.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));

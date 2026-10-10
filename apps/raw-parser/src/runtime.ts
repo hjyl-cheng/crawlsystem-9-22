@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Kafka, logLevel, type EachMessagePayload } from 'kafkajs';
 import { ExecutionApi, ExecutionApiError, workloadTokenSource } from '@crawlsystem/execution-client/http';
+import {failureEnvelope} from './failure.ts';
 export const secret=async (dir:string,key:string)=>(await readFile(`${dir}/${key}`,'utf8')).trim();
 export async function pipelineApi() {
   const control=process.env.CONTROL_API_URL??'http://control-api.control.svc.cluster.local:18100',pod=process.env.POD_NAME;
@@ -10,11 +11,14 @@ export async function pipelineApi() {
   const token=workloadTokenSource({controlUrl:control,workerId:pod,identityToken:()=>readFile(process.env.WORKLOAD_TOKEN_FILE??'/var/run/crawlsystem/identity/token','utf8')});
   return new ExecutionApi({controlUrl:control,ingestUrl:control,token});
 }
-export async function pipelineBus(groupId:'crawl-parser'|'crawl-sink-pg') {
+export async function pipelineKafka(groupId:string) {
   const dir=process.env.KAFKA_CREDENTIALS_DIRECTORY??'/var/run/crawlsystem/kafka';
-  const kafka=new Kafka({clientId:groupId,brokers:(await secret(dir,'bootstrap')).split(','),ssl:{ca:[await secret(dir,'ca.crt')]},
+  return new Kafka({clientId:groupId,brokers:(await secret(dir,'bootstrap')).split(','),ssl:{ca:[await secret(dir,'ca.crt')]},
     sasl:{mechanism:'scram-sha-512',username:await secret(dir,'username'),password:await secret(dir,'password')},logLevel:logLevel.NOTHING,
     connectionTimeout:5000,requestTimeout:30000,retry:{retries:8}});
+}
+export async function pipelineBus(groupId:'crawl-parser'|'crawl-sink-pg') {
+  const kafka=await pipelineKafka(groupId);
   const producer=kafka.producer({idempotent:true,maxInFlightRequests:1,allowAutoTopicCreation:false}),consumer=kafka.consumer({groupId,allowAutoTopicCreation:false,sessionTimeout:60000});
   let ready=false,stopping=false;
   const server=createServer((req,res)=>{res.statusCode=req.url==='/healthz'&&ready?200:503;res.end(ready?'ok':'starting');});
@@ -38,7 +42,7 @@ export async function pipelineBus(groupId:'crawl-parser'|'crawl-sink-pg') {
           if(!code || error instanceof ExecutionApiError && error.retryable) {
             if(attempt>=5) throw error;
           } else if(attempt>=3) {
-            await send(dlq,message.message.key?.toString()??'unknown',{schema_version:'crawl.failure.v1',topic:message.topic,partition:message.partition,offset:message.message.offset,code,attempts:attempt,observed_at:new Date().toISOString()});
+            await send(dlq,message.message.key?.toString()??'unknown',failureEnvelope(groupId==='crawl-parser'?'PARSER':'SINK',message.topic,message.partition,message.message.offset,code,attempt,message.message.value?.toString()??''));
             console.log(JSON.stringify({service:groupId,topic:message.topic,partition:message.partition,offset:message.message.offset,error_code:code}));return;
           }
           await message.heartbeat();await delay(Math.min(attempt*1000,5000));

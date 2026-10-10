@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PipelineProgressSchema } from '@crawlsystem/contracts/pipeline';
+import {FailureSchema,FailureCommandSchema,AnalyticsSchema,StorageSchema,EvidencePreviewSchema,ChannelHistorySchema,type FailureCommand} from '@crawlsystem/contracts/analytics';
 import { CommentPageSchema } from '@crawlsystem/contracts';
 import { UpdateSummarySchema, UpdateChannelSchema, ChannelUpdateSchema, AgentSummarySchema, AgentTaskSchema, DataApiSummarySchema, ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, QuerySummarySchema, QueryBindingSchema, CreateQuerySchema, QueryCommandSchema, CandidateSchema, CandidateSummarySchema, CandidateCommandSchema, type CandidateCommand, type AgentTask, type ChannelImport, type ChannelUpdate, type CreateQuery, type QueryCommand } from '@crawlsystem/contracts';
 import {
@@ -85,6 +86,13 @@ export class ControlApi {
   }
 
   session = (signal?: AbortSignal) => this.request(ApiRoutes.session, SessionSchema, signal);
+  failures = (cursor='0',state='',signal?:AbortSignal)=>this.request(`/v1/failures?${new URLSearchParams({limit:'20',cursor,...(state?{state}:{})})}`,pageSchema(FailureSchema),signal);
+  failure = (id:string,signal?:AbortSignal)=>this.request(`/v1/failures/${encodeURIComponent(id)}`,FailureSchema,signal);
+  failureCommand = (id:string,body:FailureCommand,signal?:AbortSignal)=>this.request(`/v1/failures/${encodeURIComponent(id)}/commands`,FailureSchema,signal,FailureCommandSchema.parse(body));
+  failureEvidence = (id:string,signal?:AbortSignal)=>this.request(`/v1/failures/${encodeURIComponent(id)}/evidence`,EvidencePreviewSchema,signal);
+  analytics = (days=7,signal?:AbortSignal)=>this.request(`/v1/analytics?days=${days}`,AnalyticsSchema,signal);
+  storage = (signal?:AbortSignal)=>this.request('/v1/storage',StorageSchema,signal);
+  channelHistory = (id:string,days=30,signal?:AbortSignal)=>this.request(`/v1/channels/${encodeURIComponent(id)}/history?days=${days}`,ChannelHistorySchema,signal);
   updatesSummary = (signal?: AbortSignal) => this.request(ApiRoutes.updatesSummary, UpdateSummarySchema, signal);
   updates = (cursor = '0', state = '', search = '', signal?: AbortSignal) => this.request(`${ApiRoutes.updates}?${new URLSearchParams({ limit: '20', cursor, ...(state ? { state } : {}), ...(search ? { search } : {}) })}`, pageSchema(UpdateChannelSchema), signal);
   updateChannel = (id: string, body: ChannelUpdate, signal?: AbortSignal) => this.request(ApiRoutes.channelUpdate(id), PlanSchema, signal, ChannelUpdateSchema.parse(body));

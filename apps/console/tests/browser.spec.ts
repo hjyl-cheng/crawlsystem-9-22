@@ -13,6 +13,8 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (path === '/v1/auth/login') { state.authenticated = true; return json(session); }
     if (path === '/v1/auth/logout') { state.authenticated = false; return json({ ok: true }); }
     if (path === '/v1/session') return state.authenticated ? json(session) : failure(401, 'UNAUTHENTICATED');
+    if(path==='/v1/analytics')return json({source:'clickhouse',observed_at:new Date().toISOString(),days:7,totals:{collected:0,videos:0,about:0,agent:0,completed:0,failed:0,searches:0,raw_bytes:0,metric_total:0,metric_missing:0},trend:[],quality:[],failures:[],baseline:0,event_count:0,last_event_at:null});
+    if(path==='/v1/storage')return json({observed_at:new Date().toISOString(),postgres_bytes:10000,outbox:{pending:0,unarchived:0,oldest_pending_at:null},failures:{open:0,retrying:0,evidence_pending:0},replays:{pending:0,failed:0},clickhouse:{available:true,bytes:1000,events:0,last_event_at:null},retention:{pg_days:30,events_days:180,evidence_days:90,loki_days:7,summaries:'long_term'},maintenance:{last_at:null,result:null}});
     if (method === 'GET') state.reads.push(url.pathname + url.search);
     if (state.fail) return failure(503, 'UNAVAILABLE');
     if (state.malformed) return json({ unexpected: true });

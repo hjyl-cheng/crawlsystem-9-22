@@ -63,9 +63,9 @@ export function createActivities(options: ActivityOptions) {
     }
     return value;
   };
-  const event = (ref: WorkflowInput, scope: TraceScope, kind: ExecutionEvent['kind'], phase: string, message: string, domain: Domain | null = null, errorCode?: ErrorCode) =>
+  const event = (ref: WorkflowInput, scope: TraceScope, kind: ExecutionEvent['kind'], phase: string, message: string, domain: Domain | null = null, errorCode?: ErrorCode,evidence?:ExecutionEvent['evidence_ref']) =>
     api.event(ref.plan_id, { event_id: randomUUID(), execution_epoch: ref.execution_epoch, worker_id: workerId, kind, phase, domain,
-      message, ...(errorCode ? { error_code: errorCode } : {}) }, { signal: Context.current().cancellationSignal, traceparent: scope.traceparent });
+      message, ...(errorCode ? { error_code: errorCode } : {}),...(evidence?{evidence_ref:evidence}:{}) }, { signal: Context.current().cancellationSignal, traceparent: scope.traceparent });
 
   async function activity<T>(ref: WorkflowInput, phase: string, work: (scope: TraceScope) => Promise<T>): Promise<T> {
     const leave = options.enter(ref.plan_id);
@@ -81,7 +81,9 @@ export function createActivities(options: ActivityOptions) {
       const record = { worker_id: workerId, plan_id: ref.plan_id, workflow_id: ref.workflow_id, execution_epoch: ref.execution_epoch,
         phase, error_code: error.code, retryable: error.retryable, correlation_id: error.correlationId, attempt: context.info.attempt };
       options.log(record);
-      await event(ref, scope, 'ERROR', phase, `${error.code}; retryable=${error.retryable}; attempt=${context.info.attempt}${error.correlationId ? `; correlation=${error.correlationId.slice(0,160)}` : ''}`, null, error.code).catch(() => {});
+      let evidence=(cause as {raw_evidence?:ExecutionEvent['evidence_ref']}).raw_evidence;
+      if(!evidence && options.archive)try{evidence=await options.archive.failure(ref,phase,'activity',((cause as {raw_responses?:import('./raw-archive.ts').RawResponse[]}).raw_responses)??[],error.code);}catch{ /* Failure metadata remains durable when evidence storage is unavailable. */ }
+      await event(ref, scope, 'ERROR', phase, `${error.code}; retryable=${error.retryable}; attempt=${context.info.attempt}${error.correlationId ? `; correlation=${error.correlationId.slice(0,160)}` : ''}`, phase==='AGENT'?'AGENT':null, error.code,evidence).catch(() => {});
       throw ApplicationFailure.create({ message: `Execution ${phase}: ${error.code}`, type: error.code, nonRetryable: !error.retryable,
         details: [{ code: error.code, phase, retryable: error.retryable, plan_id: ref.plan_id }] });
     } finally { clearInterval(timer); scope.end?.(failed); leave(); }
@@ -122,7 +124,7 @@ export function createActivities(options: ActivityOptions) {
     }
   }
   async function collect<T>(ref: WorkflowInput, phase: string, work: (scope: TraceScope) => Promise<T>): Promise<T> {
-    return activity(ref, phase, async scope => { try { return await work(scope); } catch (error) { throw collectorError(error); } });
+    return activity(ref, phase, async scope => { try { return await work(scope); } catch (error) {const mapped=collectorError(error);Object.assign(mapped,{raw_evidence:(error as {raw_evidence?:unknown}).raw_evidence});throw mapped;} });
   }
   const submitOnce = async (ref: WorkflowInput, value: PlanInput, submission: Submission, deadline: number) => {
     if(value.receipts.some(r => r.submission_id === submission.submission_id)) return undefined;

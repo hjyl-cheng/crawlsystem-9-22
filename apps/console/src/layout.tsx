@@ -40,8 +40,8 @@ export function Layout() {
         <NavLink className="nav-primary" to="/channels"><Database size={16}/><span>频道管理</span></NavLink>
         <NavLink className="nav-primary" to="/proxies"><Network size={16}/><span>IP 资源管理</span></NavLink>
         <NavLink className="nav-primary" to="/workers"><Server size={16}/><span>Worker 管理</span></NavLink>
-        <NavGroup icon={<FileChartColumn size={16}/>} label="数据与分析"><Pending>采集统计</Pending><Pending>质量分析</Pending><Link to="/#trends">趋势分析</Link></NavGroup>
-        <NavGroup icon={<Settings size={16}/>} label="系统管理">{session.role === 'operator' && <NavLink to="/users">用户管理</NavLink>}<NavLink to="/config">配置管理</NavLink><NavLink to="/errors" aria-label="错误与追踪">错误与日志</NavLink></NavGroup>
+        <NavGroup icon={<FileChartColumn size={16}/>} label="数据与分析"><NavLink to="/analytics">采集统计</NavLink><NavLink to="/quality">质量分析</NavLink><Link to="/#trends">趋势分析</Link></NavGroup>
+        <NavGroup icon={<Settings size={16}/>} label="系统管理">{session.role === 'operator' && <NavLink to="/users">用户管理</NavLink>}<NavLink to="/config">配置管理</NavLink><NavLink to="/failures">失败处理</NavLink><NavLink to="/storage">存储与流水线</NavLink><NavLink to="/errors" aria-label="错误与追踪">错误与日志</NavLink></NavGroup>
       </nav>
       <div className="sidebar-version">M1 · 固定样本联调 <span title="灰色菜单表示尚未接入的功能"><CircleHelp size={12}/></span></div>
     </aside>

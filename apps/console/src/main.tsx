@@ -16,6 +16,10 @@ const Channels = lazy(() => import('./pages/channels.js'));
 const ChannelDetail = lazy(() => import('./pages/channel-detail.js'));
 const Workers = lazy(() => import('./pages/workers.js'));
 const Errors = lazy(() => import('./pages/errors.js'));
+const Failures = lazy(() => import('./pages/failures.js'));
+const Analytics = lazy(() => import('./pages/analytics.js'));
+const Storage = lazy(() => import('./pages/analytics.js').then(m=>({default:m.StoragePage})));
+const ChannelHistory = lazy(() => import('./pages/channel-history.js'));
 const ReceiptDetail = lazy(() => import('./pages/receipt.js'));
 const Discover = lazy(() => import('./pages/discover.js'));
 const Candidates = lazy(() => import('./pages/candidates.js'));
@@ -39,6 +43,8 @@ createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorB
     <Route path="plans" element={<Plans/>}/><Route path="plans/new" element={<CreatePlan/>}/><Route path="plans/:id" element={<PlanDetail/>}/>
     <Route path="channels" element={<Channels/>}/><Route path="channels/:id" element={<ChannelDetail/>}/>
     <Route path="workers" element={<Workers/>}/><Route path="errors" element={<Errors/>}/><Route path="receipts/:id" element={<ReceiptDetail/>}/>
+    <Route path="failures" element={<Failures/>}/><Route path="analytics" element={<Analytics/>}/><Route path="quality" element={<Analytics quality/>}/><Route path="storage" element={<Storage/>}/>
+    <Route path="history/:id" element={<ChannelHistory/>}/>
     <Route path="discover/queries" element={<Discover/>}/><Route path="discover/candidates" element={<Candidates/>}/><Route path="update" element={<Update/>}/><Route path="agent" element={<Agent/>}/><Route path="data-api" element={<DataApi/>}/><Route path="delivery" element={<Delivery/>}/><Route path="proxies" element={<Proxies/>}/><Route path="config" element={<Config/>}/><Route path="users" element={<Users/>}/>
     <Route path="*" element={<div className="empty-state"><h1>页面不存在</h1><Link to="/">返回采集总览</Link></div>}/>
   </Route>

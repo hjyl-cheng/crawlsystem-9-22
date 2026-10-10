@@ -30,12 +30,12 @@ export async function readAgentTasks(pool: Pool, workspace: string, limit: numbe
     message: r.message ?? null, error_code: r.error_code ?? null, management_state: r.management_state ?? null }));
 }
 
-export async function readAgentSummary(pool: Pool, workspace: string, now: Date): Promise<AgentSummary> {
+export async function readAgentSummary(pool: Pool, workspace: string, now: Date,currentOnly=false): Promise<AgentSummary> {
   const counts = (await pool.query(`${AGENT_TASKS} SELECT count(*) FILTER(WHERE state='waiting')::int AS waiting,count(*) FILTER(WHERE state='running')::int AS running,
       count(*) FILTER(WHERE state='completed' AND completed_at>$2::timestamptz-interval '24 hours')::int AS completed_24h,
       count(*) FILTER(WHERE state='failed' AND finished_at>$2::timestamptz-interval '24 hours')::int AS failed_24h,
       avg(extract(epoch FROM completed_at-created_at)) FILTER(WHERE state='completed' AND completed_at>$2::timestamptz-interval '24 hours') AS avg_seconds
-    FROM task`, [workspace, now])).rows[0]!;
+    FROM task WHERE (NOT $3::boolean OR state IN ('waiting','running'))`, [workspace, now,currentOnly])).rows[0]!;
   const models = (await pool.query(`SELECT agent->>'model_version' AS model_version,count(*)::int AS channels FROM control.channel_overview
     WHERE workspace_id=$1 AND agent IS NOT NULL GROUP BY 1 ORDER BY 2 DESC,1 LIMIT 20`, [workspace])).rows;
   return AgentSummarySchema.parse({ observed_at: now.toISOString(), waiting: counts.waiting, running: counts.running, completed_24h: counts.completed_24h, failed_24h: counts.failed_24h,
@@ -43,11 +43,12 @@ export async function readAgentSummary(pool: Pool, workspace: string, now: Date)
 }
 
 /** Today's quota (Pacific-time day) and the last 24 hours of permitted requests and their failures. */
-export async function readDataApiSummary(pool: Pool, workspace: string, limit: number, now: Date): Promise<DataApiSummary> {
+export async function readDataApiSummary(pool: Pool, workspace: string, limit: number, now: Date,currentOnly=false): Promise<DataApiSummary> {
   const client = await pool.connect();
   try {
     const window = await quotaWindow(client, now);
     const budget = (await client.query('SELECT used_units,reserved_units FROM control.data_api_budget WHERE workspace_id=$1 AND quota_day=$2', [workspace, window.day])).rows[0];
+    if(currentOnly)return DataApiSummarySchema.parse({observed_at:now.toISOString(),quota_day:window.day,reset_at:window.reset_at,limit,used_units:Number(budget?.used_units??0),reserved_units:Number(budget?.reserved_units??0),hourly:[],endpoints:[],failures_by_reason:[],recent_failures:[]});
     const since = `$2::timestamptz-interval '24 hours'`;
     const hourly = (await client.query(`SELECT hour,coalesce(calls,0)::int AS calls,coalesce(failures,0)::int AS failures
       FROM generate_series(date_trunc('hour',${since})+interval '1 hour',date_trunc('hour',$2::timestamptz),interval '1 hour') hour

@@ -14,12 +14,13 @@ export class ProfileClient {
       response = await this.fetcher(`${this.base}/v1/profile`, { method: 'POST', signal, body: JSON.stringify(input),
         headers: { 'content-type': 'application/json', ...(options.traceparent ? { traceparent: options.traceparent } : {}) } });
     } catch { throw new ExecutionApiError('UNAVAILABLE', true); }
-    const body = await response.json().catch(() => undefined);
+    const text=await response.text(),body:unknown=(()=>{try{return JSON.parse(text);}catch{return undefined;}})();
+    const failure=(code:ConstructorParameters<typeof ExecutionApiError>[0],retryable:boolean)=>Object.assign(new ExecutionApiError(code,retryable),{raw_responses:[{endpoint:'local:profile-agent',method:'POST',status:response.status,captured_at:new Date().toISOString(),body:text}]});
     // 422: this input cannot be profiled (an incomplete estimate is never submitted); retrying the same input will not help.
-    if (response.status === 422) throw new ExecutionApiError('INVALID_REQUEST', false);
-    if (!response.ok) throw new ExecutionApiError('UNAVAILABLE', true);
+    if (response.status === 422) throw failure('INVALID_REQUEST', false);
+    if (!response.ok) throw failure('UNAVAILABLE', true);
     const parsed = AgentProfileSchema.safeParse(body);
-    if (!parsed.success) throw new ExecutionApiError('INTERNAL_ERROR', false);
+    if (!parsed.success) throw failure('INTERNAL_ERROR', false);
     return parsed.data;
   }
 }

@@ -61,7 +61,8 @@ export async function runOne(options: QueryRunnerOptions, run: Run): Promise<voi
       log({ ...record, outcome: 'STOPPED' }); return;
     }
     const reason: FailReason = options.signal.aborted ? 'interrupted' : failReason(error);
-    const after = await api.queryRunFail(run.run_id, { attempt, reason, retryable: reason !== 'internal' }).catch(() => undefined);
+    const evidence=(error as {raw_evidence?:import('@crawlsystem/contracts').VideoFacts['comments_ref']}).raw_evidence;
+    const after = await api.queryRunFail(run.run_id, { attempt, reason, retryable: reason !== 'internal',...(evidence?{evidence_ref:evidence}:{}) }).catch(() => undefined);
     log({ ...record, outcome: 'FAILED', reason, ...(error instanceof ScrapeError?{diagnostic:error.message}:{}), run_state: after?.state ?? 'UNREPORTED', ms: Date.now() - started });
   } finally { clearInterval(renew); }
 }
@@ -72,6 +73,7 @@ async function search(options: QueryRunnerOptions, run: Run, signal: AbortSignal
   return withProxy(options, signal, async transport => {
     const responses:RawResponse[]=[];
     const fetcher=captureFetch(transport,responses);
+    try {
     const pagesSource=params.policy_version==='query-clock-1'
       ? searchPages(await session(fetcher,{lang:params.language,location:params.country}),params.text,params.window)
       : webSearchPages(fetcher,params);
@@ -93,6 +95,15 @@ async function search(options: QueryRunnerOptions, run: Run, signal: AbortSignal
       if (!result.continue) return { pages, newIds, stop_reason: pages >= params.max_pages ? 'max_pages' as const : 'low_yield' as const };
     }
     return { pages, newIds, stop_reason: 'list_end' as const };
+    }catch(error) {
+      if(!signal.aborted && options.searchStore && options.workspaceId && error instanceof Error)try {
+        const key=`failures/search/${encodeURIComponent(options.workspaceId)}/${run.run_id}/${run.attempt}/${randomUUID()}.json.gz`;
+        const bytes=gzipSync(JSON.stringify({schema_version:'crawl.error.v1',run_id:run.run_id,attempt:run.attempt,responses}));
+        await options.searchStore.put(key,bytes,AbortSignal.timeout(10_000),true);
+        Object.assign(error,{raw_evidence:{bucket:'crawl-raw',key,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length}});
+      }catch{ /* Failure metadata remains available during a storage outage. */ }
+      throw error;
+    }
   });
 }
 

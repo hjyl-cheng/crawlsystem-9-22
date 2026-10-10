@@ -33,6 +33,11 @@ case "${1:-}" in
   collection-update) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-update.ts "${@:2}") ;;
   pipeline-unit) command=(node --import tsx --test --test-concurrency=1 apps/raw-parser/test/*.test.ts packages/http/test/workload.test.ts) ;;
   pipeline-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 tests/integration/pipeline.test.ts) ;;
+  analytics-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 tests/integration/failure-analytics.test.ts) ;;
+  analytics-unit) command=(node --import tsx --test --test-concurrency=1 apps/raw-parser/test/failure.test.ts) ;;
+  analytics-clickhouse) command=(node --import tsx scripts/dev/verify-r5-clickhouse.ts) ;;
+  analytics-preview) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r5-preview.ts "${@:2}") ;;
+  analytics-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r5-browser.ts) ;;
   pipeline-replay) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r3-replay.ts) ;;
   pipeline-preview) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r3-preview.ts "${@:2}") ;;
   pipeline-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r3-browser.ts) ;;

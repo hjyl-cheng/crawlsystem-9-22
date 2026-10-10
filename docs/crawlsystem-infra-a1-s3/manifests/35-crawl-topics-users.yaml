@@ -309,11 +309,23 @@ spec:
   authorization:
     type: simple
     acls:
-    - resource: { type: topic, name: facts.observation, patternType: literal }
+    - resource: { type: topic, name: ops.events, patternType: literal }
+      operations: [Read, Write, Describe]
+      host: '*'
+    - resource: {type: topic, name: dlq.parse, patternType: literal}
       operations: [Read, Describe]
       host: '*'
-    - resource: { type: topic, name: ops.events, patternType: literal }
+    - resource: {type: topic, name: dlq.sink, patternType: literal}
       operations: [Read, Describe]
+      host: '*'
+    - resource: {type: topic, name: crawl.raw, patternType: literal}
+      operations: [Write, Describe]
+      host: '*'
+    - resource: {type: topic, name: crawl.step, patternType: literal}
+      operations: [Write, Describe]
+      host: '*'
+    - resource: {type: cluster}
+      operations: [IdempotentWrite]
       host: '*'
     - resource: { type: group, name: crawl-sink-ch, patternType: literal }
       operations: [Read]

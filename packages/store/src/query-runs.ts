@@ -195,14 +195,15 @@ export async function failRun(client: PoolClient, workspace: string, worker: str
   if (!run) throw new DiscoveryError('NOT_FOUND', 'Query run not found');
   // Already settled or taken over: nothing to do (idempotent).
   if (run.state !== 'RUNNING' || run.worker_id !== worker || run.attempt !== report.attempt) return { state: run.state, retry_at: run.retry_at ? new Date(run.retry_at).toISOString() : null };
+  if(report.evidence_ref && !report.evidence_ref.key.startsWith(`failures/search/${encodeURIComponent(workspace)}/${runId}/${report.attempt}/`))throw new DiscoveryError('INVALID_REQUEST','Evidence is outside this search attempt');
   const failures = run.failures + (UNCOUNTED.has(report.reason) ? 0 : 1);
   if (!report.retryable || failures >= MAX_RUN_FAILURES) {
-    await client.query(`UPDATE control.query_runs SET state='FAILED',failures=$2,last_error=$3,finished_at=$4,worker_id=NULL,lease_expires_at=NULL WHERE run_id=$1`, [runId, failures, report.reason, now]);
+    await client.query(`UPDATE control.query_runs SET state='FAILED',failures=$2,last_error=$3,finished_at=$4,error_evidence=$5,worker_id=NULL,lease_expires_at=NULL WHERE run_id=$1`, [runId, failures, report.reason, now,report.evidence_ref??null]);
     await giveUp(client, [run.binding_id], now);
     return { state: 'FAILED' as const, retry_at: null };
   }
   const at = report.reason === 'interrupted' ? now : report.reason === 'quota' ? new Date(now.getTime() + 3_600_000) : retryAt(failures, now);
-  await client.query(`UPDATE control.query_runs SET state='PENDING',failures=$2,last_error=$3,retry_at=$4,worker_id=NULL,lease_expires_at=NULL WHERE run_id=$1`, [runId, failures, report.reason, at]);
+  await client.query(`UPDATE control.query_runs SET state='PENDING',failures=$2,last_error=$3,retry_at=$4,error_evidence=$5,worker_id=NULL,lease_expires_at=NULL WHERE run_id=$1`, [runId, failures, report.reason, at,report.evidence_ref??null]);
   return { state: 'PENDING' as const, retry_at: at.toISOString() };
 }
 

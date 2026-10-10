@@ -6,9 +6,12 @@ import { authenticate } from '@crawlsystem/http/auth';
 import type { WorkloadIdentity } from '@crawlsystem/http/workload';
 import type { ProxyStore } from '@crawlsystem/store/proxies';
 import { ConsoleAuth } from './console-auth.ts';
-import { SubmissionSchema } from '@crawlsystem/contracts';
+import { SubmissionSchema,AgentSummarySchema,DataApiSummarySchema,PlansSummarySchema } from '@crawlsystem/contracts';
+import {FailureStateSchema,FailureCommandSchema,FailureSchema} from '@crawlsystem/contracts/analytics';
+import type {ClickHouse} from './analytics.ts';
+import type {Failure} from '@crawlsystem/contracts/analytics';
 
-export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore }) {
+export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore;clickhouse?:ClickHouse;evidencePreview?:(failure:Failure)=>Promise<unknown> }) {
   const auth=options.consoleAuth,workload=options.workloadIdentity;
   const proxies=()=>{if(!options.proxies) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Proxy Control is not configured',503);return options.proxies;};
   const app=createServer('control',{...options,authenticateRequest:async request=>{
@@ -45,6 +48,45 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     return workload.exchangeTemporal(request.headers.authorization);
   });
   app.get('/v1/session',async request=>({...request.principal,contract_version:CONTRACT_VERSION}));
+  app.get('/v1/failures',async request=>{
+    const schema=z.object({state:FailureStateSchema.optional()}),q=pagination(request.query,schema.shape),filter=schema.parse(request.query);
+    return store.failures(request.principal,q.limit,q.offset,filter.state);
+  });
+  app.get('/v1/failures/:id',async request=>store.failure(request.principal,z.object({id:z.uuid()}).parse(request.params).id));
+  app.post('/v1/failures/:id/commands',{bodyLimit:2048},async request=>store.commandFailure(request.principal,z.object({id:z.uuid()}).parse(request.params).id,FailureCommandSchema.parse(request.body)));
+  app.get('/v1/failures/:id/evidence',async request=>{
+    requireRole(request.principal,'reader','operator');const f=await store.failure(request.principal,z.object({id:z.uuid()}).parse(request.params).id);
+    if(!options.evidencePreview)throw new StoreError('UNAVAILABLE','Evidence reader is unavailable',503,true);return options.evidencePreview(f);
+  });
+  const analyticsCache=new Map<string,{until:number;value:unknown}>();
+  app.get('/v1/analytics',async request=>{
+    requireRole(request.principal,'reader','operator');const q=z.strictObject({days:z.coerce.number().int().min(1).max(365).default(7)}).parse(request.query);
+    if(!options.clickhouse)throw new StoreError('UNAVAILABLE','Historical statistics are unavailable',503,true);
+    const key=request.principal.workspace_id+':'+q.days,old=analyticsCache.get(key);if(old && old.until>Date.now())return old.value;
+    try{const value=await options.clickhouse.statistics(request.principal.workspace_id,q.days);analyticsCache.set(key,{value,until:Date.now()+10_000});return value;}
+    catch{throw new StoreError('UNAVAILABLE','Historical statistics are temporarily unavailable',503,true);}
+  });
+  app.get('/v1/storage',async request=>{
+    requireRole(request.principal,'reader','operator');
+    const ch=await options.clickhouse?.health().catch(()=>undefined);
+    return store.storage(request.principal,ch??{available:false,bytes:null,events:null,last_event_at:null});
+  });
+  app.post('/v1/telemetry/failures',{bodyLimit:262144},async request=>store.reportFailure(request.principal,request.body));
+  app.get('/v1/telemetry/outbox',async request=>store.telemetryOutbox(request.principal));
+  app.post('/v1/telemetry/ack',{bodyLimit:32768},async request=>{
+    const q=z.strictObject({ids:z.array(z.string().max(200)).min(1).max(100),archived:z.boolean()}).parse(request.body);return store.telemetryAck(request.principal,q.ids,q.archived);
+  });
+  app.get('/v1/telemetry/replays',async request=>store.telemetryReplays(request.principal));
+  app.post('/v1/telemetry/replays/:id',{bodyLimit:1024},async request=>{
+    const q=z.strictObject({lease_token:z.uuid(),ok:z.boolean()}).parse(request.body);return store.telemetryReplayDone(request.principal,z.object({id:z.uuid()}).parse(request.params).id,q.lease_token,q.ok);
+  });
+  app.get('/v1/telemetry/evidence',async request=>store.telemetryEvidence(request.principal));
+  app.post('/v1/telemetry/evidence/:id',{bodyLimit:4096},async request=>{
+    const q=z.strictObject({state:z.enum(['SAVED','MISSING']),evidence:FailureSchema.shape.evidence}).parse(request.body);
+    if((q.state==='SAVED')!==(q.evidence!==null))throw new StoreError('INVALID_REQUEST','Evidence state and reference disagree',400);
+    return store.telemetryEvidenceDone(request.principal,z.object({id:z.uuid()}).parse(request.params).id,q.evidence,q.state);
+  });
+  app.post('/v1/telemetry/maintenance',{bodyLimit:1024},async request=>store.maintain(request.principal,z.strictObject({dry_run:z.boolean()}).parse(request.body).dry_run));
   app.get(ApiRoutes.consoleAccounts,async request=>{
     if(!auth) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Account login is not configured',503);
     return auth.listAccounts(request.principal);
@@ -68,7 +110,15 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.post('/v1/plans/:id/events',async request=>store.event(request.principal,planId(request),ExecutionEventSchema.parse(request.body)));
   app.get('/v1/receipts/:id',async request=>store.getReceipt(request.principal,planId(request)));
   app.get('/v1/channels',async request=>{const q=pagination(request.query);return store.listChannels(request.principal,q.limit,q.offset,q.sourceMode);});
-  app.get(ApiRoutes.plansSummary,async request=>store.plansSummary(request.principal,sourceMode(request.query)));
+  app.get(ApiRoutes.plansSummary,async request=>{
+    const mode=sourceMode(request.query),current=await store.plansSummary(request.principal,mode);if(!options.clickhouse)return current;
+    try{return PlansSummarySchema.parse({...current,...await options.clickhouse.planHistory(request.principal.workspace_id,mode)});}catch{throw new StoreError('UNAVAILABLE','Historical plan statistics unavailable',503,true);}
+  });
+  app.get('/v1/channels/:id/history',async request=>{
+    const id=z.object({id:IdSchema}).parse(request.params).id,q=z.strictObject({days:z.coerce.number().int().min(1).max(180).default(30)}).parse(request.query);
+    await store.getChannel(request.principal,id);if(!options.clickhouse)throw new StoreError('UNAVAILABLE','Observation history unavailable',503,true);
+    try{return await options.clickhouse.channelHistory(request.principal.workspace_id,id,q.days);}catch{throw new StoreError('UNAVAILABLE','Observation history unavailable',503,true);}
+  });
   app.get(ApiRoutes.completeness,async request=>store.completeness(request.principal,sourceMode(request.query)));
   app.get(ApiRoutes.updatesSummary,async request=>(await store.updates(request.principal,1)).summary);
   app.get(ApiRoutes.updates,async request=>{
@@ -78,8 +128,14 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   });
   app.post(ApiRoutes.dataApiPermit,{bodyLimit:2048},async request=>store.dataApiPermit(request.principal,request.body));
   app.post(ApiRoutes.dataApiFailure,{bodyLimit:2048},async request=>store.dataApiFailure(request.principal,request.body));
-  app.get(ApiRoutes.dataApiSummary,async request=>store.dataApiSummary(request.principal));
-  app.get(ApiRoutes.agentSummary,async request=>store.agentSummary(request.principal));
+  app.get(ApiRoutes.dataApiSummary,async request=>{
+    const current=await store.dataApiSummary(request.principal,new Date(),!!options.clickhouse);if(!options.clickhouse)return current;
+    try{return DataApiSummarySchema.parse({...current,...await options.clickhouse.dataApiHistory(request.principal.workspace_id)});}catch{throw new StoreError('UNAVAILABLE','Historical API statistics unavailable',503,true);}
+  });
+  app.get(ApiRoutes.agentSummary,async request=>{
+    const current=await store.agentSummary(request.principal,new Date(),!!options.clickhouse);if(!options.clickhouse)return current;
+    try{return AgentSummarySchema.parse({...current,...await options.clickhouse.agentHistory(request.principal.workspace_id)});}catch{throw new StoreError('UNAVAILABLE','Historical Agent statistics unavailable',503,true);}
+  });
   app.get(ApiRoutes.agentTasks,async request=>{
     const schema=z.object({state:AgentTaskStateSchema.optional()});
     const q=pagination(request.query,schema.shape), filter=schema.parse(request.query);

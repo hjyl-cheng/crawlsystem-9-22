@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash,randomUUID } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { AwsClient } from 'aws4fetch';
 import { Kafka, logLevel, type Producer } from 'kafkajs';
@@ -64,6 +64,12 @@ export class KafkaPublisher implements RawPublisher {
 }
 export class RawArchive {
   constructor(private store: ObjectStore, private publisher: RawPublisher, private bucket = 'crawl-raw') {}
+  async failure(owner:WorkflowInput,step:string,unitId:string,responses:RawResponse[],code:string) {
+    const key=`failures/v1/${encodeURIComponent(owner.workspace_id)}/${owner.plan_id}/${owner.execution_epoch}/${encodeURIComponent(step)}/${encodeURIComponent(unitId)}/${randomUUID()}.json.gz`;
+    const bytes=gzipSync(JSON.stringify({schema_version:'crawl.error.v1',owner,step,unit_id:unitId,code,captured_at:new Date().toISOString(),responses}));
+    await this.store.put(key,bytes,AbortSignal.timeout(10_000),true);
+    return {bucket:'crawl-raw' as const,key,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};
+  }
   key(owner: WorkflowInput, step: string, unitId: string) {
     return `v1/${encodeURIComponent(owner.workspace_id)}/${owner.plan_id}/${owner.execution_epoch}/${step}/${unitId}.json.gz`;
   }

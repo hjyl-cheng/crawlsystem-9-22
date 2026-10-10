@@ -6,6 +6,7 @@ import { useResource, type Resource } from '../resource.js';
 import { Badge, Empty, ErrorBox, Panel, PlanBadge, ResourceView } from '../ui.js';
 import { channelPath, errorCodeLabels, isTerminal, planPath, shortId, time } from '../presentation.js';
 import Pipeline from '../components/pipeline.js';
+import {OverviewTrends as Trends} from './analytics.js';
 import './overview.css';
 
 // Overview data changes on the scale of plan runs; poll less often than detail pages.
@@ -49,17 +50,14 @@ function IpUsage() {
     <div className="ip-usage"><div className="empty-donut" role="img" aria-label="IP 总量与使用情况尚未接入"><strong>—</strong><span>总 IP 数量</span><small>尚未接入</small></div><div className="ip-legend">{[['正常', 'green'], ['降级', 'amber'], ['冷却中', 'blue'], ['异常', 'red'], ['已停用', 'slate']].map(([label, tone]) => <div key={label}><i className={tone}/><span>{label}</span><strong>—</strong></div>)}</div></div>
   </Panel>;
 }
-function Trends() {
-  return <Panel title="采集趋势" extra={<button className="trend-select" disabled title="趋势统计尚未接入">近7天<ChevronDown size={12}/></button>} className="trend-panel">
-    <div className="trend-legend">{[['发现线索', 'blue'], ['全量采集', 'amber'], ['更新采集', 'cyan'], ['成功率', 'green']].map(([label, tone]) => <span key={label}><i className={tone}/>{label}</span>)}</div>
-    <div className="trend-placeholder"><div className="trend-grid"/><div><Activity size={22}/><strong>趋势统计尚未接入</strong><span>接入 ClickHouse 后展示真实采集量与成功率</span></div></div>
-  </Panel>;
-}
 function CapacityRisk() {
-  const items: [string, typeof Cylinder][] = [['PostgreSQL', Cylinder], ['Kafka', Cylinder], ['ClickHouse', Cylinder], ['磁盘增长', HardDrive], ['备份任务', HardDrive]];
-  return <Panel title="容量与增长风险" extra={<span className="dashboard-unavailable" title="监控指标尚未接入控制台 API">查看详情 <ArrowRight size={12}/></span>} className="capacity-panel">
-    <div className="capacity-items">{items.map(([label, Icon]) => <div key={label} title="监控指标尚未接入控制台 API"><span><Icon size={12}/>{label}</span><strong>—</strong><small>未接入</small></div>)}</div>
-  </Panel>;
+  const {api}=useAuth(),r=useResource('overview-storage',signal=>api.storage(signal));
+  return <Panel title="存储与归档" extra={<More to="/storage" children="查看详情"/>} className="capacity-panel"><ResourceView resource={r} showMeta={false}>{s=><div className="capacity-items">
+    <div><span><Cylinder size={12}/>PostgreSQL</span><strong>{(s.postgres_bytes/1024/1024).toFixed(1)} MiB</strong><small>数据库大小</small></div>
+    <div><span><Cylinder size={12}/>ClickHouse</span><strong>{s.clickhouse.bytes===null?'—':`${(s.clickhouse.bytes/1024/1024).toFixed(1)} MiB`}</strong><small>{s.clickhouse.available?'正常':'暂时不可用'}</small></div>
+    <div><span>待归档事件</span><strong>{s.outbox.unarchived}</strong><small>保留至统计入库</small></div>
+    <div><span>待处理失败</span><strong>{s.failures.open}</strong><small>重试中 {s.failures.retrying}</small></div>
+  </div>}</ResourceView></Panel>;
 }
 
 export default function Overview() {

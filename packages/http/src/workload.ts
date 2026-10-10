@@ -16,7 +16,7 @@ export interface WorkloadIdentityOptions { reviewer:TokenReviewer; audience:stri
   temporal?:{issuer:TemporalTokenIssuer; permissions:Record<string,string[]>};
   /** Proxy Manager DaemonSet: receives a `node` credential naming the server (TokenReview node). */
   nodeServiceAccount?:string;
-  pipelineServiceAccounts?:Record<string,'parser'|'sink'>; }
+  pipelineServiceAccounts?:Record<string,'parser'|'sink'|'analytics'>; }
 const ServiceAccountName=/^system:serviceaccount:[a-z0-9-]+:[a-z0-9-]+$/;
 
 const ServiceAccountToken=/^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/;
@@ -29,7 +29,7 @@ export class WorkloadIdentity {
     if(!/^[a-z0-9.-]{3,80}$/.test(options.audience)) throw new Error('Invalid workload token audience');
     IdSchema.parse(options.workspaceId);
     for(const [account,role] of Object.entries(options.pipelineServiceAccounts??{}))
-      if(!ServiceAccountName.test(account)||!['parser','sink'].includes(role)||[options.serviceAccount,options.nodeServiceAccount].includes(account)) throw new Error('Pipeline identity must be a distinct ServiceAccount');
+      if(!ServiceAccountName.test(account)||!['parser','sink','analytics'].includes(role)||[options.serviceAccount,options.nodeServiceAccount].includes(account)) throw new Error('Pipeline identity must be a distinct ServiceAccount');
     this.lifetime=options.lifetimeSeconds??900;
     if(!Number.isInteger(this.lifetime)||this.lifetime<60||this.lifetime>3600) throw new Error('Workload token lifetime must be 60..3600 seconds');
     for(const [account,permissions] of Object.entries(options.temporal?.permissions??{}))

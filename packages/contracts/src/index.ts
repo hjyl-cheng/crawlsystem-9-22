@@ -18,7 +18,7 @@ export const YoutubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
 export const PlanStatusSchema = z.enum(['QUEUED', 'RUNNING', 'WAITING', 'COMPLETED', 'CANCELLED', 'FAILED']);
 export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 // node: a per-server Proxy Manager (DaemonSet); its credential names the server it runs on.
-export const RoleSchema = z.enum(['reader', 'operator', 'worker', 'node', 'parser', 'sink']);
+export const RoleSchema = z.enum(['reader', 'operator', 'worker', 'node', 'parser', 'sink', 'analytics']);
 export type Role = z.infer<typeof RoleSchema>;
 export interface Principal { subject: string; workspace_id: string; role: Role; server_id?: string; }
 export const LoginSchema = z.strictObject({ username: z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_.-]+$/), password: z.string().min(1).max(256) });
@@ -207,7 +207,7 @@ export const CancelPlanSchema = z.strictObject({ command_id: z.uuid(), expected_
 export const ErrorCodeSchema = z.enum(['INVALID_REQUEST','UNAUTHENTICATED','FORBIDDEN','NOT_FOUND','CONFLICT','STALE_EXECUTION','PLAN_TERMINAL','INPUT_MISMATCH','TARGET_MISMATCH','DOMAIN_INCOMPLETE','DOMAIN_NOT_REQUIRED','DEPENDENCY_NOT_IMPLEMENTED','BUDGET_EXHAUSTED','UNAVAILABLE','INTERNAL_ERROR']);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 export interface ApiError { error: { code: ErrorCode; message: string; retryable: boolean; correlation_id: string }; }
-export const ExecutionEventSchema = z.strictObject({ event_id: z.uuid(), execution_epoch: z.number().int().positive(), worker_id: IdSchema, phase: z.string().min(1).max(80), kind: z.enum(['STARTED','PROGRESS','WAITING','ERROR','FAILED']), domain: DomainSchema.nullable(), message: z.string().max(1000), error_code: ErrorCodeSchema.optional() });
+export const ExecutionEventSchema = z.strictObject({ event_id: z.uuid(), execution_epoch: z.number().int().positive(), worker_id: IdSchema, phase: z.string().min(1).max(80), kind: z.enum(['STARTED','PROGRESS','WAITING','ERROR','FAILED']), domain: DomainSchema.nullable(), message: z.string().max(1000), error_code: ErrorCodeSchema.optional(),evidence_ref:ObjectStorageReferenceSchema.refine(r=>r.bucket==='crawl-raw').optional() });
 export type ExecutionEvent = z.infer<typeof ExecutionEventSchema>;
 export interface StoredEvent extends ExecutionEvent { plan_id: string; created_at: string; }
 export const CollectorDiagnosticsSchema = z.strictObject({ gateway: z.enum(['ready', 'unavailable']), browser: z.string().max(80),
@@ -678,7 +678,7 @@ export const QueryRunResultSchema = z.strictObject({
   binding: z.strictObject({ state: QueryStateSchema, cadence: QueryCadenceSchema.nullable(), next_run_at: Timestamp.nullable() }),
 });
 export const QUERY_RUN_FAILURES = ['blocked', 'network', 'parse', 'proxy_unavailable', 'quota', 'data_api', 'interrupted', 'internal'] as const;
-export const QueryRunFailSchema = z.strictObject({ attempt: RunAttempt, reason: z.enum(QUERY_RUN_FAILURES), retryable: z.boolean() });
+export const QueryRunFailSchema = z.strictObject({ attempt: RunAttempt, reason: z.enum(QUERY_RUN_FAILURES), retryable: z.boolean(),evidence_ref:ObjectStorageReferenceSchema.refine(r=>r.bucket==='crawl-raw').optional() });
 export const QueryRunFailResultSchema = z.strictObject({ state: z.enum(['PENDING', 'FAILED', 'CANCELLED', 'SUCCEEDED']), retry_at: Timestamp.nullable() });
 export const QueryRunPermitRequestSchema = z.strictObject({ request_id: z.uuid(), attempt: RunAttempt, endpoint: z.literal('channels') });
 export const QueryRunPermitFailureSchema = z.strictObject({ request_id: z.uuid(), attempt: RunAttempt, reason: z.enum(DATA_API_FAILURES) });

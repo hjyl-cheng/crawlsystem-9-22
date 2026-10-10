@@ -36,7 +36,7 @@ function image(name:'control'|'worker',root:string,contentHash:string){
 // Control image: same layout as before (/app/control-api.mjs) plus Ingest and dispatcher entries.
 const controlRoot=join(out,'control');mkdirSync(controlRoot+'/app',{recursive:true});
 const entries={'control-api':'apps/control-api/src/main.ts',ingest:'apps/ingest/src/main.ts',dispatcher:'apps/control-api/src/dispatch-main.ts','temporal-cert-sync':'apps/control-api/src/temporal-cert-sync-main.ts','proxy-manager':'apps/proxy-manager/src/main.ts',
-  'raw-parser':'apps/raw-parser/src/main.ts','pg-sink':'apps/pg-sink/src/main.ts'};
+  'raw-parser':'apps/raw-parser/src/main.ts','pg-sink':'apps/pg-sink/src/main.ts','analytics':'apps/analytics/src/main.ts','ops-tool':'apps/analytics/src/tool.ts'};
 for(const [name,entry] of Object.entries(entries))await build({...common,entryPoints:[entry],outfile:`${controlRoot}/app/${name}.mjs`});
 const control=image('control',controlRoot,sha(...Object.keys(entries).map(n=>`${controlRoot}/app/${n}.mjs`)));
 

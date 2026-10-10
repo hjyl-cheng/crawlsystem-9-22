@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RawArchive, ArchiveError, captureFetch, type ObjectStore, type RawUnit } from '../src/raw-archive.ts';
 import { fixtureContext } from './support.ts';
+import {gunzipSync} from 'node:zlib';
+test('failed responses are saved separately and never published as collectable units',async()=>{
+  const {ref}=fixtureContext(),objects=new Map<string,Uint8Array>();
+  const archive=new RawArchive({get:async key=>objects.get(key)??null,put:async(key,bytes)=>{objects.set(key,bytes);}},{send:async()=>assert.fail('Failure evidence must not become a fact notification')});
+  const saved=await archive.failure(ref,'ABOUT','channel',[{endpoint:'https://www.youtube.com/youtubei/v1/browse',method:'POST',status:403,body:'private response',captured_at:new Date().toISOString()}],'FORBIDDEN');
+  assert.ok(saved.key.startsWith(`failures/v1/${ref.workspace_id}/${ref.plan_id}/${ref.execution_epoch}/`));
+  const unit=JSON.parse(gunzipSync(objects.get(saved.key)!).toString());assert.equal(unit.schema_version,'crawl.error.v1');assert.equal(unit.responses[0].body,'private response');assert.equal(JSON.stringify(saved).includes('private'),false);
+});
 test('a lost notification is recovered from the durable object, with no raw body in Kafka', async () => {
   const { ref } = fixtureContext(), objects = new Map<string, Uint8Array>();
   const store: ObjectStore = { async get(key) { return objects.get(key) ?? null; }, async put(key, bytes) { objects.set(key, bytes); } };

@@ -21,6 +21,9 @@ import { nextChangeProbability, planRecentSampling, RECENT_SAMPLING } from './re
 import { StepManifestSchema, PipelineFactSchema, type ObjectReference, type PipelineProgress } from '@crawlsystem/contracts/pipeline';
 import { CommentPageSchema, type CommentPage } from '@crawlsystem/contracts';
 import { expectedPipelineSteps } from './pipeline.ts';
+import {listFailures,getFailure,reportFailure,commandFailure} from './failures.ts';
+import {outbox,acknowledge,claimReplays,finishReplay,storage,maintain} from './telemetry.ts';
+import type {FailureCommand} from '@crawlsystem/contracts/analytics';
 
 export interface PipelineOptions { enabled?: boolean; loadComments?: (ref: ObjectReference) => Promise<CommentPage | null>; }
 
@@ -462,18 +465,18 @@ export class Store {
       [principal.workspace_id, report.request_id, report.plan_id, report.reason]);
     return { recorded: (updated.rowCount ?? 0) > 0 };
   }
-  async dataApiSummary(principal: Principal, now = new Date()): Promise<DataApiSummary> {
+  async dataApiSummary(principal: Principal, now = new Date(),currentOnly=false): Promise<DataApiSummary> {
     requireRole(principal, 'reader', 'operator');
-    return readDataApiSummary(this.pool, principal.workspace_id, this.updateLimits.api_daily_limit, now);
+    return readDataApiSummary(this.pool, principal.workspace_id, this.updateLimits.api_daily_limit, now,currentOnly);
   }
   async agentTasks(principal: Principal, limit = 20, offset = 0, state?: string): Promise<Page<AgentTask>> {
     requireRole(principal, 'reader', 'operator');
     const rows = await readAgentTasks(this.pool, principal.workspace_id, limit + 1, offset, state);
     return page(rows, limit, offset);
   }
-  async agentSummary(principal: Principal, now = new Date()): Promise<AgentSummary> {
+  async agentSummary(principal: Principal, now = new Date(),currentOnly=false): Promise<AgentSummary> {
     requireRole(principal, 'reader', 'operator');
-    return readAgentSummary(this.pool, principal.workspace_id, now);
+    return readAgentSummary(this.pool, principal.workspace_id, now,currentOnly);
   }
   async getInput(principal: Principal, id: string): Promise<PlanInput> {
     // One consistent database snapshot: plan, proofs and receipts never straddle a commit.
@@ -691,6 +694,9 @@ export class Store {
           await client.query("UPDATE control.pipeline_steps SET state='APPLIED' WHERE plan_id=$1 AND execution_epoch=$2 AND step=$3 AND state<>'APPLIED'",[planId,row.execution_epoch,step.step]);
         }
       }
+      await client.query(`UPDATE control.failures f SET state='RESOLVED',resolved_at=clock_timestamp(),version=version+1 WHERE workspace_id=$1 AND plan_id=$2 AND execution_epoch=$3
+        AND stage IN ('PARSER','SINK') AND state IN ('OPEN','RETRYING') AND (EXISTS(SELECT 1 FROM crawl_data.ingest_units u WHERE u.plan_id=f.plan_id AND u.execution_epoch=f.execution_epoch AND u.step=f.step AND u.unit_id=f.unit_id)
+          OR f.unit_id='_manifest' AND f.step=ANY($4::text[]))`,[principal.workspace_id,planId,row.execution_epoch,[...complete]]);
       const domains=(await client.query('SELECT domain,state FROM control.domains WHERE plan_id=$1',[planId])).rows;
       if (frozen.source_mode==='youtube' && frozen.discovery_qualification && complete.has('ABOUT')) {
         const about=ledger.filter(l=>l.step==='ABOUT').map(l=>PipelineFactSchema.parse(l.fact)).find(f=>f.kind==='ABOUT');
@@ -797,10 +803,11 @@ export class Store {
     requireRole(principal,'worker');
     const input = ExecutionEventSchema.parse(raw);
     if (input.worker_id !== principal.subject) throw new StoreError('FORBIDDEN','Worker identity differs from credential',403);
+    if(input.evidence_ref && !input.evidence_ref.key.startsWith(`failures/v1/${encodeURIComponent(principal.workspace_id)}/${planId}/${input.execution_epoch}/`))throw new StoreError('INPUT_MISMATCH','Failure evidence is outside this execution');
     return this.tx(async client => {
       const row = await this.planRow(client,principal,planId,true);
       const hash = contentHash(input);
-      const old = await client.query('SELECT event_hash FROM control.events WHERE plan_id=$1 AND event_id=$2',[planId,input.event_id]);
+      const old = await client.query('SELECT event_hash FROM control.events WHERE plan_id=$1 AND event_id=$2 UNION ALL SELECT event_hash FROM control.event_archive_identities WHERE plan_id=$1 AND event_id=$2',[planId,input.event_id]);
       if (old.rowCount) {
         if (old.rows[0]!.event_hash !== hash) throw new StoreError('CONFLICT','Event identity has different content');
         return {accepted:true};
@@ -827,6 +834,39 @@ export class Store {
     const rows = await this.pool.query("SELECT *,last_heartbeat_at < clock_timestamp()-($2 * interval '1 second') AS stale FROM control.workers WHERE workspace_id=$1 ORDER BY worker_id LIMIT $3 OFFSET $4",[principal.workspace_id,WORKER_STALE_SECONDS,limit+1,offset]);
     return page(rows.rows.map(r => ({...r.heartbeat,last_heartbeat_at:iso(r.last_heartbeat_at),stale:r.stale,proxy_status:r.heartbeat.collector ? 'CONFIGURED' : 'NOT_CONFIGURED'} as Worker)),limit,offset);
   }
+  async failures(principal:Principal,limit=20,offset=0,state?:string) {
+    requireRole(principal,'reader','operator');return listFailures(this.pool,principal.workspace_id,limit,offset,state,this.discoveryLimits.enabled);
+  }
+  async failure(principal:Principal,id:string) {requireRole(principal,'reader','operator','analytics');return getFailure(this.pool,principal.workspace_id,id,this.discoveryLimits.enabled);}
+  async reportFailure(principal:Principal,raw:unknown) {requireRole(principal,'analytics');return this.tx(c=>reportFailure(c,principal,raw));}
+  async commandFailure(principal:Principal,id:string,raw:FailureCommand) {
+    requireRole(principal,'operator');return this.tx(c=>commandFailure(c,principal,id,raw,this.discoveryLimits.enabled,async(client,r,command)=>{
+      const old=await this.planRow(client,principal,r.plan_id),now=new Date();
+      if(old.plan_kind==='UPDATE') {
+        const channel=(await client.query('SELECT * FROM control.channels WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[principal.workspace_id,old.channel_id])).rows[0];
+        if(channel?.management_state!=='managed')throw new StoreError('CONFLICT','Channel must be managed before retrying an update');
+        const plan=await this.insertUpdate(client,principal.workspace_id,old.channel_id,now,{request_id:command.command_id,expected_version:channel.management_version,domains:old.required_domains,requestHash:contentHash(command)});
+        if(!plan)throw new StoreError('CONFLICT','Update could not be created');return plan;
+      }
+      const deadline=new Date(now.getTime()+120*60_000).toISOString();
+      const frozen=FrozenInputSchema.parse({...old.frozen_input,reference_time:now.toISOString(),deadline_at:deadline});
+      const input:CreatePlan=frozen.source_mode==='fixture'?{request_id:command.command_id,fixture_id:'channel-basic-v1',required_domains:frozen.required_domains}
+        :{request_id:command.command_id,source_mode:'youtube',channel_id:frozen.channel_id,required_domains:frozen.required_domains,scope:frozen.scope};
+      return this.insertCreatedPlan(client,principal.workspace_id,input,frozen,contentHash(input),randomUUID(),deadline,null);
+    }));
+  }
+  async telemetryOutbox(principal:Principal) {requireRole(principal,'analytics');return this.tx(c=>outbox(c,principal.workspace_id));}
+  async telemetryAck(principal:Principal,ids:string[],archived:boolean) {requireRole(principal,'analytics');return this.tx(c=>acknowledge(c,principal.workspace_id,ids,archived));}
+  async telemetryReplays(principal:Principal) {requireRole(principal,'analytics');return this.tx(c=>claimReplays(c,principal.workspace_id));}
+  async telemetryReplayDone(principal:Principal,id:string,token:string,ok:boolean) {requireRole(principal,'analytics');return this.tx(c=>finishReplay(c,principal.workspace_id,id,token,ok));}
+  async telemetryEvidence(principal:Principal) {
+    requireRole(principal,'analytics');return (await this.pool.query("SELECT failure_id,workspace_id,coalesce(raw,manifest,raw_object) AS raw FROM control.failures WHERE workspace_id=$1 AND evidence_state='PENDING' ORDER BY first_at LIMIT 10",[principal.workspace_id])).rows;
+  }
+  async telemetryEvidenceDone(principal:Principal,id:string,evidence:unknown,state:'SAVED'|'MISSING') {
+    requireRole(principal,'analytics');await this.pool.query("UPDATE control.failures SET evidence=$3,evidence_state=$4 WHERE workspace_id=$1 AND failure_id=$2 AND evidence_state='PENDING'",[principal.workspace_id,id,evidence,state]);return {accepted:true as const};
+  }
+  async storage(principal:Principal,ch:unknown) {requireRole(principal,'reader','operator');return storage(this.pool,principal.workspace_id,ch);}
+  async maintain(principal:Principal,dryRun=true) {requireRole(principal,'analytics','operator');return this.tx(c=>maintain(c,principal.workspace_id,dryRun));}
   async listErrors(principal: Principal, limit=20, offset=0, mode: SourceMode='youtube'): Promise<Page<StoredEvent>> {
     requireRole(principal,'reader','operator');
     const rows = await this.pool.query("SELECT e.* FROM control.events e JOIN control.plans p USING(plan_id) WHERE p.workspace_id=$1 AND p.source_mode=$4 AND e.data->>'kind' IN ('ERROR','FAILED') ORDER BY e.created_at DESC,e.event_id LIMIT $2 OFFSET $3",[principal.workspace_id,limit+1,offset,mode]);
@@ -1122,7 +1162,11 @@ export class Store {
       UNION ALL SELECT 'intents',i.kind||'_'||i.state,count(*)::float8 FROM control.intents i JOIN control.plans p USING(plan_id) WHERE p.workspace_id=$1 GROUP BY i.kind,i.state
       UNION ALL SELECT 'receipts','APPLIED',count(*)::float8 FROM control.receipts WHERE workspace_id=$1
       UNION ALL SELECT 'workers',CASE WHEN last_heartbeat_at<clock_timestamp()-interval '90 seconds' THEN 'STALE' ELSE 'FRESH' END,count(*)::float8 FROM control.workers WHERE workspace_id=$1 GROUP BY 2
-      UNION ALL SELECT 'oldest_intent_seconds','PENDING',coalesce(extract(epoch FROM clock_timestamp()-min(i.created_at)),0)::float8 FROM control.intents i JOIN control.plans p USING(plan_id) WHERE p.workspace_id=$1 AND i.state IN ('PENDING','LEASED')`,[workspaceId]);
+      UNION ALL SELECT 'oldest_intent_seconds','PENDING',coalesce(extract(epoch FROM clock_timestamp()-min(i.created_at)),0)::float8 FROM control.intents i JOIN control.plans p USING(plan_id) WHERE p.workspace_id=$1 AND i.state IN ('PENDING','LEASED')
+      UNION ALL SELECT 'failures',state,count(*)::float8 FROM control.failures WHERE workspace_id=$1 AND archived_at IS NULL GROUP BY state
+      UNION ALL SELECT 'telemetry_outbox','UNARCHIVED',count(*)::float8 FROM telemetry.outbox WHERE workspace_id=$1 AND archived_at IS NULL
+      UNION ALL SELECT 'oldest_unarchived_seconds','UNARCHIVED',coalesce(extract(epoch FROM clock_timestamp()-min(created_at)),0)::float8 FROM telemetry.outbox WHERE workspace_id=$1 AND archived_at IS NULL
+      UNION ALL SELECT 'failure_evidence','PENDING',count(*)::float8 FROM control.failures WHERE workspace_id=$1 AND evidence_state='PENDING'`,[workspaceId]);
     return result.rows as Array<{metric:string;state:string;value:number}>;
   }
 }

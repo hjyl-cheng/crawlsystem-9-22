@@ -85,9 +85,11 @@ spec:
             - { name: QUERY_AUTO_ADMIT, value: "false" }
             - { name: PIPELINE_ENABLED, value: "true" }
             - name: PIPELINE_SERVICE_ACCOUNTS
-              value: '{"system:serviceaccount:crawler:raw-parser":"parser","system:serviceaccount:ingest:pg-sink":"sink"}'
+              value: '{"system:serviceaccount:crawler:raw-parser":"parser","system:serviceaccount:ingest:pg-sink":"sink","system:serviceaccount:analytics:crawl-analytics":"analytics"}'
             - { name: MINIO_URL, value: "http://minio.storage.svc.cluster.local:9000" }
             - { name: MINIO_CREDENTIALS_DIRECTORY, value: /minio }
+            - { name: EVIDENCE_CREDENTIALS_DIRECTORY, value: /evidence }
+            - { name: CLICKHOUSE_CREDENTIALS_DIRECTORY, value: /clickhouse }
             - { name: WORKLOAD_SERVICE_ACCOUNT, value: "system:serviceaccount:crawler:execution-worker" }
             - { name: WORKLOAD_TOKEN_AUDIENCE, value: crawlsystem-control }
             - { name: WORKLOAD_TOKEN_SECONDS, value: "900" }
@@ -112,6 +114,8 @@ spec:
           volumeMounts:
             - { name: secrets, mountPath: /secrets, readOnly: true }
             - { name: minio, mountPath: /minio, readOnly: true }
+            - { name: evidence, mountPath: /evidence, readOnly: true }
+            - { name: clickhouse, mountPath: /clickhouse, readOnly: true }
             - { name: temporal-jwt, mountPath: /temporal-jwt, readOnly: true }
             - { name: proxy-credential, mountPath: /proxy-credential, readOnly: true }
           readinessProbe:
@@ -132,6 +136,10 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
       volumes:
+        - name: clickhouse
+          secret: {secretName: clickhouse-r5,defaultMode: 0440}
+        - name: evidence
+          secret: {secretName: minio-crawl-evidence-reader,defaultMode: 0440}
         - name: minio
           secret: { secretName: minio-crawl-reader, defaultMode: 0440 }
         - name: secrets

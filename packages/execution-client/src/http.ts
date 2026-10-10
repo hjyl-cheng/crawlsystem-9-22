@@ -2,7 +2,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { DataApiFailureReportSchema, DataApiPermitRequestSchema, DataApiPermitSchema, QueryRunClaimSchema, QueryRunCompleteSchema, QueryRunFailResultSchema, QueryRunFailSchema,
   QueryRunHeartbeatSchema, QueryRunLeaseSchema, QueryRunPageResultSchema, QueryRunPageSchema, QueryRunPermitFailureSchema, QueryRunPermitRequestSchema, QueryRunResultSchema } from '@crawlsystem/contracts';
 import { z } from 'zod';
-import { PipelineProgressSchema, StepManifestSchema } from '@crawlsystem/contracts/pipeline';
+import { PipelineProgressSchema, StepManifestSchema,RawReferenceSchema } from '@crawlsystem/contracts/pipeline';
+import {OpsEventSchema,FailureReportSchema,FailureSchema} from '@crawlsystem/contracts/analytics';
+import {ObjectStorageReferenceSchema} from '@crawlsystem/contracts';
 import { PlanSchema, WorkflowInputSchema } from '@crawlsystem/contracts';
 import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, AgentInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
   ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, TemporalTokenSchema, ProxySyncRequestSchema, ProxySyncResponseSchema, type ProxySyncRequest, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
@@ -133,6 +135,14 @@ export class ExecutionApi {
   pipelineProgress(id:string,budget?:RequestBudget) { return this.request(this.control,`/v1/plans/${id}/pipeline`,PipelineProgressSchema,undefined,budget); }
   pipelineManifest(value:unknown,budget?:RequestBudget) { return this.request(this.control,'/v1/pipeline/manifests',z.strictObject({recorded:z.boolean()}),StepManifestSchema.parse(value),budget); }
   pipelineReconciliation(budget?:RequestBudget) { return this.request(this.control,'/v1/pipeline/reconciliation',z.strictObject({owners:z.array(WorkflowInputSchema),units:z.array(z.unknown())}),undefined,budget); }
+  telemetryOutbox() {return this.request(this.control,'/v1/telemetry/outbox',z.array(OpsEventSchema),undefined);}
+  telemetryAck(ids:string[],archived:boolean) {return this.request(this.control,'/v1/telemetry/ack',z.object({accepted:z.literal(true)}),{ids,archived});}
+  failureReport(report:unknown) {return this.request(this.control,'/v1/telemetry/failures',FailureSchema,FailureReportSchema.parse(report));}
+  telemetryReplays() {return this.request(this.control,'/v1/telemetry/replays',z.array(z.object({replay_id:z.uuid(),lease_token:z.uuid(),raw:z.union([RawReferenceSchema,StepManifestSchema])})),undefined);}
+  telemetryReplayDone(id:string,lease_token:string,ok:boolean) {return this.request(this.control,`/v1/telemetry/replays/${id}`,z.object({accepted:z.literal(true)}),{lease_token,ok});}
+  telemetryEvidence() {return this.request(this.control,'/v1/telemetry/evidence',z.array(z.object({failure_id:z.uuid(),workspace_id:z.string(),raw:z.union([RawReferenceSchema,StepManifestSchema,ObjectStorageReferenceSchema])})),undefined);}
+  telemetryEvidenceDone(id:string,evidence:unknown,state:'SAVED'|'MISSING') {return this.request(this.control,`/v1/telemetry/evidence/${id}`,z.object({accepted:z.literal(true)}),{evidence,state});}
+  telemetryMaintenance(dry_run=false) {return this.request(this.control,'/v1/telemetry/maintenance',z.object({dry_run:z.boolean(),events:z.number(),units:z.number(),failures:z.number()}),{dry_run});}
   navigation(value:Submission,budget?:RequestBudget) { return this.request(this.control,'/v1/pipeline/navigation',ReceiptSchema,SubmissionSchema.parse(value),budget); }
   async receipt(id: string, budget?: RequestBudget): Promise<Receipt | null> {
     try { return await this.request(this.control, ApiRoutes.receipt(id), ReceiptSchema, undefined, budget); }
