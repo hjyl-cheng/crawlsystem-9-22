@@ -10,6 +10,8 @@ try {
   await page.goto(`http://127.0.0.1:18103/plans/${id}`);
   await expect(page.getByRole('heading',{name:'采集与入库进度',exact:true})).toBeVisible();
   await expect(page.getByText('已完整入库',{exact:true})).toHaveCount(4);
+  await expect(page.getByText('本轮采集与入库已完成。',{exact:true})).toBeVisible();
+  await expect(page.locator('.notice.warning')).toHaveCount(0);
   await page.screenshot({path:'.runtime/r3/plan.png',fullPage:true});
   let requests=0;page.on('request',request=>{if(/\/videos\/[^/]+\/comments(?:\?|$)/.test(request.url()))requests++;});
   await page.goto('http://127.0.0.1:18103/channels/UC_x5XG1OV2P6uZZ5FSM9Ttw');

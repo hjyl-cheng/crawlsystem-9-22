@@ -5,7 +5,8 @@ import { mkdirSync,readFileSync,writeFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { gunzipSync } from 'node:zlib';
 import { ChannelDetailSchema,PlanDetailSchema,PlanSchema,CommentPageSchema } from '@crawlsystem/contracts';
-import { PipelineFactSchema,PipelineProgressSchema } from '@crawlsystem/contracts/pipeline';
+import { PipelineFactSchema,PipelineProgressSchema,StepManifestSchema } from '@crawlsystem/contracts/pipeline';
+import { contentHash } from '@crawlsystem/contracts/hash';
 import { createPool } from '@crawlsystem/store/config';
 import { issueToken,loadSigningKey } from '@crawlsystem/http/auth';
 import { MinioStore } from '../../apps/execution-worker/src/raw-archive.ts';
@@ -34,6 +35,14 @@ try {
     const credentials=JSON.parse(kube('-n','crawler','get','secret','minio-crawl-parser','-o','json')).data;
     const endpoint=`http://${kube('-n','storage','get','svc','minio','-o','jsonpath={.spec.clusterIP}')}:9000`;
     const objects=(bucket:string)=>new MinioStore(endpoint,bucket,Buffer.from(credentials.access_key,'base64').toString(),Buffer.from(credentials.secret_key,'base64').toString());
+    const manifests=(await pool.query('SELECT manifest FROM control.pipeline_steps WHERE plan_id=$1',[id])).rows;
+    assert.equal(manifests.length,progress.steps.length);
+    const manifestIdentity=(m:ReturnType<typeof StepManifestSchema.parse>)=>({owner:m.owner,channel_id:m.channel_id,step:m.step,units:m.units});
+    for(const row of manifests) {
+      const manifest=StepManifestSchema.parse(row.manifest),bytes=await objects('crawl-raw').get(manifest.key,AbortSignal.timeout(20000));assert.ok(bytes);
+      const stored=StepManifestSchema.parse({...JSON.parse(gunzipSync(bytes).toString()),bucket:manifest.bucket,key:manifest.key});
+      assert.equal(contentHash(manifestIdentity(stored)),contentHash(manifestIdentity(manifest)));
+    }
     let commentObjects=0;
     for(const row of rows) {
       const fact=PipelineFactSchema.parse(row.fact);
@@ -48,7 +57,7 @@ try {
     if(mode==='full') {assert.equal(detail.video_targets?.length,2);assert.ok(channel.agent);assert.equal(channel.about?.source,'youtubei:channel_about');assert.equal(rows.length,5);}
     else {assert.deepEqual(detail.video_targets,[]);assert.deepEqual(channel.videos.map(v=>v.source_content_id).sort(),before.videos.map(v=>v.source_content_id).sort());}
     const comments=await Promise.all((detail.video_targets??[]).map(async video=>{const page=await api(`/v1/channels/${channelId}/videos/${video}/comments`);return {video_id:video,state:page.state,returned_count:page.page?.returned_count??null,total_count:page.page?.total_count??null};}));
-    const result={result:'PASSED',mode,plan_id:id,verified_at:new Date().toISOString(),pipeline:detail.input.pipeline_version,targets:detail.video_targets,steps:progress.steps,durable_units:rows.length,comment_objects:commentObjects,comments,
+    const result={result:'PASSED',mode,plan_id:id,verified_at:new Date().toISOString(),pipeline:detail.input.pipeline_version,targets:detail.video_targets,steps:progress.steps,durable_units:rows.length,verified_manifests:manifests.length,comment_objects:commentObjects,comments,
       automatic_search:false,automatic_admission:false,automatic_updates:false};
     writeFileSync(`.runtime/r3/${mode}-evidence.json`,JSON.stringify(result,null,2));console.log(JSON.stringify(result));completed=true;break;
   }
