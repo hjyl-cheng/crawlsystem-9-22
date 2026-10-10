@@ -1,0 +1,367 @@
+{
+  "result": "PASSED",
+  "schema_version": 22,
+  "deployed_database_roles": {
+    "control_can_write_facts": false,
+    "sink_can_write_facts": true,
+    "sink_can_read_control": false,
+    "sink_can_write_control": false,
+    "sink_can_fence_plan": true
+  },
+  "full": {
+    "result": "PASSED",
+    "mode": "full",
+    "run_id": "9b60c07e-a774-48b7-a89d-2b7436297899",
+    "plan_id": "ba4b151f-785f-41df-901c-3c38dd2a5030",
+    "channel_id": "UC3L23SlbXIkxvttMI-mDOsw",
+    "new_candidates": 13,
+    "verified_search_pages": 1,
+    "search_data_api_calls": 0,
+    "gate": {
+      "passed": true,
+      "subscriber_count": "64600",
+      "reason": null
+    },
+    "durable_steps": [
+      "ABOUT",
+      "AGENT",
+      "TARGETS",
+      "VIDEO-0",
+      "VIDEO-0"
+    ],
+    "clock": {
+      "qualified_new": 1,
+      "qualification_pending": 0,
+      "clock_settled_at": "2026-10-10T06:06:51.786Z"
+    },
+    "automatic_search": false,
+    "automatic_admission": false,
+    "automatic_updates": false,
+    "verified_at": "2026-10-10T06:07:08.307Z"
+  },
+  "reject": {
+    "result": "PASSED",
+    "mode": "reject",
+    "run_id": "c8bee2ea-c8a4-461f-b6e3-9508a815dadb",
+    "plan_id": "351d6d94-b9c2-49bf-9038-3e9b1ef30749",
+    "channel_id": "UC2yF8fPmtafxPR_reQyWnKQ",
+    "new_candidates": 24,
+    "verified_search_pages": 2,
+    "search_data_api_calls": 0,
+    "gate": {
+      "passed": false,
+      "subscriber_count": "36400",
+      "reason": "below_threshold"
+    },
+    "durable_steps": [
+      "ABOUT"
+    ],
+    "clock": {
+      "qualified_new": 0,
+      "qualification_pending": 0,
+      "clock_settled_at": "2026-10-10T06:07:33.211Z"
+    },
+    "automatic_search": false,
+    "automatic_admission": false,
+    "automatic_updates": false,
+    "verified_at": "2026-10-10T06:07:40.705Z"
+  },
+  "browser": {
+    "result": "PASSED",
+    "pages": [
+      "full-plan",
+      "rejected-plan",
+      "full-candidate",
+      "rejected-candidate",
+      "discover"
+    ],
+    "runtime_errors": 0,
+    "automatic_search": false,
+    "automatic_admission": false,
+    "automatic_updates": false,
+    "verified_at": "2026-10-10T06:21:23.531Z"
+  },
+  "full_video_results": [
+    {
+      "video_id": "f9Db8SMWFFI",
+      "unavailable": null,
+      "access_status": "unknown",
+      "comment_count_status": "unresolved",
+      "returned_comments": null,
+      "has_comment_object": false
+    },
+    {
+      "video_id": "nr1-sjsuvS4",
+      "unavailable": null,
+      "access_status": "unknown",
+      "comment_count_status": "unresolved",
+      "returned_comments": null,
+      "has_comment_object": false
+    }
+  ],
+  "list_filter_requests": [
+    {
+      "path": "/v1/candidates",
+      "http": 200,
+      "items": 1
+    },
+    {
+      "path": "/v1/queries",
+      "http": 200,
+      "items": 1
+    },
+    {
+      "path": "/v1/updates",
+      "http": 200,
+      "items": 0
+    },
+    {
+      "path": "/v1/agent/tasks",
+      "http": 200,
+      "items": 0
+    }
+  ],
+  "search_clocks": [
+    {
+      "run_id": "9b60c07e-a774-48b7-a89d-2b7436297899",
+      "state": "ACTIVE",
+      "cadence": "MONTH",
+      "empty_runs": 0,
+      "next_run_at": "2026-11-10T06:06:51.786Z"
+    },
+    {
+      "run_id": "c8bee2ea-c8a4-461f-b6e3-9508a815dadb",
+      "state": "ACTIVE",
+      "cadence": "MONTH",
+      "empty_runs": 1,
+      "next_run_at": "2026-11-10T06:07:33.211Z"
+    }
+  ],
+  "search_pages": [
+    {
+      "run_id": "9b60c07e-a774-48b7-a89d-2b7436297899",
+      "attempt": 2,
+      "page": 1,
+      "raw_reference": {
+        "key": "search/v1/m1-main/9b60c07e-a774-48b7-a89d-2b7436297899/2/page-1.json.gz",
+        "bytes": 396455,
+        "bucket": "crawl-raw",
+        "sha256": "9e15686dd131d670af7ca61c4d4e52964d8d1f86381351458a4a006a59dc192e"
+      },
+      "endpoints": [
+        "/results"
+      ]
+    },
+    {
+      "run_id": "c8bee2ea-c8a4-461f-b6e3-9508a815dadb",
+      "attempt": 1,
+      "page": 1,
+      "raw_reference": {
+        "key": "search/v1/m1-main/c8bee2ea-c8a4-461f-b6e3-9508a815dadb/1/page-1.json.gz",
+        "bytes": 338018,
+        "bucket": "crawl-raw",
+        "sha256": "525a7587fd98cfbfd366ee122c56b76bcd193240b34b50c1faffecb71648dd4e"
+      },
+      "endpoints": [
+        "/results"
+      ]
+    },
+    {
+      "run_id": "c8bee2ea-c8a4-461f-b6e3-9508a815dadb",
+      "attempt": 1,
+      "page": 2,
+      "raw_reference": {
+        "key": "search/v1/m1-main/c8bee2ea-c8a4-461f-b6e3-9508a815dadb/1/page-2.json.gz",
+        "bytes": 163782,
+        "bucket": "crawl-raw",
+        "sha256": "eb77f29d07e6e0ed5f59007cb449ca5e65015225f7427bd89fedb5985dea2cd0"
+      },
+      "endpoints": [
+        "/youtubei/v1/search"
+      ]
+    }
+  ],
+  "qualification_ordering": [
+    {
+      "plan_id": "351d6d94-b9c2-49bf-9038-3e9b1ef30749",
+      "checked_at": "2026-10-10T06:07:33.210Z",
+      "about_applied_at": "2026-10-10T06:07:33.193Z",
+      "first_followup_applied_at": null,
+      "first_followup_manifest_at": null
+    },
+    {
+      "plan_id": "ba4b151f-785f-41df-901c-3c38dd2a5030",
+      "checked_at": "2026-10-10T06:06:51.784Z",
+      "about_applied_at": "2026-10-10T06:06:51.753Z",
+      "first_followup_applied_at": "2026-10-10T06:06:55.859Z",
+      "first_followup_manifest_at": "2026-10-10T06:06:55.541Z"
+    }
+  ],
+  "preservation": {
+    "baseline_videos": 9690,
+    "retained_baseline_videos": 9690,
+    "missing_baseline_videos": 0,
+    "videos": 9692,
+    "pg_comment_pages": 0,
+    "comment_objects": 9618,
+    "comments_external_constraint": true
+  },
+  "backup": {
+    "format": "PG custom dump",
+    "bytes": 15585498,
+    "sha256": "0193e372100c56ba833693802a54847a7130c7bc3d1a9544fcb7b39a18efc46e",
+    "toc_entries": 255,
+    "restore_executed": false
+  },
+  "deployment": {
+    "control_revision": "8c389b4e7d54916deb4f3db63c019a13e7ffc986",
+    "control_image": "docker.io/crawlsystem/control-api:main-8c389b4e7d54-b3ed5c4c",
+    "worker_revision": "d50616e2b4eee36c9be2c07ba86c1780feb10d50",
+    "worker_image": "docker.io/crawlsystem/execution-worker:main-d50616e2b4ee-ec4c0ec0",
+    "automatic_search": false,
+    "automatic_admission": false,
+    "automatic_updates": false,
+    "deployed_at": "2026-10-10T06:16:33.292Z"
+  },
+  "workloads": [
+    {
+      "namespace": "control",
+      "name": "control-api-preview",
+      "ready": 2,
+      "expected": 2,
+      "images": [
+        {
+          "name": "control-api",
+          "image": "docker.io/crawlsystem/control-api:main-8c389b4e7d54-b3ed5c4c"
+        }
+      ]
+    },
+    {
+      "namespace": "control",
+      "name": "intent-dispatcher",
+      "ready": 1,
+      "expected": 1,
+      "images": [
+        {
+          "name": "dispatcher",
+          "image": "docker.io/crawlsystem/control-api:main-db1505c846b6-aafc31e3"
+        }
+      ]
+    },
+    {
+      "namespace": "ingest",
+      "name": "pg-sink",
+      "ready": 1,
+      "expected": 1,
+      "images": [
+        {
+          "name": "sink",
+          "image": "docker.io/crawlsystem/control-api:main-db1505c846b6-aafc31e3"
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "raw-parser",
+      "ready": 1,
+      "expected": 1,
+      "images": [
+        {
+          "name": "parser",
+          "image": "docker.io/crawlsystem/control-api:main-db1505c846b6-aafc31e3"
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "profile-agent",
+      "ready": 1,
+      "expected": 1,
+      "images": [
+        {
+          "name": "profile-agent",
+          "image": "docker.io/crawlsystem/profile-agent:e22cc47314736e0c"
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "execution-worker",
+      "ready": 1,
+      "expected": 1,
+      "images": [
+        {
+          "name": "worker",
+          "image": "docker.io/crawlsystem/execution-worker:main-d50616e2b4ee-ec4c0ec0"
+        },
+        {
+          "name": "fingerprint-gateway",
+          "image": "docker.io/crawlsystem/fingerprint-gateway:1ff2fbba98b3c83f"
+        }
+      ]
+    },
+    {
+      "namespace": "crawler",
+      "name": "proxy-manager",
+      "ready": 6,
+      "expected": 6,
+      "images": [
+        {
+          "name": "proxy-manager",
+          "image": "docker.io/crawlsystem/control-api:main-db1505c846b6-aafc31e3"
+        }
+      ]
+    }
+  ],
+  "flags": {
+    "control-api-preview.QUERY_RUNS_ENABLED": "false",
+    "control-api-preview.QUERY_AUTO_ADMIT": "false",
+    "intent-dispatcher.UPDATE_SCHEDULER_ENABLED": "false",
+    "intent-dispatcher.QUERY_AUTO_ADMIT": "false",
+    "execution-worker.QUERY_RUNNER_SLOTS": "0",
+    "execution-worker.REQUIRED_EGRESS_COUNTRY": ""
+  },
+  "console": {
+    "revision": "4af5d3ff09cd3ed8bc32076f0382d0a3f9323c35",
+    "services_active": true,
+    "public_channels_http": 200,
+    "preserved_local_evidence_sha256": "57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709"
+  },
+  "verified_at": "2026-10-10T06:22:03.154Z",
+  "release_changes": {
+    "core": "db1505c846b6aa8a5b1e0e3a1b220dd1a995137d",
+    "live_search_repair": "d50616e2b4eee36c9be2c07ba86c1780feb10d50",
+    "list_filter_repair": "8c389b4e7d54916deb4f3db63c019a13e7ffc986",
+    "console_presentation": "4af5d3ff09cd3ed8bc32076f0382d0a3f9323c35"
+  },
+  "checks": {
+    "unit": {
+      "passed": 159,
+      "total": 159
+    },
+    "database_integration": {
+      "passed": 98,
+      "total": 98
+    },
+    "temporal": {
+      "passed": 9,
+      "total": 9
+    },
+    "browser_regression": {
+      "passed": 41,
+      "total": 41
+    },
+    "browser_candidate_followup": {
+      "passed": 2,
+      "total": 2
+    },
+    "browser_plan_followup": {
+      "passed": 3,
+      "total": 3
+    },
+    "typecheck": "PASSED",
+    "console_build": "PASSED",
+    "deployable_images": "PASSED",
+    "isolated_role_boundary": "PASSED"
+  }
+}
