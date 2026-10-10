@@ -40,14 +40,15 @@ async function snapshot(){
  const enabled=load('enabled');
  const plans=(await pool.query('SELECT plan_kind,status,count(*)::int AS n FROM control.plans WHERE workspace_id=$1 AND created_at>=$2 GROUP BY 1,2',[workspace,enabled.at])).rows;
  const failures=(await pool.query("SELECT stage,code,state,count(*)::int AS n FROM control.failures WHERE workspace_id=$1 AND first_at>=$2 GROUP BY 1,2,3",[workspace,enabled.at])).rows;
- const result={at:new Date().toISOString(),records,projection,snapshots,source,slot,services:services(),connector:{state:connector.connector.state,tasks:connector.tasks.map((t:any)=>t.state)},summary:await api('/v1/deliveries/summary'),plans,failures};save('latest',result);
+ const names=new Set(workloads.map(w=>w[2] as string)),pods=JSON.parse(kube(['get','pods','-A','-o','json'])).items.filter((p:any)=>names.has(p.metadata.labels?.['app.kubernetes.io/name'])).map((p:any)=>({namespace:p.metadata.namespace,name:p.metadata.name,phase:p.status.phase,containers:(p.status.containerStatuses??[]).map((c:any)=>({name:c.name,ready:c.ready,restarts:c.restartCount,last_reason:c.lastState?.terminated?.reason??null}))}));
+ const result={at:new Date().toISOString(),records,projection,snapshots,source,slot,services:services(),pods,connector:{state:connector.connector.state,tasks:connector.tasks.map((t:any)=>t.state)},summary:await api('/v1/deliveries/summary'),plans,failures};save('latest',result);
  console.log(JSON.stringify({phase:'snapshot',summary:result.summary,projection,snapshots,source,slot,plans,failures}));return result;
 }
 try {
  if(mode==='bootstrap')await bootstrap();
  else if(mode==='recovery-start'){
   assert.ok(!existsSync(`${dir}/recovery.json`),'Resume recorded recovery instead of creating another update');
-  const row=(await pool.query("SELECT r.channel_id FROM delivery.records r JOIN control.channels c USING(workspace_id,channel_id) WHERE r.workspace_id=$1 AND r.status='DELIVERED' AND c.management_state='managed' AND NOT EXISTS(SELECT 1 FROM control.plans p WHERE p.workspace_id=c.workspace_id AND p.channel_id=c.channel_id AND p.status IN ('QUEUED','RUNNING','WAITING')) ORDER BY (SELECT count(*) FROM crawl_data.videos v WHERE v.workspace_id=c.workspace_id AND v.channel_id=c.channel_id),r.created_at LIMIT 1",[workspace])).rows[0];assert.ok(row,'One delivered idle managed channel required');
+  const row=(await pool.query("SELECT r.channel_id FROM delivery.records r JOIN control.channels c USING(workspace_id,channel_id) WHERE r.workspace_id=$1 AND r.status='DELIVERED' AND c.management_state='managed' AND NOT EXISTS(SELECT 1 FROM control.plans p WHERE p.workspace_id=c.workspace_id AND p.channel_id=c.channel_id AND p.status IN ('QUEUED','RUNNING','WAITING')) ORDER BY (SELECT count(*) FROM crawl_data.videos v WHERE v.workspace_id=c.workspace_id AND v.channel_id=c.channel_id) DESC,r.created_at LIMIT 1",[workspace])).rows[0];assert.ok(row,'One delivered idle managed channel required');
   kube(['-n','ingest','scale','deployment/business-sink','--replicas=0']);
   try{const channel=ChannelDetailSchema.parse(await api(`/v1/channels/${row.channel_id}`));const plan=PlanSchema.parse(await api(`/v1/channels/${row.channel_id}/update`,{request_id:randomUUID(),expected_version:channel.management.version,domains:['ABOUT','VIDEO']}));save('recovery',{channel_id:row.channel_id,plan_id:plan.plan_id,started_at:new Date().toISOString()});console.log(JSON.stringify({phase:'sink-paused-update-started',plan_id:plan.plan_id}));}
   catch(e){kube(['-n','ingest','scale','deployment/business-sink','--replicas=1']);throw e;}
@@ -67,6 +68,7 @@ try {
   const result=await snapshot();
   if(mode==='verify'){
    assert.ok(result.services.every(s=>s.ready===s.desired&&s.desired>0));assert.equal(result.connector.state,'RUNNING');assert.ok(result.connector.tasks.length&&result.connector.tasks.every((s:string)=>s==='RUNNING'));
+   assert.ok(result.pods.every((p:any)=>p.phase==='Running'&&p.containers.every((c:any)=>c.ready&&c.restarts===0)),'Current collector and delivery processes must remain healthy');
    assert.ok(result.slot?.active&&Number(result.slot.retained_bytes)<64*1024*1024);
    assert.ok(result.records.some(r=>r.status==='DELIVERED'));assert.ok(!result.records.some(r=>['FAILED','PENDING'].includes(r.status)));
    const recovery=load('recovery');assert.ok(recovery.recovered&&recovery.duplicate_consumed);assert.ok(result.plans.some(p=>p.plan_kind==='UPDATE'&&p.status==='COMPLETED'));assert.ok(!result.failures.some(f=>['OPEN','RETRYING'].includes(f.state)));

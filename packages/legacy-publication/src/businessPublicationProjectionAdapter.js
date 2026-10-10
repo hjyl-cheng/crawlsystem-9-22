@@ -317,6 +317,7 @@ function channelSnapshotFromPrevious({ row, batchId, snapshotId, capturedAt, ver
 }
 
 function linksFromCurrent(payload, channelId, snapshotId) {
+  const seen = new Set();
   return list(payload.links, "channel.links").map((value, index) => {
     const link = object(value, "channel link");
     const url = text(link.target_url, "channel link target_url");
@@ -337,6 +338,12 @@ function linksFromCurrent(payload, channelId, snapshotId) {
         purpose: optionalText(link.purpose),
       },
     };
+  }).filter((link) => {
+    // A channel can expose the same URL under multiple labels. Preserve the
+    // first label and position in the public row; the inbox retains all input.
+    if (seen.has(link.id)) return false;
+    seen.add(link.id);
+    return true;
   });
 }
 

@@ -24,7 +24,12 @@ export class BusinessReceiver {
   const metadata={delivery_id:m.delivery_id,stream_id:m.stream_id,channel_id:m.channel_id,manifest_hash:shard.manifest_hash,version_vector:m.version_vector,status:failed?'FAILED':'PENDING',code:failed?.error_code??null};
   const saved=await this.pool.query('INSERT INTO delivery_transport.messages(delivery_id,channel_id,stream_id,manifest_hash,metadata,revision_ids) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(delivery_id) DO UPDATE SET receipt_sent=false,last_received_at=now() WHERE delivery_transport.messages.manifest_hash=EXCLUDED.manifest_hash AND delivery_transport.messages.stream_id=EXCLUDED.stream_id AND delivery_transport.messages.channel_id=EXCLUDED.channel_id RETURNING delivery_id',[m.delivery_id,m.channel_id,m.stream_id,shard.manifest_hash,metadata,shard.items.map((i:LegacyValue)=>i.revision_id)]);
   if(!saved.rowCount)throw new Error('DELIVERY_IDENTITY_MISMATCH');
-  if(!failed)await this.activator.activateReady(m.channel_id);
+  if(!failed){
+   await this.activator.activateReady(m.channel_id);
+   // Replaying immutable evidence may recover a projection after its code or
+   // dependency is fixed. Only requeue the exact failed version vector.
+   await this.pool.query("UPDATE publication.projection_outbox SET status='pending',attempts=0,next_attempt_at=now(),last_error=NULL,updated_at=now() WHERE channel_id=$1 AND publication_stream_id=$2 AND version_vector=$3::jsonb AND status='dead_letter'",[m.channel_id,m.stream_id,JSON.stringify(m.version_vector)]);
+  }
   return result;
  }
  async tick(send:(receipt:DeliveryReceipt)=>Promise<void>) {
@@ -44,6 +49,10 @@ export class BusinessReceiver {
     else {
      const bad=(await this.pool.query("SELECT q.issue_code FROM publication.quarantine q WHERE q.revision_id=ANY($1::uuid[]) ORDER BY q.last_seen_at DESC LIMIT 1",[row.revision_ids])).rows[0];
      if(bad){status='FAILED';code=bad.issue_code;}
+     else {
+      const exhausted=(await this.pool.query("SELECT 1 FROM publication.projection_outbox WHERE channel_id=$1 AND publication_stream_id=$2 AND version_vector=$3::jsonb AND status='dead_letter' LIMIT 1",[m.channel_id,m.stream_id,JSON.stringify(m.version_vector)])).rowCount;
+      if(exhausted){status='FAILED';code='BUSINESS_PROJECTION_FAILED';}
+     }
     }
    }
    if(status==='PENDING')continue;

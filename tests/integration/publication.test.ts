@@ -47,6 +47,21 @@ test('duplicate delivery reissues a receipt without adding business snapshots',a
  await receiver.accept(m);const got=await receipts();assert.equal(got.find(r=>r.delivery_id===m.delivery_id)?.status,'DELIVERED');
  assert.equal((await biz.query('SELECT count(*)::int n FROM public.channel_snapshots WHERE channel_id=$1',[s.channel_id])).rows[0].n,before);
 });
+test('duplicate channel URLs preserve immutable evidence and one public link per identity',async()=>{
+ const s=snapshot(),id=await stream();s.about.external_links=[{url:'https://example.com/one',title:'First'},{url:'https://example.com/one',title:'Repeated label'},{url:'https://example.com/two',title:'Second'}];
+ const p=mapPublication(s,undefined,id,randomUUID());await receiver.accept(message(p,id));
+ assert.equal((await receipts()).find(r=>r.delivery_id===p.shard!.shard_id)?.status,'DELIVERED');
+ const links=(await biz.query('SELECT url,title FROM public.channel_links WHERE channel_id=$1 ORDER BY url',[s.channel_id])).rows;
+ assert.deepEqual(links,[{url:'https://example.com/one',title:'First'},{url:'https://example.com/two',title:'Second'}]);
+ const inbox=(await biz.query("SELECT payload_json FROM publication.revision WHERE channel_id=$1 AND domain='channel'",[s.channel_id])).rows[0];assert.equal(inbox.payload_json.links.length,3);
+});
+test('exhausted business projection reports failure and immutable replay recovers it',async()=>{
+ const s=snapshot(),id=await stream(),p=mapPublication(s,undefined,id,randomUUID()),m=message(p,id);await receiver.accept(m);
+ await biz.query("UPDATE publication.projection_outbox SET status='dead_letter',attempts=20,last_error='injected dependency outage' WHERE channel_id=$1",[s.channel_id]);
+ assert.equal((await receipts()).find(r=>r.delivery_id===m.delivery_id)?.code,'BUSINESS_PROJECTION_FAILED');
+ await receiver.accept(m);assert.equal((await receipts()).find(r=>r.delivery_id===m.delivery_id)?.status,'DELIVERED');
+ assert.equal((await biz.query('SELECT receive_count FROM publication.inbox WHERE revision_id=$1',[p.envelopes[0]!.revision_id])).rows[0].receive_count,2);
+});
 test('Debezium JSON text preserves nulls and distinct domain payloads through receipt generation',async()=>{
  const s=snapshot(),id=await stream(),p=mapPublication(s,undefined,id,randomUUID()),m=message(p,id);
  const decoded=decodeDelivery(JSON.stringify(JSON.stringify(m)));assert.deepEqual(decoded,m);

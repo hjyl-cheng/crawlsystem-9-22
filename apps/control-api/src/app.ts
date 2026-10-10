@@ -96,9 +96,9 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.get('/v1/plans',async request=>{const q=pagination(request.query);return store.listPlans(request.principal,q.limit,q.offset,q.status,q.sourceMode);});
   app.get('/v1/deliveries/summary',async request=>store.deliverySummary(request.principal));
   app.get('/v1/deliveries',async request=>{
-    const schema=z.object({status:z.enum(['PENDING','DELIVERED','FAILED','NOT_READY','UNCHANGED']).optional(),search:z.string().max(160).optional()});
-    const q=pagination(request.query,schema.shape),filter=schema.parse(request.query);
-    return store.deliveries(request.principal,q.limit,q.offset,filter.status,filter.search);
+    const q=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(50),cursor:z.string().regex(/^\d{1,6}$/).default('0'),status:z.enum(['PENDING','DELIVERED','FAILED','NOT_READY','UNCHANGED']).optional(),search:z.string().max(160).optional()}).parse(request.query);
+    const offset=Number(q.cursor);if(offset>100000)throw new StoreError('INVALID_REQUEST','Cursor exceeds maximum',400);
+    return store.deliveries(request.principal,q.limit,offset,q.status,q.search);
   });
   app.get('/v1/deliveries/:id',async request=>store.delivery(request.principal,z.object({id:z.uuid()}).parse(request.params).id));
   app.post('/v1/deliveries/:id/retry',async request=>store.retryDelivery(request.principal,z.object({id:z.uuid()}).parse(request.params).id,request.body));
