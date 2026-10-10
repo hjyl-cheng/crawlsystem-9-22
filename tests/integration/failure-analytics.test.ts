@@ -59,6 +59,29 @@ test('retrying a historical legacy plan uses the current persisted pipeline',asy
  const retried=await store.commandFailure(t.op,f.failure_id,{command_id:randomUUID(),expected_version:f.version,action:'retry',reason:'历史失败使用当前入库链路'});
  assert.equal((await store.getInput(t.worker,retried.retry_plan_id!)).input.pipeline_version,'r3.v1');assert.equal((await store.getPlan(t.reader,old.plan_id)).plan.status,'FAILED');
 });
+test('retrying a failed imported channel moves its queue item to the replacement plan',async()=>{
+ const t=await setup(),channel='UC'+randomUUID().replaceAll('-','').slice(0,22);
+ const old=await store.createPlan(t.op,{request_id:randomUUID(),source_mode:'youtube',channel_id:channel,required_domains:['ABOUT'],scope:{video_limit:2,max_age_days:90,comments_per_video:5,comment_sort:'TOP_COMMENTS'}});
+ await pool.query("INSERT INTO control.channel_imports(workspace_id,channel_id,requested_by,request_id,state,plan_id) VALUES($1,$2,'discovery',$3,'planned',$4)",[t.op.workspace_id,channel,randomUUID(),old.plan_id]);
+ await store.event(t.worker,old.plan_id,{event_id:randomUUID(),execution_epoch:1,worker_id:t.worker.subject,kind:'FAILED',phase:'ABOUT',message:'temporary failure',error_code:'UNAVAILABLE',domain:'ABOUT'});
+ assert.equal((await pool.query('SELECT state FROM control.channel_imports WHERE plan_id=$1',[old.plan_id])).rows[0].state,'failed');
+ const f=(await store.failures(t.reader)).items.find(f=>f.plan_id===old.plan_id)!;
+ const command={command_id:randomUUID(),expected_version:f.version,action:'retry' as const,reason:'恢复首次采集并推进导入队列'};
+ const retry=await store.commandFailure(t.op,f.failure_id,command);
+ assert.deepEqual((await pool.query('SELECT state,plan_id FROM control.channel_imports WHERE workspace_id=$1 AND channel_id=$2',[t.op.workspace_id,channel])).rows[0],{state:'planned',plan_id:retry.retry_plan_id});
+ assert.equal((await store.commandFailure(t.op,f.failure_id,command)).retry_plan_id,retry.retry_plan_id,'idempotent command creates no second import plan');
+ const next=await store.getInput(t.worker,retry.retry_plan_id!);
+ const raw={...t.raw,plan_id:next.plan.plan_id,channel_id:channel,input_hash:next.plan.input_hash,key:`v1/${t.op.workspace_id}/${next.plan.plan_id}/1/ABOUT/channel.json.gz`};
+ const receiver:Principal={...t.op,role:'sink'};
+ await store.pipelineManifest(receiver,{schema_version:'crawl.step.v1',owner:{schema_version:'m1.v1',workspace_id:t.op.workspace_id,plan_id:next.plan.plan_id,execution_epoch:1,input_hash:next.plan.input_hash,workflow_id:next.plan.workflow_id},channel_id:channel,step:'ABOUT',units:[raw],completed_at:raw.captured_at,bucket:'crawl-raw',key:raw.key.replace('channel.json.gz','_manifest.json.gz')});
+ await new PgSink(pool).apply({...t.fact,raw,parsed:{...t.fact.parsed,key:raw.key.replace('.json.gz',`.youtube-raw-1.${raw.sha256}.json.gz`)},source_revision:next.plan.source_revision,payload:{...fixtureChannel,channel_id:channel,channel_url:`https://www.youtube.com/channel/${channel}`}});
+ await store.confirmPipeline(receiver,next.plan.plan_id);
+ assert.equal((await store.getPlan(t.reader,next.plan.plan_id)).plan.status,'COMPLETED');
+ assert.deepEqual((await pool.query('SELECT state,plan_id FROM control.channel_imports WHERE workspace_id=$1 AND channel_id=$2',[t.op.workspace_id,channel])).rows[0],{state:'done',plan_id:next.plan.plan_id});
+ await store.commandFailure(t.op,f.failure_id,command);
+ assert.equal((await pool.query('SELECT state FROM control.channel_imports WHERE plan_id=$1',[next.plan.plan_id])).rows[0].state,'done','replaying the operator command cannot put a completed import back in the queue');
+ assert.equal((await store.getPlan(t.reader,old.plan_id)).plan.status,'FAILED');
+});
 test('sanitized outbox is transactional, consumers cannot acknowledge other workspaces',async()=>{
  const t=await setup();await store.event(t.worker,t.plan.plan_id,{event_id:randomUUID(),execution_epoch:1,worker_id:t.worker.subject,kind:'ERROR',phase:'ABOUT',domain:null,message:'cookie=private visitor data',error_code:'UNAVAILABLE'});
  const messages=await store.telemetryOutbox(t.analytics);messages.forEach(e=>OpsEventSchema.parse(e));assert.equal(JSON.stringify(messages).includes('private'),false);assert.equal(JSON.stringify(messages).includes('cookie'),false);

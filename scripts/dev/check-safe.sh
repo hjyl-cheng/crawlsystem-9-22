@@ -46,7 +46,8 @@ case "${1:-}" in
   automation-runtime) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/r6-runtime.ts "${@:2}") ;;
   automation-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r6-browser.ts) ;;
   automation-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 tests/integration/query-runs.test.ts tests/integration/discovery-about.test.ts) ;;
-  automation-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-r6-fixes.ts) ;;
+  automation-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-r6-fixes.ts "${@:2}") ;;
+  automation-control-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --control-only) ;;
   automation-recovery) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r6-recovery.ts "${@:2}") ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;

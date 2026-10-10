@@ -852,6 +852,9 @@ export class Store {
       const frozen=FrozenInputSchema.parse({...old.frozen_input,reference_time:now.toISOString(),deadline_at:deadline,...(this.pipeline.enabled?{pipeline_version:'r3.v1'}:{})});
       const input:CreatePlan=frozen.source_mode==='fixture'?{request_id:command.command_id,fixture_id:'channel-basic-v1',required_domains:frozen.required_domains}
         :{request_id:command.command_id,source_mode:'youtube',channel_id:frozen.channel_id,required_domains:frozen.required_domains,scope:frozen.scope};
+      // The failed import follows its replacement plan; otherwise a completed retry
+      // leaves the candidate permanently displaying the original import failure.
+      if(frozen.source_mode==='youtube')await client.query("UPDATE control.channel_imports SET state='queued',plan_id=NULL,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2 AND plan_id=$3 AND state='failed'",[principal.workspace_id,frozen.channel_id,old.plan_id]);
       return this.insertCreatedPlan(client,principal.workspace_id,input,frozen,contentHash(input),randomUUID(),deadline,null);
     }));
   }

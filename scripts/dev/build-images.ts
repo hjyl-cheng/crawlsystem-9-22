@@ -39,6 +39,12 @@ const entries={'control-api':'apps/control-api/src/main.ts',ingest:'apps/ingest/
   'raw-parser':'apps/raw-parser/src/main.ts','pg-sink':'apps/pg-sink/src/main.ts','analytics':'apps/analytics/src/main.ts','ops-tool':'apps/analytics/src/tool.ts'};
 for(const [name,entry] of Object.entries(entries))await build({...common,entryPoints:[entry],outfile:`${controlRoot}/app/${name}.mjs`});
 const control=image('control',controlRoot,sha(...Object.keys(entries).map(n=>`${controlRoot}/app/${n}.mjs`)));
+if(process.argv.includes('--control-only')){
+  mkdirSync('.runtime/r6',{recursive:true,mode:0o700});
+  const metadata={revision,built_at:new Date().toISOString(),scope:'control',control};
+  writeFileSync('.runtime/r6/latest-control-image.json',JSON.stringify(metadata,null,2)+'\n',{mode:0o600});
+  console.log(JSON.stringify(metadata));process.exit(0);
+}
 
 // Worker image: /app/worker/src/main.mjs resolves ../dist/workflow-bundle.cjs exactly as in the repo.
 const workerRoot=join(out,'worker'),app=join(workerRoot,'app/worker');mkdirSync(app+'/src',{recursive:true});mkdirSync(app+'/dist');

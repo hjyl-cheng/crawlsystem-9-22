@@ -37,7 +37,8 @@ try {
     console.log(JSON.stringify({phase:'retry-plan',plan_id:state.retry_plan_id}));
   }else if(mode==='search') {
     if(!state.search_failure_id){const f=(await pool.query("SELECT failure_id,run_id FROM control.failures WHERE workspace_id=$1 AND first_at>=$2 AND stage='SEARCH' AND code='INTERNAL' ORDER BY first_at LIMIT 1",[workspace,baseline.started_at])).rows[0];assert.ok(f);state.search_failure_id=f.failure_id;state.search_run_id=f.run_id;save();}
-    const prior=(await pool.query('SELECT state FROM control.query_runs WHERE run_id=$1',[state.search_run_id])).rows[0];
+    const prior=(await pool.query('SELECT state,attempt FROM control.query_runs WHERE run_id=$1',[state.search_run_id])).rows[0];
+    if(prior.state==='PENDING'&&state.claim&&prior.attempt===state.claim.run.attempt){state.failed_claims??=[];state.failed_claims.push(state.claim);delete state.claim;save();}
     if(prior.state!=='SUCCEEDED') {
       if(!state.claim) {
         await retry(state.search_failure_id,'search_command','R6：修复旧搜索重试漏报历史发现；有界维护恢复原任务与冻结参数');
@@ -62,10 +63,11 @@ try {
     state.search_recovered=true;state.search_result={new_channels:run.new_channels,qualified_new:run.qualified_new};save();console.log(JSON.stringify({result:'PASSED',phase:'legacy-search-recovery',...state.search_result}));
   }else {
     assert.ok(state.search_recovered);const plan=(await pool.query('SELECT status FROM control.plans WHERE plan_id=$1',[state.retry_plan_id])).rows[0];assert.equal(plan.status,'COMPLETED');
+    assert.equal((await pool.query('SELECT state FROM control.channel_imports WHERE workspace_id=$1 AND plan_id=$2',[workspace,state.retry_plan_id])).rows[0]?.state,'done');
     const agent=FailureSchema.parse(await api(`/v1/failures/${state.agent_failure_id}`));assert.equal(agent.state,'RESOLVED');
     const duplicate=(await pool.query("SELECT failure_id FROM control.failures WHERE plan_id=$1 AND state='OPEN' AND stage='WORKER' AND code='INVALID_REQUEST'",[agent.plan_id])).rows;
     for(const row of duplicate){const f=FailureSchema.parse(await api(`/v1/failures/${row.failure_id}`));await api(`/v1/failures/${f.failure_id}/commands`,{command_id:randomUUID(),expected_version:f.version,action:'ignore',reason:`同一画像失败已由完成计划 ${state.retry_plan_id} 恢复；保留原失败与证据`});}
     const search=FailureSchema.parse(await api(`/v1/failures/${state.search_failure_id}`));assert.equal(search.state,'RESOLVED');
-    state.plan_recovered=true;state.verified_at=new Date().toISOString();save();console.log(JSON.stringify({result:'PASSED',plan_recovered:true,legacy_search_recovered:true}));
+    state.plan_recovered=true;state.import_recovered=true;state.verified_at=new Date().toISOString();save();console.log(JSON.stringify({result:'PASSED',plan_recovered:true,import_recovered:true,legacy_search_recovered:true}));
   }
 }finally{await pool.end();}
