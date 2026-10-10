@@ -849,7 +849,7 @@ export class Store {
         if(!plan)throw new StoreError('CONFLICT','Update could not be created');return plan;
       }
       const deadline=new Date(now.getTime()+120*60_000).toISOString();
-      const frozen=FrozenInputSchema.parse({...old.frozen_input,reference_time:now.toISOString(),deadline_at:deadline});
+      const frozen=FrozenInputSchema.parse({...old.frozen_input,reference_time:now.toISOString(),deadline_at:deadline,...(this.pipeline.enabled?{pipeline_version:'r3.v1'}:{})});
       const input:CreatePlan=frozen.source_mode==='fixture'?{request_id:command.command_id,fixture_id:'channel-basic-v1',required_domains:frozen.required_domains}
         :{request_id:command.command_id,source_mode:'youtube',channel_id:frozen.channel_id,required_domains:frozen.required_domains,scope:frozen.scope};
       return this.insertCreatedPlan(client,principal.workspace_id,input,frozen,contentHash(input),randomUUID(),deadline,null);

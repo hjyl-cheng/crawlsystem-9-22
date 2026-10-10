@@ -50,6 +50,15 @@ test('failed-plan retry creates a new frozen bounded plan and never resurrects t
  const r=await store.commandFailure(t.op,f.failure_id,{command_id:randomUUID(),expected_version:f.version,action:'retry',reason:'依赖恢复重新采集'});assert.notEqual(r.retry_plan_id,t.plan.plan_id);
  const old=await store.getPlan(t.reader,t.plan.plan_id),next=await store.getInput(t.worker,r.retry_plan_id!);assert.equal(old.plan.status,'FAILED');assert.equal(old.plan.execution_epoch,2);assert.equal(next.plan.status,'QUEUED');assert.equal(next.plan.execution_epoch,1);assert.equal(next.input.pipeline_version,'r3.v1');
 });
+test('retrying a historical legacy plan uses the current persisted pipeline',async()=>{
+ const t=await setup();await store.cancel(t.op,t.plan.plan_id,{command_id:randomUUID(),expected_version:t.plan.version});
+ const legacy=new Store(pool),old=await legacy.createPlan(t.op,{request_id:randomUUID(),fixture_id:'channel-basic-v1',required_domains:['ABOUT']});
+ assert.equal((await legacy.getInput(t.worker,old.plan_id)).input.pipeline_version,undefined);
+ await legacy.event(t.worker,old.plan_id,{event_id:randomUUID(),execution_epoch:1,worker_id:t.worker.subject,kind:'FAILED',phase:'ABOUT',message:'legacy failure',error_code:'UNAVAILABLE',domain:'ABOUT'});
+ const f=(await store.failures(t.reader)).items.find(f=>f.plan_id===old.plan_id)!;
+ const retried=await store.commandFailure(t.op,f.failure_id,{command_id:randomUUID(),expected_version:f.version,action:'retry',reason:'历史失败使用当前入库链路'});
+ assert.equal((await store.getInput(t.worker,retried.retry_plan_id!)).input.pipeline_version,'r3.v1');assert.equal((await store.getPlan(t.reader,old.plan_id)).plan.status,'FAILED');
+});
 test('sanitized outbox is transactional, consumers cannot acknowledge other workspaces',async()=>{
  const t=await setup();await store.event(t.worker,t.plan.plan_id,{event_id:randomUUID(),execution_epoch:1,worker_id:t.worker.subject,kind:'ERROR',phase:'ABOUT',domain:null,message:'cookie=private visitor data',error_code:'UNAVAILABLE'});
  const messages=await store.telemetryOutbox(t.analytics);messages.forEach(e=>OpsEventSchema.parse(e));assert.equal(JSON.stringify(messages).includes('private'),false);assert.equal(JSON.stringify(messages).includes('cookie'),false);
