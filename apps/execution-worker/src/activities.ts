@@ -29,9 +29,10 @@ export interface ActivityOptions {
 /** Collector failures as execution errors: transient upstream/proxy trouble retries; missing targets and quota do not. */
 function collectorError(error: unknown): ExecutionApiError {
   if (error instanceof ExecutionApiError) return error;
-  if (error instanceof ArchiveError || error instanceof FingerprintError) return new ExecutionApiError('UNAVAILABLE', true);
+  if (error instanceof ArchiveError) return new ExecutionApiError('UNAVAILABLE', true, `raw:${error.stage}:${error.code}`);
+  if (error instanceof FingerprintError) return new ExecutionApiError('UNAVAILABLE', true, `fingerprint:${error.kind}`);
   if (error instanceof DataApiError) return new ExecutionApiError(error.kind === 'quota' ? 'BUDGET_EXHAUSTED' : error.kind === 'not_found' ? 'NOT_FOUND' : error.kind === 'forbidden' ? 'FORBIDDEN' : error.kind === 'invalid' ? 'INVALID_REQUEST' : 'UNAVAILABLE', error.retryable);
-  if (error instanceof ScrapeError) return new ExecutionApiError(error.kind === 'not_found' ? 'NOT_FOUND' : 'UNAVAILABLE', error.kind !== 'not_found');
+  if (error instanceof ScrapeError) return new ExecutionApiError(error.kind === 'not_found' ? 'NOT_FOUND' : 'UNAVAILABLE', error.kind !== 'not_found', `web:${error.kind}`);
   return new ExecutionApiError('INTERNAL_ERROR', false);
 }
 /** Per-Activity trace: opened once the plan's stored context is read, then sent on every call. */

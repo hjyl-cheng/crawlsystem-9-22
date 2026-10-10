@@ -1,10 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { absoluteDate, mapWebVideo, uploads, videoDetail } from '../src/youtube/web-scrape.ts';
+import { absoluteDate, channelFacts, mapWebVideo, uploads, videoDetail } from '../src/youtube/web-scrape.ts';
 import { topComments, ScrapeError } from '../src/youtube/scrape.ts';
 import { parseCount } from '../src/youtube/map.ts';
 const channel = 'UC_x5XG1OV2P6uZZ5FSM9Ttw', id = 'abcdefghijk';
 const info = () => ({ basic_info: { title: 'test', channel_id: channel, duration: 120, view_count: 432 }, playability_status: { status: 'OK' }, page: [{ microformat: { publish_date: '2026-10-01' } }] });
+test('channel metadata accepts the real quoted keyword string despite YouTube.js declaring an array', async () => {
+  const yt = { async getChannel() { return { metadata: { title: 'channel', keywords: '"google developers" android', avatar: [] }, tabs: ['Home'],
+    async getAbout() { return { metadata: { subscriber_count: '1,2 mi de inscritos', links: [] } }; } }; } };
+  const facts = await channelFacts(yt as never, channel);
+  assert.deepEqual(facts.keywords, ['google developers', 'android']); assert.equal(facts.subscriber_count.value, 1_200_000);
+});
 test('Portuguese counts and dates retain estimates, day precision and missing counts', () => {
   assert.deepEqual(parseCount('1,23 mi de inscritos', 'pt-BR'), { value: 1_230_000, exact: false });
   assert.deepEqual(parseCount('1.234.567 visualizações', 'pt-BR'), { value: 1_234_567, exact: true });

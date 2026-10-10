@@ -13,7 +13,7 @@ export interface RawUnit<T = unknown> {
 }
 export interface RawReference { schema_version: 'crawl.raw.v1'; workspace_id: string; plan_id: string; execution_epoch: number; input_hash: string; channel_id: string;
   step: string; unit_id: string; bucket: string; key: string; sha256: string; bytes: number; captured_at: string; }
-export class ArchiveError extends Error { constructor(readonly stage: 'storage' | 'publish' | 'integrity') { super(`Raw archive ${stage} failed`); this.name = 'ArchiveError'; } }
+export class ArchiveError extends Error { constructor(readonly stage: 'storage' | 'publish' | 'integrity', readonly code = 'UNAVAILABLE') { super(`Raw archive ${stage} failed`); this.name = 'ArchiveError'; } }
 export interface ObjectStore { get(key: string, signal: AbortSignal): Promise<Uint8Array | null>; put(key: string, bytes: Uint8Array, signal: AbortSignal, ifAbsent?: boolean): Promise<void>; }
 export interface RawPublisher { send(topic: 'crawl.raw' | 'crawl.step', channelId: string, message: unknown): Promise<void>; }
 export class MinioStore implements ObjectStore {
@@ -54,7 +54,11 @@ export class KafkaPublisher implements RawPublisher {
     try {
       this.connected ??= this.producer.connect().catch(error => { this.connected = undefined; throw error; }); await this.connected;
       await this.producer.send({ topic, acks: -1, messages: [{ key: channelId, value: JSON.stringify(message) }] });
-    } catch { throw new ArchiveError('publish'); }
+    } catch (error) {
+      const code = (error as { type?: string }).type;
+      const known = ['CLUSTER_AUTHORIZATION_FAILED', 'TOPIC_AUTHORIZATION_FAILED', 'SASL_AUTHENTICATION_FAILED', 'NOT_ENOUGH_REPLICAS', 'REQUEST_TIMED_OUT', 'NETWORK_EXCEPTION', 'UNKNOWN_TOPIC_OR_PARTITION'];
+      throw new ArchiveError('publish', code && known.includes(code) ? code : 'UNAVAILABLE');
+    }
   }
   async close() { await this.producer.disconnect(); }
 }

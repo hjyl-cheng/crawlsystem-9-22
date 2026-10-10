@@ -1,7 +1,7 @@
 import { Innertube } from 'youtubei.js';
 import { ChannelFactsSchema, VideoFactsSchema, VideoUnavailableSchema, type ChannelFacts, type VideoFacts, type VideoItem } from '@crawlsystem/contracts';
 import { ScrapeError, topComments, classify } from './scrape.ts';
-import { parseCount, toVideoFacts, type CommentsResult } from './map.ts';
+import { parseCount, parseKeywords, toVideoFacts, type CommentsResult } from './map.ts';
 import type { BrowserIdentity } from './identity.ts';
 import { IDENTITY_POLICY } from './identity.ts';
 import type { UploadDiscovery } from './data-api.ts';
@@ -57,7 +57,8 @@ export async function channelFacts(yt: Innertube, channelId: string): Promise<Ch
       avatar_url: thumb(meta.avatar ?? meta.thumbnail), summary: null, about_description: text(about.description) ?? meta.description ?? null,
       country: text(about.country), country_code: null, country_source: about.country ? 'youtubei:about' : null,
       joined_at: joined.value?.slice(0, 10) ?? null, joined_date_text: text(about.joined_date), joined_at_precision: joined.value ? 'date_only' : 'unknown',
-      keywords: (meta.keywords ?? meta.tags ?? []).slice(0, 100).map(s => s.slice(0, 200)), available_tabs: channel.tabs.slice(0, 20),
+      // The channel declaration says string[], but YouTube still returns a quoted keyword string.
+      keywords: (Array.isArray(meta.keywords) ? meta.keywords : typeof meta.keywords === 'string' ? parseKeywords(meta.keywords) : meta.tags ?? []).slice(0, 100).map(s => s.slice(0, 200)), available_tabs: channel.tabs.slice(0, 20),
       external_links: (about.links ?? []).slice(0, 100).map((l: Node) => ({ title: (text(l.title) ?? '').slice(0, 500), url: /^https?:/.test(text(l.link) ?? '') ? text(l.link) : `https://${text(l.link)}` })).filter((l: Node) => l.url !== 'https://null'),
       subscriber_count: observed(subscribers), total_view_count: observed(about.view_count), total_video_count: observed(about.video_count),
       is_verified: null, is_family_safe: meta.is_family_safe ?? null, youtube_business_email_available: about.sign_in_for_business_email != null,

@@ -197,6 +197,10 @@ spec:
   authorization:
     type: simple
     acls:
+    # Needed by the idempotent producer's InitProducerId request, in addition to topic writes.
+    - resource: { type: cluster }
+      operations: [IdempotentWrite]
+      host: '*'
     - resource: { type: topic, name: crawl.raw, patternType: literal }
       operations: [Write, Describe]
       host: '*'
