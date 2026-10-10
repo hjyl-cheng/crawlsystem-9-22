@@ -16,6 +16,6 @@
 
 ## 有界验收与运行控制
 
-`scripts/dev/verify-r4-preview.ts full|reject` 显式准备一个单页搜索，执行器 `query-once.mjs` 只处理该 run，不领取后续搜索。两个模式分别验证默认 1000 门槛的两视频全量采集，以及验收专用 1 亿门槛的 About 后停止；每个 run 仅准入一个频道，其余验收候选人工拒绝以结束本轮统计。状态文件允许恢复原 run/plan，避免重复创建。
+`scripts/dev/verify-r4-preview.ts full|reject` 显式准备有界搜索（full 一页，reject 最多两页以验证 continuation），执行器 `query-once.mjs` 只处理该 run，不领取后续搜索。两个模式分别验证默认 1000 门槛的两视频全量采集，以及验收专用 1 亿门槛的 About 后停止；每个 run 仅准入一个频道，其余验收候选人工拒绝以结束本轮统计。状态文件允许恢复原 run/plan，避免重复创建。
 
 自动搜索、自动候选准入、定时更新、Query Runner 和强制 BR 出口保持关闭。恢复自动运行仍属于 R6。

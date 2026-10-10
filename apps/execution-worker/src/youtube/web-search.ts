@@ -17,6 +17,13 @@ export function embeddedObject(html: string, markers: string[]): Record<string, 
   }
   throw new ScrapeError('parse','Search HTML is missing its initial data or configuration');
 }
+export function searchConfig(html:string):Record<string,any> {
+  // The boot script calls set() with expressions before the actual JSON configuration.
+  for(const match of html.matchAll(/ytcfg\.set\(\s*\{/g)) {
+    try {const config=embeddedObject(html.slice(match.index),['ytcfg.set(']);if(config.INNERTUBE_CONTEXT)return config;}catch{}
+  }
+  throw new ScrapeError('parse','Search HTML is missing its continuation configuration');
+}
 function walk(root: unknown, visit: (value: Record<string, any>)=>void) {
   if(!root || typeof root!=='object') return;
   if(!Array.isArray(root)) visit(root as Record<string, any>);
@@ -57,15 +64,20 @@ export async function* webSearchPages(fetcher: typeof fetch, params: QueryRunPar
     url.searchParams.set('sp',Buffer.from([8,3,18,4,8,date,16,1]).toString('base64'));
     url.searchParams.set('hl',params.language);url.searchParams.set('gl',params.country);
     const response=await fetcher(url),html=await response.text();
-    if([403,429].includes(response.status) || /captcha-form|Our systems have detected unusual traffic|before you continue to YouTube/i.test(html)) throw new ScrapeError('blocked','Search was challenged');
+    // YouTube ships consent/challenge translations inside normal result-page scripts.
+    const visible=html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi,'');
+    if([403,429].includes(response.status) || /captcha-form|Our systems have detected unusual traffic|before you continue to YouTube/i.test(visible)) throw new ScrapeError('blocked','Search was challenged');
     if(!response.ok) throw new ScrapeError(response.status>=500?'upstream':'network','Search HTTP request failed');
     let data=embeddedObject(html,['var ytInitialData =','window["ytInitialData"] =','ytInitialData =']);
-    const config=embeddedObject(html,['ytcfg.set(']);
+    const config=searchConfig(html);
     for(;;) {
       const page=searchNavigation(data);yield {items:page.items,more:page.more};
       if(!page.continuation) return;
       if(!config.INNERTUBE_CONTEXT) throw new ScrapeError('parse','Search continuation context missing');
-      const next=await fetcher('https://www.youtube.com/youtubei/v1/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({context:config.INNERTUBE_CONTEXT,continuation:page.continuation})});
+      const endpoint=new URL('https://www.youtube.com/youtubei/v1/search');
+      if(config.INNERTUBE_API_KEY)endpoint.searchParams.set('key',config.INNERTUBE_API_KEY);
+      const version=config.INNERTUBE_CLIENT_VERSION??config.INNERTUBE_CONTEXT.client?.clientVersion;
+      const next=await fetcher(endpoint,{method:'POST',headers:{'content-type':'application/json','x-youtube-client-name':String(config.INNERTUBE_CONTEXT_CLIENT_NAME??1),...(version?{'x-youtube-client-version':String(version)}:{})},body:JSON.stringify({context:config.INNERTUBE_CONTEXT,continuation:page.continuation})});
       if([403,429].includes(next.status)) throw new ScrapeError('blocked','Search continuation was rate limited');
       if(!next.ok) throw new ScrapeError(next.status>=500?'upstream':'network','Search continuation HTTP request failed');
       data=await next.json() as Record<string,any>;

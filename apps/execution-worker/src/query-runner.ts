@@ -62,7 +62,7 @@ export async function runOne(options: QueryRunnerOptions, run: Run): Promise<voi
     }
     const reason: FailReason = options.signal.aborted ? 'interrupted' : failReason(error);
     const after = await api.queryRunFail(run.run_id, { attempt, reason, retryable: reason !== 'internal' }).catch(() => undefined);
-    log({ ...record, outcome: 'FAILED', reason, run_state: after?.state ?? 'UNREPORTED', ms: Date.now() - started });
+    log({ ...record, outcome: 'FAILED', reason, ...(error instanceof ScrapeError?{diagnostic:error.message}:{}), run_state: after?.state ?? 'UNREPORTED', ms: Date.now() - started });
   } finally { clearInterval(renew); }
 }
 
@@ -153,7 +153,7 @@ async function withProxy<T>(options: QueryRunnerOptions, signal: AbortSignal, wo
 function failReason(error: unknown): FailReason {
   if (error instanceof QuotaRefused) return 'quota';
   if (error instanceof DataApiError) return error.kind === 'quota' ? 'quota' : 'data_api';
-  if (error instanceof ScrapeError) return error.kind === 'blocked' ? 'blocked' : error.kind === 'network' ? 'network' : 'parse';
+  if (error instanceof ScrapeError) return error.kind === 'blocked' ? 'blocked' : ['network','upstream'].includes(error.kind) ? 'network' : 'parse';
   if (error instanceof ProxyUnavailable) return 'proxy_unavailable';
   if (error instanceof ExecutionApiError) return error.retryable ? 'network' : 'internal';
   return 'internal';

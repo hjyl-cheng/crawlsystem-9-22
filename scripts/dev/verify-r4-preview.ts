@@ -29,7 +29,7 @@ try {
     const binding=(await pool.query('SELECT b.binding_id FROM control.query_bindings b JOIN control.query_terms t USING(term_id) WHERE b.workspace_id=$1 AND t.text=lower($2) AND b.country=\'BR\' AND b.category=\'Tech\'',[workspace,text])).rows[0];
     assert.ok(binding);
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM control.query_runs WHERE binding_id=$1 AND (state IN ('PENDING','RUNNING') OR state='SUCCEEDED' AND clock_settled_at IS NULL)",[binding.binding_id])).rows[0].n,0,'Do not take over an existing run');
-    const params=QueryRunParamsSchema.parse({text,country:'BR',language:'pt',category:'Tech',window:'THIS_YEAR',sort:'popularity',max_pages:1,continue_min_new:3,min_subscribers:mode==='full'?1000:100000000,policy_version:'query-clock-2-about'});
+    const params=QueryRunParamsSchema.parse({text,country:'BR',language:'pt',category:'Tech',window:'THIS_YEAR',sort:'popularity',max_pages:mode==='full'?1:2,continue_min_new:3,min_subscribers:mode==='full'?1000:100000000,policy_version:'query-clock-2-about'});
     const run_id=randomUUID(),lease=new Date(Date.now()+5*60000).toISOString();
     const claim:QueryRunClaim={run:{run_id,binding_id:binding.binding_id,attempt:1,lease_expires_at:lease,params},idle_reason:null,retry_after_ms:0};
     await pool.query(`INSERT INTO control.query_runs(run_id,workspace_id,binding_id,params,state,attempt,worker_id,lease_expires_at,started_at) VALUES($1,$2,$3,$4,'RUNNING',1,$5,$6,clock_timestamp())`,[run_id,workspace,binding.binding_id,params,worker,lease]);
@@ -56,7 +56,7 @@ try {
   const objects=new MinioStore(`http://${kube(['-n','storage','get','svc','minio','-o','jsonpath={.spec.clusterIP}'])}:9000`,'crawl-raw',Buffer.from(credentials.access_key,'base64').toString(),Buffer.from(credentials.secret_key,'base64').toString());
   for(const page of pages) {
     const ref=page.raw_reference,bytes=await objects.get(ref.key,AbortSignal.timeout(20000));assert.ok(bytes);assert.equal(bytes.length,ref.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),ref.sha256);
-    const raw=JSON.parse(gunzipSync(bytes).toString());assert.ok(raw.responses.some((r:any)=>r.endpoint.startsWith('https://www.youtube.com/results')));
+    const raw=JSON.parse(gunzipSync(bytes).toString());assert.ok(raw.responses.some((r:any)=>/^https:\/\/www.youtube.com\/(results|youtubei\/v1\/search)/.test(r.endpoint)));
   }
   let candidates=(await pool.query('SELECT channel_id,state,version FROM control.channel_candidates WHERE first_run_id=$1 ORDER BY channel_id',[state.run_id])).rows;
   assert.ok(candidates.length,'Search should discover at least one new channel');

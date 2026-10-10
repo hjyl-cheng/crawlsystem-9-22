@@ -9,7 +9,7 @@ const params=QueryRunParamsSchema.parse({text:'música',country:'BR',language:'p
 const channel='UC1234567890123456789012';
 const renderer={videoRenderer:{videoId:'12345678901',ownerText:{runs:[{navigationEndpoint:{browseEndpoint:{browseId:channel}}}]}}};
 const initial={contents:{items:[renderer,{continuationItemRenderer:{continuationEndpoint:{continuationCommand:{token:'next'}}}}]}};
-const html=`<script>var ytInitialData = ${JSON.stringify(initial)};</script><script>ytcfg.set(${JSON.stringify({INNERTUBE_CONTEXT:{client:{hl:'pt',gl:'BR'}}})});</script>`;
+const html=`<script>var ytInitialData = ${JSON.stringify(initial)};</script><script>ytcfg.set(${JSON.stringify({INNERTUBE_API_KEY:'public-test-key',INNERTUBE_CLIENT_VERSION:'2.20261010.00.00',INNERTUBE_CONTEXT:{client:{hl:'pt',gl:'BR'}}})});</script>`;
 test('search follows the legacy HTML filters and lazy continuation, never executing page scripts',async()=>{
   const calls:Request[]=[];
   const fetcher=(async(input,init)=>{const req=new Request(input,init);calls.push(req);return calls.length===1?new Response(html):Response.json({onResponseReceivedCommands:[{appendContinuationItemsAction:{continuationItems:[]}}]});}) as typeof fetch;
@@ -19,12 +19,21 @@ test('search follows the legacy HTML filters and lazy continuation, never execut
   const url=new URL(calls[0]!.url);assert.equal(url.pathname,'/results');assert.equal(url.searchParams.get('sp'),'CAMSBAgFEAE=');
   assert.deepEqual((await pages.next()).value,{items:[],more:false});
   assert.equal((await calls[1]!.json()).continuation,'next');
+  assert.equal(new URL(calls[1]!.url).searchParams.get('key'),'public-test-key');
+  assert.equal(calls[1]!.headers.get('x-youtube-client-version'),'2.20261010.00.00');
   assert.deepEqual(embeddedObject('ytInitialData = {"text":"brace } and \\\"","nested":{}}',['ytInitialData =']),{text:'brace } and "',nested:{}});
 });
 test('a malformed search response fails instead of reporting an empty successful search',async()=>{
   const pages=webSearchPages((async()=>new Response('<html>Sign in</html>')) as typeof fetch,params);
   await assert.rejects(()=>pages.next(),/missing/);
   assert.throws(()=>searchNavigation({contents:{videoRenderer:{videoId:'12345678901'}}}),/no readable channel/);
+});
+test('normal HTML ignores hidden challenge translations and bootstrap calls before JSON configuration',async()=>{
+  const realShape=`<script>ytcfg.set(window.boot);</script><script>var messages={text:"before you continue to YouTube"};</script>${html}`;
+  const pages=webSearchPages((async()=>new Response(realShape)) as typeof fetch,params);
+  assert.equal((await pages.next()).value.items.length,1);
+  const blocked=webSearchPages((async()=>new Response('<form id="captcha-form">Our systems have detected unusual traffic</form>')) as typeof fetch,params);
+  await assert.rejects(()=>blocked.next(),/challenged/);
 });
 test('R4 run archives each raw page and completes identities without a Data API client or permit',async()=>{
   const pages:unknown[]=[],complete:unknown[]=[],objects:Uint8Array[]=[];
