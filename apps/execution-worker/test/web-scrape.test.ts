@@ -44,3 +44,11 @@ test('uploads freeze latest IDs and incremental discovery stops at any frozen an
   const found = await uploads(yt as never, channel, 100, [videos[4]!.id]);
   assert.equal(found.ids.length, 4); assert.equal(found.matched_anchor_id, videos[4]!.id);
 });
+test('real LockupView and ShortsLockupView uploads freeze valid IDs and match anchors', async () => {
+  const videos = [{ type: 'LockupView', content_id: 'abcdefghijk' },
+    { type: 'ShortsLockupView', entity_id: 'shorts-shelf-item-12345678901', on_tap_endpoint: { payload: { videoId: '12345678901' } } }];
+  const yt = { async getPlaylist() { return { videos, has_continuation: false }; } };
+  assert.deepEqual((await uploads(yt as never, channel, 2)).ids, ['abcdefghijk', '12345678901']);
+  const incremental = await uploads(yt as never, channel, 100, ['12345678901']);
+  assert.deepEqual(incremental.ids, ['abcdefghijk']); assert.equal(incremental.matched_anchor_id, '12345678901');
+});

@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { issueToken, loadSigningKey } from '@crawlsystem/http/auth';
-const token = await issueToken({ subject: 'r2-browser-reader', workspace_id: 'm1-main', role: 'reader' }, loadSigningKey(), 600);
+const token = await issueToken({ subject: 'r2-browser-acceptance', workspace_id: 'm1-main', role: 'operator' }, loadSigningKey(), 600);
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1586, height: 992 }, extraHTTPHeaders: { authorization: `Bearer ${token}` } });
@@ -20,7 +20,12 @@ try {
   await page.goto(`http://127.0.0.1:18103/plans/${id}`);
   await expect(page.getByRole('heading', { name: '采集任务详情', exact: true })).toBeVisible();
   await expect(page.getByText(/identity=browser:/).first()).toBeVisible();
+  await expect(page.getByText(/YouTube 真实采集 · 最近 2 个视频 ·/)).toBeVisible();
   await page.screenshot({ path: '.runtime/r2/plan.png', fullPage: true });
+  await page.goto('http://127.0.0.1:18103/plans/new');
+  await expect(page.getByRole('heading', { name: '创建计划', exact: true })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: '最近视频数' })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: '发布时间窗口' })).toHaveCount(0);
   if (errors.length) throw new Error('Browser runtime errors');
-  console.log(JSON.stringify({ result: 'PASSED', pages: ['workers','proxies','plan-detail'], errors: errors.length }));
+  console.log(JSON.stringify({ result: 'PASSED', pages: ['workers','proxies','plan-detail','create-plan'], errors: errors.length }));
 } finally { await browser.close(); }

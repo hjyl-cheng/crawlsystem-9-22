@@ -73,7 +73,11 @@ export async function uploads(yt: Innertube, channelId: string, limit: number, a
     for (;;) {
       pages++;
       for (const video of page.videos) {
-        const id = (video as unknown as Node).id;
+        // Uploads now include LockupView and ShortsLockupView, not just PlaylistVideo.
+        const node = video as unknown as Node;
+        const id = node.video_id ?? node.id ?? node.content_id ?? node.endpoint?.payload?.videoId
+          ?? node.on_tap_endpoint?.payload?.videoId ?? node.on_tap_endpoint?.payload?.reelWatchEndpoint?.videoId
+          ?? (typeof node.entity_id === 'string' ? node.entity_id.replace(/^shorts-shelf-item-/, '') : undefined);
         if (typeof id !== 'string' || !/^[\w-]{11}$/.test(id)) throw new ScrapeError('parse', 'Upload identity missing');
         scanned++;
         if (known.has(id)) return { ids, pages, scanned, matched_anchor_id: id, stop_reason: 'anchor_matched', exhausted: false };

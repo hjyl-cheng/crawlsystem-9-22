@@ -1,6 +1,6 @@
 # Object storage for collected data (plan R1, 2026-10-09). Single-node MinIO on a1, same
 # release as the legacy system. Buckets and their lifecycle (automatic expiry):
-#   crawl-raw       raw responses, one object per request       14 days, quota 60 GiB
+#   crawl-raw       raw responses, one object per collection unit 14 days, quota 60 GiB
 #   crawl-parsed    parsed results incl. comment bodies          90 days, quota 15 GiB
 #   crawl-evidence  raw responses kept for failure analysis      90 days, quota  5 GiB
 # The quotas add up to the 80 GiB local volume, so a full bucket fails writes instead of
