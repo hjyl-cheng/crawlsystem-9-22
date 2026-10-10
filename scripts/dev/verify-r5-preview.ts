@@ -19,7 +19,7 @@ const token=await issueToken({subject:'r5-acceptance',workspace_id:workspace,rol
 async function api(path:string,body?:unknown,auth=token) {
  const r=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{authorization:`Bearer ${auth}`,...(body===undefined?{}:{'content-type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(35_000)});assert.ok(r.ok,`Acceptance HTTP ${r.status}`);return r.json();
 }
-async function until<T>(work:()=>Promise<T|undefined>,ms=120000):Promise<T> {const end=Date.now()+ms;for(;;){const value=await work();if(value!==undefined)return value;if(Date.now()>end)throw new Error('Acceptance condition not met');await delay(1000);}}
+async function until<T>(work:()=>Promise<T|undefined>,ms=120000):Promise<T> {const end=Date.now()+ms;for(;;){try{const value=await work();if(value!==undefined)return value;}catch(error){if(!['ECONNREFUSED','ECONNRESET','ETIMEDOUT'].includes((error as {code?:string}).code??''))throw error;}if(Date.now()>end)throw new Error('Acceptance condition not met');await delay(1000);}}
 const file='.runtime/r5/recovery-state.json';let state:any=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):{};
 const save=()=>writeFileSync(file,JSON.stringify(state,null,2),{mode:0o600});
 const publish=(ns:string,deployment:string,topic:string,messages:unknown[])=>kube(['-n',ns,'exec','-i',`deployment/${deployment}`,'--','node','/app/ops-tool.mjs'],JSON.stringify({topic,messages}));
@@ -43,12 +43,10 @@ try {
     await store.put(raw.key,bytes,AbortSignal.timeout(30000),true);state.raw=raw;save();
    }
    if(!state.failure_id) {
-    const sink=await issueToken({subject:'r5-acceptance-sink',workspace_id:workspace,role:'sink'},loadSigningKey(),600);
-    const manifest={schema_version:'crawl.step.v1',owner,channel_id:p.channel_id,step:'ABOUT',units:[state.raw],completed_at:new Date().toISOString(),bucket:'crawl-raw',key:state.raw.key.replace('channel.json.gz','_manifest.json.gz')};
+    const manifest=state.manifest??{schema_version:'crawl.step.v1',owner,channel_id:p.channel_id,step:'ABOUT',units:[state.raw],completed_at:new Date().toISOString(),bucket:'crawl-raw',key:state.raw.key.replace('channel.json.gz','_manifest.json.gz')};state.manifest=manifest;save();
     const data=JSON.parse(kube(['-n','crawler','get','secret','minio-crawl-worker','-o','json'])).data,decode=(key:string)=>Buffer.from(data[key],'base64').toString();
     const storageIp=kube(['-n','storage','get','svc','minio','-o','jsonpath={.spec.clusterIP}']),store=new MinioStore(`http://${storageIp}:9000`,'crawl-raw',decode('access_key'),decode('secret_key'));
     await store.put(manifest.key,gzipSync(JSON.stringify(manifest)),AbortSignal.timeout(30000),true);
-    await api('/v1/pipeline/manifests',manifest,sink);
     const envelope=failureEnvelope('PARSER','crawl.raw',0,'5000000001','INVALID_FACT',3,JSON.stringify(state.raw));envelope.report.report_id='r5-recovery:'+p.plan_id;
     publish('crawler','raw-parser','dlq.parse',[envelope]);
     const row=await until(async()=>{const r=(await pool.query("SELECT failure_id FROM control.failures WHERE workspace_id=$1 AND plan_id=$2 AND code='INVALID_FACT' AND evidence_state='SAVED'",[workspace,p.plan_id])).rows[0];return r?.failure_id;});state.failure_id=row;save();
@@ -57,7 +55,12 @@ try {
     const f=FailureSchema.parse(await api(`/v1/failures/${state.failure_id}`));assert.equal(f.evidence_state,'SAVED');
     if(!state.retry_command){assert.equal(f.state,'OPEN');assert.equal(f.retryable,true);state.retry_command={command_id:randomUUID(),expected_version:f.version,action:'retry',reason:'R5 验收：重放保留的有效原始对象'};save();}
     const a=await api(`/v1/failures/${f.failure_id}/commands`,state.retry_command),b=await api(`/v1/failures/${f.failure_id}/commands`,state.retry_command);assert.deepEqual(a,b);
-    await until(async()=>{const f=FailureSchema.parse(await api(`/v1/failures/${state.failure_id}`)),d=PlanDetailSchema.parse(await api(`/v1/plans/${state.plan_id}`));return f.state==='RESOLVED'&&d.plan.status==='COMPLETED'?true:undefined;});
+    await until(async()=>FailureSchema.parse(await api(`/v1/failures/${state.failure_id}`)).state==='RESOLVED'?true:undefined);
+    // Register completion only after the requested raw replay was ingested: otherwise
+    // the normal missing-notification reconciler would recover it before the operator retry.
+    const sink=await issueToken({subject:'r5-acceptance-sink',workspace_id:workspace,role:'sink'},loadSigningKey(),600);
+    await api('/v1/pipeline/manifests',state.manifest,sink);
+    await until(async()=>PlanDetailSchema.parse(await api(`/v1/plans/${state.plan_id}`)).plan.status==='COMPLETED'?true:undefined);
     const e=await api(`/v1/failures/${f.failure_id}/evidence`);assert.equal(e.available,true);assert.equal(e.sha256,state.raw.sha256);state.retry_complete=true;save();
    }
    if(!state.ignored_failure_id) {

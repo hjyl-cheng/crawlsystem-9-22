@@ -66,6 +66,12 @@ test('workload token is exchanged once, shared, and renewed at half-life', async
   now = 299_000; assert.equal(await token(), a); assert.equal(server.calls.length, 1);
   now = 300_000; assert.notEqual(await token(), a); assert.equal(server.calls.length, 2);
 });
+test('analytics exchanges its own workload token and uses it for telemetry requests',async()=>{
+ const pod='crawl-analytics-test',credential='analytics-token-padding-padding';
+ const token=workloadTokenSource({controlUrl:'http://localhost:1',workerId:pod,identityToken:async()=>'sa',fetch:(async()=>Response.json({token:credential,subject:pod,workspace_id:'w',role:'analytics',server_id:'s3',expires_in:600})) as typeof fetch});
+ const api=new ExecutionApi({controlUrl:'http://localhost:1',ingestUrl:'http://localhost:1',token,fetch:(async(_url,init)=>{assert.equal((init!.headers as Record<string,string>).authorization,`Bearer ${credential}`);return Response.json([]);}) as typeof fetch});
+ assert.deepEqual(await api.telemetryOutbox(),[]);
+});
 test('a Control outage keeps a still-valid token, then fails once it expires', async () => {
   let now = 0; const server = tokenServer();
   const token = workloadTokenSource({ controlUrl: 'http://localhost:1', workerId: 'worker-0', identityToken: async () => 'sa', fetch: server.fetcher, now: () => now });

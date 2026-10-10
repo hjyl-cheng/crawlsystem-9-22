@@ -13,9 +13,9 @@ function identity(result: ReviewedWorkload | undefined | Error, seen: string[] =
     reviewer: async (token, audience) => { seen.push(`${audience}:${token}`); if (result instanceof Error) throw result; return result; } });
 }
 const pod = { username: serviceAccount, pod: 'execution-worker-0', node: 'a2' };
-test('pipeline ServiceAccounts get distinct parser and sink tokens that satisfy the exchange contract',async()=>{
+test('pipeline ServiceAccounts get distinct parser, sink and analytics tokens that satisfy the exchange contract',async()=>{
   const {WorkloadTokenSchema}=await import('@crawlsystem/contracts');
-  const accounts={'system:serviceaccount:crawler:raw-parser':'parser','system:serviceaccount:ingest:pg-sink':'sink'} as const;
+  const accounts={'system:serviceaccount:crawler:raw-parser':'parser','system:serviceaccount:ingest:pg-sink':'sink','system:serviceaccount:analytics:crawl-analytics':'analytics'} as const;
   for(const [username,role] of Object.entries(accounts)) {
     const id=new WorkloadIdentity({serviceAccount,audience:'crawlsystem-control',workspaceId:'m1-test',signingKey:key,pipelineServiceAccounts:accounts,
       reviewer:async()=>({...pod,username,pod:`${role}-pod`})});

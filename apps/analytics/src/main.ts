@@ -71,6 +71,6 @@ try {
       }
       if(Date.now()>=nextMaintenance) {await api.telemetryMaintenance();nextMaintenance=Date.now()+3_600_000;}
       if(!events.length)await delay(2000);
-    }catch{console.error(JSON.stringify({service:'crawl-sink-ch',code:'DEPENDENCY_UNAVAILABLE',durable_queue_retained:true}));await delay(3000);}
+    }catch(error){console.error(JSON.stringify({service:'crawl-sink-ch',code:error instanceof ExecutionApiError?error.code:'DEPENDENCY_UNAVAILABLE',durable_queue_retained:true}));await delay(3000);}
   }
 }finally{ready=false;await consumer.disconnect();await producer.disconnect();server.close();}
