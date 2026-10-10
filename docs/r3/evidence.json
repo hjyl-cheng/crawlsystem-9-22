@@ -1,0 +1,347 @@
+{
+  "full": {
+    "result": "PASSED",
+    "mode": "full",
+    "plan_id": "92f14105-052b-4703-9f62-834f8ef5a604",
+    "verified_at": "2026-10-10T04:02:20.028Z",
+    "pipeline": "r3.v1",
+    "targets": [
+      "IBVmenOroPs",
+      "fMgcm9aXZyY"
+    ],
+    "steps": [
+      {
+        "step": "ABOUT",
+        "expected": 1,
+        "applied": 1,
+        "state": "APPLIED",
+        "last_reconciled_at": "2026-10-10T04:00:34.485Z"
+      },
+      {
+        "step": "TARGETS",
+        "expected": 1,
+        "applied": 1,
+        "state": "APPLIED",
+        "last_reconciled_at": null
+      },
+      {
+        "step": "VIDEO-0",
+        "expected": 2,
+        "applied": 2,
+        "state": "APPLIED",
+        "last_reconciled_at": null
+      },
+      {
+        "step": "AGENT",
+        "expected": 1,
+        "applied": 1,
+        "state": "APPLIED",
+        "last_reconciled_at": null
+      }
+    ],
+    "durable_units": 5,
+    "verified_manifests": 4,
+    "comment_objects": 2,
+    "comments": [
+      {
+        "video_id": "IBVmenOroPs",
+        "state": "AVAILABLE",
+        "returned_count": 0,
+        "total_count": null
+      },
+      {
+        "video_id": "fMgcm9aXZyY",
+        "state": "AVAILABLE",
+        "returned_count": 0,
+        "total_count": null
+      }
+    ],
+    "automatic_search": false,
+    "automatic_admission": false,
+    "automatic_updates": false
+  },
+  "update": {
+    "result": "PASSED",
+    "mode": "update",
+    "plan_id": "1186c14c-0858-461d-a1a8-8902bbcba2f2",
+    "verified_at": "2026-10-10T04:03:12.891Z",
+    "pipeline": "r3.v1",
+    "targets": [],
+    "steps": [
+      {
+        "step": "TARGETS",
+        "expected": 1,
+        "applied": 1,
+        "state": "APPLIED",
+        "last_reconciled_at": null
+      }
+    ],
+    "durable_units": 1,
+    "verified_manifests": 1,
+    "comment_objects": 0,
+    "comments": [],
+    "automatic_search": false,
+    "automatic_admission": false,
+    "automatic_updates": false
+  },
+  "browser": {
+    "result": "PASSED",
+    "pages": [
+      "plan-detail",
+      "channel-detail"
+    ],
+    "runtime_errors": 0,
+    "comments_requests_before_expand": 0,
+    "comments_requests_after_reopen": 1,
+    "default_selects_visible": true
+  },
+  "preservation": {
+    "result": "PASSED",
+    "videos": {
+      "videos": 9690,
+      "identity_hash": "53cf4db6904878c7de1038b22d2de72a",
+      "pg_comment_pages": 0,
+      "referenced_pages": 9618,
+      "comments": 97181
+    },
+    "tables": {
+      "channel_candidates": 3327,
+      "channel_clocks": 2640,
+      "channel_feature_state": 793,
+      "channel_imports": 473,
+      "channels": 2285,
+      "commands": 349,
+      "console_login_limits": 2,
+      "console_sessions": 204,
+      "data_api_budget": 213,
+      "data_api_permits": 2013,
+      "domains": 6524,
+      "events": 3259,
+      "feature_reference_distributions": 91,
+      "intents": 3849,
+      "obligations": 1697,
+      "plan_api_reservations": 202,
+      "plan_items": 12573,
+      "plan_video_samples": 12,
+      "plan_video_targets": 906,
+      "plans": 3333,
+      "proxies": 13090,
+      "proxy_daily": 184,
+      "proxy_observations": 803,
+      "proxy_sources": 112,
+      "query_audit": 31,
+      "query_bindings": 39904,
+      "query_run_channels": 3435,
+      "query_runs": 160,
+      "query_sources": 39404,
+      "query_terms": 38957,
+      "receipts": 5411,
+      "update_scheduler_state": 104,
+      "workers": 48
+    },
+    "observed_at": "2026-10-10T03:58:16.799Z",
+    "backup": ".runtime/r3/pre-r3.pg.dump"
+  },
+  "legacy": {
+    "result": "PASSED",
+    "migrated_comments_api": {
+      "channel_id": "UC--FL6OwLFWGIZfLfazY4yA",
+      "video_id": "-Rm02W183YQ",
+      "state": "AVAILABLE",
+      "returned_count": 20
+    },
+    "legacy_plan": {
+      "plan_id": "74381dc1-efb1-4ba6-bc09-eb253c37bd7d",
+      "status": "COMPLETED",
+      "receipts": 4
+    }
+  },
+  "order": {
+    "result": "PASSED",
+    "plan_id": "92f14105-052b-4703-9f62-834f8ef5a604",
+    "data_domains_completed_before_agent_output": true,
+    "agent_completed_after_durable_receipt": true,
+    "agent_bound_hash_matches": true,
+    "pg_snapshot_has_no_comment_bodies": true,
+    "domains": [
+      {
+        "domain": "ABOUT",
+        "completed_at": "2026-10-10T04:00:33.188Z"
+      },
+      {
+        "domain": "AGENT",
+        "completed_at": "2026-10-10T04:00:43.056Z"
+      },
+      {
+        "domain": "VIDEO",
+        "completed_at": "2026-10-10T04:00:42.547Z"
+      }
+    ],
+    "agent_output_at": "2026-10-10T04:00:42.905Z",
+    "agent_persisted_at": "2026-10-10T04:00:43.029Z"
+  },
+  "identity": {
+    "result": "PASSED",
+    "encrypted_identity_files": 18,
+    "hashes_unchanged_before_real_collection": true
+  },
+  "backup": {
+    "result": "PASSED",
+    "format": "PG custom dump",
+    "bytes": 29833987,
+    "toc_entries": 187,
+    "sha256": "7083829824ef3751bfad8e97c2bcee311a4a4f2dd5f22d1b172b008bcd8e15cc",
+    "restore_executed": false
+  },
+  "deployment": {
+    "result": "PASSED",
+    "resources": {
+      "control-api-preview": {
+        "desired": 2,
+        "ready": 2,
+        "images": [
+          "docker.io/crawlsystem/control-api:main-6e6093318a0f-04cfc70c"
+        ],
+        "QUERY_RUNS_ENABLED": "false",
+        "QUERY_AUTO_ADMIT": "false",
+        "PIPELINE_ENABLED": "true"
+      },
+      "intent-dispatcher": {
+        "desired": 1,
+        "ready": 1,
+        "images": [
+          "docker.io/crawlsystem/control-api:main-6e6093318a0f-04cfc70c"
+        ],
+        "UPDATE_SCHEDULER_ENABLED": "false",
+        "QUERY_AUTO_ADMIT": "false",
+        "PIPELINE_ENABLED": "true"
+      },
+      "raw-parser": {
+        "desired": 1,
+        "ready": 1,
+        "images": [
+          "docker.io/crawlsystem/control-api:main-6e6093318a0f-04cfc70c"
+        ]
+      },
+      "pg-sink": {
+        "desired": 1,
+        "ready": 1,
+        "images": [
+          "docker.io/crawlsystem/control-api:main-6e6093318a0f-04cfc70c"
+        ]
+      },
+      "ingest-preview": {
+        "desired": 0,
+        "ready": 0,
+        "images": [
+          "docker.io/crawlsystem/control-api:main-6e6093318a0f-04cfc70c"
+        ]
+      },
+      "execution-worker": {
+        "desired": 1,
+        "ready": 1,
+        "images": [
+          "docker.io/crawlsystem/execution-worker:main-6e6093318a0f-364a85a6",
+          "docker.io/crawlsystem/fingerprint-gateway:1ff2fbba98b3c83f"
+        ],
+        "QUERY_RUNNER_SLOTS": "0"
+      },
+      "proxy-manager": {
+        "desired": 6,
+        "ready": 6,
+        "images": [
+          "docker.io/crawlsystem/control-api:main-6e6093318a0f-04cfc70c"
+        ]
+      }
+    },
+    "public_url": "https://controversy-roughly-kiss-genealogy.trycloudflare.com/"
+  },
+  "independent_replay": {
+    "result": "PASSED",
+    "source_plan": "74381dc1-efb1-4ba6-bc09-eb253c37bd7d",
+    "method": "Independent parser replays captured HTTP responses with the compatibility projection replaced; no new YouTube request",
+    "checks": [
+      {
+        "step": "ABOUT",
+        "unit_id": "channel",
+        "raw_sha256": "2f3de95cc5bd56bfaedaab20dbb4d154b73bf16cf44af4d88f77291ffec9143b",
+        "responses": 2,
+        "result": "PASSED"
+      },
+      {
+        "step": "TARGETS",
+        "unit_id": "uploads",
+        "raw_sha256": "ccc358e2671ebfbe33494fd16b4de4ff9fac90f8c2941ca3cec23b6dc41392cb",
+        "responses": 1,
+        "result": "PASSED"
+      },
+      {
+        "step": "VIDEO-0",
+        "unit_id": "IBVmenOroPs",
+        "raw_sha256": "09c67bfc1dbb8470b5433fc3dba88fd2411f2651be5c46bdf3831a127fb2a6ee",
+        "responses": 7,
+        "result": "PASSED"
+      },
+      {
+        "step": "VIDEO-0",
+        "unit_id": "fMgcm9aXZyY",
+        "raw_sha256": "53b3257e164bf743256beb1af7ee48bf4e55b38dadae402df544208f6030ee28",
+        "responses": 3,
+        "result": "PASSED"
+      }
+    ]
+  },
+  "deployed_database_roles": {
+    "result": "PASSED",
+    "schema_version": 21,
+    "control_can_write_facts": false,
+    "sink_can_write_facts": true,
+    "sink_can_read_control": false,
+    "sink_can_write_control": false,
+    "sink_can_fence_plan": true
+  },
+  "schema_version": 21,
+  "backend_revision": "6e6093318a0f324e9a6a59d00adfe375e3c28fc3",
+  "console_revision": "3607b20",
+  "checks": {
+    "unit": {
+      "passed": 151,
+      "total": 151
+    },
+    "parser_and_workload_auth": {
+      "passed": 14,
+      "total": 14
+    },
+    "pipeline_integration": {
+      "passed": 10,
+      "total": 10
+    },
+    "database_integration": {
+      "passed": 92,
+      "total": 92
+    },
+    "temporal": {
+      "passed": 8,
+      "total": 8
+    },
+    "browser_regression": {
+      "initial_passed": 38,
+      "initial_total": 40,
+      "corrected_obsolete_assertions_passed": 2
+    },
+    "completed_and_waiting_ui": {
+      "passed": 2,
+      "total": 2
+    },
+    "typecheck": "PASSED",
+    "console_build": "PASSED",
+    "execution_build": "PASSED",
+    "deployment_image_build": "PASSED"
+  },
+  "limits": [
+    "One real channel, two videos; continuous operation remains R6",
+    "Both sampled Shorts returned an empty first comment page with unresolved total count",
+    "Real update found zero new videos and selected zero recent samples; nonempty sampling and count provenance covered by integration tests",
+    "No downstream publication; R4-R6 remain pending"
+  ]
+}
