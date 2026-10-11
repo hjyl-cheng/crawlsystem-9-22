@@ -1,0 +1,106 @@
+{
+  "result": "PASSED",
+  "at": "2026-10-11T05:51:30.229Z",
+  "deployment": {
+    "revision": "7aa2555a1d2669f6dda00c7317173f447a213ac8",
+    "control_image": "docker.io/crawlsystem/control-api:main-7aa2555a1d26-60ee22b0",
+    "deployed_at": "2026-10-11T05:48:37.983Z",
+    "workload": "control/control-api-preview",
+    "ready": 2,
+    "desired": 2,
+    "restarts": 0
+  },
+  "schema": 35,
+  "configuration_version": 3,
+  "proxy_policies_preserved": true,
+  "source_backup": {
+    "bytes": 135602738,
+    "sha256": "28dce4a9d599597d4f7da670832a57e65a6837d9e74146bfc721c57538dffc90"
+  },
+  "validation": {
+    "unit_tests": 173,
+    "proxy_integration_tests": 19,
+    "proxy_browser_tests": 7,
+    "typecheck": "PASSED",
+    "console_build": "PASSED",
+    "full_500_proxy_sync_ms": 180
+  },
+  "history": {
+    "recording_since": "2026-10-11T05:46:28.805Z",
+    "timezone": "Asia/Shanghai",
+    "day_points": 7,
+    "hour_points": 24,
+    "missing_history_not_fabricated": true
+  },
+  "live": {
+    "initial_samples": 348,
+    "later_samples": 417,
+    "summary": {
+      "healthy": 269,
+      "degraded": 29,
+      "trial": 61,
+      "cooldown": 57,
+      "failed": 1,
+      "samples": 417,
+      "available_samples": 298,
+      "requests": 117,
+      "failures": 3,
+      "available_percent": 71.46,
+      "request_success_percent": 97.44
+    },
+    "filtered_summary": {
+      "samples": 96,
+      "available_samples": 32,
+      "requests": 3,
+      "failures": 2,
+      "available_percent": 33.33,
+      "request_success_percent": 33.33
+    },
+    "workspace_isolation": true,
+    "reader_read_status": 200,
+    "machine_read_status": 403,
+    "error_recovered": true,
+    "empty_page": true,
+    "page_errors": [],
+    "unexpected_api_failures": [],
+    "layouts": [
+      { "width": 1920, "height": 937, "horizontal_overflow": 0 },
+      { "width": 1586, "height": 992, "horizontal_overflow": 0 },
+      { "width": 390, "height": 844, "horizontal_overflow": 0, "trend_top_less_than_px": 400 }
+    ]
+  },
+  "runtime": {
+    "before": {
+      "at": "2026-10-11T05:45:46.354Z",
+      "full_completed": 1569,
+      "full_failed": 11,
+      "videos": 44803,
+      "delivered": 1637,
+      "pending": 0,
+      "failed": 0,
+      "legacy_tables": 64
+    },
+    "after": {
+      "at": "2026-10-11T05:49:57.275Z",
+      "full_completed": 1574,
+      "full_failed": 11,
+      "videos": 44943,
+      "delivered": 1642,
+      "pending": 0,
+      "failed": 0,
+      "legacy_tables": 64
+    },
+    "automatic": { "search": true, "admission": true, "updates": true, "daily_update_limit": 100 },
+    "other_images_preserved": true,
+    "other_pods_preserved": true,
+    "cdc": { "state": "RUNNING", "tasks": ["RUNNING"] },
+    "replication_slot_active": true,
+    "pg_comment_bodies": 0
+  },
+  "public_entry": {
+    "url": "https://controversy-roughly-kiss-genealogy.trycloudflare.com/proxies",
+    "status": 200,
+    "cloudflare_pid": 1882,
+    "pid_preserved": true
+  }
+}
