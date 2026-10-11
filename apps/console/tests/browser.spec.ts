@@ -86,6 +86,8 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (path === '/v1/candidates' && method === 'GET') return json({ items: state.candidates, next_cursor: null });
     if (path.startsWith('/v1/candidates/') && method === 'POST') { state.candidateRequests.push(route.request().postDataJSON()); return json(state.candidates[0] ?? candidateFixture()); }
     if (path === '/v1/queries/summary') return json(querySummaryFixture(state.queryBindings));
+    if(path==='/v1/queries/collection')return json({observed_at:new Date().toISOString(),limits:defaultSettings().query_collection,created_today:3,woken_today:1,auto_bindings:12,candidates:40,waiting_support:28,waiting_promotion:0,candidate_limit:20000,scanned_channels:10,skipped_channels:2,last_scan_at:new Date().toISOString(),limited:null});
+    if(/^\/v1\/queries\/[^/]+\/sources$/.test(path))return json({items:[{type:'CHANNEL_ABOUT',ref:'collected:UCabcdefghijklmnopqrstuv:about',created_at:new Date().toISOString(),channel_id:'UCabcdefghijklmnopqrstuv',video_id:null},{type:'VIDEO_TITLE',ref:'collected:UCbcdefghijklmnopqrstuvw:abcdefghijk',created_at:new Date().toISOString(),channel_id:'UCbcdefghijklmnopqrstuvw',video_id:'abcdefghijk'}],next_cursor:null});
     if (path === '/v1/queries' && method === 'GET') return json({ items: state.queryBindings, next_cursor: null });
     if (path.startsWith('/v1/queries') && method === 'POST') { state.queryRequests.push(route.request().postDataJSON()); return json(state.queryBindings[0] ?? queryBindingFixture()); }
     if (path === '/v1/agent/summary') return json(agentSummaryFixture(state.agentTasks));
@@ -649,9 +651,20 @@ test('Worker commands await acknowledgement, preserve draining activity gaps and
  await page.getByRole('button',{name:'恢复接单',exact:true}).click();await page.getByLabel('操作原因').fill('恢复页面验收');await page.getByRole('button',{name:'确认恢复接单',exact:true}).click();await expect(page.locator('.worker-detail')).toContainText('等待 Worker 确认');
  state.conflict=true;await page.getByRole('button',{name:'暂停接单',exact:true}).click();await page.getByLabel('操作原因').fill('验证冲突提示');await page.getByRole('button',{name:'确认暂停接单',exact:true}).click();await expect(page.locator('.worker-detail [role=status]')).toBeVisible();
 });
+test('automatic query collection shows bounded growth, source evidence and recovery on mobile',async({page})=>{
+  const state=await mock(page,undefined,'reader');state.queryBindings=[queryBindingFixture()];await login(page,'/discover/queries');
+  const panel=page.locator('.query-collection');await expect(panel).toContainText('至少 2 个不同频道支持');await expect(panel).toContainText('合计上限 50');
+  const b=state.queryBindings[0]!;await page.getByRole('button',{name:`查看 ${b.text} 的来源`,exact:true}).click();
+  await expect(page.getByRole('heading',{name:'搜索词来源',exact:true})).toBeVisible();await expect(page.getByRole('link',{name:'查看来源视频',exact:true})).toHaveAttribute('href','https://www.youtube.com/watch?v=abcdefghijk');
+  await page.keyboard.press('Escape');await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
+  await expect(page.getByRole('button',{name:'添加搜索词',exact:true})).toHaveCount(0);
+  await page.route('**/api/v1/queries/collection',route=>route.fulfill({status:503,json:{error:{code:'UNAVAILABLE',message:'读取失败',retryable:true,correlation_id:'test'}}}));
+  await panel.getByRole('button',{name:'刷新收集状态',exact:true}).click();await expect(panel.getByRole('alert')).toBeVisible();
+  await page.unroute('**/api/v1/queries/collection');await panel.getByRole('button',{name:'刷新收集状态',exact:true}).click();await expect(panel.getByRole('alert')).toHaveCount(0);
+});
 test('configuration reads real defaults, validates risk, publishes history and loads a rollback', async ({ page }) => {
   const state=await mock(page); await login(page,'/config');
-  await expect(page.locator('.config-list tbody tr')).toHaveCount(24);
+  await expect(page.locator('.config-list tbody tr')).toHaveCount(28);
   await expect(page.getByLabel('配置值')).toHaveValue('true');
   await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
   await page.getByLabel('配置值').selectOption('false');await page.getByLabel('变更说明').fill('暂停更新验收');
@@ -675,7 +688,7 @@ test('configuration preserves edits after conflict and reuses identity after a l
 });
 test('configuration reader permissions, failure recovery and mobile layout',async({page})=>{
  const state=await mock(page,undefined,'reader');state.fail=true;await login(page,'/config');await expect(page.getByRole('alert')).toBeVisible();
- state.fail=false;await page.getByRole('button',{name:'刷新配置',exact:true}).click();await expect(page.locator('.config-list tbody tr')).toHaveCount(24);
+ state.fail=false;await page.getByRole('button',{name:'刷新配置',exact:true}).click();await expect(page.locator('.config-list tbody tr')).toHaveCount(28);
  await expect(page.getByLabel('配置值')).toBeDisabled();await expect(page.getByRole('button',{name:'发布配置',exact:true})).toBeDisabled();
  await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
  await page.getByRole('button',{name:'自动更新范围',exact:true}).click();await expect(page.getByLabel('视频与评论',{exact:true})).toBeChecked();

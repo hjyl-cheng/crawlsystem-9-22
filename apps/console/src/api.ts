@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {QueryCollectionSummarySchema,QuerySourcesSchema} from '../../../packages/contracts/src/query-collection.ts';
 import {ConsoleAuditPageSchema,ConsoleLoginSummarySchema} from '../../../packages/contracts/src/console-audit.ts';
 import {ProxyAvailabilitySchema} from '../../../packages/contracts/src/proxy-availability.ts';
 import {WorkerMetricsSchema,WorkerCommandSchema,type WorkerCommand} from '../../../packages/contracts/src/workers.ts';
@@ -114,6 +115,8 @@ export class ControlApi {
   importChannels = (body: ChannelImport, signal?: AbortSignal) => this.request(ApiRoutes.channelImport, ChannelImportResultSchema, signal, ChannelImportSchema.parse(body));
   channelImports = (signal?: AbortSignal) => this.request(ApiRoutes.channelImports, ChannelImportsSchema, signal);
   querySummary = (signal?: AbortSignal) => this.request(ApiRoutes.queriesSummary, QuerySummarySchema, signal);
+  queryCollection = (signal?:AbortSignal)=>this.request('/v1/queries/collection',QueryCollectionSummarySchema,signal);
+  querySources = (id:string,cursor='0',signal?:AbortSignal)=>this.request(`/v1/queries/${encodeURIComponent(id)}/sources?${new URLSearchParams({limit:'20',cursor})}`,QuerySourcesSchema,signal);
   queries = (cursor = '0', filter: { state?: string; category?: string; country?: string; search?: string } = {}, signal?: AbortSignal) =>
     this.request(`${ApiRoutes.queries}?${new URLSearchParams({ limit: '20', cursor, ...Object.fromEntries(Object.entries(filter).filter(([, v]) => v)) as Record<string, string> })}`, pageSchema(QueryBindingSchema), signal);
   createQuery = (body: CreateQuery, signal?: AbortSignal) => this.request(ApiRoutes.queries, QueryBindingSchema, signal, CreateQuerySchema.parse(body));

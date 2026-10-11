@@ -2,8 +2,15 @@ import {z} from 'zod';
 import {UpdateLimitsSchema,DiscoveryLimitsSchema} from './index.ts';
 import {ProxyPolicySchema} from './proxy-policy.ts';
 
+export const QueryCollectionLimitsSchema=z.strictObject({
+  enabled:z.boolean().default(true),daily_binding_limit:z.number().int().min(0).max(500).default(50),
+  max_auto_bindings:z.number().int().min(0).max(10000).default(5000),min_support_channels:z.number().int().min(2).max(5).default(2),
+});
+export type QueryCollectionLimits=z.infer<typeof QueryCollectionLimitsSchema>;
+
 export const RuntimeSettingsSchema=z.strictObject({
   update:UpdateLimitsSchema,discovery:DiscoveryLimitsSchema,proxy:ProxyPolicySchema,
+  query_collection:QueryCollectionLimitsSchema.default(()=>QueryCollectionLimitsSchema.parse({})),
   alerts:z.strictObject({archive_delay_seconds:z.number().int().min(60).max(86400).default(600),evidence_pending_count:z.number().int().min(0).max(100000).default(0)}),
 }).refine(v=>v.discovery.api_reserve<=v.update.api_daily_limit,'search reserve exceeds API daily limit');
 export type RuntimeSettings=z.infer<typeof RuntimeSettingsSchema>;
@@ -25,6 +32,10 @@ export const CONFIG_CATALOG=[
   ['discovery.backlog_limit','搜索积压暂停门槛','搜索与准入','number','medium','候选与导入积压达到此数量时暂停领取新搜索。'],
   ['discovery.auto_admit','合格候选自动准入','搜索与准入','boolean','high','将合格候选加入导入队列；人工审核始终可用。'],
   ['discovery.import_buffer','导入排队缓冲上限','搜索与准入','number','medium','自动准入保持的排队量，剩余合格频道留在候选列表。'],
+  ['query_collection.enabled','自动收集搜索词','搜索词收集','boolean','medium','从已完成采集的频道资料、标签和视频标题提取候选词。'],
+  ['query_collection.daily_binding_limit','每天新增或唤醒上限','搜索词收集','number','medium','UTC 每日新增和唤醒共用额度；搜索执行仍受搜索预算和积压门槛限制。'],
+  ['query_collection.max_auto_bindings','自动新增搜索词总量上限','搜索词收集','number','medium','达到上限后保留候选；人工添加和已迁入的词不计入。'],
+  ['query_collection.min_support_channels','最低支持频道数','搜索词收集','number','medium','同一国家、分类下至少由这些不同频道提供来源；重复采集不增加支持。'],
   ['proxy.cooldown_base_seconds','代理初次冷却秒数','代理规则','number','high','连续失败后冷却，随后指数增长。新失败使用新规则。'],
   ['proxy.cooldown_max_seconds','代理最长冷却秒数','代理规则','number','high','连续失败冷却的上限；已有冷却截止时间保持。'],
   ['proxy.blocked_cooldown_seconds','代理被封冷却秒数','代理规则','number','high','YouTube 拒绝出口时冷却，并重新通过内容探测。'],

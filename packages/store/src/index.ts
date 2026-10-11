@@ -30,6 +30,7 @@ import {defaultSettings,type RuntimeSettings} from '../../contracts/src/configur
 import {runtimeSettings,settingsSnapshot,publishSettings,settingsHistory,settingsConsumed} from './runtime-settings.ts';
 import {lockWorkerAdmission,queryAdmission,recordWorker,workerView,getWorker,commandWorker,routePlan,workerMetrics} from './workers.ts';
 import type {WorkerControl} from '../../contracts/src/workers.ts';
+import {collectQueries,collectionSummary,querySources} from './query-collection.ts';
 
 export interface PipelineOptions { enabled?: boolean; loadComments?: (ref: ObjectReference) => Promise<CommentPage | null>; }
 
@@ -163,6 +164,9 @@ export class Store {
     requireRole(principal, 'reader', 'operator');
     return querySummary(this.pool, principal.workspace_id, (await this.settings(this.pool,principal.workspace_id)).settings.discovery);
   }
+  async queryCollection(principal:Principal){requireRole(principal,'reader','operator');return collectionSummary(this.pool,principal.workspace_id,(await this.settings(this.pool,principal.workspace_id)).settings.query_collection);}
+  async querySources(principal:Principal,id:string,limit=100,offset=0){requireRole(principal,'reader','operator');return discovery(()=>querySources(this.pool,principal.workspace_id,id,limit,offset));}
+  async collectQueries(workspace:string){return this.tx(async c=>collectQueries(c,workspace,(await this.settings(c,workspace)).settings.query_collection));}
   /** Worker: the next due search under the discovery limits, or why there is none. */
   async claimQueryRun(principal: Principal): Promise<QueryRunClaim> {
     requireRole(principal, 'worker');

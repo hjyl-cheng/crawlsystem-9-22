@@ -185,6 +185,8 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     return store.agentTasks(request.principal,q.limit,q.offset,filter.state);
   });
   app.get(ApiRoutes.queriesSummary,async request=>store.querySummary(request.principal));
+  app.get('/v1/queries/collection',async request=>{z.strictObject({}).parse(request.query);return store.queryCollection(request.principal);});
+  app.get('/v1/queries/:id/sources',async request=>{z.strictObject({limit:z.coerce.number().int().min(1).max(100).optional(),cursor:z.string().regex(/^\d+$/).optional()}).parse(request.query);const q=pagination(request.query);return store.querySources(request.principal,z.object({id:z.uuid()}).parse(request.params).id,q.limit,q.offset);});
   app.get(ApiRoutes.queries,async request=>{
     const schema=z.object({state:QueryStateSchema.optional(),category:BusinessCategorySchema.optional(),country:z.string().regex(/^[A-Z]{2}$/).optional(),search:z.string().max(200).optional()});
     const q=pagination(request.query,schema.shape), filter=schema.parse(request.query);

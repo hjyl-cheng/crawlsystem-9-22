@@ -65,9 +65,14 @@ async function refreshClockReferences(){
   if(done)process.stdout.write(JSON.stringify({time:new Date().toISOString(),event:'clock_reference_refresh',...done})+'\n');
 }
 try {
-  let nextUpdateScan=0;
+  let nextUpdateScan=0,nextQueryCollection=0;
   while(!stopping) {
     if(alive)writeFileSync(alive,String(Date.now()));
+    if(Date.now()>=nextQueryCollection){
+      nextQueryCollection=Date.now()+30_000;
+      try {const collected=await store.collectQueries(required('M1_WORKSPACE_ID'));if(collected.scanned||collected.created||collected.woken)process.stdout.write(JSON.stringify({time:new Date().toISOString(),event:'query_collection',...collected})+'\n');}
+      catch {process.stderr.write('Query collection unavailable; search and collection scheduling continue\n');}
+    }
     try {
       await refreshSources();await refreshClockReferences();await checkProxyExits();
       if(Date.now()>=nextUpdateScan){

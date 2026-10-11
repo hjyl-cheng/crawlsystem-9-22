@@ -31,6 +31,18 @@ function Card({ title, subtitle, extra, className = '', children }: { title: str
   return <section className={`panel discover-card ${className}`}><div className="panel-heading"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{extra}</div>{children}</section>;
 }
 
+function QuerySources({binding,onClose}:{binding:QueryBinding;onClose:()=>void}){
+  const {api}=useAuth();const [cursor,setCursor]=useState('0');
+  const sources=useResource(`query-sources:${binding.binding_id}:${cursor}`,signal=>api.querySources(binding.binding_id,cursor,signal),false);
+  return <Modal open onOpenChange={open=>{if(!open)onClose();}} title="搜索词来源" description={`${binding.text} · ${binding.country} · ${categoryLabels[binding.category]}；重复采集同一频道只提供一份支持。`}>
+    <ResourceView resource={sources}>{data=><><div className="query-sources">{data.items.map(s=><article key={s.type+':'+s.ref}>
+      <b>{sourceLabels[s.type]}</b><small>{time(s.created_at)}</small>
+      {s.channel_id?<a href={`https://www.youtube.com/channel/${s.channel_id}`} target="_blank" rel="noreferrer">查看来源频道 {s.channel_id}</a>:<span>{s.ref}</span>}
+      {s.video_id&&<a href={`https://www.youtube.com/watch?v=${s.video_id}`} target="_blank" rel="noreferrer">查看来源视频</a>}
+    </article>)}</div><footer className="pager"><button className="button small" disabled={cursor==='0'} onClick={()=>setCursor(String(Math.max(0,Number(cursor)-20)))}>上一页</button><button className="button small" disabled={!data.next_cursor} onClick={()=>setCursor(data.next_cursor!)}>下一页</button></footer></>}</ResourceView>
+  </Modal>;
+}
+
 function AddQuery({ open, onOpenChange, onAdded }: { open: boolean; onOpenChange: (open: boolean) => void; onAdded: () => void }) {
   const { api } = useAuth();
   const [form, setForm] = useState({ text: '', country: 'BR', language: 'pt', category: 'Music' as BusinessCategory });
@@ -61,9 +73,11 @@ export default function Discover() {
   const [filter, setFilter] = useState<{ state?: QueryBinding['state']; category?: BusinessCategory; country?: string; search?: string }>({});
   const [cursor, setCursor] = useState('0'), [adding, setAdding] = useState(false), [busy, setBusy] = useState<string>(), [error, setError] = useState<ApiFailure>();
   const summary = useResource('query-summary', signal => api.querySummary(signal), true, 30_000);
+  const collection=useResource('query-collection',signal=>api.queryCollection(signal),true,30_000);
+  const [sourceBinding,setSourceBinding]=useState<QueryBinding>();
   const list = useResource(`queries:${cursor}:${JSON.stringify(filter)}`, signal => api.queries(cursor, filter, signal), true, 30_000);
   const s = summary.data;
-  const refresh = () => { summary.refresh(); list.refresh(); };
+  const refresh = () => { summary.refresh(); list.refresh(); collection.refresh(); };
   const set = (next: typeof filter) => { setFilter(next); setCursor('0'); };
   async function command(b: QueryBinding, body: Parameters<typeof api.queryCommand>[1]) {
     setBusy(b.binding_id); setError(undefined);
@@ -73,7 +87,7 @@ export default function Discover() {
   }
   const ask = (question: string) => { const reason = window.prompt(question)?.trim(); return reason || undefined; };
   const categoryMax = Math.max(1, ...(s?.by_category.map(c => c.bindings) ?? [1]));
-  return <div className="dashboard discover">
+  return <div className="dashboard discover query-discover">
     <header className="dashboard-heading">
       <div><h1>Query 发现</h1><p>搜索词按“国家 + 业务分类”管理，每个都有自己的搜索时钟：首次搜“今年”，之后每周或每月搜一次</p>
         {s && <span className={`data-freshness ${s.runs.enabled ? '' : 'failing'}`}><i/>{s.runs.enabled ? `自动搜索已开启：今天已搜 ${fmt(s.runs.created_today)} 次（上限 ${fmt(s.runs.daily_run_limit)}），同时最多 ${s.runs.max_active_runs} 个` : '自动搜索已关闭'}</span>}</div>
@@ -82,6 +96,7 @@ export default function Discover() {
     </header>
     {summary.error && <ErrorBox error={summary.error}/>} {error && <ErrorBox error={error}/>}
     <AddQuery open={adding} onOpenChange={setAdding} onAdded={refresh}/>
+    {sourceBinding&&<QuerySources key={sourceBinding.binding_id} binding={sourceBinding} onClose={()=>setSourceBinding(undefined)}/>}
 
     <div className="discover-kpis">
       <Kpi label="搜索词" tone="blue" icon={<Search size={22}/>} value={fmt(s?.total)} foot={s ? `覆盖 ${s.by_country.length} 个国家 · 已到期待搜 ${fmt(s.due)}` : '—'}/>
@@ -101,6 +116,15 @@ export default function Discover() {
       <div><small>最近一次完成</small><strong className="small-value">{s?.runs.last_finished_at ? time(s.runs.last_finished_at) : '—'}</strong></div>
     </section>
 
+    <Card title="自动收集搜索词" className="query-collection" subtitle="从已采集频道的关键词、标签和视频标题收集候选；搜索任务沿用当前预算与积压门槛。" extra={<button className="button small" onClick={collection.refresh}>刷新收集状态</button>}>
+      <ResourceView resource={collection}>{c=><><div className="collection-metrics">
+        <div><small>收集状态</small><strong>{!c.limits.enabled?'已关闭':c.limited?'增长受限':'已开启'}</strong><span>至少 {c.limits.min_support_channels} 个不同频道支持</span></div>
+        <div><small>今天新增 / 唤醒（UTC）</small><strong>{fmt(c.created_today)} / {fmt(c.woken_today)}</strong><span>合计上限 {fmt(c.limits.daily_binding_limit)}</span></div>
+        <div><small>自动新增总量</small><strong>{fmt(c.auto_bindings)} / {fmt(c.limits.max_auto_bindings)}</strong><span>人工添加和迁入词另计</span></div>
+        <div><small>待支持 / 待加入搜索</small><strong>{fmt(c.waiting_support)} / {fmt(c.waiting_promotion)}</strong><span>候选总量 {fmt(c.candidates)} / {fmt(c.candidate_limit)}</span></div>
+      </div><p className="collection-note">已扫描 {fmt(c.scanned_channels)} 个频道，其中 {fmt(c.skipped_channels)} 个画像依据不足或达到候选上限。最近扫描：{c.last_scan_at?time(c.last_scan_at):'尚未扫描'}。{c.limited==='daily'?'今日额度已用完，待加入的候选将在下一天继续处理。':c.limited==='total'?'已达到自动新增总量上限，可在配置管理调整。':c.limited==='candidates'?'已达到候选总量上限，已有候选继续处理。':''} 人工停用的词保持停用，人工指定频率保持生效。</p></>}</ResourceView>
+    </Card>
+
     <div className="discover-row row-list">
       <Card title="搜索词列表" className="query-list" extra={<div className="list-tools">
         <select aria-label="状态" value={filter.state ?? ''} onChange={e => set({ ...filter, state: (e.target.value || undefined) as QueryBinding['state'] | undefined })}>
@@ -117,7 +141,7 @@ export default function Discover() {
             <td><span className={`status-chip ${meta.tone}`}><i/>{meta.label}</span></td>
             <td>{cadenceText(b)}{b.cadence_override && <small className="cell-sub">人工指定</small>}</td>
             <td>{b.next_run_at ? time(b.next_run_at) : '—'}</td><td>{lastRunText(b.last_run)}{b.last_success_at && <small className="cell-sub">上次成功 {time(b.last_success_at)}</small>}</td>
-            <td title={b.sources.map(x => `${sourceLabels[x.type]}：${x.ref}`).join('\n')}>{[...new Set(b.sources.map(x => sourceLabels[x.type]))].join('、')}{b.source_count > 1 && <small className="cell-sub">共 {b.source_count} 条</small>}</td>
+            <td><button className="text-button" onClick={()=>setSourceBinding(b)} aria-label={`查看 ${b.text} 的来源`}>{[...new Set(b.sources.map(x => sourceLabels[x.type]))].join('、')||'查看来源'}<small className="cell-sub">共 {b.source_count} 条</small></button></td>
             {operator && <td className="row-actions">
               {b.state === 'DISABLED'
                 ? <button className="text-button" disabled={!!busy} onClick={() => void command(b, { action: 'enable', expected_version: b.version })}>启用</button>

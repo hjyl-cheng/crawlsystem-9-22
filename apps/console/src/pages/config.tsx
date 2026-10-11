@@ -62,7 +62,7 @@ export default function Config(){
  return <div className="dashboard discover config-page"><header className="dashboard-heading"><div><h1>配置管理</h1><p>统一管理更新采集、搜索准入、代理规则与告警阈值</p><span className={'data-freshness '+(config.error?'failing':'')}><i/>{config.data?('当前发布版本 v'+config.data.version+' · '+(config.data.source==='DATABASE'?'数据库配置':'环境初值')):'正在读取配置'}</span></div>
   <div className="dashboard-period"><button className="button small" disabled={config.refreshing} onClick={refresh}><RefreshCw size={13}/>刷新配置</button></div></header>
   <div className="discover-kpis">{[
-   ['配置项总数',CONFIG_CATALOG.length,'4 个配置分组',<Settings2 size={22}/>,'blue'],
+   ['配置项总数',CONFIG_CATALOG.length,`${groups.length} 个配置分组`,<Settings2 size={22}/>,'blue'],
    ['当前发布版本',config.data?'v'+config.data.version:'—',config.data?.source==='DATABASE'?'已持久保存':'等待持久配置',<CircleCheck size={22}/>,'green'],
    ['服务读取版本',config.data?.consumers.filter(c=>c.version===config.data!.version&&Date.now()-Date.parse(c.observed_at)<120000).length??'—','调度器与代理节点',<Clock size={22}/>,'amber'],
    ['高风险配置',high,'发布前核对影响并确认',<TriangleAlert size={22}/>,'red'],
