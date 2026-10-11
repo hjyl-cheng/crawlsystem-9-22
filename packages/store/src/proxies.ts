@@ -178,6 +178,10 @@ export class ProxyStore {
     if (!server) throw new StoreError('FORBIDDEN', 'Node credential has no server identity', 403);
     const report = ProxySyncRequestSchema.parse(raw);
     return this.tx(async client => {
+      // Imports and subscription refreshes take the exclusive workspace lock;
+      // parallel servers may sync together but cannot invert their row locks
+      // against an inventory batch while assignments are being refreshed.
+      await client.query('SELECT pg_advisory_xact_lock_shared(hashtext($1))',[`proxies:${principal.workspace_id}`]);
       // Serialize one server's reports across API replicas, including partial
       // observations followed by renewal of the server's complete lease set.
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`proxy-sync:${principal.workspace_id}:${server}`]);

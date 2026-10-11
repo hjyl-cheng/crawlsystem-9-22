@@ -36,13 +36,16 @@ test('concurrent initial reports, duplicate sequences and superseded boots count
 });
 test('500 observations fit the node timeout; reverse-order concurrent duplicates cannot deadlock or inflate samples',async()=>{
   const p=people();
-  await store.importProxies(p.operator,{entries:Array.from({length:500},(_,i)=>({protocol:'http',host:`10.99.${i>>8}.${i&255}`,port:8080,username:null,password:null,provider:'capacity-test',group:'test-group',kind:'static',country_code:null,max_concurrency:2}))});
+  const entries=Array.from({length:500},(_,i)=>({protocol:'http',host:`10.99.${i>>8}.${i&255}`,port:8080,username:null,password:null,provider:'capacity-test',group:'test-group',kind:'static',country_code:null,max_concurrency:2}));
+  await store.importProxies(p.operator,{entries});
   await pool.query("UPDATE control.proxies SET server_id='a1',generation=1 WHERE workspace_id=$1",[p.operator.workspace_id]);
   const xs=(await store.overview(p.reader)).items.map(x=>observation(x.proxy_id,1,'healthy',10,1)),r=report(1,xs);
   const start=performance.now();assert.equal((await store.sync(p.node,r)).assignments.length,500);
   const elapsed=performance.now()-start;assert.ok(elapsed<8000,`500-observation sync took ${Math.round(elapsed)}ms`);
   await Promise.all([store.sync(p.node,report(2,xs)),store.sync(p.node,report(2,[...xs].reverse()))]);
   const a=await store.availability(p.reader,query());assert.equal(a.summary.samples,1000);assert.equal(a.summary.requests,5000);assert.equal(a.summary.failures,500);
+  await Promise.all([store.importProxies(p.operator,{entries:[...entries].reverse()}),store.sync(p.node,report(3,xs))]);
+  assert.equal((await store.availability(p.reader,query())).summary.samples,1500);
   console.log(`availability_500_sync_ms=${Math.round(elapsed)}`);
 });
 test('concurrent partial reports renew the complete server lease without deadlocks',async()=>{
