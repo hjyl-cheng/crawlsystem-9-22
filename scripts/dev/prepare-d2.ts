@@ -22,6 +22,6 @@ try{
  kube(['-n','db','exec','-i',primary,'--','psql','-X','-q','-v','ON_ERROR_STOP=1','-U','postgres','-d','crawlsystem_m1_main_test'],
   `GRANT SELECT,INSERT ON control.worker_routing,control.worker_commands TO ${user};GRANT SELECT,INSERT,UPDATE ON control.worker_plans TO ${user};GRANT SELECT,INSERT,DELETE ON control.worker_samples TO ${user};`);
  assert.deepEqual((await pool.query("SELECT version,settings FROM control.runtime_settings WHERE workspace_id='m1-main'")).rows[0],settings);
- writeFileSync(dir+'/bootstrap.json',JSON.stringify({at:new Date().toISOString(),source_database:'crawlsystem_m1_main_test',schema:33,configuration_version:settings.version,backup_bytes:statSync(dir+'/source-before.dump').size,backup_sha256:createHash('sha256').update(readFileSync(dir+'/source-before.dump')).digest('hex')},null,2),{mode:0o600});
- console.log('D2 backup, schema 33 and least-privilege grants ready; runtime settings preserved');
+ writeFileSync(dir+'/bootstrap.json',JSON.stringify({at:new Date().toISOString(),source_database:'crawlsystem_m1_main_test',schema:34,configuration_version:settings.version,backup_bytes:statSync(dir+'/source-before.dump').size,backup_sha256:createHash('sha256').update(readFileSync(dir+'/source-before.dump')).digest('hex')},null,2),{mode:0o600});
+ console.log('D2 backup, schema 34 and least-privilege grants ready; runtime settings preserved');
 }catch(e){console.error('D2 preparation failed:',e instanceof Error?e.name:'UnknownError');process.exitCode=1;}finally{await pool.end();}

@@ -64,7 +64,7 @@ export async function claimRun(client: PoolClient, workspace: string, worker: st
       const budget = await apiBudget(client, workspace, now);
       if (budget.used + budget.reserved + limits.api_reserve >= apiDailyLimit) return idle('api_quota', 600_000);
     }
-    const run = (await client.query(`UPDATE control.query_runs SET state='RUNNING',attempt=attempt+1,worker_id=$2,lease_expires_at=$3,retry_at=NULL,started_at=coalesce(started_at,$4)
+    const run = (await client.query(`UPDATE control.query_runs SET state='RUNNING',attempt=attempt+1,worker_id=$2,last_worker_id=$2,claimed_at=$4,lease_expires_at=$3,retry_at=NULL,started_at=coalesce(started_at,$4)
       WHERE run_id=$1 RETURNING run_id,binding_id,attempt,params`, [retry.run_id, worker, lease, now])).rows[0]!;
     return { run: { run_id: run.run_id, binding_id: run.binding_id, attempt: run.attempt, lease_expires_at: lease.toISOString(), params: QueryRunParamsSchema.parse(run.params) }, idle_reason: null, retry_after_ms: 0 };
   }
@@ -81,8 +81,8 @@ export async function claimRun(client: PoolClient, workspace: string, worker: st
   const params: QueryRunParams = QueryRunParamsSchema.parse({ text: binding.text, country: binding.country, language: binding.language, category: binding.category,
     window: runWindow(binding), sort: 'popularity', max_pages: limits.max_pages, continue_min_new: limits.continue_min_new, min_subscribers: limits.min_subscribers, policy_version: QUERY_POLICY_VERSION });
   const runId = randomUUID();
-  await client.query(`INSERT INTO control.query_runs(run_id,workspace_id,binding_id,params,state,attempt,worker_id,lease_expires_at,created_at,started_at)
-    VALUES($1,$2,$3,$4,'RUNNING',1,$5,$6,$7,$7)`, [runId, workspace, binding.binding_id, params, worker, lease, now]);
+  await client.query(`INSERT INTO control.query_runs(run_id,workspace_id,binding_id,params,state,attempt,worker_id,last_worker_id,claimed_at,lease_expires_at,created_at,started_at)
+    VALUES($1,$2,$3,$4,'RUNNING',1,$5,$5,$7,$6,$7,$7)`, [runId, workspace, binding.binding_id, params, worker, lease, now]);
   return { run: { run_id: runId, binding_id: binding.binding_id, attempt: 1, lease_expires_at: lease.toISOString(), params }, idle_reason: null, retry_after_ms: 0 };
 }
 

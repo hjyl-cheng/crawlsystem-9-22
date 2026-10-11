@@ -94,7 +94,7 @@ export async function workerMetrics(db:Pool,workspace:string,id:string):Promise<
    FROM control.plans p LEFT JOIN control.worker_plans a USING(plan_id) WHERE p.workspace_id=$1 AND p.finished_at>=date_trunc('hour',clock_timestamp())-interval '23 hours'
     AND coalesce(a.worker_id,(SELECT e.data->>'worker_id' FROM control.events e WHERE e.plan_id=p.plan_id AND e.data->>'worker_id'<>'control-dispatcher' ORDER BY e.created_at DESC LIMIT 1))=$2 GROUP BY 1),
   queries AS (SELECT date_trunc('hour',finished_at) AS at,count(*) FILTER(WHERE state='SUCCEEDED')::int AS ok,count(*) FILTER(WHERE state='FAILED')::int AS failed FROM control.query_runs
-   WHERE workspace_id=$1 AND worker_id=$2 AND finished_at>=date_trunc('hour',clock_timestamp())-interval '23 hours' GROUP BY 1)
+   WHERE workspace_id=$1 AND coalesce(worker_id,last_worker_id)=$2 AND finished_at>=date_trunc('hour',clock_timestamp())-interval '23 hours' GROUP BY 1)
   SELECT h.at,coalesce(p.ok,0) AS plans_completed,coalesce(p.failed,0) AS plans_failed,coalesce(q.ok,0) AS queries_completed,coalesce(q.failed,0) AS queries_failed FROM hours h LEFT JOIN plans p USING(at) LEFT JOIN queries q USING(at) ORDER BY h.at`,[workspace,id])).rows.map(r=>({...r,at:iso(r.at)}));
  return {worker_id:id,server_id:worker.server_id,sampled_at:new Date().toISOString(),process:worker.stale?null:worker.process??null,resources,tasks};
 }

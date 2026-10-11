@@ -24,7 +24,7 @@ export interface QueryRunnerOptions {
   api: ExecutionApi; dataApi?: DataApi; proxies: LeaseClient | 'direct'; workerId: string; signal: AbortSignal;
   gateway?: FingerprintClient; searchStore?: ObjectStore; workspaceId?: string; enforceBrazil?: boolean;
   log: (record: Record<string, unknown>) => void;
-  accepting?:()=>boolean;enter?:(runId:string)=>()=>void;
+  accepting?:()=>boolean;unavailable?:()=>void;enter?:(runId:string)=>()=>void;
 }
 /** Control no longer lets this attempt hold the run (cancelled, taken over or finished). */
 class RunStopped extends Error {}
@@ -59,10 +59,11 @@ export async function runOne(options: QueryRunnerOptions, run: Run): Promise<voi
     const result = await api.queryRunComplete(run.run_id, { attempt, pages: found.pages, stop_reason: found.stop_reason, channels: facts.channels, missing_channel_ids: facts.missing }, { signal });
     log({ ...record, outcome: 'SUCCEEDED', pages: found.pages, new_channels: result.new_channels, qualified_new: result.qualified_new, binding_state: result.binding.state, cadence: result.binding.cadence, ms: Date.now() - started });
   } catch (error) {
+    if(error instanceof FingerprintError&&error.kind==='gateway')options.unavailable?.();
     if (lost.signal.aborted || error instanceof RunStopped || (error instanceof ExecutionApiError && ['STALE_EXECUTION', 'NOT_FOUND'].includes(error.code))) {
       log({ ...record, outcome: 'STOPPED' }); return;
     }
-    const reason: FailReason = options.signal.aborted ? 'interrupted' : failReason(error);
+    const reason: FailReason = options.signal.aborted ? 'interrupted' : queryFailReason(error);
     const evidence=(error as {raw_evidence?:import('@crawlsystem/contracts').VideoFacts['comments_ref']}).raw_evidence;
     const after = await api.queryRunFail(run.run_id, { attempt, reason, retryable: reason !== 'internal',...(evidence?{evidence_ref:evidence}:{}) }).catch(() => undefined);
     log({ ...record, outcome: 'FAILED', reason, ...(error instanceof ScrapeError?{diagnostic:error.message}:{}), run_state: after?.state ?? 'UNREPORTED', ms: Date.now() - started });
@@ -164,7 +165,8 @@ async function withProxy<T>(options: QueryRunnerOptions, signal: AbortSignal, wo
   }
 }
 
-function failReason(error: unknown): FailReason {
+export function queryFailReason(error: unknown): FailReason {
+  if(error instanceof FingerprintError)return 'network';
   if (error instanceof QuotaRefused) return 'quota';
   if (error instanceof DataApiError) return error.kind === 'quota' ? 'quota' : 'data_api';
   if (error instanceof ScrapeError) return error.kind === 'blocked' ? 'blocked' : ['network','upstream'].includes(error.kind) ? 'network' : 'parse';

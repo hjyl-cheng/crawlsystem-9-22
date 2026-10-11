@@ -32,14 +32,16 @@ const session = await api.session();
 if (session.role !== 'worker' || session.subject !== config.workerId) throw new Error('Worker credential identity mismatch');
 const running = new Map<string, number>();
 const searches=new Set<string>(),admission=new WorkerAdmission(),sampler=new ProcessSampler();
-let accepting = false, stopping = false;
+let accepting = false, stopping = false, collectionReady=false;
 const heartbeatStop = new AbortController(), queryStop = new AbortController();
 let queryLoops: Promise<void>[] = [];
 const report = async ():Promise<WorkerReport> => {
+ const collector=webCollector?await webCollector.diagnostics():undefined;
+ collectionReady=!webCollector||collector?.gateway==='ready';
  const result=await api.heartbeat({ worker_id: config.workerId, server_id: config.serverId, build_version: config.buildVersion,
-  accepting_work: accepting&&admission.accepting, capacity: config.capacity, running_plan_ids: [...running.keys()],running_query_run_ids:[...searches],
-  management:{protocol:'worker-control-1',applied_version:admission.version,ready:accepting&&!stopping},process:sampler.sample(),
-  ...(webCollector ? { collector: await webCollector.diagnostics() } : {}) }, { attempts: 1 });
+  accepting_work: accepting&&admission.accepting&&collectionReady, capacity: config.capacity, running_plan_ids: [...running.keys()],running_query_run_ids:[...searches],
+  management:{protocol:'worker-control-1',applied_version:admission.version,ready:accepting&&!stopping&&collectionReady},process:sampler.sample(),
+  ...(collector ? {collector} : {}) }, { attempts: 1 });
  const old=admission.version;admission.apply(result.control);
  // A command is acknowledged immediately after consumption, rather than one heartbeat later.
  if(admission.version!==old&&accepting&&!stopping)return report();return result;
@@ -105,7 +107,7 @@ try {
     log({ worker_id: config.workerId, phase: 'READY', build_version: config.buildVersion, workspace_id: session.workspace_id });
     // Query searches run beside the Temporal Worker, claimed from Control under a lease.
     if (youtube) queryLoops = Array.from({ length: config.queryRunnerSlots }, () => runQueries({ api, dataApi: youtube.dataApi, proxies: youtube.proxies, gateway:fingerprint,searchStore,workspaceId:session.workspace_id,enforceBrazil:config.collection?.enforceBrazil,workerId: config.workerId, signal: queryStop.signal, log,
-      accepting:()=>accepting&&!stopping&&admission.accepting,enter(runId){searches.add(runId);return()=>searches.delete(runId);} })
+      accepting:()=>accepting&&!stopping&&admission.accepting&&collectionReady,unavailable(){collectionReady=false;void report().catch(()=>{});},enter(runId){searches.add(runId);return()=>searches.delete(runId);} })
       .catch(() => { log({ worker_id: config.workerId, phase: 'QUERY_RUNNER', error_code: 'INTERNAL_ERROR', retryable: false }); }));
     const executions=[worker.run(),legacyWorker.run()];
     try{await Promise.all(executions);}catch(error){stop();await Promise.allSettled(executions);throw error;}

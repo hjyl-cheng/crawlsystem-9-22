@@ -23,6 +23,10 @@ for(const [node,kinds] of imports)for(const kind of kinds){
 }
 // Deploy the compatible Control and dispatcher first. Until the new Worker registers,
 // dispatch stays on the legacy queue. Frozen workflow IDs, deadlines and budgets survive rollout.
-for(const [ns,kind,name,container] of services){kube(['-n',ns,'set','image',kind+'/'+name,container+'='+build[name==='execution-worker'?'worker':'control'].image]);kube(['-n',ns,'rollout','status',kind+'/'+name,'--timeout=180s']);}
+for(const [ns,kind,name,container] of services){
+ const image=build[name==='execution-worker'?'worker':'control'].image;
+ const patch={spec:{template:{spec:{containers:[{name:container,image,...(name==='execution-worker'?{env:[{name:'BUILD_VERSION',value:build.revision}]}:{})}]}}}};
+ kube(['-n',ns,'patch',kind,name,'--type=strategic','-p',JSON.stringify(patch)]);kube(['-n',ns,'rollout','status',kind+'/'+name,'--timeout=180s']);
+}
 writeFileSync(dir+'/deployment.json',JSON.stringify({revision:build.revision,control_image:build.control.image,worker_image:build.worker.image,deployed_at:new Date().toISOString(),services:services.map(s=>s.slice(0,3))},null,2),{mode:0o600});
 console.log('D2 API, dispatcher and Worker ready');

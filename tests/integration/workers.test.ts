@@ -43,8 +43,11 @@ test('Worker controls close both admission gates, preserve assigned retries and 
  assert.equal((await heartbeat(worker,3)).control?.status,'DRAINED');
  r2=await request(p,'POST','/v1/workers/'+worker.subject+'/resume',{command_id:randomUUID(),expected_version:3,reason:'D2 恢复新增任务'});assert.equal(r2.statusCode,200);await heartbeat(worker,4);
  assert.notEqual((await store.claimQueryRun(worker)).idle_reason,'worker_paused');
+ await upsertBindings(pool,p.workspace_id,[{text:'D2 final failed search',category:'Music',country:'BR',language:'pt',source_type:'MANUAL',source_ref:'d2-test'}]);
+ const failed=await store.claimQueryRun(worker);assert.ok(failed.run);await store.queryRunFail(worker,failed.run.run_id,{attempt:failed.run.attempt,reason:'network',retryable:false});
  const mr=await request(reader,'GET','/v1/workers/'+worker.subject+'/metrics');assert.equal(mr.statusCode,200);const m=WorkerMetricsSchema.parse(mr.json());
  assert.equal(m.monitoring_available,false);assert.equal(m.node.cpu_percent,null);assert.equal(m.process?.rss_bytes,200000000);assert.equal(m.tasks.length,24);assert.equal(m.tasks.reduce((n,t)=>n+t.plans_completed,0),1);assert.equal(m.tasks.reduce((n,t)=>n+t.queries_completed,0),1);assert.ok(m.resources.length>0);
+ assert.equal(m.tasks.reduce((n,t)=>n+t.queries_failed,0),1,'releasing the lease does not erase the Worker responsible for a final failure');
  assert.equal((await request(worker,'GET','/v1/workers/'+worker.subject+'/metrics')).statusCode,403);
  assert.equal((await request({...reader,workspace_id:'other'},'GET','/v1/workers/'+worker.subject+'/metrics')).statusCode,404);
  await pool.query("UPDATE control.workers SET last_heartbeat_at=clock_timestamp()-interval '10 minutes' WHERE workspace_id=$1 AND worker_id=$2",[p.workspace_id,worker.subject]);
