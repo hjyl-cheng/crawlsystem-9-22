@@ -67,6 +67,7 @@ case "${1:-}" in
   config-prepare) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-d1.ts) ;;
   config-deploy) command=(node --import tsx scripts/dev/deploy-d1.ts) ;;
   config-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d1-browser.ts) ;;
+  config-layout) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/capture-d1-layout.ts) ;;
   config-runtime) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d1-runtime.ts "${@:2}") ;;
   config-monitoring) command=(python3 scripts/dev/configure-d1-monitoring.py) ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;

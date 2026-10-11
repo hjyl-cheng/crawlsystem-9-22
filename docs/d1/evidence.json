@@ -1,0 +1,239 @@
+{
+  "result": "PASSED",
+  "runtime_at": "2026-10-11T02:35:08.632Z",
+  "browser_at": "2026-10-11T02:33:07.758Z",
+  "layout_at": "2026-10-11T02:36:28.838Z",
+  "deployment": {
+    "revision": "93d45115aa6e7485dab3c58c7e780d584307100e",
+    "control_image": "docker.io/crawlsystem/control-api:main-93d45115aa6e-20e2bd37",
+    "deployed_at": "2026-10-11T02:29:41.061Z",
+    "services": [
+      [
+        "crawler",
+        "daemonset",
+        "proxy-manager"
+      ],
+      [
+        "control",
+        "deployment",
+        "control-api-preview"
+      ],
+      [
+        "control",
+        "deployment",
+        "intent-dispatcher"
+      ]
+    ]
+  },
+  "schema": 32,
+  "items": 24,
+  "configuration": {
+    "initial_version": 1,
+    "final_version": 3,
+    "settings_preserved": true,
+    "automatic": {
+      "search": true,
+      "admission": true,
+      "updates": true,
+      "daily_update_limit": 100
+    },
+    "daily_search_limit": 300,
+    "consumers": [
+      {
+        "name": "dispatcher",
+        "version": 3,
+        "observed_at": "2026-10-11T02:32:49.914Z"
+      },
+      {
+        "name": "proxy:a1",
+        "version": 3,
+        "observed_at": "2026-10-11T02:33:04.054Z"
+      },
+      {
+        "name": "proxy:a2",
+        "version": 3,
+        "observed_at": "2026-10-11T02:32:53.273Z"
+      },
+      {
+        "name": "proxy:a3",
+        "version": 3,
+        "observed_at": "2026-10-11T02:32:51.907Z"
+      },
+      {
+        "name": "proxy:s1",
+        "version": 3,
+        "observed_at": "2026-10-11T02:32:43.223Z"
+      },
+      {
+        "name": "proxy:s2",
+        "version": 3,
+        "observed_at": "2026-10-11T02:32:37.394Z"
+      },
+      {
+        "name": "proxy:s3",
+        "version": 3,
+        "observed_at": "2026-10-11T02:32:45.562Z"
+      }
+    ],
+    "history": [
+      {
+        "command_id": "79f1fc01-fb62-47cd-ae84-7f53757cee46",
+        "version": 3,
+        "key": "alerts.archive_delay_seconds",
+        "before": 601,
+        "after": 600,
+        "reason": "回滚到上一条变更前的值",
+        "operator": "d1-browser",
+        "created_at": "2026-10-11T02:32:05.528Z"
+      },
+      {
+        "command_id": "2fc18e04-3afb-43c2-b012-2d47ff93d88b",
+        "version": 2,
+        "key": "alerts.archive_delay_seconds",
+        "before": 600,
+        "after": 601,
+        "reason": "D1 页面发布与告警指标读取验收，随即恢复",
+        "operator": "d1-browser",
+        "created_at": "2026-10-11T02:32:01.942Z"
+      }
+    ],
+    "metrics_verified": true,
+    "reader_write_status": 403
+  },
+  "checks": {
+    "unit": 166,
+    "isolated_integration": 26,
+    "mock_browser": 4,
+    "typecheck": true,
+    "console_build": true,
+    "live_browser": true
+  },
+  "layouts": [
+    {
+      "width": 1920,
+      "height": 937,
+      "horizontal_overflow": 0,
+      "navigation_covers_page": false
+    },
+    {
+      "width": 1586,
+      "height": 992,
+      "horizontal_overflow": 0,
+      "navigation_covers_page": false
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "horizontal_overflow": 0,
+      "navigation_covers_page": false
+    }
+  ],
+  "page_errors": [],
+  "failed_api_reads": [],
+  "continuity": {
+    "from": "2026-10-11T02:20:09.259Z",
+    "to": "2026-10-11T02:35:08.632Z",
+    "full_completed": {
+      "before": 1378,
+      "after": 1391
+    },
+    "full_failed": {
+      "before": 11,
+      "after": 11
+    },
+    "videos": {
+      "before": 39113,
+      "after": 39480
+    },
+    "delivered": {
+      "before": 1446,
+      "after": 1459
+    },
+    "delivery_pending": 0,
+    "delivery_failed": 0,
+    "legacy_tables": 64,
+    "business": {
+      "legacy_tables": 64,
+      "searchable_channels": 1365,
+      "channel_snapshots": 1459,
+      "video_snapshots": 11545
+    },
+    "postgres_comment_bodies": 0,
+    "cdc": {
+      "connector": {
+        "state": "RUNNING",
+        "tasks": [
+          "RUNNING"
+        ]
+      },
+      "slot": {
+        "active": true,
+        "retained_bytes": "64616952"
+      }
+    },
+    "services": [
+      {
+        "name": "control-api-preview",
+        "ready": 2,
+        "desired": 2
+      },
+      {
+        "name": "intent-dispatcher",
+        "ready": 1,
+        "desired": 1
+      },
+      {
+        "name": "execution-worker",
+        "ready": 1,
+        "desired": 1
+      },
+      {
+        "name": "profile-agent",
+        "ready": 1,
+        "desired": 1
+      },
+      {
+        "name": "raw-parser",
+        "ready": 1,
+        "desired": 1
+      },
+      {
+        "name": "pg-sink",
+        "ready": 1,
+        "desired": 1
+      },
+      {
+        "name": "crawl-analytics",
+        "ready": 1,
+        "desired": 1
+      },
+      {
+        "name": "business-sink",
+        "ready": 1,
+        "desired": 1
+      },
+      {
+        "name": "delivery-receipts",
+        "ready": 1,
+        "desired": 1
+      }
+    ],
+    "protected_pods_kept": true,
+    "new_full_cancelled": {
+      "count": 1,
+      "reason": "ABOUT qualification rejected; candidate UNQUALIFIED",
+      "plan_id": "0a27a980-0b29-4161-a652-2d9367fb5128"
+    }
+  },
+  "backup": {
+    "format": "PostgreSQL custom dump",
+    "bytes": 120645077,
+    "sha256": "56e409d79cd8c719fa386027099685e2c6fd802a4219d7ff28b02ed9459adb40"
+  },
+  "public": {
+    "config_status": 200,
+    "cloudflare_pid": 1882,
+    "tunnel_kept": true
+  },
+  "runtime_note": "Initial 64 MiB WAL assertion failed during a transient retention peak (~398 MiB). The existing CDC heartbeat advanced and retained bytes fell below 64 MiB; connector/tasks stayed RUNNING and delivery pending stayed 0. No CDC or collection service was restarted for this observation."
+}
