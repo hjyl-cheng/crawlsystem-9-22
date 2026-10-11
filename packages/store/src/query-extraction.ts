@@ -32,7 +32,15 @@ export function extractQueries(about:Json|null,agent:Json|null,videos:Json[]):Ex
     if(!result.has(text))result.set(text,{text,country,language,category,source_type,video_id});
   };
   for(const word of (about?.keywords??[]).slice(0,100))add(word,'CHANNEL_ABOUT');
-  if(credible(facts.channel_tags))for(const tag of (facts.channel_tags.value?.tags??[]).slice(0,10))add(tag,'AUTO_TAG');
+  // Profile labels may be broad or in English even for a Portuguese channel. Require a public
+  // textual anchor so repeated model labels cannot manufacture support for unrelated topics.
+  const publicText=[about?.title,about?.description,...(about?.keywords??[]),...videos.slice(0,30).flatMap(v=>{
+    const d=v.data??v;return [d.title,...(d.keywords??[]),...(d.hashtags??[])];
+  })].filter(v=>typeof v==='string').map(v=>' '+normalizeQueryText(v).replace(/[^\p{L}\p{M}\p{N}]+/gu,' ')+' ');
+  if(credible(facts.channel_tags))for(const tag of (facts.channel_tags.value?.tags??[]).slice(0,10)){
+    const anchor=' '+normalizeQueryText(tag).replace(/[^\p{L}\p{M}\p{N}]+/gu,' ')+' ';
+    if(publicText.some(v=>v.includes(anchor)))add(tag,'AUTO_TAG');
+  }
   // Titles contribute short phrases, not complete sentences. Single-channel repetition still counts once.
   for(const video of videos.slice(0,30)){
     const d=video.data??video,id=video.video_id??d.source_content_id;

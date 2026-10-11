@@ -94,6 +94,7 @@ case "${1:-}" in
   query-collection-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --b2-control-only) ;;
   query-collection-deploy) command=(node --import tsx scripts/dev/deploy-b2.ts) ;;
   query-collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-b2-browser.ts) ;;
+  query-collection-refine) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/refine-b2.ts) ;;
   query-collection-runtime) command=(env K3S_CONFIG_FILE=/dev/null D3_RUNTIME_DIR=.runtime/b2 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;

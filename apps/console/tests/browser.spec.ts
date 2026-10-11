@@ -657,6 +657,7 @@ test('automatic query collection shows bounded growth, source evidence and recov
   const b=state.queryBindings[0]!;await page.getByRole('button',{name:`查看 ${b.text} 的来源`,exact:true}).click();
   await expect(page.getByRole('heading',{name:'搜索词来源',exact:true})).toBeVisible();await expect(page.getByRole('link',{name:'查看来源视频',exact:true})).toHaveAttribute('href','https://www.youtube.com/watch?v=abcdefghijk');
   await page.keyboard.press('Escape');await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
+  await expect.poll(()=>page.locator('.sidebar').evaluate(n=>n.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
   await expect(page.getByRole('button',{name:'添加搜索词',exact:true})).toHaveCount(0);
   await page.route('**/api/v1/queries/collection',route=>route.fulfill({status:503,json:{error:{code:'UNAVAILABLE',message:'读取失败',retryable:true,correlation_id:'test'}}}));
   await panel.getByRole('button',{name:'刷新收集状态',exact:true}).click();await expect(panel.getByRole('alert')).toBeVisible();

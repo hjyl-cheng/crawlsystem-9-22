@@ -16,12 +16,13 @@ try{
   await expect.poll(async()=>{current=QueryCollectionSummarySchema.parse(await get('/v1/queries/collection'));return current.scanned_channels;},{timeout:65000,intervals:[2000]}).toBeGreaterThan(initial.scanned_channels);
   await expect.poll(async()=>{current=QueryCollectionSummarySchema.parse(await get('/v1/queries/collection'));return current.auto_bindings;},{timeout:90000,intervals:[2000]}).toBeGreaterThan(0);
   assert.ok(current.created_today+current.woken_today<=current.limits.daily_binding_limit);assert.ok(current.auto_bindings<=current.limits.max_auto_bindings);assert.ok(current.candidates<=20000);
-  const integrity=(await pool.query(`SELECT count(*) FILTER(WHERE c.support_count<2 AND c.auto_created)::int insufficient_support,
+  const integrity=(await pool.query(`SELECT count(*) FILTER(WHERE c.support_count<2 AND c.auto_created AND b.state<>'DISABLED')::int insufficient_support,
     count(*) FILTER(WHERE c.support_count<>(SELECT count(*) FROM control.query_collection_evidence e WHERE e.candidate_id=c.candidate_id))::int inconsistent_support
-    FROM control.query_collection_candidates c WHERE c.workspace_id=$1`,[workspace])).rows[0];assert.deepEqual(integrity,{insufficient_support:0,inconsistent_support:0});
+    FROM control.query_collection_candidates c LEFT JOIN control.query_bindings b ON b.binding_id=c.binding_id WHERE c.workspace_id=$1`,[workspace])).rows[0];assert.deepEqual(integrity,{insufficient_support:0,inconsistent_support:0});
   const binding=(await pool.query(`SELECT b.binding_id,t.text,b.country,b.category,b.state,b.priority,c.support_count FROM control.query_collection_candidates c
     JOIN control.query_bindings b ON b.binding_id=c.binding_id JOIN control.query_terms t ON t.term_id=b.term_id
-    WHERE c.workspace_id=$1 AND c.auto_created ORDER BY c.created_at,c.candidate_id LIMIT 1`,[workspace])).rows[0];assert.ok(binding);assert.equal(binding.priority,-10);
+    WHERE c.workspace_id=$1 AND c.auto_created AND b.state<>'DISABLED' AND EXISTS(SELECT 1 FROM control.query_sources s WHERE s.binding_id=b.binding_id AND s.source_type='CHANNEL_ABOUT')
+    ORDER BY c.created_at,c.candidate_id LIMIT 1`,[workspace])).rows[0];assert.ok(binding);assert.equal(binding.priority,-10);
   const sources=QuerySourcesSchema.parse(await get(`/v1/queries/${binding.binding_id}/sources`));assert.ok(sources.items.length>=2);assert.ok(sources.items.every(s=>s.channel_id));
   const distinct=new Set(sources.items.map(s=>s.channel_id));assert.equal(distinct.size,sources.items.length);
   const config=ConfigSnapshotSchema.parse(await get('/v1/config'));assert.equal(config.settings.discovery.daily_run_limit,300);assert.equal(config.settings.discovery.max_active_runs,2);assert.equal(config.settings.discovery.backlog_limit,2000);assert.equal(config.settings.update.daily_plan_limit,100);
@@ -46,6 +47,7 @@ try{
   phase='layouts';const layouts=[];
   for(const [width,height] of [[1920,937],[1586,992],[390,844]] as const){
     await page.setViewportSize({width,height});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
+    if(width<=680)await expect.poll(()=>page.locator('.sidebar').evaluate(n=>n.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
     await page.screenshot({path:dir+'/queries-'+width+'.png',fullPage:true});layouts.push({width,height,horizontal_overflow:0});
   }
   evidence.layouts=layouts;assert.equal(failed.length,0);
