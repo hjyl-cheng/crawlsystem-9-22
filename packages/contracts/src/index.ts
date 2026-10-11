@@ -323,10 +323,8 @@ export const PlansSummarySchema: z.ZodType<PlansSummary> = z.strictObject({
   waiting_reasons: z.array(z.strictObject({ reason: z.string().min(1).max(80), plans: Count })).max(6),
 }).refine(s=>Object.values(s.by_status).reduce((a,b)=>a+b,0)===s.total,'status counts must sum to total')
   .refine(s=>s.domains.every(d=>d.applied<=d.required)&&new Set(s.domains.map(d=>d.domain)).size===s.domains.length,'domain counts must be distinct and applied cannot exceed required');
-/** Console accounts of the caller's workspace, for the user management page. Never
- * carries password material. Session figures come from sessions still stored:
- * logout deletes a session, so `latest_session_at` is the newest retained login,
- * not a full login history. Null means the account source cannot tell. */
+/** Console accounts of the caller's workspace. Latest login uses durable audit
+ * history and retained pre-audit sessions. Null means no known login. */
 export interface ConsoleAccount {
   username: string; subject: string; role: 'reader' | 'operator'; status: 'ACTIVE' | 'DISABLED';
   created_at: string | null; updated_at: string | null; active_sessions: number | null; latest_session_at: string | null;

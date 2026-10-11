@@ -63,7 +63,7 @@ export class PgAccountStore implements AccountStore {
       `SELECT a.username, a.subject, a.role, CASE WHEN a.disabled_at IS NULL THEN 'ACTIVE' ELSE 'DISABLED' END AS status,
               a.created_at, a.updated_at,
               count(s.token_hash) FILTER (WHERE s.expires_at > clock_timestamp())::int AS active_sessions,
-              max(s.created_at) AS latest_session_at
+              greatest(max(s.created_at),(SELECT max(h.occurred_at) FROM console.audit h WHERE h.workspace_id=a.workspace_id AND h.actor=a.subject AND h.kind='LOGIN' AND h.outcome='SUCCESS')) AS latest_session_at
          FROM console.accounts a LEFT JOIN console.sessions s USING (username)
         WHERE a.workspace_id = $1
         GROUP BY a.username ORDER BY a.username LIMIT 500`, [workspaceId]);

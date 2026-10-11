@@ -20,6 +20,7 @@ before(async()=>{
     const sql=await readFile(new URL('../../database/console/001_console.sql',import.meta.url),'utf8');
     await pool.query(sql.replace('CREATE SCHEMA console AUTHORIZATION crawler_owner','CREATE SCHEMA console').replace(/^GRANT .*;$/gm,''));
   }
+  if(!(await pool.query("SELECT to_regclass('console.audit') AS name")).rows[0].name)await pool.query((await readFile(new URL('../../database/console/002_audit.sql',import.meta.url),'utf8')).replace(/^GRANT .*;$/gm,''));
 });
 after(()=>pool.end());
 async function account(){

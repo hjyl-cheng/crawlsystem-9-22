@@ -1,18 +1,17 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { ArrowRight, Download, KeyRound, MonitorSmartphone, Plus, Search, ShieldCheck, UserCheck, Users as UsersIcon, UserX } from 'lucide-react';
+import { Download, KeyRound, MonitorSmartphone, Plus, Search, ShieldCheck, UserCheck, Users as UsersIcon, UserX } from 'lucide-react';
 import type { ConsoleAccount } from '@crawlsystem/contracts';
 import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
 import { Empty } from '../ui.js';
 import { roleLabels } from '../presentation.js';
 import LineChart from '../components/line-chart.js';
+import {AuditHistory} from './user-audit.js';
 import './overview.css';
 import './discover.css';
 import './users.css';
 
 const CLI_ONLY = '账号维护目前在服务器上用命令行进行（npm run console:accounts）';
-const NO_HISTORY = '登录历史尚未留存：退出登录会删除会话，无法统计历史登录';
-const NO_AUDIT = '账号审计日志尚未接入';
 const short = (value: string) => new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
 const shortOrDash = (value: string | null) => value ? short(value) : '—';
 const full = (value: string | null) => value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium', hour12: false }).format(new Date(value)) : '未记录';
@@ -21,7 +20,7 @@ const avatarColors = ['#3f7fe0', '#0f9f75', '#c96a12', '#7a5af0', '#1686ad', '#c
 const colorOf = (name: string) => avatarColors[[...name].reduce((s, c) => s + c.charCodeAt(0), 0) % avatarColors.length]!;
 const permissions: Record<ConsoleAccount['role'], string[]> = {
   reader: ['查看全部页面与数据', '不能创建或取消采集计划'],
-  operator: ['查看全部页面与数据', '创建采集计划', '取消采集计划'],
+  operator: ['查看全部页面与数据', '创建与取消采集计划', '调整采集策略与配置', '管理 Worker 与代理', '查看登录历史和操作审计'],
 };
 
 function Card({ title, subtitle, extra, className = '', children }: { title: string; subtitle?: string; extra?: ReactNode; className?: string; children: ReactNode }) {
@@ -35,8 +34,8 @@ const Avatar = ({ name, big = false }: { name: string; big?: boolean }) => <span
 const RoleChip = ({ role }: { role: ConsoleAccount['role'] }) => <span className={`role-chip ${role}`}>{roleLabels[role]}</span>;
 const StatusChip = ({ status }: { status: ConsoleAccount['status'] }) => status === 'ACTIVE' ? <span className="status-chip green"><i/>启用</span> : <span className="status-chip red"><i/>已停用</span>;
 
-type Tab = 'info' | 'scope' | 'security' | 'activity';
-const tabs: [Tab, string][] = [['info', '基本信息'], ['scope', '权限范围'], ['security', '登录安全'], ['activity', '最近操作']];
+type Tab = 'info' | 'scope' | 'security' | 'activity' | 'logins';
+const tabs: [Tab, string][] = [['info', '基本信息'], ['scope', '权限范围'], ['security', '登录安全'], ['logins','登录历史'], ['activity', '最近操作']];
 function Detail({ account, workspace, self }: { account?: ConsoleAccount; workspace: string; self: boolean }) {
   const [tab, setTab] = useState<Tab>('info');
   if (!account) return <section className="panel user-detail"><div className="panel-heading"><div><h2>用户详情</h2></div></div><div className="detail-body"><Empty title="选择用户查看详情"/></div></section>;
@@ -53,7 +52,8 @@ function Detail({ account, workspace, self }: { account?: ConsoleAccount; worksp
       {tab === 'security' && <><dl><Row label="在线会话">{sessions(account.active_sessions)}</Row><Row label="最近登录">{full(account.latest_session_at)}</Row><Row label="密码存储">scrypt 加盐哈希，不保存明文</Row>
         <Row label="会话有效期">8 小时，退出即失效</Row><Row label="登录限流">每账号每分钟 10 次</Row><Row label="双因素认证">未接入</Row></dl>
         <p className="detail-note">修改密码或停用账号后，该账号已有会话立即失效。</p></>}
-      {tab === 'activity' && <Empty title="暂无操作记录">{NO_AUDIT}</Empty>}
+      {tab === 'activity' && <AuditHistory key="activity" actor={account.subject} compact/>}
+      {tab === 'logins' && <AuditHistory key="logins" actor={account.subject} kind="LOGIN" compact/>}
     </div>
     <footer className="detail-actions"><button className="button small" disabled title={CLI_ONLY}><KeyRound size={13}/>重置密码</button><button className="button small danger" disabled title={CLI_ONLY}><UserX size={13}/>{account.status === 'ACTIVE' ? '停用账号' : '启用账号'}</button></footer>
   </section>;
@@ -70,6 +70,7 @@ export default function Users() {
 function UsersView() {
   const { api, session } = useAuth();
   const resource = useResource('console-accounts', signal => api.consoleAccounts(signal), true, 30_000);
+  const logins = useResource('console-logins',signal=>api.consoleLoginSummary(signal),true,30_000);
   const [selected, setSelected] = useState<string>();
   const [query, setQuery] = useState(''), [role, setRole] = useState(''), [status, setStatus] = useState('');
   const accounts = resource.data?.items;
@@ -117,10 +118,13 @@ function UsersView() {
 
     <div className="discover-row users-lower">
       <Card title="近 7 日登录趋势" className="login-trend">
-        <LineChart points={undefined} series={[{ key: 'logins', label: '登录次数', color: '#277cf7', area: true }]} empty={NO_HISTORY} label="近 7 日登录趋势"/>
+        {logins.error&&<div role="alert" className="notice warning">{logins.error.message}<button className="link-button" onClick={logins.refresh}>重试</button></div>}
+        <LineChart points={logins.data?.points.map(p=>({x:p.day.slice(5),values:{success:p.success,rejected:p.rejected}}))} max={logins.data?Math.max(1,...logins.data.points.flatMap(p=>[p.success??0,p.rejected??0])):undefined} series={[{ key: 'success', label: '登录成功', color: '#277cf7' },{key:'rejected',label:'登录被拒绝',color:'#c2413a'}]} empty="正在读取登录趋势…" label="近 7 日登录趋势"/>
+        <div className="login-legend"><span>● 登录成功</span><span>● 登录被拒绝</span></div>
+        {logins.data&&<p className="detail-note">自 {full(logins.data.history_since)} 起留存，更早时段无历史记录。</p>}
       </Card>
-      <Card title="账号变更与待处理事项" className="user-events" extra={<span className="dashboard-unavailable" title={NO_AUDIT}>查看全部<ArrowRight size={12}/></span>}>
-        <Empty title="暂无记录">{NO_AUDIT}。账号的新建、改密、停用目前通过服务器命令行完成。</Empty>
+      <Card title="操作审计" subtitle="登录、业务操作与账号维护的实际记录" className="user-events">
+        <AuditHistory/>
       </Card>
     </div>
     <footer className="dashboard-foot"><span>账号与会话来自账号库；密码只以加盐哈希保存，页面不展示任何凭据。</span><span>账号的新建、改密与停用通过服务器命令行完成</span></footer>

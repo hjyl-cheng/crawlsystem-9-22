@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { IdSchema } from '@crawlsystem/contracts';
 import { AccountSchema, passwordRecord } from './console-auth.ts';
 import { createConsolePool } from './console-db.ts';
-import { setAccountPassword,setAccountDisabled } from './console-account-ops.ts';
+import { setAccountPassword,setAccountDisabled,addAccount } from './console-account-ops.ts';
 
 const { positionals, values } = parseArgs({ allowPositionals: true, options: {
   role: { type: 'string' }, workspace: { type: 'string' }, subject: { type: 'string' },
@@ -26,8 +26,7 @@ try {
       const role = AccountSchema.shape.role.parse(values.role), workspace = IdSchema.parse(values.workspace);
       const name = username(), subject = IdSchema.parse(values.subject ?? name);
       const record = await passwordRecord(stdinPassword());
-      await pool.query(`INSERT INTO console.accounts (username, subject, workspace_id, role, password_salt, password_hash)
-        VALUES ($1, $2, $3, $4, $5, $6)`, [name, subject, workspace, role, record.salt, record.password_hash]);
+      await addAccount(pool,{username:name,subject,workspace_id:workspace,role,...record});
       console.log(`created ${name} (${role}, workspace ${workspace})`);
       break;
     }
@@ -52,9 +51,8 @@ try {
     case 'import': {
       const accounts = z.array(AccountSchema).parse(JSON.parse(readFileSync(z.string().parse(target), 'utf8')));
       for (const a of accounts) {
-        const result = await pool.query(`INSERT INTO console.accounts (username, subject, workspace_id, role, password_salt, password_hash)
-          VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (username) DO NOTHING`, [a.username, a.subject, a.workspace_id, a.role, a.salt, a.password_hash]);
-        console.log(`${a.username}: ${result.rowCount ? 'imported' : 'already exists, unchanged'}`);
+        const added = await addAccount(pool,a,true);
+        console.log(`${a.username}: ${added ? 'imported' : 'already exists, unchanged'}`);
       }
       break;
     }

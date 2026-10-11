@@ -88,6 +88,13 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (path === '/v1/console/accounts') return json({ observed_at: '2026-09-23T08:00:00.000Z', source: 'DATABASE', items: [
       { username: 'fixture', subject: 'browser-fixture', role: state.role === 'reader' ? 'reader' : 'operator', status: 'ACTIVE', created_at: '2026-09-20T02:00:00.000Z', updated_at: '2026-09-20T02:00:00.000Z', active_sessions: 1, latest_session_at: '2026-09-23T07:55:00.000Z' },
       { username: 'fixture-reader', subject: 'browser-fixture-reader', role: 'reader', status: 'DISABLED', created_at: '2026-09-21T02:00:00.000Z', updated_at: '2026-09-22T02:00:00.000Z', active_sessions: 0, latest_session_at: null }] });
+    if(path==='/v1/console/logins/summary')return json({observed_at:'2026-09-23T08:00:00.000Z',history_since:'2026-09-22T02:00:00.000Z',points:Array.from({length:7},(_,i)=>({day:`2026-09-${17+i}`,success:i<5?null:i===6?3:0,rejected:i<5?null:i===6?1:0}))});
+    if(path==='/v1/console/audit'){
+      const records=[{audit_id:'71743463-6aa8-43ec-9e76-5bcc15124704',actor:'browser-fixture',username:'fixture',role:'operator',kind:'LOGIN',action:'login',target:null,request_id:'71743463-6aa8-43ec-9e76-5bcc15124705',command_id:null,occurred_at:'2026-09-23T07:55:00.000Z',finished_at:'2026-09-23T07:55:00.000Z',outcome:'SUCCESS',http_status:200},
+        {audit_id:'71743463-6aa8-43ec-9e76-5bcc15124706',actor:'browser-fixture-reader',username:null,role:'reader',kind:'COMMAND',action:'POST /v1/config',target:null,request_id:'71743463-6aa8-43ec-9e76-5bcc15124707',command_id:null,occurred_at:'2026-09-23T07:50:00.000Z',finished_at:'2026-09-23T07:50:00.000Z',outcome:'REJECTED',http_status:403}];
+      const items=records.filter(e=>['actor','kind','outcome'].every(k=>!url.searchParams.get(k)||url.searchParams.get(k)===e[k as keyof typeof e]));
+      return json({items,next_cursor:null,observed_at:'2026-09-23T08:00:00.000Z',history_since:'2026-09-22T02:00:00.000Z'});
+    }
     if (path === '/v1/overview/plans') {
       const p = state.detail?.plan, by_status = { QUEUED: 0, RUNNING: 0, WAITING: 0, COMPLETED: 0, CANCELLED: 0, FAILED: 0 };
       if (p) by_status[p.status]++;
@@ -652,7 +659,13 @@ test('user management lists the real workspace accounts without credentials and 
   await page.getByRole('tab', { name: '权限范围' }).click();
   await expect(page.locator('.user-detail')).toContainText('不能创建或取消采集计划');
   await expect(page.locator('.user-detail').getByRole('button', { name: '启用账号' })).toBeDisabled();
-  await expect(page.getByText('登录历史尚未留存', { exact: false })).toBeVisible();
+  await expect(page.locator('.user-events tbody tr')).toHaveCount(2);
+  await page.getByLabel('操作结果',{exact:true}).selectOption('REJECTED');await expect(page.locator('.user-events tbody tr')).toHaveCount(1);await expect(page.locator('.user-events')).toContainText('已拒绝 · 403');
+  await page.getByRole('tab',{name:'最近操作',exact:true}).click();await expect(page.locator('.user-detail')).toContainText('发布配置');
+  await page.locator('.user-list tbody tr',{hasText:'fixture-reader'}).click();
+  await page.getByRole('tab',{name:'登录历史',exact:true}).click();await expect(page.locator('.user-detail')).toContainText('此范围内暂无记录');
+  await expect(page.locator('.login-trend')).toContainText('更早时段无历史记录');
+  await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
   await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
 });
 test('read-only users do not see user management, even through a direct URL', async ({ page }) => {

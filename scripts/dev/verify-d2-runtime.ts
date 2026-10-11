@@ -6,7 +6,7 @@ import {createPool} from '@crawlsystem/store/config';
 import {issueToken,loadSigningKey} from '@crawlsystem/http/auth';
 
 const mode=process.argv[2]??'after';assert.ok(['before','after'].includes(mode));
-const dir='.runtime/d2',workspace='m1-main';mkdirSync(dir,{recursive:true,mode:0o700});
+const dir=process.env.D3_RUNTIME_DIR??'.runtime/d2',workspace='m1-main';mkdirSync(dir,{recursive:true,mode:0o700});
 const pool=createPool();
 const businessUrl=readFileSync('.runtime/c1/business.env','utf8').trim().slice('BUSINESS_DATABASE_URL='.length);
 assert.equal(new URL(businessUrl).pathname,'/crawlsystem_business_main');

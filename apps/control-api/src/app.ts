@@ -12,8 +12,10 @@ import {FailureStateSchema,FailureCommandSchema,FailureSchema} from '@crawlsyste
 import type {ClickHouse} from './analytics.ts';
 import type {Failure} from '@crawlsystem/contracts/analytics';
 import {WorkerMetricsSchema} from '../../../packages/contracts/src/workers.ts';
+import {ConsoleAuditQuerySchema} from '../../../packages/contracts/src/console-audit.ts';
+import {registerConsoleAudit,type ConsoleAuditRepository} from './console-audit.ts';
 
-export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore;clickhouse?:ClickHouse;monitoring?:Prometheus;evidencePreview?:(failure:Failure)=>Promise<unknown> }) {
+export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; audit?:ConsoleAuditRepository; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore;clickhouse?:ClickHouse;monitoring?:Prometheus;evidencePreview?:(failure:Failure)=>Promise<unknown> }) {
   const auth=options.consoleAuth,workload=options.workloadIdentity;
   const proxies=()=>{if(!options.proxies) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Proxy Control is not configured',503);return options.proxies;};
   const app=createServer('control',{...options,authenticateRequest:async request=>{
@@ -22,13 +24,28 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     if(publicAuth || (request.headers.cookie && !request.headers.authorization && request.method!=='GET' && request.method!=='HEAD')) {
       if(request.headers['x-console-request']!=='1') throw new StoreError('FORBIDDEN','Console request header is required',403);
     }
-    if(publicAuth) return undefined;
+    if(publicAuth) {
+      if(path===ApiRoutes.logout&&auth)try{(request as typeof request&{logoutPrincipal?:import('@crawlsystem/contracts').Principal}).logoutPrincipal=await auth.authenticate(request.headers.cookie);}
+      catch(error){if(!(error instanceof StoreError)||error.status!==401)throw error;}
+      return undefined;
+    }
     // The bearer here is a Kubernetes ServiceAccount token, verified by TokenReview in the route.
     if(request.method==='POST' && (path===ApiRoutes.workloadToken || path===ApiRoutes.temporalToken)) return undefined;
     if(request.headers.authorization) return authenticate(request.headers.authorization,options.signingKey);
     if(auth) return auth.authenticate(request.headers.cookie);
     return authenticate(undefined,options.signingKey);
   }}),store=options.store;
+  if(options.audit)registerConsoleAudit(app,options.audit);
+  app.get('/v1/console/audit',async request=>{
+    requireRole(request.principal,'operator');
+    if(!options.audit)throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Console audit is not configured',503);
+    return options.audit.list(request.principal,ConsoleAuditQuerySchema.parse(request.query));
+  });
+  app.get('/v1/console/logins/summary',async request=>{
+    requireRole(request.principal,'operator');z.strictObject({}).parse(request.query);
+    if(!options.audit)throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Console audit is not configured',503);
+    return options.audit.summary(request.principal);
+  });
   app.post(ApiRoutes.login,{bodyLimit:2048},async(request,reply)=>{
     if(!auth) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Account login is not configured',503);
     const input=LoginSchema.parse(request.body);
