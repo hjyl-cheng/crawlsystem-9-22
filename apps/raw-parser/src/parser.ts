@@ -112,8 +112,17 @@ export class RawParser {
     return { ...video, comments_first_page: null, comments_ref: ref, comments_summary: summary };
   }
   private async video(replay: ResponseReplay, input: YoutubeFrozenInput, raw: RawReference): Promise<VideoItem> {
-    for (let attempt = 0; attempt < (raw.step === 'SAMPLING' ? 1 : 3); attempt++) {
-      try { return await videoDetail(await replay.client(), raw.channel_id, raw.unit_id, input.scope.comments_per_video, raw.step === 'SAMPLING', replay.played, raw.captured_at); }
+    // A failed collector attempt may have captured /player but lost /next. Reusing
+    // one replay consumes the later successful attempt's /next and then cannot
+    // decode its player. Retry each captured player against an independent replay;
+    // every fact still comes exclusively from this unit's recorded responses.
+    const response = replay.responses.find(r => r.endpoint === 'https://www.googleapis.com/youtube/v3/videos' && r.status === 200);
+    const webResponses=response?replay.responses.slice(0,replay.responses.indexOf(response)):replay.responses;
+    const players=webResponses.flatMap((r,index)=>r.endpoint.endsWith('/player')?[index]:[]);
+    const attempts=raw.step==='SAMPLING'?[0]:players.slice(0,6);
+    for (const start of attempts.length?attempts:[0]) {
+      const attempt=new ResponseReplay(webResponses.filter((r,index)=>!r.endpoint.endsWith('/player') || index>=start));
+      try { return await videoDetail(await attempt.client(), raw.channel_id, raw.unit_id, input.scope.comments_per_video, raw.step === 'SAMPLING', attempt.played, raw.captured_at); }
       catch(error) {
         if(error instanceof ScrapeError && error.kind==='not_found') {
           const missing=unavailableVideo(raw.channel_id,raw.unit_id,raw.captured_at);
@@ -123,13 +132,13 @@ export class RawParser {
       }
     }
     // Fallback must be evidenced by an actual captured Data API response, never the R2 projection.
-    const response = replay.responses.find(r => r.endpoint === 'https://www.googleapis.com/youtube/v3/videos' && r.status === 200);
     if (!response) throw new ParseFailure('REPLAY_INCOMPLETE');
     const api = (JSON.parse(response.body).items as ApiVideo[]).find(v => v.id === raw.unit_id);
     if (!api) return unavailableVideo(raw.channel_id, raw.unit_id, raw.captured_at);
     if (api.snippet.channelId !== raw.channel_id) throw new ParseFailure('INVALID_FACT');
+    const commentsReplay=new ResponseReplay(replay.responses.slice(replay.responses.indexOf(response)+1));
     const comments = raw.step === 'SAMPLING' || !input.scope.comments_per_video ? { kind: 'skipped' as const }
-      : await topComments(await replay.client(), raw.unit_id, api.statistics?.commentCount, 'pt-BR', raw.captured_at).catch(() => ({ kind: 'unavailable' as const, collected_at: raw.captured_at }));
+      : await topComments(await commentsReplay.client(), raw.unit_id, api.statistics?.commentCount, 'pt-BR', raw.captured_at).catch(() => ({ kind: 'unavailable' as const, collected_at: raw.captured_at }));
     return toVideoFacts(api, null, comments, input.scope.comments_per_video, raw.captured_at);
   }
 }

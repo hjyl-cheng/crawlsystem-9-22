@@ -7,8 +7,8 @@ try{
   assert.equal(git('status','--porcelain'),'');
   const build=JSON.parse(readFileSync(dir+'/latest-control-image.json','utf8'));assert.equal(build.revision,git('rev-parse','HEAD'));
   assert.equal(JSON.parse(readFileSync(dir+'/bootstrap.json','utf8')).schema,37);
-  const services=[['control-api-preview','control-api'],['intent-dispatcher','dispatcher']] as const;
-  for(const [name] of services)if(!existsSync(dir+'/previous-'+name+'.json'))writeFileSync(dir+'/previous-'+name+'.json',kube(['-n','control','get','deployment',name,'-o','json']),{mode:0o600});
+  const services=[['control','control-api-preview','control-api'],['control','intent-dispatcher','dispatcher'],['crawler','raw-parser','parser']] as const;
+  for(const [namespace,name] of services)if(!existsSync(dir+'/previous-'+name+'.json'))writeFileSync(dir+'/previous-'+name+'.json',kube(['-n',namespace,'get','deployment',name,'-o','json']),{mode:0o600});
   for(const node of ['a1','a2','a3','s1','s2','s3']){
     const command=node==='a1'?['sudo','-n','k3s','ctr','-n','k8s.io','images','import','-']:['ssh','crawl-'+node,'sudo','-n','k3s','ctr','-n','k8s.io','images','import','-'];
     await new Promise<void>((resolve,reject)=>{
@@ -17,7 +17,7 @@ try{
       p.once('error',reject);p.once('exit',code=>code===0?resolve():reject(new Error('E2 image import failed')));
     });
   }
-  for(const [name,container] of services){kube(['-n','control','set','image','deployment/'+name,container+'='+build.control.image]);kube(['-n','control','rollout','status','deployment/'+name,'--timeout=180s']);}
-  writeFileSync(dir+'/deployment.json',JSON.stringify({revision:build.revision,control_image:build.control.image,deployed_at:new Date().toISOString(),workloads:services.map(s=>'control/'+s[0])},null,2)+'\n',{mode:0o600});
-  console.log('E2 Control API and dispatcher ready');
+  for(const [namespace,name,container] of services){kube(['-n',namespace,'set','image','deployment/'+name,container+'='+build.control.image]);kube(['-n',namespace,'rollout','status','deployment/'+name,'--timeout=180s']);}
+  writeFileSync(dir+'/deployment.json',JSON.stringify({revision:build.revision,control_image:build.control.image,deployed_at:new Date().toISOString(),workloads:services.map(s=>s[0]+'/'+s[1])},null,2)+'\n',{mode:0o600});
+  console.log('E2 Control API, dispatcher and raw parser ready');
 }catch(error){console.error('E2 deployment failed:',error instanceof Error?error.name:'UnknownError');process.exitCode=1;}

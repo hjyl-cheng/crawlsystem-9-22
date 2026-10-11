@@ -10,6 +10,7 @@
 - 更新采集优先，然后是到期重试，最后是新导入。重试共用工作空间调度锁、频道锁、活动计划上限、Agent 上限及 Data API 预算；门禁阻塞时不消耗重试次数。
 - 自动重试次数与脚本内部重试分开记录。次数用尽后保留失败，显示“需人工处理”。
 - 采集库追加迁移 037；原 64 张业务表结构不变。迁移只按现有终止事件分类失败，滚动发布期间旧 API 新记的失败由调度器补分类。未知或取消的历史失败不复活。
+- 真实验收发现旧任务的视频离线解析阻塞：前一次只保存了 player，丢失 next；解析复用同一回放会误消耗后一次成功请求的 next。解析器现在为每个已捕获 player 重新建立独立回放，最多六个（原采集三次 × WEB / IOS），Data API 回退后的评论与前面的网页详情分开重放。仅使用原始响应，不采用 Worker 的兼容投影定稿。
 
 ## 验证与运行
 
@@ -18,9 +19,10 @@
 - `typecheck`、`build-console`。
 - `import-retry-integration`：退避与次数、完成与失败链、重复事件、双调度器、取消 / 忽略 / 拒绝、资格与放行、API / Agent 门禁、上线补分类。
 - `import-retry-bootstrap`：历史统计回填单独进程验收；混合回归曾遇本地 PG 开发隧道连接中断，单独运行核对回填幂等性。
+- `import-retry-parser`、`import-retry-replay`：丢失请求回放回归，以及正式原始记录的纯内存离线解析 / 关键字段对照（生产写入 0）。
 - `import-retry-runtime before|after`：生产采集、交付、自动开关、服务与原业务库结构。
 - `import-retry-prepare`：正式采集库完整备份、迁移与配置不变检查。
-- `import-retry-image`、`import-retry-deploy`：已提交版本镜像，仅发布 Control API / dispatcher。
+- `import-retry-image`、`import-retry-deploy`：已提交版本镜像，发布 Control API / dispatcher / raw-parser。
 - `import-retry-browser`：真实失败自动完成、API 权限与工作空间隔离、频道汇总、候选重试提示和桌面 / 手机布局。候选的等待 / 用尽 / 取消三种标签使用浏览器只读响应样例验证，真实恢复另以数据库记录验收。
 
 备份、原部署回滚资料、运行结果与页面截图保存在 `.runtime/e2/`，不提交凭据或完整部署配置。正式验收记录将在发布后补入本目录。

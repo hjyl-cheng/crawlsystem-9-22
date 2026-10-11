@@ -31,9 +31,10 @@ try{
  const business=(await biz.query("SELECT (SELECT count(*)::int FROM pg_tables WHERE schemaname IN ('public','publication','raw_crawler','result')) legacy_tables,(SELECT count(*)::int FROM public.creator_search_live) searchable_channels,(SELECT count(*)::int FROM public.channel_snapshots) channel_snapshots,(SELECT count(*)::int FROM public.content_snapshots) video_snapshots")).rows[0];assert.equal(business.legacy_tables,64);
  if(mode==='after'){
   const before=JSON.parse(readFileSync(`${dir}/runtime-before.json`,'utf8'));
+  const changed=['control-api-preview','intent-dispatcher','execution-worker',...(process.env.D3_RUNTIME_ALLOW_PARSER_UPDATE==='true'?['raw-parser']:[])];
   assert.deepEqual(services.find(s=>s.name==='execution-worker')!.images.filter((i:any)=>i.name!=='worker'),before.services.find((s:any)=>s.name==='execution-worker').images.filter((i:any)=>i.name!=='worker'));
-  for(const service of services.filter(s=>!['control-api-preview','intent-dispatcher','execution-worker'].includes(s.name)))assert.deepEqual(service.images,before.services.find((s:any)=>s.name===service.name).images);
-  for(const pod of pods.filter((p:any)=>!['control-api-preview-','intent-dispatcher-','execution-worker-','proxy-manager-'].some(name=>p.name.startsWith(name)))){const prior=before.pods.find((p:any)=>p.uid===pod.uid);assert.ok(prior,'Existing collection and delivery pods must remain in place');assert.deepEqual(pod.containers,prior.containers);}
+  for(const service of services.filter(s=>!changed.includes(s.name)))assert.deepEqual(service.images,before.services.find((s:any)=>s.name===service.name).images);
+  for(const pod of pods.filter((p:any)=>![...changed,'proxy-manager'].some(name=>p.name.startsWith(name+'-')))){const prior=before.pods.find((p:any)=>p.uid===pod.uid);assert.ok(prior,'Existing collection and delivery pods must remain in place');assert.deepEqual(pod.containers,prior.containers);}
   assert.ok(source.videos>=before.source.videos);assert.ok(delivery.delivered>=before.delivery.delivered);
  }
  const result={result:'PASSED',at:new Date().toISOString(),mode,automatic:{search:queries.runs.enabled,admission:true,updates:updates.limits.enabled,daily_update_limit:updates.limits.daily_plan_limit},delivery,services,pods,source,plans,slot,business,connector:{state:connector.connector.state,tasks:connector.tasks.map((t:any)=>t.state)}};
