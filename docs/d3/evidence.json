@@ -1,0 +1,198 @@
+{
+  "result": "PASSED",
+  "at": "2026-10-11T05:25:22.978Z",
+  "backend_revision": "e92de9a9ea888ed1d66b643f3b26effc7b6b8d63",
+  "console_revision": "5298939",
+  "control_image": "docker.io/crawlsystem/control-api:main-e92de9a9ea88-91e670ca",
+  "tests": {
+    "unit": 172,
+    "integration": 11,
+    "browser": 2,
+    "typecheck": "PASSED",
+    "console_build": "PASSED",
+    "live_browser": "PASSED"
+  },
+  "audit": {
+    "command_http_status": 404,
+    "login_history_survived_logout": true,
+    "workspace_isolation": true,
+    "reader_worker_read_status": 403,
+    "reader_write_audited": true,
+    "login_summary": {
+      "observed_at": "2026-10-11T05:25:16.469Z",
+      "history_since": "2026-10-11T05:21:45.155Z",
+      "points": [
+        {
+          "day": "2026-10-05",
+          "success": null,
+          "rejected": null
+        },
+        {
+          "day": "2026-10-06",
+          "success": null,
+          "rejected": null
+        },
+        {
+          "day": "2026-10-07",
+          "success": null,
+          "rejected": null
+        },
+        {
+          "day": "2026-10-08",
+          "success": null,
+          "rejected": null
+        },
+        {
+          "day": "2026-10-09",
+          "success": null,
+          "rejected": null
+        },
+        {
+          "day": "2026-10-10",
+          "success": null,
+          "rejected": null
+        },
+        {
+          "day": "2026-10-11",
+          "success": 1,
+          "rejected": 1
+        }
+      ]
+    }
+  },
+  "layouts": [
+    {
+      "width": 1920,
+      "height": 937,
+      "horizontal_overflow": 0
+    },
+    {
+      "width": 1586,
+      "height": 992,
+      "horizontal_overflow": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "horizontal_overflow": 0
+    }
+  ],
+  "records": [
+    {
+      "audit_id": "f15ea8a0-1fd2-488f-962d-5b0db8c8711b",
+      "actor": "d3-a12b6c91-e587-4953-8861-2b9b3542377d",
+      "username": null,
+      "role": "operator",
+      "kind": "COMMAND",
+      "action": "POST /v1/workers/:id/pause",
+      "target": "9875e65b-6496-4c97-837b-6d8adf10ebb7",
+      "request_id": "aa6106a7-9f44-4f68-926f-76f5aeebe213",
+      "command_id": "db110e62-036d-45a1-8913-1fb493290daa",
+      "occurred_at": "2026-10-11T05:25:16.163Z",
+      "finished_at": "2026-10-11T05:25:16.174Z",
+      "outcome": "REJECTED",
+      "http_status": 404
+    },
+    {
+      "audit_id": "f95881f9-bb1a-49fa-a002-fe6a24af3c5a",
+      "actor": "d3-a12b6c91-e587-4953-8861-2b9b3542377d",
+      "username": "d3-a12b6c91-e587-4953-8861-2b9b3542377d",
+      "role": "operator",
+      "kind": "LOGIN",
+      "action": "login",
+      "target": null,
+      "request_id": "4ab37fcb-3004-4cf8-9db7-b76d03521869",
+      "command_id": null,
+      "occurred_at": "2026-10-11T05:25:15.085Z",
+      "finished_at": "2026-10-11T05:25:15.196Z",
+      "outcome": "SUCCESS",
+      "http_status": 200
+    },
+    {
+      "audit_id": "d28b0f54-965d-498b-8d33-b093a1879c4a",
+      "actor": "d3-a12b6c91-e587-4953-8861-2b9b3542377d",
+      "username": "d3-a12b6c91-e587-4953-8861-2b9b3542377d",
+      "role": "operator",
+      "kind": "LOGIN",
+      "action": "login",
+      "target": null,
+      "request_id": "85d57971-550a-490d-a667-9ace2f2c9d06",
+      "command_id": null,
+      "occurred_at": "2026-10-11T05:25:14.599Z",
+      "finished_at": "2026-10-11T05:25:14.674Z",
+      "outcome": "REJECTED",
+      "http_status": 401
+    },
+    {
+      "audit_id": "2483021d-9105-4141-b517-30410223c161",
+      "actor": "cli:ubuntu",
+      "username": null,
+      "role": null,
+      "kind": "ACCOUNT",
+      "action": "account.add",
+      "target": "d3-a12b6c91-e587-4953-8861-2b9b3542377d",
+      "request_id": null,
+      "command_id": null,
+      "occurred_at": "2026-10-11T05:25:14.572Z",
+      "finished_at": "2026-10-11T05:25:14.572Z",
+      "outcome": "SUCCESS",
+      "http_status": null
+    }
+  ],
+  "runtime": {
+    "before_at": "2026-10-11T05:20:06.704Z",
+    "after_at": "2026-10-11T05:25:22.978Z",
+    "full_completed": {
+      "before": 1538,
+      "after": 1543
+    },
+    "full_failed": {
+      "before": 11,
+      "after": 11
+    },
+    "videos": {
+      "before": 43858,
+      "after": 44036
+    },
+    "delivered": {
+      "before": 1606,
+      "after": 1611
+    },
+    "delivery_pending": 0,
+    "delivery_failed": 0,
+    "business": {
+      "legacy_tables": 64,
+      "searchable_channels": 1517,
+      "channel_snapshots": 1611,
+      "video_snapshots": 11569
+    },
+    "comment_bodies": 0,
+    "cdc": {
+      "connector": {
+        "state": "RUNNING",
+        "tasks": [
+          "RUNNING"
+        ]
+      },
+      "slot": {
+        "active": true,
+        "retained_bytes": "54816456"
+      }
+    },
+    "automatic": {
+      "search": true,
+      "admission": true,
+      "updates": true,
+      "daily_update_limit": 100
+    },
+    "only_control_api_replaced": true
+  },
+  "console_migration": 2,
+  "crawl_database_schema": 34,
+  "least_privilege": true,
+  "backup_sha256": "89e73b37e7684479bff2514020d7a2e99c844520b38c711f945328fa335b2ba6",
+  "migration_sha256": "c1321e7b19489e4992dfb3f99e1cf1ea634a5a0906d69c39fffc8aa965141e50",
+  "public_users_http_status": 200,
+  "tunnel_pid_preserved": 1882,
+  "console_preexisting_file_sha256": "57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709"
+}
