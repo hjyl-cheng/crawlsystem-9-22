@@ -1,0 +1,324 @@
+{
+  "result": "PASSED",
+  "at": "2026-10-11T04:11:02.854Z",
+  "backend_revision": "5b4ad4e9dbe8c2150f4f4f24f01c6c53154edfb5",
+  "console_revision": "28288d3",
+  "database_schema": 34,
+  "tests": {
+    "unit": 168,
+    "integration": 31,
+    "temporal": 10,
+    "worker_browser": 4,
+    "acknowledgement_browser": 1,
+    "typecheck": "PASSED",
+    "console_build": "PASSED"
+  },
+  "commands": {
+    "initial": {
+      "version": 3,
+      "desired": "RUNNING",
+      "applied_version": 3,
+      "status": "RUNNING",
+      "reason": "D2 修正版部署与原搜索恢复完毕，恢复正常采集",
+      "changed_at": "2026-10-11T04:01:45.275Z",
+      "active_plan_ids": [
+        "a3815538-4dee-4908-9f6e-826e49859c62",
+        "e3e1cb67-2817-4cc0-ab19-3d0b7a949757"
+      ],
+      "active_query_run_ids": [],
+      "legacy_pending": 0
+    },
+    "pause_response": {
+      "version": 4,
+      "desired": "PAUSED",
+      "applied_version": 3,
+      "status": "PENDING",
+      "reason": "D2 真实页面暂停验收，完成后恢复",
+      "changed_at": "2026-10-11T04:01:53.451Z",
+      "active_plan_ids": [
+        "a3815538-4dee-4908-9f6e-826e49859c62",
+        "e3e1cb67-2817-4cc0-ab19-3d0b7a949757"
+      ],
+      "active_query_run_ids": [],
+      "legacy_pending": 0
+    },
+    "drain_response": {
+      "version": 5,
+      "desired": "DRAINING",
+      "applied_version": 4,
+      "status": "PENDING",
+      "reason": "D2 等待既有计划与搜索完整结束",
+      "changed_at": "2026-10-11T04:02:11.866Z",
+      "active_plan_ids": [
+        "a3815538-4dee-4908-9f6e-826e49859c62",
+        "e3e1cb67-2817-4cc0-ab19-3d0b7a949757"
+      ],
+      "active_query_run_ids": [],
+      "legacy_pending": 0
+    },
+    "drained": {
+      "version": 5,
+      "desired": "DRAINING",
+      "applied_version": 5,
+      "status": "DRAINED",
+      "reason": "D2 等待既有计划与搜索完整结束",
+      "changed_at": "2026-10-11T04:02:11.866Z",
+      "active_plan_ids": [],
+      "active_query_run_ids": [],
+      "legacy_pending": 0
+    },
+    "resumed": {
+      "version": 6,
+      "desired": "RUNNING",
+      "applied_version": 6,
+      "status": "RUNNING",
+      "reason": "D2 验收完成，恢复正常采集",
+      "changed_at": "2026-10-11T04:04:51.623Z",
+      "active_plan_ids": [
+        "49efcfbd-4e88-40f9-91bc-3666e53e5f30",
+        "63f98fd6-da80-4f3a-b731-151396b508d3"
+      ],
+      "active_query_run_ids": [],
+      "legacy_pending": 0
+    },
+    "new_assignments_while_closed": 0,
+    "new_searches_while_closed": 0,
+    "reader_write_status": 403
+  },
+  "layouts": [
+    {
+      "width": 1920,
+      "height": 937,
+      "horizontal_overflow": 0,
+      "navigation_covers_page": false
+    },
+    {
+      "width": 1586,
+      "height": 992,
+      "horizontal_overflow": 0,
+      "navigation_covers_page": false
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "horizontal_overflow": 0,
+      "navigation_covers_page": false
+    }
+  ],
+  "metric_sources": {
+    "node": "Prometheus fixed queries",
+    "worker": "process CPU cores and RSS in authenticated heartbeat",
+    "trend": "confirmed plan and search ownership and actual process samples",
+    "monitoring_available": true,
+    "task_points": 24
+  },
+  "runtime": {
+    "before_at": "2026-10-11T03:35:06.505Z",
+    "after_at": "2026-10-11T04:05:53.542Z",
+    "full_completed": {
+      "before": 1446,
+      "after": 1463
+    },
+    "full_failed": {
+      "before": 11,
+      "after": 11
+    },
+    "videos": {
+      "before": 41132,
+      "after": 41654
+    },
+    "delivered": {
+      "before": 1514,
+      "after": 1531
+    },
+    "delivery_pending": 0,
+    "delivery_failed": 0,
+    "comment_bodies": 0,
+    "business": {
+      "legacy_tables": 64,
+      "searchable_channels": 1437,
+      "channel_snapshots": 1531,
+      "video_snapshots": 11557
+    },
+    "cdc": {
+      "connector": {
+        "state": "RUNNING",
+        "tasks": [
+          "RUNNING"
+        ]
+      },
+      "slot_active": true,
+      "retained_bytes": 4881552
+    },
+    "services": [
+      {
+        "namespace": "control",
+        "name": "control-api-preview",
+        "ready": 2,
+        "desired": 2,
+        "images": [
+          {
+            "name": "control-api",
+            "image": "docker.io/crawlsystem/control-api:main-5b4ad4e9dbe8-c0358298"
+          }
+        ],
+        "automatic": {
+          "QUERY_RUNS_ENABLED": "true",
+          "QUERY_AUTO_ADMIT": "true",
+          "UPDATE_SCHEDULER_ENABLED": "true"
+        }
+      },
+      {
+        "namespace": "control",
+        "name": "intent-dispatcher",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "dispatcher",
+            "image": "docker.io/crawlsystem/control-api:main-5b4ad4e9dbe8-c0358298"
+          }
+        ],
+        "automatic": {
+          "UPDATE_SCHEDULER_ENABLED": "true",
+          "QUERY_AUTO_ADMIT": "true",
+          "QUERY_RUNS_ENABLED": "true"
+        }
+      },
+      {
+        "namespace": "crawler",
+        "name": "execution-worker",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "worker",
+            "image": "docker.io/crawlsystem/execution-worker:main-5b4ad4e9dbe8-f97b9862"
+          },
+          {
+            "name": "fingerprint-gateway",
+            "image": "docker.io/crawlsystem/fingerprint-gateway:1ff2fbba98b3c83f"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "crawler",
+        "name": "profile-agent",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "profile-agent",
+            "image": "docker.io/crawlsystem/profile-agent:96bc1d79fdffbf8a"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "crawler",
+        "name": "raw-parser",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "parser",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "ingest",
+        "name": "pg-sink",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "sink",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "analytics",
+        "name": "crawl-analytics",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "analytics",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "ingest",
+        "name": "business-sink",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "business-sink",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "control",
+        "name": "delivery-receipts",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "delivery-receipts",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      }
+    ]
+  },
+  "startup_search_recovery": {
+    "at": "2026-10-11T04:01:44.400Z",
+    "count": 10,
+    "run_ids": [
+      "bbac2bfb-a332-4f5d-9bbf-d35c964d8883",
+      "414e6d23-34b5-4567-9c62-c1f83f3ba5ce",
+      "532499c9-130d-43fb-8476-3ee436343c54",
+      "8255d67c-3749-4c0a-b735-7aca7e9dfd23",
+      "deb69d2f-237e-45b0-8c42-47d4c3e9c712",
+      "928baa6d-70ab-4e8e-9776-f7fe450da78f",
+      "c515267f-f399-4ae2-a6f5-d9aaef78b687",
+      "ea7dcc4e-fa85-412d-9273-7f6c55aa9a40",
+      "7b4ad41e-54a5-4bd7-b2a9-f529415d30fa",
+      "c0b7f2ff-ecd9-487c-ba54-0de87d4934e5"
+    ],
+    "state": "PENDING",
+    "parameters_preserved": true,
+    "attempts_preserved": true,
+    "failure_budgets_preserved": true,
+    "created_at_preserved": true,
+    "new_runs_created": 0,
+    "original_evidence_preserved": true
+  },
+  "search_backlog_snapshot": {
+    "at": "2026-10-11T04:11:37Z",
+    "backlog": 2123,
+    "limit": 2000,
+    "pending_retry": 10,
+    "daily_run_limit": 300,
+    "failed_today": 0,
+    "budgets_changed": false
+  },
+  "backup": {
+    "bytes": 126410195,
+    "sha256": "161d0c46f61379daa58ca47f56fbe842cdf15de54d6dd6d7a6afedffb6c42527"
+  },
+  "public_workers_http_status": 200,
+  "tunnel_pid_preserved": 1882,
+  "console_preexisting_file_sha256": "57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709"
+}
