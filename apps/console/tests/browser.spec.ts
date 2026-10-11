@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { test, expect, type Page } from '@playwright/test';
 import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView, type UpdateChannel, type AgentTask, type QueryBinding, type Candidate } from '@crawlsystem/contracts';
 import type {DeliveryRecord} from '../../../packages/contracts/src/delivery.ts';
+import {ProxyAvailabilitySchema} from '../../../packages/contracts/src/proxy-availability.ts';
 import {defaultSettings,changedSettings,type ConfigSnapshot,type ConfigHistoryItem,type ConfigCommand} from '../../../packages/contracts/src/configuration.ts';
 import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture, agentTaskFixtures, agentSummaryFixture, dataApiSummaryFixture, queryBindingFixture, querySummaryFixture, candidateFixture, candidateSummaryFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
+  const availability={fail:false,empty:true};
   const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[], agentTasks: [] as AgentTask[], dataApiCalls: false, channelImports: [] as unknown[], queryBindings: [] as QueryBinding[], queryRequests: [] as unknown[], candidates: [] as Candidate[], candidateRequests: [] as unknown[] };
   const deliveries:DeliveryRecord[]=[],deliveryRetries:unknown[]=[];
   const config:ConfigSnapshot={version:1,source:'DATABASE',settings:{...defaultSettings(),discovery:{...defaultSettings().discovery,daily_run_limit:300}},updated_at:new Date().toISOString(),operator:'bootstrap',consumers:[]};
@@ -24,6 +26,14 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (method === 'GET') state.reads.push(url.pathname + url.search);
     if (state.fail) return failure(503, 'UNAVAILABLE');
     if (state.malformed) return json({ unexpected: true });
+    if(path==='/v1/proxies/availability'){
+      if(availability.fail)return failure(503,'UNAVAILABLE');
+      const resolution=url.searchParams.get('resolution')==='hour'?'hour':'day',n=resolution==='hour'?24:7;
+      const empty={healthy:0,degraded:0,trial:0,cooldown:0,failed:0,samples:0,available_samples:0,requests:0,failures:0,available_percent:null,request_success_percent:null};
+      const counts=availability.empty?empty:{...empty,healthy:2,degraded:1,trial:1,samples:4,available_samples:3,requests:10,failures:2,available_percent:75,request_success_percent:80};
+      return json(ProxyAvailabilitySchema.parse({observed_at:'2026-10-11T01:30:00.000Z',recording_since:'2026-10-11T01:00:00.000Z',resolution,timezone:'Asia/Shanghai',latest_report_at:availability.empty?null:'2026-10-11T01:29:00.000Z',stale:availability.empty,summary:counts,
+        points:Array.from({length:n},(_,i)=>({bucket_at:new Date(Date.parse(resolution==='hour'?'2026-10-11T01:00:00Z':'2026-10-10T16:00:00Z')-(n-1-i)*(resolution==='hour'?3600000:86400000)).toISOString(),counts:i===n-1?counts:empty}))}));
+    }
     if(path==='/v1/config/history')return json({items:configHistory,next_cursor:null});
     if(path==='/v1/config'){
       if(method==='GET')return json(config);
@@ -163,7 +173,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (path.startsWith('/v1/receipts/') && state.detail) return json(state.detail.receipts.find(receipt => path.endsWith(receipt.submission_id)));
     return failure(404, 'NOT_FOUND');
   });
-  return Object.assign(state,{deliveries,deliveryRetries,config,configHistory,configRequests,loseConfigResponse:()=>{configLoseResponse=true;}});
+  return Object.assign(state,{deliveries,deliveryRetries,config,configHistory,configRequests,availability,loseConfigResponse:()=>{configLoseResponse=true;}});
 }
 async function login(page: Page, path = '/') {
   await page.goto(path); await page.getByLabel('账号', { exact: true }).fill('fixture'); await page.getByLabel('密码', { exact: true }).fill('browser-fixture-password'); await page.getByRole('button', { name: '进入控制台' }).click();
@@ -562,6 +572,27 @@ test('IP resource management replaces three proxy menus and reports the real pro
   await expect(page.getByText('尚无代理 IP', { exact: true })).toBeVisible();
   await expect(page.getByLabel('预览示例数据'), 'real inventory pages offer no design sample').toHaveCount(0);
 });
+test('proxy availability keeps missing history blank, separates request success and sends scoped hour filters',async({page})=>{
+  const state=await mock(page);state.availability.empty=false;
+  state.workers=[{worker_id:'w1',server_id:'a1',build_version:'v1',accepting_work:true,capacity:1,running_plan_ids:[],last_heartbeat_at:new Date().toISOString(),stale:false,proxy_status:'CONFIGURED'}];
+  await login(page,'/proxies');const panel=page.locator('.proxy-availability');
+  await expect(panel).toContainText('本范围 75.0%');await expect(panel.getByRole('img',{name:'近 7 天代理可用率'})).toBeVisible();
+  await expect(panel.locator('svg circle')).toHaveCount(1);
+  await page.getByLabel('趋势指标').selectOption('request_success_percent');await expect(panel).toContainText('本范围 80.0%');
+  await page.getByLabel('趋势时间范围').selectOption('hour');await page.getByLabel('趋势服务器').selectOption('a1');
+  await expect.poll(()=>state.reads.some(p=>p.includes('/proxies/availability?resolution=hour')&&p.includes('server_id=a1'))).toBe(true);
+  await expect(panel.getByRole('img',{name:'近 24 小时请求成功率'})).toBeVisible();
+  state.availability.fail=true;await page.getByRole('button',{name:'刷新趋势'}).click();await expect(panel.getByRole('alert')).toContainText('趋势读取失败');
+  state.availability.fail=false;state.availability.empty=true;await page.getByRole('button',{name:'刷新趋势'}).click();await expect(panel.getByRole('alert')).toHaveCount(0);
+  await expect(panel).toContainText('当前筛选尚无观测');await expect(panel.locator('svg circle')).toHaveCount(0);await expect(panel).toContainText('暂无有效样本');
+  await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
+});
+test('reader can view both proxy availability metrics',async({page})=>{
+  const state=await mock(page,undefined,'reader');state.availability.empty=false;
+  await login(page,'/proxies');await expect(page.locator('.proxy-availability')).toContainText('本范围 75.0%');
+  await expect(page.getByRole('button',{name:'添加 IP'})).toBeDisabled();
+  await page.getByLabel('趋势指标').selectOption('request_success_percent');await expect(page.locator('.proxy-availability')).toContainText('本范围 80.0%');
+});
 test('proxies show the exit country YouTube detected, pending and failed checks, and filter by country', async ({ page }) => {
   const state = await mock(page);
   const proxy = (host: string, exit: Partial<ProxyView>): ProxyView => ({ proxy_id: crypto.randomUUID(), protocol: 'https', host, port: 443, username: null, has_password: false, provider: 'free', group: 'g1',
@@ -573,6 +604,8 @@ test('proxies show the exit country YouTube detected, pending and failed checks,
     proxy('3.3.3.3', { exit_check: 'failed', exit_checked_at: '2026-10-09T08:00:00.000Z', exit_check_error: 'timeout' }), proxy('4.4.4.4', {}),
     proxy('5.5.5.5', { enabled: false, retired: true, retire_reason: 'source_missing', state: 'disabled' })];
   await login(page, '/proxies');
+  await page.getByLabel('趋势服务商').selectOption('free');
+  await expect.poll(()=>state.reads.some(p=>p.includes('/proxies/availability?')&&p.includes('provider=free'))).toBe(true);
   await expect(page.getByLabel('全部状态')).toHaveValue('active', { timeout: 10_000 });
   await expect(page.locator('tbody tr', { hasText: '5.5.5.5' }), 'stopped and retired proxies are hidden by default').toHaveCount(0);
   await page.getByLabel('全部状态').selectOption('');
@@ -695,7 +728,7 @@ test('operators import proxies without the page ever showing the password, then 
   const dialog = page.getByRole('dialog', { name: '导入代理 IP' });
   await expect(dialog).toBeVisible();
   await page.getByLabel('代理地址列表').fill('http://alice:s3cret-pass@198.51.100.10:8080\nnot-a-proxy');
-  await page.getByLabel('服务商').fill('Vendor A'); await page.getByLabel('分组').fill('US Residential'); await page.getByLabel('国家代码').fill('us');
+  await dialog.getByLabel('服务商',{exact:true}).fill('Vendor A'); await dialog.getByLabel('分组',{exact:true}).fill('US Residential'); await dialog.getByLabel('国家代码',{exact:true}).fill('us');
   await page.getByRole('button', { name: '导入', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('第 2 行不是有效地址'); expect(state.imports).toHaveLength(0);
   await page.getByLabel('代理地址列表').fill('http://alice:s3cret-pass@198.51.100.10:8080\nsocks5://203.0.113.5:1080');

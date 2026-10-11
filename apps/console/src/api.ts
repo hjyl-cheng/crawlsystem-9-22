@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {ConsoleAuditPageSchema,ConsoleLoginSummarySchema} from '../../../packages/contracts/src/console-audit.ts';
+import {ProxyAvailabilitySchema} from '../../../packages/contracts/src/proxy-availability.ts';
 import {WorkerMetricsSchema,WorkerCommandSchema,type WorkerCommand} from '../../../packages/contracts/src/workers.ts';
 import {ConfigSnapshotSchema,ConfigHistorySchema,ConfigCommandSchema,type ConfigCommand} from '../../../packages/contracts/src/configuration.ts';
 import {DeliveryRecordSchema,DeliverySummarySchema,DeliveryRetrySchema} from '../../../packages/contracts/src/delivery.ts';
@@ -137,6 +138,7 @@ export class ControlApi {
   consoleAccounts = (signal?: AbortSignal) => this.request(ApiRoutes.consoleAccounts, ConsoleAccountListSchema, signal);
   consoleAudit(filters:Record<string,string>={},signal?:AbortSignal){return this.request('/v1/console/audit?'+new URLSearchParams({limit:'25',...filters}),ConsoleAuditPageSchema,signal);}
   consoleLoginSummary(signal?:AbortSignal){return this.request('/v1/console/logins/summary',ConsoleLoginSummarySchema,signal);}
+  proxyAvailability(filters:Record<string,string>={},signal?:AbortSignal){return this.request('/v1/proxies/availability?'+new URLSearchParams(filters),ProxyAvailabilitySchema,signal);}
   channel = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.channel(id), ChannelDetailSchema, signal);
   manageChannel = (id: string, body: ChannelManagementCommand, signal?: AbortSignal) => this.request(ApiRoutes.channelManagement(id), ChannelManagementSchema, signal, ChannelManagementCommandSchema.parse(body));
   overrideClock = (id: string, body: ChannelClockOverride, signal?: AbortSignal) => this.request(ApiRoutes.channelClockOverride(id), ChannelManagementSchema, signal, ChannelClockOverrideSchema.parse(body));

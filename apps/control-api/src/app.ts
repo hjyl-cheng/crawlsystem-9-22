@@ -14,6 +14,7 @@ import type {Failure} from '@crawlsystem/contracts/analytics';
 import {WorkerMetricsSchema} from '../../../packages/contracts/src/workers.ts';
 import {ConsoleAuditQuerySchema} from '../../../packages/contracts/src/console-audit.ts';
 import {registerConsoleAudit,type ConsoleAuditRepository} from './console-audit.ts';
+import {ProxyAvailabilityQuerySchema} from '../../../packages/contracts/src/proxy-availability.ts';
 
 export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; audit?:ConsoleAuditRepository; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore;clickhouse?:ClickHouse;monitoring?:Prometheus;evidencePreview?:(failure:Failure)=>Promise<unknown> }) {
   const auth=options.consoleAuth,workload=options.workloadIdentity;
@@ -218,6 +219,7 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.post('/v1/channels/:id/update',{bodyLimit:2048},async request=>store.updateChannel(request.principal,z.object({id:IdSchema}).parse(request.params).id,request.body));
   app.post('/v1/workers/heartbeat',async request=>store.heartbeat(request.principal,HeartbeatSchema.parse(request.body)));
   app.get(ApiRoutes.proxies,async request=>proxies().overview(request.principal));
+  app.get('/v1/proxies/availability',async request=>proxies().availability(request.principal,ProxyAvailabilityQuerySchema.parse(request.query)));
   app.post(ApiRoutes.proxyImport,{bodyLimit:262144},async request=>proxies().importProxies(request.principal,request.body));
   app.post('/v1/proxies/:id',async request=>proxies().update(request.principal,planId(request),request.body));
   app.post('/v1/proxies/:id/delete',async request=>{await proxies().remove(request.principal,planId(request),z.strictObject({expected_version:z.number().int().positive()}).parse(request.body).expected_version);return {deleted:true};});

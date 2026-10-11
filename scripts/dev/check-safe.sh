@@ -83,6 +83,12 @@ case "${1:-}" in
   audit-deploy) command=(node --import tsx scripts/dev/deploy-d3.ts) ;;
   audit-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d3-browser.ts) ;;
   audit-runtime) command=(env D3_RUNTIME_DIR=.runtime/d3 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
+  availability-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 tests/integration/proxy-availability.test.ts tests/integration/proxies.test.ts) ;;
+  availability-prepare) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-d4.ts) ;;
+  availability-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --d4-control-only) ;;
+  availability-deploy) command=(node --import tsx scripts/dev/deploy-d4.ts) ;;
+  availability-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d4-browser.ts) ;;
+  availability-runtime) command=(env D3_RUNTIME_DIR=.runtime/d4 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;
   collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-browser.ts) ;;

@@ -1,5 +1,5 @@
 /* IP resource management. Discover chrome on the 4-column grid: IP list (3)
-   with status and provider cards stacked (1); four overview cards below. */
+   with status and provider cards stacked (1); three overview cards below. */
 .proxies-page .row-ips { flex: 1 1 0; min-height: 300px; }
 .dashboard.proxies-page .ip-list { grid-column: span 3; min-height: 0; }
 .ip-list .table-scroll { flex: 1; min-height: 0; padding: 0 10px; }
@@ -35,3 +35,13 @@
 .server-choice { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--fs-meta); color: #547092; }
 .server-choice legend { margin-bottom: 4px; }
 .status-tabs .tab-action { margin-left: auto; align-self: center; }
+.dashboard.proxies-page {height:auto;min-height:calc(100dvh - 64px);overflow:visible;}
+.proxies-page .row-ips {min-height:400px;height:560px;flex:none;}
+.proxies-page .row-ip-overview {grid-template-columns:repeat(3,minmax(0,1fr));}
+.dashboard .proxy-availability {min-height:320px;flex:none;}
+.availability-filters {display:flex;flex-wrap:wrap;gap:8px;padding:0 14px 8px;}
+.availability-filters select {max-width:200px;min-width:0;padding:5px;border:1px solid #d8e0ec;border-radius:4px;background:white;color:#253f6a;font-size:var(--fs-meta);}
+.availability-note {padding:0 14px;margin:3px 0 7px;color:#62758f;font-size:var(--fs-meta);}
+.proxy-availability .trend-box {min-height:180px;}
+@media(max-width:1040px){.proxies-page .row-ip-overview {grid-template-columns:repeat(2,minmax(0,1fr));}.proxies-page .row-ips {height:auto;}.dashboard.proxies-page .ip-list {height:480px;}}
+@media(max-width:680px){.proxies-page .row-ip-overview {grid-template-columns:minmax(0,1fr);}.availability-filters select {flex:1 1 130px;max-width:none;}}

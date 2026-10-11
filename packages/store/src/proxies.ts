@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import {runtimeSettings,settingsConsumed} from './runtime-settings.ts';
 import {defaultSettings} from '../../contracts/src/configuration.ts';
-import { MAX_PROXIES_PER_SERVER, ProxyImportSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySyncRequestSchema, ProxyUpdateSchema, type Principal, type ProxyAssignment, type ProxyEndpoint, type ProxyExitResult, type ProxyOverview, type ProxySourceView, type ProxyState, type ProxySyncResponse, type ProxyView } from '@crawlsystem/contracts';
+import { MAX_PROXIES_PER_SERVER, ProxyImportSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySyncRequestSchema, ProxyUpdateSchema, type Principal, type ProxyAssignment, type ProxyEndpoint, type ProxyExitResult, type ProxyOverview, type ProxySourceView, type ProxyState, type ProxySyncRequest, type ProxySyncResponse, type ProxyView } from '@crawlsystem/contracts';
 import { StoreError, requireRole } from './index.ts';
 import type { CredentialBox } from './credentials.ts';
+import {proxyAvailability,sampleProxies,type AvailabilitySample} from './proxy-availability.ts';
+import type {ProxyAvailabilityQuery} from '../../contracts/src/proxy-availability.ts';
 
 const LEASE_SECONDS = 300;           // a server must re-sync within this window or stop using its proxies
 const OBSERVATION_FRESH_SECONDS = 180; // older reports show as unknown, never as healthy
@@ -16,6 +18,7 @@ const context = (workspace: string, proxyId: string) => `proxy:${workspace}:${pr
 /** Central Proxy Control (24.8 §10): inventory, coarse assignment, observed state. */
 export class ProxyStore {
   constructor(private pool: Pool, private box?: CredentialBox) {}
+  async availability(principal:Principal,query:ProxyAvailabilityQuery){requireRole(principal,'reader','operator');return proxyAvailability(this.pool,principal.workspace_id,query);}
   private async tx<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
     try {
@@ -175,31 +178,63 @@ export class ProxyStore {
     if (!server) throw new StoreError('FORBIDDEN', 'Node credential has no server identity', 403);
     const report = ProxySyncRequestSchema.parse(raw);
     return this.tx(async client => {
-      for (const o of report.observations) {
+      // Serialize one server's reports across API replicas, including partial
+      // observations followed by renewal of the server's complete lease set.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`proxy-sync:${principal.workspace_id}:${server}`]);
+      const samples:AvailabilitySample[]=[];
+      const ids=report.observations.map(o=>o.proxy_id);
+      // Lock all inventory rows before reading checkpoints. Three bounded reads
+      // and batch writes keep even a full 500-proxy sync within the node timeout.
+      const owned=new Map((await client.query(`SELECT proxy_id,generation,enabled,provider,group_name FROM control.proxies
+        WHERE workspace_id=$1 AND server_id=$2 AND proxy_id=ANY($3::uuid[]) ORDER BY proxy_id FOR UPDATE`,[principal.workspace_id,server,ids])).rows.map(r=>[r.proxy_id,r]));
+      const previousById=new Map((await client.query('SELECT * FROM control.proxy_observations WHERE workspace_id=$1 AND proxy_id=ANY($2::uuid[])',[principal.workspace_id,ids])).rows.map(r=>[r.proxy_id,r]));
+      const streams=new Map((await client.query('SELECT proxy_id,generation,report_sequence FROM control.proxy_observation_streams WHERE workspace_id=$1 AND proxy_id=ANY($2::uuid[]) AND node_boot_id=$3',[principal.workspace_id,ids,report.node_boot_id])).rows.map(r=>[`${r.proxy_id}:${r.generation}`,r]));
+      const accepted:Array<ProxySyncRequest['observations'][number]&{requests:number;failures:number}>=[],seen=new Set<string>();
+      for (const o of [...report.observations].sort((a,b)=>a.proxy_id.localeCompare(b.proxy_id))) {
+        // Late or future-clock reports cannot refresh health or create history.
+        const age=Date.now()-Date.parse(report.observed_at);if(age>OBSERVATION_FRESH_SECONDS*1000||age< -30000)continue;
         // Reports for proxies no longer assigned here (or of an older generation) are ignored, not errors.
-        const own = (await client.query('SELECT 1 FROM control.proxies WHERE workspace_id=$1 AND proxy_id=$2 AND server_id=$3 AND generation=$4', [principal.workspace_id, o.proxy_id, server, o.generation])).rowCount;
-        if (!own) continue;
-        const previous = (await client.query('SELECT * FROM control.proxy_observations WHERE workspace_id=$1 AND proxy_id=$2 FOR UPDATE', [principal.workspace_id, o.proxy_id])).rows[0];
+        // Lock the inventory row even on the first observation, so concurrent API
+        // replicas cannot both count an initial report or a reassigned endpoint.
+        const own=owned.get(o.proxy_id);
+        if(!own?.enabled||Number(own.generation)!==o.generation||seen.has(o.proxy_id))continue;
+        const previous=previousById.get(o.proxy_id);
         const sameStream = previous && previous.node_boot_id === report.node_boot_id && previous.server_id === server && Number(previous.generation) === o.generation;
         if (sameStream && Number(previous.report_sequence) >= report.report_sequence) continue; // duplicate or out of order
+        const stream=streams.get(`${o.proxy_id}:${o.generation}`);
+        if(stream&&(!sameStream||Number(stream.report_sequence)>=report.report_sequence))continue; // a superseded boot must not become current again
+        if(!sameStream&&previous&&previous.server_id===server&&Number(previous.generation)===o.generation&&Date.parse(report.observed_at)<new Date(previous.observed_at).getTime())continue;
         // Cumulative counters restart with a new boot or assignment; deltas never go negative.
         const requests = sameStream ? Math.max(0, o.requests_total - Number(previous.requests_total)) : o.requests_total;
         const failures = sameStream ? Math.max(0, o.failures_total - Number(previous.failures_total)) : o.failures_total;
+        seen.add(o.proxy_id);accepted.push({...o,requests,failures});
+        samples.push({provider:own.provider,group:own.group_name,state:o.state,requests,failures});
+      }
+      if(accepted.length){
+        const batch=JSON.stringify(accepted);
+        await client.query(`INSERT INTO control.proxy_observation_streams(workspace_id,proxy_id,generation,node_boot_id,report_sequence)
+          SELECT $1,proxy_id,generation,$3,$4 FROM jsonb_to_recordset($2::jsonb) AS x(proxy_id uuid,generation bigint)
+          ON CONFLICT(workspace_id,proxy_id,generation,node_boot_id) DO UPDATE SET report_sequence=EXCLUDED.report_sequence,updated_at=clock_timestamp()`,[principal.workspace_id,batch,report.node_boot_id,report.report_sequence]);
         await client.query(`INSERT INTO control.proxy_observations(workspace_id,proxy_id,server_id,generation,state,cooldown_until,last_success_at,last_failure_at,last_error,requests_total,failures_total,latency_ms,node_boot_id,report_sequence,observed_at)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          SELECT $1,proxy_id,$2,generation,state,cooldown_until,last_success_at,last_failure_at,last_error,requests_total,failures_total,latency_ms,$4,$5,$6
+          FROM jsonb_to_recordset($3::jsonb) AS x(proxy_id uuid,generation bigint,state text,cooldown_until timestamptz,last_success_at timestamptz,last_failure_at timestamptz,last_error text,requests_total bigint,failures_total bigint,latency_ms integer)
           ON CONFLICT (workspace_id,proxy_id) DO UPDATE SET server_id=EXCLUDED.server_id,generation=EXCLUDED.generation,state=EXCLUDED.state,cooldown_until=EXCLUDED.cooldown_until,
             last_success_at=EXCLUDED.last_success_at,last_failure_at=EXCLUDED.last_failure_at,last_error=EXCLUDED.last_error,requests_total=EXCLUDED.requests_total,failures_total=EXCLUDED.failures_total,
             latency_ms=EXCLUDED.latency_ms,node_boot_id=EXCLUDED.node_boot_id,report_sequence=EXCLUDED.report_sequence,observed_at=EXCLUDED.observed_at,reported_at=clock_timestamp()`,
-          [principal.workspace_id, o.proxy_id, server, o.generation, o.state, o.cooldown_until, o.last_success_at, o.last_failure_at, o.last_error, o.requests_total, o.failures_total, o.latency_ms, report.node_boot_id, report.report_sequence, report.observed_at]);
+          [principal.workspace_id,server,batch,report.node_boot_id,report.report_sequence,report.observed_at]);
         // `failed`: three cooldowns on this server without a success in between. Retire it so the
         // slot goes to another endpoint; a subscription may offer it again after the quarantine.
-        if (o.state === 'failed') await client.query(`UPDATE control.proxies SET enabled=false, retired_at=clock_timestamp(), retire_reason='unhealthy', server_id=NULL, generation=generation+1,
-            lease_expires_at=NULL, version=version+1, updated_at=clock_timestamp() WHERE workspace_id=$1 AND proxy_id=$2 AND server_id=$3 AND generation=$4 AND enabled`,
-          [principal.workspace_id, o.proxy_id, server, o.generation]);
-        if (requests || failures) await client.query(`INSERT INTO control.proxy_daily(workspace_id,proxy_id,day,requests,failures) VALUES($1,$2,(clock_timestamp() AT TIME ZONE 'UTC')::date,$3,$4)
-          ON CONFLICT (workspace_id,proxy_id,day) DO UPDATE SET requests=control.proxy_daily.requests+EXCLUDED.requests, failures=control.proxy_daily.failures+EXCLUDED.failures`, [principal.workspace_id, o.proxy_id, requests, failures]);
+        const failed=accepted.filter(o=>o.state==='failed').map(o=>o.proxy_id);
+        if(failed.length)await client.query(`UPDATE control.proxies SET enabled=false, retired_at=clock_timestamp(), retire_reason='unhealthy', server_id=NULL, generation=generation+1,
+            lease_expires_at=NULL, version=version+1, updated_at=clock_timestamp() WHERE workspace_id=$1 AND server_id=$2 AND proxy_id=ANY($3::uuid[]) AND enabled`,[principal.workspace_id,server,failed]);
+        await client.query(`INSERT INTO control.proxy_daily(workspace_id,proxy_id,day,requests,failures)
+          SELECT $1,proxy_id,(statement_timestamp() AT TIME ZONE 'UTC')::date,requests,failures FROM jsonb_to_recordset($2::jsonb) AS x(proxy_id uuid,requests bigint,failures bigint) WHERE requests>0 OR failures>0
+          ON CONFLICT (workspace_id,proxy_id,day) DO UPDATE SET requests=control.proxy_daily.requests+EXCLUDED.requests, failures=control.proxy_daily.failures+EXCLUDED.failures`,[principal.workspace_id,batch]);
       }
+      await sampleProxies(client,principal.workspace_id,server,samples);
       await client.query(`DELETE FROM control.proxy_daily WHERE workspace_id=$1 AND day < (clock_timestamp() AT TIME ZONE 'UTC')::date - 8`, [principal.workspace_id]);
+      await client.query(`DELETE FROM control.proxy_availability_hourly WHERE workspace_id=$1 AND bucket_at<date_trunc('hour',clock_timestamp(),'UTC')-interval '9 days'`,[principal.workspace_id]);
+      await client.query(`DELETE FROM control.proxy_observation_streams WHERE workspace_id=$1 AND updated_at<clock_timestamp()-interval '9 days'`,[principal.workspace_id]);
       // Assignment enforces the cap; the limit here only keeps a sync response within the contract.
       const lease = (await client.query(`UPDATE control.proxies SET lease_expires_at=clock_timestamp()+($3*interval '1 second')
         WHERE (workspace_id, proxy_id) IN (SELECT workspace_id, proxy_id FROM control.proxies WHERE workspace_id=$1 AND server_id=$2 AND enabled ORDER BY created_at, proxy_id LIMIT $4)

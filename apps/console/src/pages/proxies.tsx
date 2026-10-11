@@ -6,7 +6,7 @@ import { useAuth } from '../auth.js';
 import { useResource } from '../resource.js';
 import { Empty, ErrorBox, Modal } from '../ui.js';
 import Donut from '../components/donut.js';
-import LineChart from '../components/line-chart.js';
+import {ProxyAvailability} from './proxy-availability.js';
 import './overview.css';
 import './discover.css';
 import './proxies.css';
@@ -21,7 +21,6 @@ interface ProxiesView {
   groups: { name: string; count: number; color: string }[];
   providerStats: { name: string; ips: number; availability: string; requests: string }[];
   countries: { code: string | null; label: string; count: number }[];
-  trend: { day: string; value: number }[];
 }
 // Same five states as the overview's IP panel.
 const stateMeta: Record<IpState, { label: string; tone: string; color: string }> = {
@@ -46,7 +45,6 @@ function fromOverview(o: ProxyOverview): ProxiesView {
     providers: o.providers.map(p => ({ name: p.name, count: p.count })),
     groups: o.groups.map((g, i) => ({ name: g.name, count: g.count, color: palette[i % palette.length]! })),
     providerStats: o.providers.map(p => ({ name: p.name, ips: p.count, availability: rate(p.requests_today, p.failures_today), requests: fmt(p.requests_today) })),
-    trend: o.availability_7d.filter(d => d.requests > 0).map(d => ({ day: d.day.slice(5), value: Math.round((1 - d.failures / d.requests) * 1000) / 10 })),
     countries: o.exit_countries.map(c => ({ code: c.country, label: c.country ? countryName(c.country) : '未测出', count: c.count })) };
 }
 const regionNames = (() => { try { return new Intl.DisplayNames(['zh-CN'], { type: 'region' }); } catch { return null; } })();
@@ -218,10 +216,11 @@ export default function Proxies() {
 
     <div className="discover-kpis">
       <Kpi label="IP 总数" tone="blue" icon={<Globe size={22}/>} value={k && fmt(k.total)} foot={k ? `${k.providers} 家服务商 · ${k.groups} 个分组` : '—'}/>
-      <Kpi label="正常可用" tone="green" icon={<ShieldCheck size={22}/>} value={k && fmt(k.healthy)} foot={k ? `可用率 ${k.healthyRate}` : '—'}/>
+      <Kpi label="正常可用" tone="green" icon={<ShieldCheck size={22}/>} value={k && fmt(k.healthy)} foot={k ? `占全部库存 ${k.healthyRate}` : '—'}/>
       <Kpi label="冷却 / 异常" tone="red" icon={<Snowflake size={22}/>} value={k && `${fmt(k.cooldown)} / ${fmt(k.failed)}`} foot={k ? '限流后冷却，到期自动恢复' : '—'}/>
       <Kpi label="今日请求量" tone="blue" icon={<Layers size={22}/>} value={k?.requests} foot={k ? '今日（UTC）节点上报' : '—'}/>
     </div>
+    <ProxyAvailability servers={[...servers,...(data?.ips.flatMap(p=>p.server?[p.server]:[])??[])]} providers={data?.providers.map(p=>p.name)??[]}/>
 
     <div className="discover-row row-ips">
       <section className="panel ip-list">
@@ -256,10 +255,7 @@ export default function Proxies() {
         {data ? <div className="group-list">{data.groups.map(g => <div key={g.name}><i style={{ background: g.color }}/><span>{g.name}</span><b>{fmt(g.count)}</b><small>{(g.count / groupTotal * 100).toFixed(1)}%</small></div>)}</div> : <Empty title="暂无分组">{NOT_CONNECTED}</Empty>}
       </Card>
       <Card title="服务商概览" subtitle={data ? `共 ${data.kpis.providers} 家服务商` : undefined} extra={<Unavailable/>}>
-        {data ? <div className="table-scroll"><table><thead><tr><th>服务商</th><th className="num">IP 数</th><th className="num">可用率</th><th className="num">今日请求</th></tr></thead><tbody>{data.providerStats.map(p => <tr key={p.name}><td>{p.name}</td><td className="num">{fmt(p.ips)}</td><td className="num text-green">{p.availability}</td><td className="num">{p.requests}</td></tr>)}</tbody></table></div> : <Empty title="暂无服务商">{NOT_CONNECTED}</Empty>}
-      </Card>
-      <Card title="近 7 天整体可用率">
-        <LineChart points={data?.trend.map(t => ({ x: t.day, values: { rate: t.value } }))} series={[{ key: 'rate', label: '可用率', color: '#277cf7', area: true }]} max={100} format={v => `${v % 1 ? v.toFixed(1) : v}%`} empty="可用率趋势尚未接入" label="近 7 天整体可用率"/>
+        {data ? <div className="table-scroll"><table><thead><tr><th>服务商</th><th className="num">IP 数</th><th className="num">请求成功率</th><th className="num">今日请求</th></tr></thead><tbody>{data.providerStats.map(p => <tr key={p.name}><td>{p.name}</td><td className="num">{fmt(p.ips)}</td><td className="num text-green">{p.availability}</td><td className="num">{p.requests}</td></tr>)}</tbody></table></div> : <Empty title="暂无服务商">{NOT_CONNECTED}</Empty>}
       </Card>
       <Card title="常用操作">
         <div className="quick-actions">{([['批量检测', <Radar size={18}/>], ['清理异常 IP', <Trash2 size={18}/>], ['导入 IP', <Upload size={18}/>], ['导出列表', <Download size={18}/>]] as const).map(([label, icon]) => label === '导入 IP'
