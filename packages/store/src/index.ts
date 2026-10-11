@@ -28,6 +28,8 @@ import {queuePublication,readDeliveries,deliverySummary,getDelivery,retryDeliver
 import {DeliveryRetrySchema} from '../../contracts/src/delivery.ts';
 import {defaultSettings,type RuntimeSettings} from '../../contracts/src/configuration.ts';
 import {runtimeSettings,settingsSnapshot,publishSettings,settingsHistory,settingsConsumed} from './runtime-settings.ts';
+import {lockWorkerAdmission,queryAdmission,recordWorker,workerView,getWorker,commandWorker,routePlan,workerMetrics} from './workers.ts';
+import type {WorkerControl} from '../../contracts/src/workers.ts';
 
 export interface PipelineOptions { enabled?: boolean; loadComments?: (ref: ObjectReference) => Promise<CommentPage | null>; }
 
@@ -56,7 +58,7 @@ async function discovery<T>(run: () => Promise<T>): Promise<T> {
 }
 /** A count the source resolved (exact or estimated), else null. */
 const resolvedCount = (metric: { value: number | null; status: string }) => ['exact', 'estimated'].includes(metric.status) ? metric.value : null;
-export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; trace_context?: string; }
+export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; trace_context?: string; worker_id?:string; }
 
 export class Store {
   constructor(public readonly pool: Pool, public readonly updateLimits: UpdateLimits = UpdateLimitsSchema.parse({}), public readonly discoveryLimits: DiscoveryLimits = DiscoveryLimitsSchema.parse({}), private pipeline: PipelineOptions = {}) {}
@@ -164,7 +166,7 @@ export class Store {
   /** Worker: the next due search under the discovery limits, or why there is none. */
   async claimQueryRun(principal: Principal): Promise<QueryRunClaim> {
     requireRole(principal, 'worker');
-    return this.tx(async client => {const {settings}=await this.settings(client,principal.workspace_id);return claimRun(client, principal.workspace_id, principal.subject, settings.discovery, settings.update.api_daily_limit);});
+    return this.tx(async client => {if(!await queryAdmission(client,principal.workspace_id,principal.subject))return {run:null,idle_reason:'worker_paused',retry_after_ms:5000};const {settings}=await this.settings(client,principal.workspace_id);return claimRun(client, principal.workspace_id, principal.subject, settings.discovery, settings.update.api_daily_limit);});
   }
   async queryRunHeartbeat(principal: Principal, runId: string, raw: unknown) {
     requireRole(principal, 'worker');
@@ -816,9 +818,10 @@ export class Store {
     const ids=[...new Set(input.running_plan_ids)];
     const owned=await this.pool.query('SELECT plan_id FROM control.plans WHERE workspace_id=$1 AND plan_id=ANY($2::uuid[])',[principal.workspace_id,ids]);
     if (owned.rowCount!==ids.length) throw new StoreError('NOT_FOUND','Running plan not found',404);
-    const result = await this.pool.query(`INSERT INTO control.workers(workspace_id,worker_id,heartbeat) VALUES($1,$2,$3)
-      ON CONFLICT(workspace_id,worker_id) DO UPDATE SET heartbeat=EXCLUDED.heartbeat,last_heartbeat_at=clock_timestamp() RETURNING last_heartbeat_at`,[principal.workspace_id,input.worker_id,input]);
-    return {...input,last_heartbeat_at:iso(result.rows[0]!.last_heartbeat_at),stale:false,proxy_status:input.collector ? 'CONFIGURED' : 'NOT_CONFIGURED'};
+    const result=await this.tx(client=>recordWorker(client,principal.workspace_id,input));
+    // A pre-D2 client validates a strict legacy Worker response. Only opt-in heartbeats
+    // receive control fields, so Control can roll out before the execution process.
+    if(!input.management){const {control,...legacy}=result;return legacy;}return result;
   }
   async event(principal: Principal, planId: string, raw: ExecutionEvent): Promise<{accepted:true}> {
     requireRole(principal,'worker');
@@ -853,8 +856,11 @@ export class Store {
   async listWorkers(principal: Principal, limit=20, offset=0): Promise<Page<Worker>> {
     requireRole(principal,'reader','operator');
     const rows = await this.pool.query("SELECT *,last_heartbeat_at < clock_timestamp()-($2 * interval '1 second') AS stale FROM control.workers WHERE workspace_id=$1 ORDER BY worker_id LIMIT $3 OFFSET $4",[principal.workspace_id,WORKER_STALE_SECONDS,limit+1,offset]);
-    return page(rows.rows.map(r => ({...r.heartbeat,last_heartbeat_at:iso(r.last_heartbeat_at),stale:r.stale,proxy_status:r.heartbeat.collector ? 'CONFIGURED' : 'NOT_CONFIGURED'} as Worker)),limit,offset);
+    const items:Worker[]=[];for(const r of rows.rows)items.push(await workerView(this.pool,r));return page(items,limit,offset);
   }
+  async worker(principal:Principal,id:string){requireRole(principal,'reader','operator');return getWorker(this.pool,principal.workspace_id,id);}
+  async workerCommand(principal:Principal,id:string,mode:WorkerControl['desired'],raw:unknown){requireRole(principal,'operator');return this.tx(c=>commandWorker(c,principal.workspace_id,id,principal.subject,mode,raw));}
+  async workerMetrics(principal:Principal,id:string){requireRole(principal,'reader','operator');return workerMetrics(this.pool,principal.workspace_id,id);}
   async failures(principal:Principal,limit=20,offset=0,state?:string) {
     requireRole(principal,'reader','operator');return listFailures(this.pool,principal.workspace_id,limit,offset,state,(await this.settings(this.pool,principal.workspace_id)).settings.discovery.enabled);
   }
@@ -1086,6 +1092,7 @@ export class Store {
   }
   async claimIntent(leaseSeconds=30, workspaceId?:string): Promise<Intent | null> {
     return this.tx(async client => {
+      if(workspaceId)await lockWorkerAdmission(client,workspaceId);
       const token = randomUUID();
       const rows = await client.query(`WITH candidate AS (
         SELECT i.intent_id FROM control.intents i WHERE ((i.state='PENDING' AND i.available_at<=clock_timestamp()) OR (i.state='LEASED' AND i.lease_until<clock_timestamp()))
@@ -1102,7 +1109,10 @@ export class Store {
         SELECT 1 FROM control.intents s WHERE s.plan_id=p.plan_id AND s.kind='START'
         AND s.state='SKIPPED' AND s.attempts=0 AND s.workflow_run_id IS NULL
       ) AS start_never_dispatched FROM control.plans p WHERE p.plan_id=$1`,[intent.plan_id])).rows[0]!;
-      return {intent_id:intent.intent_id,plan_id:intent.plan_id,kind:intent.kind,lease_token:token,attempts:intent.attempts,plan_status:row.status,deadline_at:iso(row.deadline_at),start_never_dispatched:row.start_never_dispatched,...(row.trace_context ? {trace_context:row.trace_context as string} : {}),
+      if(!workspaceId)await lockWorkerAdmission(client,row.workspace_id);
+      const assigned=intent.kind==='START'&&!terminal(row.status)?await routePlan(client,row.workspace_id,row.plan_id,intent.attempts):null;
+      if(assigned===false){await client.query("UPDATE control.intents SET state='PENDING',attempts=attempts-1,lease_token=NULL,lease_until=NULL,available_at=clock_timestamp()+interval '1 second' WHERE intent_id=$1",[intent.intent_id]);return null;}
+      return {intent_id:intent.intent_id,plan_id:intent.plan_id,kind:intent.kind,lease_token:token,attempts:intent.attempts,plan_status:row.status,deadline_at:iso(row.deadline_at),start_never_dispatched:row.start_never_dispatched,...(typeof assigned==='string'?{worker_id:assigned}:{}),...(row.trace_context ? {trace_context:row.trace_context as string} : {}),
         input:{schema_version:CONTRACT_VERSION,plan_id:row.plan_id,workspace_id:row.workspace_id,execution_epoch:row.execution_epoch,input_hash:row.input_hash,workflow_id:row.workflow_id}};
     });
   }

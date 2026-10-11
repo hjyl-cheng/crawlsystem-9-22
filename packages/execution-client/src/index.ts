@@ -3,6 +3,7 @@ import { defaultPayloadConverter, WorkflowIdReusePolicy } from '@temporalio/comm
 import { z } from 'zod';
 import { IdSchema, WORKFLOW_TYPE, WorkflowInputSchema, type WorkflowInput, type WorkflowStarter } from '@crawlsystem/contracts';
 import { refreshTemporalApiKey, validateTemporalOptions, type TemporalOptions } from './config.ts';
+import {workerTaskQueue} from '../../contracts/src/workers.ts';
 
 export class WorkflowIdentityConflict extends Error {
   constructor() { super('Existing Workflow does not match the frozen execution identity'); this.name = 'WorkflowIdentityConflict'; }
@@ -16,10 +17,10 @@ export function validateWorkflowInput(value: WorkflowInput): WorkflowInput {
 
 /** Inspect the first history event, not mutable memo or a caller-supplied run ID. */
 export function workflowStarter(client: Client, taskQueue: string): WorkflowStarter {
-  async function verify(input: WorkflowInput, runId?: string) {
+  async function verify(input: WorkflowInput, targetQueue:string, runId?: string) {
     const handle = client.workflow.getHandle(input.workflow_id, runId);
     const description = await handle.describe();
-    if (description.type !== WORKFLOW_TYPE || description.taskQueue !== taskQueue) throw new WorkflowIdentityConflict();
+    if (description.type !== WORKFLOW_TYPE || description.taskQueue !== targetQueue) throw new WorkflowIdentityConflict();
     // Fetch only the first page: histories and payloads are never copied into the dispatcher.
     const history = await client.workflowService.getWorkflowExecutionHistory({
       namespace: client.options.namespace, execution: { workflowId: input.workflow_id, runId: description.runId }, maximumPageSize: 1,
@@ -34,21 +35,22 @@ export function workflowStarter(client: Client, taskQueue: string): WorkflowStar
     return { workflow_id: input.workflow_id, run_id: description.runId };
   }
   return {
-    async start(raw) {
+    async start(raw,workerId) {
       const input = validateWorkflowInput(raw);
+      const targetQueue=workerId===undefined?taskQueue:workerTaskQueue(taskQueue,IdSchema.parse(workerId));
       try {
         const handle = await client.workflow.start(WORKFLOW_TYPE, {
-          workflowId: input.workflow_id, taskQueue, args: [input],
+          workflowId: input.workflow_id, taskQueue:targetQueue, args: [input],
           workflowIdReusePolicy: WorkflowIdReusePolicy.REJECT_DUPLICATE,
           // The immutable business deadline is read by Activity. This is a final safety ceiling.
           workflowExecutionTimeout: '150 minutes', workflowTaskTimeout: '10 seconds',
         });
         return { workflow_id: input.workflow_id, run_id: handle.firstExecutionRunId };
       } catch (error) {
-        if (error instanceof WorkflowExecutionAlreadyStartedError) return verify(input);
+        if (error instanceof WorkflowExecutionAlreadyStartedError) return verify(input,targetQueue);
         // Start may have committed before the response was lost. A missing execution or
         // failed reconciliation leaves the durable intent pending, never acknowledged.
-        try { return await verify(input); }
+        try { return await verify(input,targetQueue); }
         catch (verificationError) {
           if (verificationError instanceof WorkflowIdentityConflict) throw verificationError;
           throw error;
@@ -62,7 +64,8 @@ export function workflowStarter(client: Client, taskQueue: string): WorkflowStar
       // be in flight. Acknowledging an absent Workflow would lose that cancellation.
       const handle = client.workflow.getHandle(workflowId);
       const description = await handle.describe();
-      if (description.type !== WORKFLOW_TYPE || description.taskQueue !== taskQueue) throw new WorkflowIdentityConflict();
+      const suffix=description.taskQueue.startsWith(taskQueue+'/workers/')?description.taskQueue.slice((taskQueue+'/workers/').length):undefined;
+      if (description.type !== WORKFLOW_TYPE || description.taskQueue !== taskQueue&&(suffix===undefined||!IdSchema.safeParse(suffix).success)) throw new WorkflowIdentityConflict();
       if (description.status.name !== 'RUNNING') return;
       try { await client.workflow.getHandle(workflowId, description.runId).cancel(); }
       catch (error) {
@@ -82,7 +85,7 @@ export async function createWorkflowStarter(options: TemporalOptions): Promise<W
   const stopRefresh = refreshTemporalApiKey(options.apiKey, token => connection.setApiKey(token), () => process.stderr.write('Temporal token refresh failed; current token kept until expiry\n'));
   const starter = workflowStarter(new Client({ connection, namespace: options.namespace }), options.taskQueue);
   return {
-    start: input => connection.withDeadline(Date.now() + 9000, () => starter.start(input)),
+    start: (input,workerId) => connection.withDeadline(Date.now() + 9000, () => starter.start(input,workerId)),
     cancel: id => connection.withDeadline(Date.now() + 9000, () => starter.cancel(id)),
     close: () => { stopRefresh(); return connection.close(); },
   };

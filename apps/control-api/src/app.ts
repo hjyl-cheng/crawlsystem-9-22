@@ -11,6 +11,7 @@ import {unknownNode,type Prometheus} from './monitoring.ts';
 import {FailureStateSchema,FailureCommandSchema,FailureSchema} from '@crawlsystem/contracts/analytics';
 import type {ClickHouse} from './analytics.ts';
 import type {Failure} from '@crawlsystem/contracts/analytics';
+import {WorkerMetricsSchema} from '../../../packages/contracts/src/workers.ts';
 
 export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore;clickhouse?:ClickHouse;monitoring?:Prometheus;evidencePreview?:(failure:Failure)=>Promise<unknown> }) {
   const auth=options.consoleAuth,workload=options.workloadIdentity;
@@ -208,6 +209,14 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.post('/v1/proxy-sources/:id',async request=>proxies().updateSource(request.principal,planId(request),request.body));
   app.post(ApiRoutes.proxySync,{bodyLimit:262144},async request=>proxies().sync(request.principal,request.body));
   app.get('/v1/workers',async request=>{const q=pagination(request.query);return store.listWorkers(request.principal,q.limit,q.offset);});
+  app.get('/v1/workers/:id/metrics',async request=>{
+    z.strictObject({}).parse(request.query);const id=z.strictObject({id:IdSchema}).parse(request.params).id;
+    const metrics=await store.workerMetrics(request.principal,id);let node=unknownNode(metrics.server_id),available=false;
+    if(options.monitoring)try{node=(await options.monitoring.nodes([metrics.server_id]))[0]??node;available=node.sampled_at!==null;}catch{/* Real task and process metrics remain available during a Prometheus outage. */}
+    const {server_id,...resources}=node;return WorkerMetricsSchema.parse({...metrics,node:resources,monitoring_available:available});
+  });
+  for(const [action,mode] of [['pause','PAUSED'],['drain','DRAINING'],['resume','RUNNING']] as const)
+    app.post('/v1/workers/:id/'+action,{bodyLimit:2048},async request=>store.workerCommand(request.principal,z.strictObject({id:IdSchema}).parse(request.params).id,mode,request.body));
   app.get('/v1/errors',async request=>{const q=pagination(request.query);return store.listErrors(request.principal,q.limit,q.offset,q.sourceMode);});
   return app;
 }

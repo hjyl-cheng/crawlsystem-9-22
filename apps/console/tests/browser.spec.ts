@@ -141,6 +141,16 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       return json({ observed_at: '2026-09-24T08:00:00.000Z', items: state.proxies, items_total: state.proxies.length, by_state, providers, groups, requests_today: 0, failures_today: 0, availability_7d: [],
         exit_countries: [...countries].map(([country, count]) => ({ country, count })) });
     }
+    if (/^\/v1\/workers\/[^/]+\/metrics$/.test(path)) {
+      const worker=state.workers.find(w=>path.includes('/'+w.worker_id+'/'));if(!worker)return failure(404,'NOT_FOUND');
+      return json({worker_id:worker.worker_id,server_id:worker.server_id,sampled_at:new Date().toISOString(),monitoring_available:true,node:{cpu_percent:13.5,memory_used_bytes:2147483648,memory_total_bytes:8589934592,sampled_at:new Date().toISOString()},process:worker.process??null,resources:worker.process?[{at:new Date().toISOString(),cpu_cores:worker.process.cpu_cores,rss_bytes:worker.process.rss_bytes}]:[],tasks:Array.from({length:24},(_,i)=>({at:new Date(Date.now()-(23-i)*3600000).toISOString(),plans_completed:i===23?5:0,plans_failed:0,queries_completed:i===23?2:0,queries_failed:0}))});
+    }
+    if (/^\/v1\/workers\/[^/]+\/(pause|drain|resume)$/.test(path)) {
+      if(state.role!=='operator')return failure(403,'FORBIDDEN');
+      const worker=state.workers.find(w=>path.includes('/'+w.worker_id+'/')),command=route.request().postDataJSON();
+      if(!worker?.control||worker.stale||state.conflict||command.expected_version!==worker.control.version)return failure(409,'CONFLICT');
+      worker.control={...worker.control,version:worker.control.version+1,desired:path.endsWith('/pause')?'PAUSED':path.endsWith('/drain')?'DRAINING':'RUNNING',status:'PENDING',reason:command.reason,changed_at:new Date().toISOString()};return json(worker);
+    }
     if (path === '/v1/workers') return json({ items: state.workers, next_cursor: null });
     if (path === '/v1/errors') return json({ items: state.errors, next_cursor: null });
     if (path.startsWith('/v1/receipts/') && state.detail) return json(state.detail.receipts.find(receipt => path.endsWith(receipt.submission_id)));
@@ -211,9 +221,9 @@ test('backend permission denial is visible and never shown as successful cancell
   await expect(page.getByText('已取消', { exact: true })).toHaveCount(0);
 });
 test('worker loss of heartbeat follows the server state', async ({ page }) => {
-  const state = await mock(page); state.workers = [workerFixture()]; await login(page, '/workers'); await expect(page.getByText('心跳正常', { exact: true })).toBeVisible();
-  state.workers[0]!.stale = true; await page.getByRole('button', { name: '刷新数据' }).click(); await expect(page.getByText('心跳失联', { exact: true })).toBeVisible();
-  await expect(page.getByText('等待采集器状态', { exact: true })).toBeVisible();
+  const state = await mock(page); state.workers = [workerFixture()]; await login(page, '/workers'); await expect(page.locator('.worker-list')).toContainText('接单中');
+  state.workers[0]!.stale = true; await page.getByRole('button', { name: '刷新 Worker' }).click(); await expect(page.locator('.worker-list')).toContainText('失联');
+  await expect(page.getByRole('button',{name:'暂停接单',exact:true})).toBeDisabled();
 });
 test('error entry links to the correct plan and its persisted receipt', async ({ page }) => {
   const detail = detailFixture({ status: 'FAILED' }, ['ABOUT']); await mock(page, detail); await login(page, '/errors');
@@ -579,8 +589,23 @@ test('worker management merges the node menus and shows real heartbeats with ser
   await expect(page.locator('.row-servers tbody tr')).toHaveCount(1);
   await expect(page.locator('.row-servers tbody')).toContainText('fixture-node');
   await expect(page.locator('.worker-detail')).toContainText('fixture-worker');
-  await expect(page.getByText('资源指标尚未接入（Prometheus）', { exact: false }).first()).toBeVisible();
+  await expect(page.locator('.worker-detail')).toContainText('13.5%');
+  await expect(page.locator('.worker-detail')).toContainText('25.0%');
+  await expect(page.getByRole('img',{name:'所选 Worker 近 24 小时任务趋势'})).toBeVisible();
   await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
+});
+test('Worker commands await acknowledgement, preserve draining activity gaps and fit a phone',async({page})=>{
+ const state=await mock(page),w=workerFixture();w.management={protocol:'worker-control-1',applied_version:1,ready:true};w.process={cpu_cores:0.25,rss_bytes:250000000,sampled_at:new Date().toISOString()};
+ w.control={version:1,desired:'RUNNING',applied_version:1,status:'RUNNING',reason:null,changed_at:null,active_plan_ids:[detailFixture().plan.plan_id],active_query_run_ids:[],legacy_pending:0};state.workers=[w];
+ await login(page,'/workers');await page.getByRole('button',{name:'暂停接单',exact:true}).click();await page.getByLabel('操作原因').fill('页面暂停验收');await page.getByRole('button',{name:'确认暂停接单',exact:true}).click();
+ await expect(page.locator('.worker-detail')).toContainText('等待 Worker 确认');await expect(page.locator('.worker-detail')).toContainText('已接入的计划 · 1');
+ w.control.status='PAUSED';w.control.applied_version=2;await page.getByRole('button',{name:'刷新 Worker'}).click();await expect(page.locator('.worker-detail')).toContainText('已暂停接单');
+ await page.getByRole('button',{name:'排空',exact:true}).click();await page.getByLabel('操作原因').fill('页面等待计划排空');await page.getByRole('button',{name:'确认排空',exact:true}).click();
+ w.control.status='DRAINING';w.control.applied_version=3;await page.getByRole('button',{name:'刷新 Worker'}).click();await expect(page.locator('.worker-detail')).toContainText('排空中');
+ w.control.active_plan_ids=[];w.control.status='DRAINED';await page.getByRole('button',{name:'刷新 Worker'}).click();await expect(page.locator('.worker-detail')).toContainText('已排空');
+ await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
+ await page.getByRole('button',{name:'恢复接单',exact:true}).click();await page.getByLabel('操作原因').fill('恢复页面验收');await page.getByRole('button',{name:'确认恢复接单',exact:true}).click();await expect(page.locator('.worker-detail')).toContainText('等待 Worker 确认');
+ state.conflict=true;await page.getByRole('button',{name:'暂停接单',exact:true}).click();await page.getByLabel('操作原因').fill('验证冲突提示');await page.getByRole('button',{name:'确认暂停接单',exact:true}).click();await expect(page.locator('.worker-detail [role=status]')).toBeVisible();
 });
 test('configuration reads real defaults, validates risk, publishes history and loads a rollback', async ({ page }) => {
   const state=await mock(page); await login(page,'/config');

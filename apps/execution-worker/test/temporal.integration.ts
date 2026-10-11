@@ -10,6 +10,7 @@ import { workflowStarter } from '@crawlsystem/execution-client';
 import { temporalOptions } from '@crawlsystem/execution-client/config';
 import { fixtureContext } from './support.ts';
 import type { Activities } from '../src/activities.ts';
+import {workerTaskQueue} from '../../../packages/contracts/src/workers.ts';
 
 Runtime.install({ logger: new DefaultLogger('ERROR') });
 const unexpected = () => { throw new Error('not used by fixture plans'); };
@@ -75,6 +76,18 @@ test('Temporal SDK workflow coordination, waiting, retries, cancellation and his
     await scenario('unimplemented dependency waits until original deadline', async (_a, state) => { assert.equal(state.executions, 1); assert.equal(state.settlements, 1); }, 'waiting');
     await scenario('retryable Activity failure exhausts exactly three attempts', async (_a, state) => { assert.equal(state.executions, 3); assert.equal(state.settlements, 1); }, 'retry');
     await scenario('cancellation interrupts durable dependency wait', async (_a, state) => { assert.equal(state.executions, 1); assert.equal(state.settlements, 1); }, 'cancel');
+    await t.test('owned Worker queue preserves start identity and supports cancellation',async()=>{
+      const queue='execution-d2-'+randomUUID(),{ref}=fixtureContext(),starter=workflowStarter(env.client,queue),owner='worker-owned';
+      let reached!:()=>void;const running=new Promise<void>(resolve=>{reached=resolve;});
+      const activities:Activities={...unusedCollector,loadExecution:async()=>({deadlineAt:await env.currentTimeMs()+600000,maxAttempts:3,status:'QUEUED'}),executeFixture:async()=>{reached();return {plan_id:ref.plan_id,status:'WAITING'};},settleExecution:async()=>({plan_id:ref.plan_id,status:'CANCELLED'})};
+      const worker=await Worker.create({connection:env.nativeConnection,namespace:env.namespace,taskQueue:workerTaskQueue(queue,owner),workflowBundle,activities,maxConcurrentActivityTaskExecutions:1,maxCachedWorkflows:2,shutdownGraceTime:'1 second'});
+      await worker.runUntil(async()=>{
+        const first=await starter.start(ref,owner);assert.deepEqual(await starter.start(ref,owner),first);
+        assert.equal((await env.client.workflow.getHandle(ref.workflow_id).describe()).taskQueue,workerTaskQueue(queue,owner));
+        await assert.rejects(starter.start(ref,'worker-other'),'same workflow cannot be reassigned on a lost response');
+        await running;await starter.cancel(ref.workflow_id);await assert.rejects(env.client.workflow.getHandle(ref.workflow_id).result());
+      });
+    });
     await t.test('YouTube plan: About, frozen targets, each batch once with a retried failure, then completion', async () => {
       const queue = `execution-sdk-${randomUUID()}`, { ref } = fixtureContext();
       const calls: string[] = []; let failedOnce = false;

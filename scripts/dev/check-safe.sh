@@ -70,6 +70,12 @@ case "${1:-}" in
   config-layout) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/capture-d1-layout.ts) ;;
   config-runtime) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d1-runtime.ts "${@:2}") ;;
   config-monitoring) command=(python3 scripts/dev/configure-d1-monitoring.py) ;;
+  worker-integration) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/test-d2-integration.ts) ;;
+  worker-prepare) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-d2.ts) ;;
+  worker-images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --d2-images) ;;
+  worker-deploy) command=(node --import tsx scripts/dev/deploy-d2.ts) ;;
+  worker-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-browser.ts) ;;
+  worker-runtime) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;
   collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-browser.ts) ;;

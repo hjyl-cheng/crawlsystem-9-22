@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {WorkerControlSchema,WorkerManagementReportSchema,WorkerProcessSchema,type WorkerControl} from './workers.ts';
 import {ProxyPolicySchema,type ProxyPolicy} from './proxy-policy.ts';
 import { CLOCK_NAMES, OVERRIDE_DAYS, type ClockName } from './clocks.ts';
 export { CLOCK_NAMES, CLOCK_POLICY_VERSION, OVERRIDE_DAYS, MANUAL_OVERRIDE_REASON, BOOTSTRAP_BASELINE_REASON, type ClockName } from './clocks.ts';
@@ -216,9 +217,9 @@ export const CollectorDiagnosticsSchema = z.strictObject({ gateway: z.enum(['rea
   language: z.string().max(30), country: z.string().regex(/^[A-Z]{2}$/), timezone: z.string().max(80), enforce_egress_country: z.boolean(),
   active_leases: z.number().int().nonnegative().max(100), compliant_leases: z.number().int().nonnegative().max(100),
   last_profile: z.strictObject({ profile_id: IdSchema, created_at: Timestamp, saved_at: Timestamp }).nullable() });
-export const HeartbeatSchema = z.strictObject({ worker_id: IdSchema, server_id: IdSchema, build_version: z.string().min(1).max(120), accepting_work: z.boolean(), capacity: z.number().int().min(0).max(100), running_plan_ids: z.array(z.uuid()).max(100), collector: CollectorDiagnosticsSchema.optional() });
+export const HeartbeatSchema = z.strictObject({ worker_id: IdSchema, server_id: IdSchema, build_version: z.string().min(1).max(120), accepting_work: z.boolean(), capacity: z.number().int().min(0).max(100), running_plan_ids: z.array(z.uuid()).max(100), collector: CollectorDiagnosticsSchema.optional(),management:WorkerManagementReportSchema.optional(),process:WorkerProcessSchema.optional(),running_query_run_ids:z.array(z.uuid()).max(4).optional() });
 export type Heartbeat = z.infer<typeof HeartbeatSchema>;
-export interface Worker extends Heartbeat { last_heartbeat_at: string; stale: boolean; proxy_status: 'NOT_CONFIGURED' | 'CONFIGURED'; }
+export interface Worker extends Heartbeat { last_heartbeat_at: string; stale: boolean; proxy_status: 'NOT_CONFIGURED' | 'CONFIGURED'; control?:WorkerControl; }
 export interface PlanDetail extends PlanInput { events: StoredEvent[]; }
 export interface ChannelSummary { channel_id: string; title: string | null; source_mode: SourceMode; updated_at: string; latest_plan_id: string; }
 /** A channel row for list pages: the summary plus current facts cheap to read in one query. */
@@ -269,7 +270,7 @@ export interface Completeness {
 /** server_id is present for workload credentials (Worker, Proxy Manager): the node named by TokenReview. */
 export interface Session { subject: string; workspace_id: string; role: Role; server_id?: string; contract_version: typeof CONTRACT_VERSION; }
 export interface WorkflowInput { schema_version: typeof CONTRACT_VERSION; plan_id: string; workspace_id: string; execution_epoch: number; input_hash: string; workflow_id: string; }
-export interface WorkflowStarter { start(input: WorkflowInput): Promise<{ workflow_id: string; run_id: string }>; cancel(workflow_id: string): Promise<void>; }
+export interface WorkflowStarter { start(input: WorkflowInput,worker_id?:string): Promise<{ workflow_id: string; run_id: string }>; cancel(workflow_id: string): Promise<void>; }
 export interface PlanWorkflowResult { plan_id: string; status: PlanStatus; }
 export const ReceiptSchema: z.ZodType<Receipt> = z.strictObject({ schema_version: z.literal(CONTRACT_VERSION), submission_id: z.uuid(), plan_id: z.uuid(), logical_batch_key: IdSchema, domain: DomainSchema, payload_hash: Hash, state: z.literal('APPLIED'), applied_at: Timestamp });
 export const DomainResultSchema: z.ZodType<DomainResult> = z.strictObject({ domain: DomainSchema, state: z.enum(['PENDING','APPLIED']), completed_at: Timestamp.nullable() });
@@ -298,7 +299,7 @@ export type ChannelClockOverride = z.infer<typeof ChannelClockOverrideSchema>;
 export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoItemSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema, management: ChannelManagementSchema });
 export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema, management_state: ManagementStateSchema.nullable(), next_due_at: Timestamp.nullable(),
   clocks: z.array(z.strictObject({ clock: z.enum(CLOCK_NAMES), next_due_at: Timestamp, interval_days: z.number().int().min(1).max(365), retry_at: Timestamp.nullable(), override_days: z.number().int().min(1).max(365).nullable() })).max(3) });
-export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.enum(['NOT_CONFIGURED', 'CONFIGURED']) });
+export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.enum(['NOT_CONFIGURED', 'CONFIGURED']),control:WorkerControlSchema.optional() });
 export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, server_id: IdSchema.optional(), contract_version: z.literal(CONTRACT_VERSION) });
 // Kubernetes ServiceAccount token exchange: subject is the Pod, server_id the node reported by TokenReview.
 // Temporal namespace token for the gRPC Authorization header; permissions name one namespace and role.
@@ -662,7 +663,7 @@ export const QueryRunParamsSchema = z.strictObject({
   min_subscribers: z.number().int().min(0), policy_version: z.string().min(1).max(40),
 });
 export type QueryRunParams = z.infer<typeof QueryRunParamsSchema>;
-export const QUERY_RUN_IDLE = ['disabled', 'no_due', 'concurrency', 'daily_runs', 'backlog', 'api_quota'] as const;
+export const QUERY_RUN_IDLE = ['disabled', 'no_due', 'concurrency', 'daily_runs', 'backlog', 'api_quota','worker_paused'] as const;
 export const QueryRunClaimSchema = z.strictObject({
   run: z.strictObject({ run_id: z.uuid(), binding_id: z.uuid(), attempt: z.number().int().positive(), lease_expires_at: Timestamp, params: QueryRunParamsSchema }).nullable(),
   idle_reason: z.enum(QUERY_RUN_IDLE).nullable(), retry_after_ms: Count,

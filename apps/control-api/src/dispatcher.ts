@@ -16,7 +16,7 @@ export class IntentDispatcher {
         if(['COMPLETED','FAILED','CANCELLED'].includes(intent.plan_status)||Date.parse(intent.deadline_at)<=Date.now()) {
           await this.store.finishIntent(intent,'SKIPPED');return true;
         }
-        const result=await withTimeout(this.starter.start(intent.input),10_000);
+        const result=await withTimeout(this.starter.start(intent.input,intent.worker_id),10_000);
         if(result.workflow_id!==intent.input.workflow_id) throw new Error('Workflow identity mismatch');
         await this.store.finishIntent(intent,'DONE',result.run_id);
       } else {

@@ -15,6 +15,9 @@ import { FingerprintClient } from './youtube/fingerprint.ts';
 import { WebCollector } from './youtube/web-collector.ts';
 import { KafkaPublisher, MinioStore, RawArchive } from './raw-archive.ts';
 import { refreshTemporalApiKey, watchTlsFiles } from '@crawlsystem/execution-client/config';
+import {workerTaskQueue} from '../../../packages/contracts/src/workers.ts';
+import {WorkerAdmission,ProcessSampler} from './management.ts';
+import type {Worker as WorkerReport} from '@crawlsystem/contracts';
 
 const config = workerConfig();
 const tracing = new RequestTracing('execution-worker', record => log(record), Number(process.env.TRACE_SAMPLE_RATIO ?? '0.1'));
@@ -28,16 +31,25 @@ const api = new ExecutionApi({ controlUrl: config.controlUrl, ingestUrl: config.
 const session = await api.session();
 if (session.role !== 'worker' || session.subject !== config.workerId) throw new Error('Worker credential identity mismatch');
 const running = new Map<string, number>();
+const searches=new Set<string>(),admission=new WorkerAdmission(),sampler=new ProcessSampler();
 let accepting = false, stopping = false;
 const heartbeatStop = new AbortController(), queryStop = new AbortController();
 let queryLoops: Promise<void>[] = [];
-const report = async () => api.heartbeat({ worker_id: config.workerId, server_id: config.serverId, build_version: config.buildVersion,
-  accepting_work: accepting, capacity: config.capacity, running_plan_ids: [...running.keys()], ...(webCollector ? { collector: await webCollector.diagnostics() } : {}) }, { attempts: 1 });
+const report = async ():Promise<WorkerReport> => {
+ const result=await api.heartbeat({ worker_id: config.workerId, server_id: config.serverId, build_version: config.buildVersion,
+  accepting_work: accepting&&admission.accepting, capacity: config.capacity, running_plan_ids: [...running.keys()],running_query_run_ids:[...searches],
+  management:{protocol:'worker-control-1',applied_version:admission.version,ready:accepting&&!stopping},process:sampler.sample(),
+  ...(webCollector ? { collector: await webCollector.diagnostics() } : {}) }, { attempts: 1 });
+ const old=admission.version;admission.apply(result.control);
+ // A command is acknowledged immediately after consumption, rather than one heartbeat later.
+ if(admission.version!==old&&accepting&&!stopping)return report();return result;
+};
 const temporalApiKey = config.temporal.apiKey ? await config.temporal.apiKey() : undefined;
 const connection = await NativeConnection.connect({ address: config.temporal.address, tls: config.temporal.tls ?? (temporalApiKey ? false : undefined), ...(temporalApiKey ? { apiKey: temporalApiKey } : {}) });
 const stopTemporalRefresh = refreshTemporalApiKey(config.temporal.apiKey, token => connection.setApiKey(token),
   () => log({ worker_id: config.workerId, phase: 'TEMPORAL_TOKEN', error_code: 'UNAVAILABLE', retryable: true }));
 let worker: Worker | undefined;
+let legacyWorker:Worker|undefined;
 // Real collection (optional): the Data API key and this node's Proxy Manager (or 'direct' for local development only).
 const youtube = config.youtubeKeyFile && config.proxyManagerUrl
   ? { dataApi: new DataApi((await readFile(config.youtubeKeyFile, 'utf8')).trim()), proxies: config.proxyManagerUrl === 'direct' ? 'direct' as const : new LeaseClient(config.proxyManagerUrl) } : undefined;
@@ -57,12 +69,13 @@ const stop = () => {
   queryStop.abort();
   void report().catch(() => {});
   if (worker?.getState() === 'RUNNING') worker.shutdown();
+  if (legacyWorker?.getState() === 'RUNNING') legacyWorker.shutdown();
 };
 process.once('SIGTERM', stop); process.once('SIGINT', stop);
 // Renewed mTLS files are only read at connect: drain and let Kubernetes restart the Pod.
 const unwatch = watchTlsFiles(process.env, () => { log({ worker_id: config.workerId, phase: 'CERTIFICATE_ROTATED' }); stop(); });
 try {
-  worker = await Worker.create({ connection, namespace: config.temporal.namespace, taskQueue: config.temporal.taskQueue,
+  const options={ connection, namespace: config.temporal.namespace, taskQueue: workerTaskQueue(config.temporal.taskQueue,config.workerId),
     identity: config.workerId, buildId: config.buildVersion,
     // Prebuild once; each replacement process loads the same bundle without webpack.
     workflowBundle: { codePath: fileURLToPath(new URL('../dist/workflow-bundle.cjs', import.meta.url)) },
@@ -72,10 +85,14 @@ try {
       enter(planId) { running.set(planId, (running.get(planId) ?? 0) + 1); return () => { const count = running.get(planId)! - 1; if (count) running.set(planId, count); else running.delete(planId); }; },
     }),
     maxConcurrentActivityTaskExecutions: config.capacity, maxConcurrentWorkflowTaskExecutions: config.capacity + 2,
-    maxConcurrentActivityTaskPolls: 1, maxConcurrentWorkflowTaskPolls: 1, maxCachedWorkflows: 10,
+    maxConcurrentActivityTaskPolls: 1, maxConcurrentWorkflowTaskPolls: 1, maxCachedWorkflows: config.capacity+2,workflowThreadPoolSize:1,
     maxHeartbeatThrottleInterval: '1 second', defaultHeartbeatThrottleInterval: '1 second',
     shutdownGraceTime: config.drainMs, shutdownForceTime: config.drainMs + 10_000,
-  });
+  };
+  worker = await Worker.create(options);
+  // Upgrade compatibility: finish already-started workflows on the original shared queue.
+  // New dispatcher assignments use the stable owned queue, including after pause/resume.
+  legacyWorker=await Worker.create({...options,taskQueue:config.temporal.taskQueue,maxConcurrentActivityTaskExecutions:1,maxConcurrentWorkflowTaskExecutions:2,maxCachedWorkflows:2});
   await report();
   if (!stopping) {
     accepting = true;
@@ -87,9 +104,11 @@ try {
     })();
     log({ worker_id: config.workerId, phase: 'READY', build_version: config.buildVersion, workspace_id: session.workspace_id });
     // Query searches run beside the Temporal Worker, claimed from Control under a lease.
-    if (youtube) queryLoops = Array.from({ length: config.queryRunnerSlots }, () => runQueries({ api, dataApi: youtube.dataApi, proxies: youtube.proxies, gateway:fingerprint,searchStore,workspaceId:session.workspace_id,enforceBrazil:config.collection?.enforceBrazil,workerId: config.workerId, signal: queryStop.signal, log })
+    if (youtube) queryLoops = Array.from({ length: config.queryRunnerSlots }, () => runQueries({ api, dataApi: youtube.dataApi, proxies: youtube.proxies, gateway:fingerprint,searchStore,workspaceId:session.workspace_id,enforceBrazil:config.collection?.enforceBrazil,workerId: config.workerId, signal: queryStop.signal, log,
+      accepting:()=>accepting&&!stopping&&admission.accepting,enter(runId){searches.add(runId);return()=>searches.delete(runId);} })
       .catch(() => { log({ worker_id: config.workerId, phase: 'QUERY_RUNNER', error_code: 'INTERNAL_ERROR', retryable: false }); }));
-    await worker.run();
+    const executions=[worker.run(),legacyWorker.run()];
+    try{await Promise.all(executions);}catch(error){stop();await Promise.allSettled(executions);throw error;}
   }
 } finally {
   accepting = false;

@@ -24,6 +24,7 @@ export interface QueryRunnerOptions {
   api: ExecutionApi; dataApi?: DataApi; proxies: LeaseClient | 'direct'; workerId: string; signal: AbortSignal;
   gateway?: FingerprintClient; searchStore?: ObjectStore; workspaceId?: string; enforceBrazil?: boolean;
   log: (record: Record<string, unknown>) => void;
+  accepting?:()=>boolean;enter?:(runId:string)=>()=>void;
 }
 /** Control no longer lets this attempt hold the run (cancelled, taken over or finished). */
 class RunStopped extends Error {}
@@ -33,6 +34,7 @@ const pause = (ms: number, signal: AbortSignal) => delay(ms, undefined, { signal
 
 export async function runQueries(options: QueryRunnerOptions): Promise<void> {
   while (!options.signal.aborted) {
+    if(options.accepting&&!options.accepting()){await pause(1000,options.signal);continue;}
     let claim: QueryRunClaim;
     try { claim = await options.api.claimQueryRun({ signal: options.signal }); }
     catch (error) {
@@ -40,7 +42,7 @@ export async function runQueries(options: QueryRunnerOptions): Promise<void> {
       options.log({ worker_id: options.workerId, phase: 'QUERY_CLAIM', error_code: error instanceof ExecutionApiError ? error.code : 'UNAVAILABLE' });
       await pause(CLAIM_RETRY_MS, options.signal); continue;
     }
-    if (claim.run) await runOne(options, claim.run);
+    if (claim.run) {const leave=options.enter?.(claim.run.run_id);try{await runOne(options, claim.run);}finally{leave?.();}}
     else await pause(claim.retry_after_ms, options.signal);
   }
 }

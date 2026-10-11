@@ -11,7 +11,7 @@
 .worker-list .notice { margin: 4px 14px; }
 .workers-page .pagination { padding: 6px 14px; border-top: 1px solid #eef3f9; font-size: var(--fs-meta); }
 .worker-filters { justify-content: flex-start; padding: 8px 14px; }
-.workers-page .row-servers { flex: none; height: 210px; min-height: 0; }
+.workers-page .row-servers { flex: none; height: 250px; min-height: 0; }
 .workers-page .row-servers>.span-2 { grid-column: span 2; }
 .workers-page .row-servers .table-scroll { flex: 1; min-height: 0; padding: 0 10px 8px; }
 .live-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; background: #11c38c; box-shadow: 0 0 0 3px #e7f8f1; }
@@ -21,6 +21,15 @@
 .meter i { display: block; height: 100%; background: #3d88ff; }
 .meter i.hot { background: #e0524a; }
 .plan-links { margin: 0; padding-left: 16px; font-size: var(--fs-text); line-height: 1.8; }
+.worker-select { border: 0; background: transparent; color: #277cf7; cursor: pointer; text-align: left; }
+.worker-build { overflow-wrap: anywhere; }
+.worker-command { padding: 10px; background: #f5f8fd; border: 1px solid #dbe5f4; border-radius: 6px; }
+.worker-command p { font-size: var(--fs-meta); line-height: 1.6; }
+.worker-command textarea { width: 100%; min-height: 60px; resize: vertical; box-sizing: border-box; }
+.worker-command>div { display: flex; gap: 8px; margin-top: 8px; }
+.worker-detail .detail-actions { flex-wrap: wrap; }
+.process-trends>.trend-box { min-height: 60px; flex: 1; }
+.process-trends>small { margin: 0 14px; color: #52688c; }
 @media (max-width: 1040px), (max-height: 600px) {
   .workers-page .row-workers, .workers-page .row-servers { flex: none; height: auto; }
   .dashboard.workers-page .worker-list, .dashboard.workers-page .worker-detail, .workers-page .row-servers>.span-2 { grid-column: 1 / -1; min-height: 300px; }

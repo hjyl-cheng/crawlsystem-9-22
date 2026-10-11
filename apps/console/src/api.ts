@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {WorkerMetricsSchema,WorkerCommandSchema,type WorkerCommand} from '../../../packages/contracts/src/workers.ts';
 import {ConfigSnapshotSchema,ConfigHistorySchema,ConfigCommandSchema,type ConfigCommand} from '../../../packages/contracts/src/configuration.ts';
 import {DeliveryRecordSchema,DeliverySummarySchema,DeliveryRetrySchema} from '../../../packages/contracts/src/delivery.ts';
 import { PipelineProgressSchema } from '@crawlsystem/contracts/pipeline';
@@ -137,6 +138,8 @@ export class ControlApi {
   manageChannel = (id: string, body: ChannelManagementCommand, signal?: AbortSignal) => this.request(ApiRoutes.channelManagement(id), ChannelManagementSchema, signal, ChannelManagementCommandSchema.parse(body));
   overrideClock = (id: string, body: ChannelClockOverride, signal?: AbortSignal) => this.request(ApiRoutes.channelClockOverride(id), ChannelManagementSchema, signal, ChannelClockOverrideSchema.parse(body));
   workers = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.workers}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(WorkerSchema), signal);
+  workerMetrics(id:string,signal?:AbortSignal){return this.request('/v1/workers/'+encodeURIComponent(id)+'/metrics',WorkerMetricsSchema,signal);}
+  workerCommand(id:string,action:'pause'|'drain'|'resume',command:WorkerCommand,signal?:AbortSignal){return this.request('/v1/workers/'+encodeURIComponent(id)+'/'+action,WorkerSchema,signal,WorkerCommandSchema.parse(command));}
   errors = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.errors}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(StoredEventSchema), signal);
   receipt = (id: string, signal?: AbortSignal) => this.request(ApiRoutes.receipt(id), ReceiptSchema, signal);
   proxies = (signal?: AbortSignal) => this.request(ApiRoutes.proxies, ProxyOverviewSchema, signal);
