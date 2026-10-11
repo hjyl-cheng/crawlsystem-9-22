@@ -11,7 +11,7 @@ const mode=process.argv[2]??'audit';assert.ok(['audit','backup','apply','verify'
 const dir='.runtime/e3';mkdirSync(dir,{recursive:true,mode:0o700});
 const env={...process.env,K3S_CONFIG_FILE:'/dev/null',KUBECTL_REMOTE_COMMAND_WEBSOCKETS:'false'};
 assert.equal(new URL(process.env.DATABASE_URL!).pathname,'/crawlsystem_m1_main_test');
-const pool=createPool();let phase='connect';
+const pool=createPool();pool.options.query_timeout=60000;let phase='connect';
 const kube=(args:string[],input?:string)=>execFileSync('kubectl',args,{encoding:'utf8',input,env,stdio:['pipe','pipe','pipe'],timeout:30000,maxBuffer:32*1024*1024});
 const save=(name:string,data:unknown)=>writeFileSync(`${dir}/${name}.json`,JSON.stringify(data,null,2)+'\n',{mode:0o600});
 const load=(name:string)=>JSON.parse(readFileSync(`${dir}/${name}.json`,'utf8'));
@@ -51,7 +51,7 @@ async function protectedState(db:import('pg').PoolClient){
 try{
  const db=await pool.connect();try{
   await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
-  await db.query("SET LOCAL lock_timeout='3s';SET LOCAL statement_timeout='30s';SET LOCAL idle_in_transaction_session_timeout='240s'");
+  await db.query("SET LOCAL lock_timeout='3s';SET LOCAL statement_timeout='60s';SET LOCAL idle_in_transaction_session_timeout='240s'");
   assert.equal((await db.query('SELECT max(version)::int n FROM m1.migrations')).rows[0].n,37);
   phase='external-guards';const liveAccounts=accounts(),runningSpaces=runtimeWorkspaces();
   if(mode==='audit'){
@@ -81,7 +81,7 @@ try{
     assert.ok(!existsSync(dir+'/cleanup.json'),'Cleanup already applied; use verify');const backup=load('backup');
     assert.equal(backup.manifest_sha256,manifest.hash);assert.equal(await hashFile(dir+'/source-before.dump'),backup.sha256);
     const temporal=executions(selection);phase='cleanup';await db.query("SELECT pg_advisory_xact_lock(hashtext('e3-historical-cleanup'))");
-    const result=await cleanup(db,selection,manifest.hash);await db.query('COMMIT');
+    const result=await cleanup(db,selection,manifest.hash,step=>{phase='cleanup:'+step;});await db.query('COMMIT');
     save('cleanup',{at:new Date().toISOString(),workspaces:selection.workspaces.length,manifest_sha256:manifest.hash,backup_sha256:backup.sha256,temporal,...result});
     console.log(JSON.stringify({mode,workspaces:selection.workspaces.length,total_removed:result.total_removed,removed:result.removed}));
    }else{
@@ -95,5 +95,5 @@ try{
    }
   }
  }catch(error){await db.query('ROLLBACK').catch(()=>{});throw error;}finally{db.release();}
-}catch(error){console.error(JSON.stringify({result:'FAILED',phase,error:error instanceof Error?error.name:'UnknownError',code:(error as {code?:string}).code,guard:error instanceof assert.AssertionError?error.message.split('\n')[0]:undefined}));process.exitCode=1;}
+}catch(error){console.error(JSON.stringify({result:'FAILED',phase,error:error instanceof Error?error.name:'UnknownError',code:(error as {code?:string}).code,query_timeout:error instanceof Error&&error.message==='Query read timeout',guard:error instanceof assert.AssertionError?error.message.split('\n')[0]:undefined}));process.exitCode=1;}
 finally{await pool.end();}

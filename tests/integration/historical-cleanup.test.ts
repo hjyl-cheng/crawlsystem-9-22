@@ -69,7 +69,7 @@ test('a foreign-key reference from a protected workspace blocks cascading cleanu
  });
 });
 
-test('pending failure replays and delivered or pending publications preserve the test workspace',async()=>{
+test('pending failure replays and pending publications preserve the test workspace',async()=>{
  const t=await setup();
  await transaction(async db=>{
   const f=(await db.query("INSERT INTO control.failures(workspace_id,signature,stage,code,state,plan_id) VALUES($1,'e3-test','WORKER','UNAVAILABLE','RESOLVED',$2) RETURNING failure_id",[t.p.workspace_id,t.plan.plan_id])).rows[0].failure_id;

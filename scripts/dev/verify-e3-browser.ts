@@ -18,12 +18,13 @@ try{
  assert.ok((await get('/v1/channels?source_mode=fixture',preview)).items.length>0);
  const plans=await get('/v1/plans?source_mode=fixture');assert.ok(plans.items.length>0,'Fixture recovery plans retained');
  phase='browser';const page=await browser.newPage({extraHTTPHeaders:{authorization:'Bearer '+token},viewport:{width:1920,height:937}});
- page.on('pageerror',e=>errors.push(e.name));page.on('response',async r=>{const path=new URL(r.url()).pathname;if(!path.startsWith('/api/v1/'))return;if(r.status()>=400)failed.push(path+':'+r.status());else if(r.request().method()==='GET')try{reads.set(path,await r.json());}catch{}});
+ page.on('pageerror',e=>errors.push(e.name));page.on('response',async r=>{const path=new URL(r.url()).pathname;if(!path.startsWith('/api/v1/'))return;if(r.status()>=400)failed.push(path+':'+r.status());else if(r.request().method()==='GET')try{reads.set(path.slice(4),await r.json());}catch{}});
  const pages=[['/','采集链路总览'],['/channels','频道管理'],['/plans','全量采集'],['/delivery','发布交付'],['/storage','存储与流水线']] as const;
  const layouts=[];
  for(const width of [1920,390]){
   await page.setViewportSize({width,height:937});
   for(const [path,title] of pages){
+   phase=path+':'+width;
    reads.clear();await page.goto(origin+path);await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible();
    await expect(page.getByText('正在加载…',{exact:true})).toHaveCount(0);await expect(page.getByRole('alert')).toHaveCount(0);
    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
@@ -41,5 +42,5 @@ try{
  assert.deepEqual(after.pods,before.pods,'Cleanup must preserve every running pod and restart count');
  const evidence={result:'PASSED',at:new Date().toISOString(),layouts,public_status:200,page_errors:errors,api_errors:failed,retired_workspace_empty:true,preview_workspace_preserved:true,fixture_current_removed:true,fixture_recovery_retained:true,images_and_pods_preserved:true};
  writeFileSync(dir+'/browser.json',JSON.stringify(evidence,null,2)+'\n',{mode:0o600});console.log(JSON.stringify(evidence));
-}catch(error){console.error(JSON.stringify({result:'FAILED',phase,error:error instanceof Error?error.name:'UnknownError',guard:error instanceof assert.AssertionError?error.message.split('\n')[0]:undefined}));process.exitCode=1;}
+}catch(error){writeFileSync(dir+'/browser-failure.json',JSON.stringify({phase,message:error instanceof Error?error.message:'UnknownError'},null,2)+'\n',{mode:0o600});console.error(JSON.stringify({result:'FAILED',phase,error:error instanceof Error?error.name:'UnknownError',guard:error instanceof assert.AssertionError?error.message.split('\n')[0]:undefined}));process.exitCode=1;}
 finally{await browser.close();}

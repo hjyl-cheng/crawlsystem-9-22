@@ -1,0 +1,204 @@
+{
+  "result": "PASSED",
+  "accepted_at": "2026-10-11T10:28:42.164Z",
+  "source_schema": 37,
+  "settings_version": 5,
+  "legacy_business_tables": 64,
+  "runtime_image": "docker.io/crawlsystem/control-api:main-5b8423b7b2ea-58a3bef2",
+  "cleanup": {
+    "workspaces": 2031,
+    "historical_rows": 96598,
+    "main_fixture_current_rows": 2,
+    "total_deleted": 98194,
+    "retirement_events_deleted": 1594,
+    "retired_plans": 1120,
+    "settled_intents": 2641,
+    "cancelled_searches": 32,
+    "remaining": 0,
+    "removed": {
+      "control.channel_candidates": 109,
+      "control.channel_clocks": 1635,
+      "control.channel_feature_state": 458,
+      "control.channel_imports": 89,
+      "control.channels": 1948,
+      "control.commands": 335,
+      "control.console_sessions": 204,
+      "control.data_api_permits": 117,
+      "control.domains": 5396,
+      "control.event_archive_identities": 0,
+      "control.events": 240,
+      "control.failure_commands": 0,
+      "control.failure_replays": 0,
+      "control.failure_reports": 0,
+      "control.failures": 0,
+      "control.feature_reference_distributions": 80,
+      "control.intents": 3440,
+      "control.obligations": 1334,
+      "control.pipeline_steps": 0,
+      "control.plan_api_reservations": 202,
+      "control.data_api_budget": 211,
+      "control.plan_items": 2987,
+      "control.plan_qualifications": 0,
+      "control.plan_sampling_baselines": 0,
+      "control.plan_video_samples": 12,
+      "control.plan_video_targets": 559,
+      "control.proxy_availability_hourly": 0,
+      "control.proxy_daily": 83,
+      "control.proxy_observation_streams": 107,
+      "control.proxy_observations": 107,
+      "control.proxies": 12394,
+      "control.proxy_sources": 105,
+      "control.query_audit": 31,
+      "control.query_collection_days": 0,
+      "control.query_collection_evidence": 0,
+      "control.query_collection_candidates": 0,
+      "control.query_collection_scans": 0,
+      "control.query_run_channels": 143,
+      "control.query_run_pages": 0,
+      "control.query_runs": 101,
+      "control.query_sources": 17647,
+      "control.query_bindings": 18147,
+      "control.query_terms": 18131,
+      "control.receipts": 3390,
+      "control.runtime_settings": 0,
+      "control.runtime_settings_consumers": 0,
+      "control.runtime_settings_history": 0,
+      "control.update_scheduler_state": 103,
+      "control.video_refresh_state": 907,
+      "control.worker_commands": 0,
+      "control.worker_plans": 0,
+      "control.plans": 2947,
+      "control.worker_routing": 0,
+      "control.worker_samples": 0,
+      "control.workers": 46,
+      "crawl_data.channels": 1948,
+      "crawl_data.ingest_units": 0,
+      "crawl_data.videos": 907,
+      "telemetry.bootstrap": 0,
+      "telemetry.maintenance": 0,
+      "telemetry.outbox": 1594
+    },
+    "manifest_sha256": "31eb3abace0d9cac856141f04fe0650853fee1f0704f130d235124ce4599d1d9"
+  },
+  "backup": {
+    "bytes": 153734294,
+    "sha256": "7e6faf95f3f4d67870ada63991c0aef83c18949c134e709b24b5fa1ab5559298",
+    "consistent_snapshot": true
+  },
+  "guards": {
+    "temporal_namespace": "crawlsystem-m1-main",
+    "retention_seconds": 604800,
+    "visible_executions_at_audit": 2018,
+    "selected_workflows": 0,
+    "recheck_before_apply": 0,
+    "preserved_workspaces": [
+      "console-e2e-3814487a386c",
+      "m1-main"
+    ],
+    "active_accounts_and_runtime_workspaces_checked": true,
+    "foreign_key_boundary_checked": true,
+    "stale_manifest_rejected": true,
+    "unexpired_work_and_recovery_block_deletion": true
+  },
+  "preservation": {
+    "fixture_plans": 31,
+    "recovery_identities": 52357,
+    "real_video_identities_preserved": true,
+    "delivered_identities_preserved": true,
+    "settings": true,
+    "migration_checksums": true,
+    "source_console_test_accounts_preserved": true,
+    "original_preview_workspace_preserved": true,
+    "all_images_and_pods_preserved": true,
+    "cloudflare_pid": 1882,
+    "console_uncommitted_evidence_sha256": "57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709"
+  },
+  "checks": {
+    "integration_passed": 6,
+    "typecheck": "PASSED",
+    "layouts": [
+      {
+        "path": "/",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/channels",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/plans",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/delivery",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/storage",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/",
+        "width": 390,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/channels",
+        "width": 390,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/plans",
+        "width": 390,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/delivery",
+        "width": 390,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/storage",
+        "width": 390,
+        "horizontal_overflow": 0
+      }
+    ],
+    "public_status": 200,
+    "page_errors": 0,
+    "api_errors": 0,
+    "channel_statistic_matches_response": true,
+    "pg_comment_bodies": 0,
+    "cdc": "RUNNING",
+    "replication_slot_active": true
+  },
+  "runtime": {
+    "before": {
+      "at": "2026-10-11T10:19:41.052Z",
+      "videos": 51063,
+      "full_completed": 1780,
+      "delivered": 1848,
+      "pending": 0,
+      "failed": 0
+    },
+    "after": {
+      "at": "2026-10-11T10:27:11.735Z",
+      "videos": 51173,
+      "full_completed": 1784,
+      "delivered": 1852,
+      "pending": 0,
+      "failed": 0
+    }
+  },
+  "boundaries": [
+    "Retain the original preview account workspace and source console account test copies",
+    "Retain all main fixture plans, receipts, ingest identities and historical telemetry",
+    "No raw object or ClickHouse deletion; existing retention continues",
+    "No production database reset or VACUUM FULL; reclaimed pages remain reusable",
+    "No service image rollout; E2 runtime remains active"
+  ]
+}

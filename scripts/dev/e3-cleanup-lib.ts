@@ -96,10 +96,11 @@ export async function assertRetired(db:PoolClient,selection:Selection){
  }
 }
 
-export async function cleanup(db:PoolClient,selection:Selection,expectedHash:string){
+export async function cleanup(db:PoolClient,selection:Selection,expectedHash:string,onProgress:(table:string)=>void=()=>{}){
  // Recheck exact row contents after locks; a new row or status change invalidates the manifest.
  const initial=await layout(db,selection);
- for(const t of initial.tables.filter(t=>allowed.has(t.name)))await db.query(`SELECT 1 FROM ${q(t.name)} t WHERE ${t.predicate} FOR UPDATE`,[selection.workspaces]);
+ for(const t of initial.tables.filter(t=>allowed.has(t.name))){onProgress('lock:'+t.name);await db.query(`SELECT 1 FROM ${q(t.name)} t WHERE ${t.predicate} FOR UPDATE`,[selection.workspaces]);}
+ onProgress('guards');
  await assertRetired(db,selection);
  const before=await inventory(db,selection);assert.equal(inventoryHash(before),expectedHash,'Cleanup manifest is stale');
  const retired_plans=(await db.query("UPDATE control.plans SET status='CANCELLED',version=version+1,finished_at=coalesce(finished_at,clock_timestamp()),updated_at=clock_timestamp() WHERE workspace_id=ANY($1::text[]) AND status IN ('QUEUED','RUNNING','WAITING')",[selection.workspaces])).rowCount??0;
@@ -109,6 +110,7 @@ export async function cleanup(db:PoolClient,selection:Selection,expectedHash:str
  while(pending.size){
   const next=[...pending.values()].find(t=>!edges.some(e=>e.parent===t.name&&pending.has(e.child)));
   assert.ok(next,'Unexpected cyclic foreign keys');
+  onProgress('delete:'+next.name);
   removed[next.name]=(await db.query(`DELETE FROM ${q(next.name)} t WHERE ${next.predicate}`,[selection.workspaces])).rowCount??0;pending.delete(next.name);
  }
  const after=await inventory(db,selection);assert.ok(after.every(t=>t.rows===0),'Cleanup left selected records');
