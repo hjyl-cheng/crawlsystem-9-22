@@ -1,0 +1,588 @@
+{
+  "result": "PASSED",
+  "at": "2026-10-11T06:32:05.418Z",
+  "schema": 36,
+  "configuration_version": 5,
+  "tests": {
+    "typecheck": "PASSED",
+    "unit": 178,
+    "integration": 16,
+    "browser": 5,
+    "console_build": "PASSED"
+  },
+  "backup": {
+    "bytes": 138051489,
+    "sha256": "5cdb09fc4e32e93d963d63a54217706dddbf8053d6f00a36d9ae75cc3b6f1c9f"
+  },
+  "deployment": {
+    "revision": "654d9241ce2f43ffb8d18634ec9b4b2ace0b0561",
+    "control_image": "docker.io/crawlsystem/control-api:main-654d9241ce2f-55a926d0",
+    "deployed_at": "2026-10-11T06:28:58.632Z",
+    "workloads": [
+      "control/control-api-preview",
+      "control/intent-dispatcher"
+    ]
+  },
+  "collection": {
+    "observed_at": "2026-10-11T06:32:05.339Z",
+    "limits": {
+      "enabled": true,
+      "daily_binding_limit": 50,
+      "max_auto_bindings": 5000,
+      "min_support_channels": 2
+    },
+    "created_today": 50,
+    "woken_today": 0,
+    "auto_bindings": 50,
+    "candidates": 1264,
+    "waiting_support": 1229,
+    "waiting_promotion": 4,
+    "candidate_limit": 20000,
+    "scanned_channels": 140,
+    "skipped_channels": 73,
+    "last_scan_at": "2026-10-11T06:32:04.660Z",
+    "limited": "daily"
+  },
+  "automatic_binding_states": [
+    {
+      "state": "BOOTSTRAP",
+      "bindings": 31
+    },
+    {
+      "state": "DISABLED",
+      "bindings": 19
+    }
+  ],
+  "quality_refinement": {
+    "disabled_unsearched_bindings": 19,
+    "removed_unsupported_profile_evidence": 141,
+    "operator_changes_preserved": true
+  },
+  "live_browser": {
+    "at": "2026-10-11T06:29:36.368Z",
+    "initial": {
+      "observed_at": "2026-10-11T06:29:27.222Z",
+      "limits": {
+        "enabled": true,
+        "daily_binding_limit": 50,
+        "max_auto_bindings": 5000,
+        "min_support_channels": 2
+      },
+      "created_today": 32,
+      "woken_today": 0,
+      "auto_bindings": 32,
+      "candidates": 712,
+      "waiting_support": 697,
+      "waiting_promotion": 2,
+      "candidate_limit": 20000,
+      "scanned_channels": 80,
+      "skipped_channels": 42,
+      "last_scan_at": "2026-10-11T06:23:55.167Z",
+      "limited": null
+    },
+    "final": {
+      "observed_at": "2026-10-11T06:29:36.337Z",
+      "limits": {
+        "enabled": true,
+        "daily_binding_limit": 50,
+        "max_auto_bindings": 5000,
+        "min_support_channels": 2
+      },
+      "created_today": 41,
+      "woken_today": 0,
+      "auto_bindings": 41,
+      "candidates": 845,
+      "waiting_support": 823,
+      "waiting_promotion": 0,
+      "candidate_limit": 20000,
+      "scanned_channels": 90,
+      "skipped_channels": 45,
+      "last_scan_at": "2026-10-11T06:29:31.876Z",
+      "limited": null
+    },
+    "example": {
+      "binding_id": "d78623eb-915a-493d-becd-756ab639c66b",
+      "text": "bolo de cenoura",
+      "country": "BR",
+      "category": "Food",
+      "state": "BOOTSTRAP",
+      "priority": -10,
+      "support_count": 2
+    },
+    "sources": {
+      "items": [
+        {
+          "type": "AUTO_TAG",
+          "ref": "collected:UCTNFtLQWA94BNeu0lE4YwuQ:4buOsywE3f8",
+          "created_at": "2026-10-11T06:20:54.305Z",
+          "channel_id": "UCTNFtLQWA94BNeu0lE4YwuQ",
+          "video_id": "4buOsywE3f8"
+        },
+        {
+          "type": "CHANNEL_ABOUT",
+          "ref": "collected:UCF5WzS-iBJRfp_EcFI-GT1w:about",
+          "created_at": "2026-10-11T06:20:54.306Z",
+          "channel_id": "UCF5WzS-iBJRfp_EcFI-GT1w",
+          "video_id": null
+        }
+      ],
+      "next_cursor": null
+    },
+    "integrity": {
+      "insufficient_support": 0,
+      "inconsistent_support": 0
+    },
+    "layouts": [
+      {
+        "width": 1920,
+        "height": 937,
+        "horizontal_overflow": 0
+      },
+      {
+        "width": 1586,
+        "height": 992,
+        "horizontal_overflow": 0
+      },
+      {
+        "width": 390,
+        "height": 844,
+        "horizontal_overflow": 0
+      }
+    ],
+    "permissions": true,
+    "error_recovery": true,
+    "page_errors": [],
+    "unexpected_api_failures": []
+  },
+  "runtime": {
+    "before_at": "2026-10-11T06:17:52.295Z",
+    "after_at": "2026-10-11T06:30:20.150Z",
+    "full_before": [
+      {
+        "plan_kind": "FULL",
+        "status": "COMPLETED",
+        "n": 1602,
+        "latest_finished_at": "2026-10-11T06:16:06.194Z"
+      },
+      {
+        "plan_kind": "FULL",
+        "status": "FAILED",
+        "n": 11,
+        "latest_finished_at": "2026-10-10T13:50:36.039Z"
+      }
+    ],
+    "full_after": [
+      {
+        "plan_kind": "FULL",
+        "status": "COMPLETED",
+        "n": 1615,
+        "latest_finished_at": "2026-10-11T06:29:37.443Z"
+      },
+      {
+        "plan_kind": "FULL",
+        "status": "FAILED",
+        "n": 11,
+        "latest_finished_at": "2026-10-10T13:50:36.039Z"
+      }
+    ],
+    "videos_before": 45800,
+    "videos_after": 46157,
+    "delivered_before": 1670,
+    "delivered_after": 1683,
+    "pending_delivery": 0,
+    "failed_delivery": 0,
+    "legacy_tables": 64,
+    "comment_bodies": 0,
+    "cdc": {
+      "state": "RUNNING",
+      "tasks": [
+        "RUNNING"
+      ]
+    },
+    "replication_slot_active": true,
+    "services": [
+      {
+        "namespace": "control",
+        "name": "control-api-preview",
+        "ready": 2,
+        "desired": 2,
+        "images": [
+          {
+            "name": "control-api",
+            "image": "docker.io/crawlsystem/control-api:main-654d9241ce2f-55a926d0"
+          }
+        ],
+        "automatic": {
+          "QUERY_RUNS_ENABLED": "true",
+          "QUERY_AUTO_ADMIT": "true",
+          "UPDATE_SCHEDULER_ENABLED": "true"
+        }
+      },
+      {
+        "namespace": "control",
+        "name": "intent-dispatcher",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "dispatcher",
+            "image": "docker.io/crawlsystem/control-api:main-654d9241ce2f-55a926d0"
+          }
+        ],
+        "automatic": {
+          "UPDATE_SCHEDULER_ENABLED": "true",
+          "QUERY_AUTO_ADMIT": "true",
+          "QUERY_RUNS_ENABLED": "true"
+        }
+      },
+      {
+        "namespace": "crawler",
+        "name": "execution-worker",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "worker",
+            "image": "docker.io/crawlsystem/execution-worker:main-5b4ad4e9dbe8-f97b9862"
+          },
+          {
+            "name": "fingerprint-gateway",
+            "image": "docker.io/crawlsystem/fingerprint-gateway:1ff2fbba98b3c83f"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "crawler",
+        "name": "profile-agent",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "profile-agent",
+            "image": "docker.io/crawlsystem/profile-agent:96bc1d79fdffbf8a"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "crawler",
+        "name": "raw-parser",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "parser",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "ingest",
+        "name": "pg-sink",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "sink",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "analytics",
+        "name": "crawl-analytics",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "analytics",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "ingest",
+        "name": "business-sink",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "business-sink",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      },
+      {
+        "namespace": "control",
+        "name": "delivery-receipts",
+        "ready": 1,
+        "desired": 1,
+        "images": [
+          {
+            "name": "delivery-receipts",
+            "image": "docker.io/crawlsystem/control-api:main-29938cb53aa3-742e6028"
+          }
+        ],
+        "automatic": {}
+      }
+    ],
+    "pods": [
+      {
+        "namespace": "analytics",
+        "name": "crawl-analytics-76cc5b96b4-srkk8",
+        "uid": "e7de2cf6-f9eb-4953-bf30-9e4366a456dc",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "analytics",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "control",
+        "name": "control-api-preview-55784467b-bpd6q",
+        "uid": "cfa098a6-89e5-4ef4-8ac5-22ceca219ae9",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "control-api",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "control",
+        "name": "control-api-preview-55784467b-ns9hd",
+        "uid": "f77ebfaa-3868-481a-80aa-c50de5f2dca6",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "control-api",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "control",
+        "name": "delivery-receipts-84b5c7fd8d-d44dx",
+        "uid": "55168b16-5f24-42e7-9bbb-458cedf21a83",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "delivery-receipts",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "control",
+        "name": "intent-dispatcher-fc6c4997d-qbb97",
+        "uid": "d6e368fc-0748-4a02-b32c-6247c559e9fd",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "dispatcher",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "crawler",
+        "name": "execution-worker-0",
+        "uid": "2173d1e8-52c4-424f-9749-9ae4dad58e93",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "fingerprint-gateway",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          },
+          {
+            "name": "worker",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "crawler",
+        "name": "profile-agent-5d4bc54bdf-mhccl",
+        "uid": "94f557e8-27f8-488c-8caf-e11378f0b469",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "profile-agent",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "crawler",
+        "name": "proxy-manager-2drmq",
+        "uid": "79385133-01a9-4bba-8749-9c461e8a7ecd",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "proxy-manager",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "crawler",
+        "name": "proxy-manager-6vwhv",
+        "uid": "6b32a2b7-d2f7-4b88-a26d-559b3a67d38c",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "proxy-manager",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "crawler",
+        "name": "proxy-manager-g45fn",
+        "uid": "7d8b51f5-7066-400e-b54b-f48761d578e5",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "proxy-manager",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "crawler",
+        "name": "proxy-manager-jdg7p",
+        "uid": "9224966a-a293-49ad-bfc8-b3c66d75c90e",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "proxy-manager",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "crawler",
+        "name": "proxy-manager-kt7d6",
+        "uid": "8419c588-595c-45f8-921e-99d7243df278",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "proxy-manager",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "crawler",
+        "name": "proxy-manager-zgs9j",
+        "uid": "e7b2312a-3efc-4ad2-ac5f-f58eca0f6d92",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "proxy-manager",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "crawler",
+        "name": "raw-parser-74df8bbd95-9sk5m",
+        "uid": "6a243b94-eb44-4ca8-9bbe-6c43d51a061b",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "parser",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "ingest",
+        "name": "business-sink-f5bc76cc5-t7cnj",
+        "uid": "4a61ae76-648c-49ad-a5cc-a2182a120a0c",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "business-sink",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      },
+      {
+        "namespace": "ingest",
+        "name": "pg-sink-c655b995-56rlg",
+        "uid": "662856c4-d50e-403d-bed5-f9491d1037f1",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "sink",
+            "ready": true,
+            "restarts": 0,
+            "last_exit": null
+          }
+        ]
+      }
+    ]
+  },
+  "daily_cap_followup": {
+    "observed_at": "2026-10-11T06:33:18.999Z",
+    "limits": {
+      "enabled": true,
+      "daily_binding_limit": 50,
+      "max_auto_bindings": 5000,
+      "min_support_channels": 2
+    },
+    "created_today": 50,
+    "woken_today": 0,
+    "auto_bindings": 50,
+    "candidates": 1400,
+    "waiting_support": 1363,
+    "waiting_promotion": 6,
+    "candidate_limit": 20000,
+    "scanned_channels": 160,
+    "skipped_channels": 86,
+    "last_scan_at": "2026-10-11T06:33:06.424Z",
+    "limited": "daily"
+  },
+  "daily_cap_held_while_scanning": true
+}
