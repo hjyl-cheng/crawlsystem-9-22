@@ -1,0 +1,181 @@
+{
+  "result": "PASSED",
+  "date": "2026-10-11",
+  "backup": {
+    "restored_backup": "20261011T084407Z",
+    "latest_daily_backup": "20261011T090845Z",
+    "latest_daily_bytes": 648430967,
+    "cross_node": "s2",
+    "checksum": "SHA256",
+    "retained_completed_copies_per_node": 7,
+    "mode": "daily-logical-no-PITR",
+    "required_databases": [
+      "crawlsystem_m1_main_test",
+      "crawlsystem_business_main"
+    ],
+    "timer_local_time": "03:20 + random delay up to 300 seconds",
+    "official_service_result": "success",
+    "official_service_exit": 0,
+    "official_service_start": "2026-10-11T09:08:45Z",
+    "official_service_finish": "2026-10-11T09:11:30Z"
+  },
+  "restore": {
+    "result": "PASSED",
+    "completed_at": "2026-10-11T09:07:53.631906+00:00",
+    "cleaned_at": "2026-10-11T09:08:04.268851+00:00",
+    "database_count": 13,
+    "component_verification_runs": 2,
+    "resumed_verified_database_count": 12,
+    "databases": {
+      "crawlsystem_m1_main_test": {
+        "status": "PASS",
+        "table_count": 72,
+        "snapshot_tables_verified": 72,
+        "schema_version": 36,
+        "settings_versions": [
+          {
+            "workspace": "m1-main",
+            "version": 5
+          }
+        ]
+      },
+      "crawler": {
+        "status": "PASS",
+        "table_count": 4
+      },
+      "crawlsystem_business_c1_test": {
+        "status": "PASS",
+        "table_count": 65
+      },
+      "crawlsystem_business_c1_test_1791627424619": {
+        "status": "PASS",
+        "table_count": 65
+      },
+      "crawlsystem_business_c1_test_1791628270389": {
+        "status": "PASS",
+        "table_count": 65
+      },
+      "crawlsystem_m1_r3_1791602545507_test": {
+        "status": "PASS",
+        "table_count": 42
+      },
+      "crawlsystem_m1_r3_1791602760159_test": {
+        "status": "PASS",
+        "table_count": 74
+      },
+      "crawlsystem_m1_r3_20261010_test": {
+        "status": "PASS",
+        "table_count": 40
+      },
+      "infra_smoke": {
+        "status": "PASS",
+        "table_count": 2
+      },
+      "postgres": {
+        "status": "PASS",
+        "table_count": 0
+      },
+      "temporal": {
+        "status": "PASS",
+        "table_count": 40
+      },
+      "temporal_visibility": {
+        "status": "PASS",
+        "table_count": 3
+      },
+      "crawlsystem_business_main": {
+        "status": "PASS",
+        "table_count": 65,
+        "legacy_table_count": 64,
+        "snapshot_tables_verified": 65
+      }
+    },
+    "tests": {
+      "local_checksums": "PASS",
+      "cross_node_download_checksums": "PASS",
+      "isolation": {
+        "status": "PASS",
+        "network": "deny-all",
+        "service_account_token": false,
+        "postgres_tcp": false,
+        "clickhouse_loopback_only": true
+      },
+      "clickhouse": {
+        "status": "PASS",
+        "native_restore": true,
+        "tables_match": true,
+        "backup_marker_present": true,
+        "smoke_rows": 0
+      },
+      "grafana_sqlite": "PASS",
+      "etcd": {
+        "status": "PASS",
+        "snapshot_status": {
+          "hash": 3996831391,
+          "revision": 10874179,
+          "totalKey": 1220,
+          "totalSize": 14381056,
+          "version": "3.6.0"
+        },
+        "offline_restore": true,
+        "live_cluster_reset": false
+      }
+    },
+    "temporary_namespaces_remaining": 0
+  },
+  "checks": {
+    "unit_tests": 12,
+    "snapshot_with_concurrent_write": true,
+    "same_count_content_change_detected": true,
+    "schema_change_detected": true,
+    "dropped_column_dump_restore_matches": true
+  },
+  "runtime": {
+    "before": "2026-10-11T07:45:38.750Z",
+    "after": "2026-10-11T09:11:59.497Z",
+    "videos": [
+      48194,
+      50437
+    ],
+    "delivered": [
+      1751,
+      1826
+    ],
+    "full_plans": [
+      {
+        "CANCELLED": 42,
+        "COMPLETED": 1684,
+        "FAILED": 11,
+        "RUNNING": 2
+      },
+      {
+        "CANCELLED": 47,
+        "COMPLETED": 1758,
+        "FAILED": 12,
+        "RUNNING": 1,
+        "WAITING": 1
+      }
+    ],
+    "legacy_tables": 64,
+    "pending_deliveries": 0,
+    "failed_deliveries": 0,
+    "cdc": {
+      "state": "RUNNING",
+      "tasks": [
+        "RUNNING"
+      ]
+    },
+    "slot_active": true,
+    "comment_bodies": 0,
+    "all_production_services_and_pods_unchanged": true,
+    "new_failed_import": {
+      "count": 1,
+      "stage": "WORKER",
+      "code": "UNAVAILABLE",
+      "step": "ABOUT",
+      "state": "failed"
+    },
+    "public_http_status": 200,
+    "tunnel_pid": 1882
+  }
+}

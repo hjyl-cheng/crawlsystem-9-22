@@ -24,6 +24,7 @@ cat reports/observation-latest.json
 - 每天系统时间 03:20 左右执行，实际时区以 `timedatectl` 为准。A1、S2 各保存最近 7 份成功备份，目录 `/srv/crawl-backups/YYYYMMDDTHHMMSSZ/`，root-only。
 - `metadata.json` 记录范围；`SHA256SUMS` 记录逐文件摘要；只有 S2 校验成功才写 A1 的 `latest.json`。
 - PG：所有非模板数据库的 custom-format 逻辑备份、角色定义（含密码哈希）。每个数据库分别一致；不同数据库之间不是同一原子快照。每日执行成功时恢复点最多约 24 小时；没有连续 WAL 归档和任意时间点恢复。
+- 两个正式业务数据库的 `pg_dump` 和逐表行数 / 内容摘要共用导出的快照；恢复副本按相同 PostgreSQL 18.6 算法比对，包含结构、索引、约束、权限与全部普通表。备份文件另外使用 SHA256。运行中的新写入不会造成快照比对误报。
 - ClickHouse：所有用户数据库的原生 BACKUP 文件。系统日志表不在备份中。
 - K3s：etcd 快照、原始 server token、Kubernetes Secrets、部署配置和恢复所需凭据。快照只有配合正确 token 才能解密恢复集群引导数据。
 - Grafana：使用 SQLite 在线备份接口生成一致副本。
@@ -36,10 +37,32 @@ cat reports/observation-latest.json
 sudo systemctl start crawlsystem-backup.service
 sudo journalctl -u crawlsystem-backup.service -n 30 --no-pager
 sudo cat /srv/crawl-backups/latest.json
-sudo python3 scripts/verify-local-restore.py
+cd /home/ubuntu/workspace/crawlsystem-business
+npm run check:safe -- backup-restore prepare
+# 自动按顺序完成所有数据库、分批索引、校验和清理；每个重步骤走 check:safe。
+python3 scripts/dev/finish-e1-restore.py
+# 若失败已自动清理，可对同一份未改变的备份保留已通过的数据库证据：
+# npm run check:safe -- backup-restore prepare --resume-verified
+# python3 scripts/dev/finish-e1-restore.py
+# 以下是相应的手动分步入口，自动流程已完成时不用再执行。
+npm run check:safe -- backup-snapshot-test
+# 大库拆开装载数据与建索引，分别受 300 秒和资源限制。
+npm run check:safe -- backup-restore postgres-data crawlsystem_business_main
+# 重复 indexes 命令，直到输出 completed == total（每批独立限时）。
+npm run check:safe -- backup-restore postgres-indexes crawlsystem_business_main
+npm run check:safe -- backup-restore postgres crawlsystem_business_main
+# metadata.json 中其他数据库逐个执行 postgres <数据库名>，不要并发。
+npm run check:safe -- backup-restore postgres crawlsystem_m1_main_test
+npm run check:safe -- backup-restore clickhouse
+# 所有数据库通过后才能结束；结果写 /srv/crawl-backups/restore-latest.json。
+npm run check:safe -- backup-restore finish
+# 任意步骤失败会自动清理本轮资源；中断后可再次确认清理。
+npm run check:safe -- backup-restore cleanup
 ```
 
-恢复演练会从 S2 下载备份，核对摘要，在新建的 `infra-restore` 命名空间内恢复 PG/CH。该命名空间拒绝全部网络流量，只通过管理接口和 Unix socket 测试，完成后删除。etcd 使用匹配的 `etcdutl 3.6.14` 离线还原到新目录；没有对在线 K3s 执行 cluster-reset，也没有验证整组机器从零恢复。
+恢复演练会从 S2 下载备份，核对摘要，在带随机标识的新建 `infra-restore-e1-*` 命名空间内恢复 PG/CH。该命名空间拒绝全部网络流量，Pod 不挂载 Kubernetes token，只通过管理接口、Unix socket 与回环连接测试；资源设有 CPU / 内存 / 临时磁盘上限。副本不接入 Service / PVC / CDC / 业务进程，完成或失败后按 namespace UID 和本轮标识核对后删除。状态和诊断在 root-only `/srv/crawl-backups/.restore-e1/`。PG 大文件通过管理 SSH 写入本轮 Pod UID 对应的 emptyDir，使用排他创建和 SHA256 校验，再在 Pod 内还原；不新增 hostPath。长命令通过 stderr 保活，并将大库索引拆成单独限时批次。etcd 使用匹配的 `etcdutl 3.6.14` 离线还原到新目录；没有对在线 K3s 执行 cluster-reset，也没有验证整组机器从零恢复。
+
+备份服务的代码来自 `crawlsystem-business` 工作树；`CRAWLSYSTEM_INFRA_ROOT` 仍指向原基础设施部署目录，读取既有凭据和归档配置。归档同时包含本次实际备份 / 恢复工具和采集库迁移脚本。恢复验证只接受包含 `verification_version=2` 的新备份；结构比较按有效字段的逻辑顺序，忽略删除字段留下的物理编号空洞。更早的备份仍可手工恢复，但没有当前逐表快照校验证据。
 
 真实灾难恢复应先建立替代环境并保存现存数据：按版本重新安装 K3s，使用备份的 server token 和快照按官方恢复流程启动首台 server，然后依次重建其余成员；按 `recovery-config.tar.gz` 恢复部署配置，在新 PG/CH 数据目录恢复数据库。不要直接把演练命令改为覆盖现有生产目录。Temporal 两个库来自分别一致的逻辑快照，恢复后需做应用一致性复核。Kafka 全部丢失后应重建 Topic/ACL，并明确 CDC 起始位置与去重策略。
 

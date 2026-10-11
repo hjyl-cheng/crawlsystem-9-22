@@ -3,6 +3,7 @@
 import datetime, fcntl, hashlib, json, os, re, shutil, subprocess, tarfile, time, uuid
 from pathlib import Path
 from infra_common import ROOT, run, k, obj, pg_primary, sql, clickhouse
+from backup_checks import BUSINESS_DATABASES, exported_snapshot, fingerprint
 BASE=Path('/srv/crawl-backups')
 
 def main():
@@ -15,11 +16,22 @@ def main():
         primary=pg_primary()
         names=sql(primary,'postgres',"SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname").splitlines()
         metadata={'started_at':stamp,'postgres_primary':primary,'databases':names,'mode':'daily-logical-no-PITR','components':[]}
+        if not set(BUSINESS_DATABASES).issubset(names):
+            raise RuntimeError('Required business databases are missing')
+        metadata['verification_version']=2
+        metadata['postgres_verification']={}
         metadata['outbox_ids']=sql(primary,'infra_smoke','SELECT id FROM publication.outbox ORDER BY id').splitlines()
         for name in names:
             if not re.fullmatch(r'[a-zA-Z0-9_]+',name): raise ValueError('Unsupported database name')
-            with (dest/(name+'.dump')).open('wb') as f:
-                k('-n','db','exec',primary,'-c','postgres','--','pg_dump','-U','postgres','-Fc',name,output=f,timeout=600)
+            if name in BUSINESS_DATABASES:
+                with exported_snapshot(primary,name) as snapshot:
+                    metadata['postgres_verification'][name]=fingerprint(primary,name,snapshot=snapshot)
+                    with (dest/(name+'.dump')).open('wb') as f:
+                        k('-n','db','exec',primary,'-c','postgres','--','pg_dump','-U','postgres','-Fc',
+                          '--snapshot='+snapshot,name,output=f,timeout=600)
+            else:
+                with (dest/(name+'.dump')).open('wb') as f:
+                    k('-n','db','exec',primary,'-c','postgres','--','pg_dump','-U','postgres','-Fc',name,output=f,timeout=600)
         with (dest/'roles.sql').open('wb') as f:
             k('-n','db','exec',primary,'-c','postgres','--','pg_dumpall','-U','postgres','--roles-only',output=f)
         metadata['components'].append('postgres-all-databases-and-roles')
@@ -46,6 +58,14 @@ def main():
             for name in ['manifests','values','nodes','scripts','systemd','secrets','sql','examples','requirements-infra.txt','versions.lock.json','inventory.json','storage-plan.json','OPERATIONS.md','DEPLOYMENT-CHECKLIST.md','reports/ACCESS.md','reports/SSH-ACCESS.md']:
                 path=ROOT/name
                 if path.exists(): t.add(path,arcname='bundle/'+name)
+            # Runtime secrets stay in the infrastructure root; archive the actual
+            # versioned tools and migrations as well as the historical bundle.
+            tools=Path(__file__).resolve().parent
+            t.add(tools,arcname='application/docs/crawlsystem-infra-a1-s3/scripts',
+                  filter=lambda entry: None if '__pycache__' in entry.name.split('/') else entry)
+            migrations=tools.parents[2]/'database/migrations'
+            t.add(migrations,arcname='application/database/migrations')
+            t.add(tools.parent/'systemd/crawlsystem-backup.service',arcname='application/backup.service')
             for path in ['/etc/rancher/k3s','/etc/systemd/system/crawlsystem-host-firewall.service','/etc/nftables.d']:
                 if Path(path).exists(): t.add(path,arcname=path.lstrip('/'))
         with (dest/'kubernetes-secrets.json').open('wb') as f: k('get','secrets','-A','-o','json',output=f)

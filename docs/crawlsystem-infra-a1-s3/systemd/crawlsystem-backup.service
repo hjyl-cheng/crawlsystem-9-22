@@ -5,7 +5,15 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 UMask=0077
-ExecStart=/usr/bin/python3 /home/ubuntu/workspace/newcrawsystem/docs/crawlsystem-infra-a1-s3/scripts/local-backup.py
+Environment=CRAWLSYSTEM_INFRA_ROOT=/home/ubuntu/workspace/newcrawsystem/docs/crawlsystem-infra-a1-s3
+Environment=KUBECTL_REMOTE_COMMAND_WEBSOCKETS=false
+ExecStart=/usr/bin/python3 /home/ubuntu/workspace/crawlsystem-business/docs/crawlsystem-infra-a1-s3/scripts/local-backup.py
+MemoryAccounting=yes
+MemoryHigh=768M
+MemoryMax=1G
+MemorySwapMax=256M
+CPUQuota=150%
+TasksMax=256
 TimeoutStartSec=1800
 Nice=10
 IOSchedulingClass=best-effort

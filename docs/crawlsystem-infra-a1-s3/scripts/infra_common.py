@@ -1,12 +1,28 @@
 """Local administration helpers. Never emit command inputs or authentication headers."""
 import base64, contextlib, http.client, json, os, socket, ssl, subprocess, time
 from pathlib import Path
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(os.environ.get('CRAWLSYSTEM_INFRA_ROOT', Path(__file__).resolve().parents[1])).resolve()
 os.environ['K3S_CONFIG_FILE'] = '/dev/null'
 os.environ.setdefault('KUBECONFIG', '/home/ubuntu/.kube/config')
 
+# kubectl's stream can time out while a large restore/query emits no output.
+# Keep stdout intact (it may carry JSON/dumps); heartbeats go only to stderr.
+STREAM_KEEPALIVE = '''"$@" <&0 &
+task_pid=$!
+trap 'kill "$task_pid" 2>/dev/null || true' EXIT
+while kill -0 "$task_pid" 2>/dev/null; do
+    sleep 1
+    keepalive_tick=$((${keepalive_tick:-0}+1))
+    if (( keepalive_tick % 5 == 0 )) && kill -0 "$task_pid" 2>/dev/null; then printf '.' >&2; fi
+done
+wait "$task_pid"
+'''
+
 def run(args, data=None, output=None, timeout=180):
-    p = subprocess.run(args, input=data, stdout=output or subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+    try:
+        p = subprocess.run(args, input=data, stdout=output or subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f'{args[0]} timed out') from None
     if p.returncode:
         # Callers may process secrets; never include stderr or full argv in exceptions.
         raise RuntimeError(f'{args[0]} failed with exit {p.returncode}')
@@ -50,7 +66,7 @@ def clickhouse():
             try:
                 c.request('POST', '/', body=sql.encode(), headers=headers)
                 r=c.getresponse(); body=r.read()
-                if r.status != 200: raise RuntimeError(f'ClickHouse HTTP {r.status}: {body[:120].decode(errors="replace")}')
+                if r.status != 200: raise RuntimeError(f'ClickHouse HTTP {r.status}')
                 return body.decode()
             finally: c.close()
         yield query

@@ -96,6 +96,11 @@ case "${1:-}" in
   query-collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-b2-browser.ts) ;;
   query-collection-refine) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/refine-b2.ts) ;;
   query-collection-runtime) command=(env K3S_CONFIG_FILE=/dev/null D3_RUNTIME_DIR=.runtime/b2 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
+  backup-unit) command=(env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/ops -p 'test_backup*.py') ;;
+  backup-runtime) command=(env K3S_CONFIG_FILE=/dev/null D3_RUNTIME_DIR=.runtime/e1 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
+  backup-now) command=(sudo env KUBECTL_REMOTE_COMMAND_WEBSOCKETS=false CRAWLSYSTEM_INFRA_ROOT=/home/ubuntu/workspace/newcrawsystem/docs/crawlsystem-infra-a1-s3 python3 docs/crawlsystem-infra-a1-s3/scripts/local-backup.py) ;;
+  backup-restore) command=(sudo env KUBECTL_REMOTE_COMMAND_WEBSOCKETS=false python3 docs/crawlsystem-infra-a1-s3/scripts/verify-local-restore.py "${@:2}") ;;
+  backup-snapshot-test) command=(sudo env PYTHONDONTWRITEBYTECODE=1 KUBECTL_REMOTE_COMMAND_WEBSOCKETS=false python3 tests/ops/verify_backup_snapshot.py) ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;
   collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-browser.ts) ;;
