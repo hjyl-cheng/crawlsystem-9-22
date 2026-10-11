@@ -75,6 +75,7 @@ case "${1:-}" in
   worker-images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --d2-images) ;;
   worker-deploy) command=(node --import tsx scripts/dev/deploy-d2.ts) ;;
   worker-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-browser.ts) ;;
+  worker-layout) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/capture-d2-layout.ts) ;;
   worker-runtime) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;

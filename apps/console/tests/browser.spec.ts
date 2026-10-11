@@ -600,6 +600,7 @@ test('Worker commands await acknowledgement, preserve draining activity gaps and
  await login(page,'/workers');await page.getByRole('button',{name:'暂停接单',exact:true}).click();await page.getByLabel('操作原因').fill('页面暂停验收');await page.getByRole('button',{name:'确认暂停接单',exact:true}).click();
  await expect(page.locator('.worker-detail')).toContainText('等待 Worker 确认');await expect(page.locator('.worker-detail')).toContainText('已接入的计划 · 1');
  w.control.status='PAUSED';w.control.applied_version=2;await page.getByRole('button',{name:'刷新 Worker'}).click();await expect(page.locator('.worker-detail')).toContainText('已暂停接单');
+ await expect(page.locator('.worker-detail [role=status]')).toContainText('控制版本 v2 已确认');
  await page.getByRole('button',{name:'排空',exact:true}).click();await page.getByLabel('操作原因').fill('页面等待计划排空');await page.getByRole('button',{name:'确认排空',exact:true}).click();
  w.control.status='DRAINING';w.control.applied_version=3;await page.getByRole('button',{name:'刷新 Worker'}).click();await expect(page.locator('.worker-detail')).toContainText('排空中');
  w.control.active_plan_ids=[];w.control.status='DRAINED';await page.getByRole('button',{name:'刷新 Worker'}).click();await expect(page.locator('.worker-detail')).toContainText('已排空');

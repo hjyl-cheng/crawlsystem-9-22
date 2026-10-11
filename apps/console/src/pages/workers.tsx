@@ -23,6 +23,7 @@ const Row=({label,children}:{label:string;children:ReactNode})=><div className="
 
 function Detail({worker,metrics,refresh}:{worker?:Worker;metrics?:WorkerMetrics;refresh:()=>void}){
  const {api,session}=useAuth(),[action,setAction]=useState<'pause'|'drain'|'resume'>(),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
+ const [submittedVersion,setSubmittedVersion]=useState<number>();
  const pending=useRef<{action:string;command:WorkerCommand}|undefined>(undefined);
  useEffect(()=>{setAction(undefined);setReason('');setNotice('');},[worker?.worker_id]);
  if(!worker)return <section className="panel worker-detail"><Empty title="选择 Worker 查看详情">等待执行节点登记。</Empty></section>;
@@ -31,7 +32,7 @@ function Detail({worker,metrics,refresh}:{worker?:Worker;metrics?:WorkerMetrics;
  const labels={pause:'暂停接单',drain:'排空',resume:'恢复接单'};
  async function submit(event:FormEvent){event.preventDefault();if(!action||!control||!worker||busy)return;setBusy(true);setNotice('');
   const command=pending.current?.action===action&&pending.current.command.reason===reason.trim()?pending.current.command:{command_id:crypto.randomUUID(),expected_version:control.version,reason:reason.trim()};pending.current={action,command};
-  try{await api.workerCommand(worker.worker_id,action,command);pending.current=undefined;setNotice('命令已保存，等待 Worker 心跳确认。');setAction(undefined);setReason('');refresh();}
+  try{const response=await api.workerCommand(worker.worker_id,action,command);setSubmittedVersion(response.control?.version);pending.current=undefined;setNotice('命令已保存，等待 Worker 心跳确认。');setAction(undefined);setReason('');refresh();}
   catch(e){if((e as {status?:number}).status===409)pending.current=undefined;setNotice(e instanceof Error?e.message:'命令未确认，请刷新状态后重试。');refresh();}finally{setBusy(false);}
  }
  return <section className="panel worker-detail">
@@ -47,7 +48,7 @@ function Detail({worker,metrics,refresh}:{worker?:Worker;metrics?:WorkerMetrics;
   <h3>已接入的计划 · {plans.length}</h3>{plans.length?<ul className="plan-links">{plans.map(id=><li key={id}><Link className="mono" to={planPath(id)}>{shortId(id)}</Link></li>)}</ul>:<p className="detail-note">没有未完成的已分配计划。</p>}
   <h3>执行中的搜索 · {queries.length}</h3>{queries.length?<ul className="plan-links">{queries.map(id=><li className="mono" key={id}>{shortId(id)}</li>)}</ul>:<p className="detail-note">没有正在执行的搜索。</p>}
   {!!control?.legacy_pending&&<p className="notice">仍有 {control.legacy_pending} 个旧队列计划待确认归属，排空会等待其结束。</p>}
-  {notice&&<p role="status" className="notice">{notice}</p>}
+  {notice&&<p role="status" className="notice">{notice==='命令已保存，等待 Worker 心跳确认。'&&submittedVersion&&control&&control.applied_version>=submittedVersion?`控制版本 v${control.applied_version} 已确认 · ${status(worker)}`:notice}</p>}
   {action&&<form onSubmit={submit} className="worker-command"><b>{labels[action]}</b><p>{action==='resume'?'重新允许分配计划和领取搜索任务。':'停止新增计划和搜索；已接入的任务继续完成。'}{action==='drain'?'所有已接入任务结束后显示“已排空”。':''}</p><label htmlFor="worker-reason">操作原因</label><textarea id="worker-reason" value={reason} onChange={e=>setReason(e.target.value)} minLength={3} maxLength={500} required disabled={busy}/><div><button className="button small" type="submit" disabled={busy||reason.trim().length<3}>{busy?'提交中…':'确认'+labels[action]}</button><button className="button small" type="button" disabled={busy} onClick={()=>setAction(undefined)}>取消</button></div></form>}
   </div><footer className="detail-actions"><button className="button small" disabled={!enabled||busy||control?.desired==='PAUSED'} onClick={()=>setAction('pause')}><Pause size={13}/>暂停接单</button><button className="button small" disabled={!enabled||busy||control?.desired==='DRAINING'} onClick={()=>setAction('drain')}><Unplug size={13}/>排空</button><button className="button small" disabled={!enabled||busy||control?.desired==='RUNNING'} onClick={()=>setAction('resume')}><Play size={13}/>恢复接单</button></footer>
  </section>;
