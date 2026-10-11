@@ -40,7 +40,7 @@ try{
   phase='layouts';const layouts=[];
   for(const [width,height] of [[1920,937],[1586,992],[390,844]] as const){
     await page.setViewportSize({width,height});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
-    if(width<=680)await expect.poll(()=>page.locator('.sidebar').evaluate(n=>n.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
+    if(width<=680){await expect.poll(()=>page.locator('.sidebar').evaluate(n=>n.getBoundingClientRect().right)).toBeLessThanOrEqual(0);await expect.poll(()=>panel.evaluate(n=>n.getBoundingClientRect().top)).toBeLessThan(400);}
     await page.screenshot({path:dir+'/proxies-'+width+'.png',fullPage:true});layouts.push({width,height,horizontal_overflow:0});
   }
   evidence.layouts=layouts;assert.equal(failed.length,0);

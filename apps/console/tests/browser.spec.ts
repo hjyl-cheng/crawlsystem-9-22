@@ -586,6 +586,7 @@ test('proxy availability keeps missing history blank, separates request success 
   state.availability.fail=false;state.availability.empty=true;await page.getByRole('button',{name:'刷新趋势'}).click();await expect(panel.getByRole('alert')).toHaveCount(0);
   await expect(panel).toContainText('当前筛选尚无观测');await expect(panel.locator('svg circle')).toHaveCount(0);await expect(panel).toContainText('暂无有效样本');
   await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
+  await expect.poll(()=>panel.evaluate(n=>n.getBoundingClientRect().top)).toBeLessThan(400);
 });
 test('reader can view both proxy availability metrics',async({page})=>{
   const state=await mock(page,undefined,'reader');state.availability.empty=false;
