@@ -1,0 +1,100 @@
+{
+  "result": "PASSED",
+  "before_at": "2026-10-11T10:44:31.984Z",
+  "verified_at": "2026-10-11T10:58:52.610Z",
+  "workers": [
+    {"worker_id":"execution-worker-0","server_id":"s2","capacity":2,"status":"RUNNING","gateway":"ready"},
+    {"worker_id":"execution-worker-s3-0","server_id":"s3","capacity":1,"status":"RUNNING","gateway":"ready"}
+  ],
+  "placement": {"temporal":"a1","intent_dispatcher":"s1"},
+  "preservation": {
+    "original_pods_and_restarts":true,
+    "original_workload_specs":true,
+    "migration_checksums":true,
+    "schema":37,
+    "runtime_configuration_version":5,
+    "legacy_business_tables":64,
+    "video_identities":51383,
+    "active_plan_identities":true,
+    "console_dirty_evidence_sha256":"57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709"
+  },
+  "proxy_handoff": {
+    "transferred":12,
+    "sources":2,
+    "not_before":"2026-10-11T10:50:25.536Z",
+    "activated_at":"2026-10-11T10:50:57.074Z",
+    "healthy_after":{"s2":27,"s3":12}
+  },
+  "real_plans": [
+    {
+      "plan_id":"d731f898-b179-4988-9941-030d2572469e",
+      "worker_id":"execution-worker-s3-0",
+      "status":"COMPLETED",
+      "applied_domains":["ABOUT","VIDEO","AGENT"],
+      "video_targets":["syeXxWNuXlc","lrMryTrBxVw"],
+      "applied_pipeline_steps":4,
+      "durable_units":5,
+      "delivery_id":"066cd52a-0550-4958-ba46-e7c51c85870e",
+      "delivery_status":"DELIVERED",
+      "business_projection_version_verified":true
+    },
+    {
+      "plan_id":"433404f9-1316-455f-8ba1-f46264241a81",
+      "worker_id":"execution-worker-0",
+      "status":"COMPLETED",
+      "applied_domains":["ABOUT","VIDEO","AGENT"],
+      "video_targets":["ncIEH3I56-Q","PP-0af7umLM"],
+      "applied_pipeline_steps":4,
+      "durable_units":5,
+      "delivery_id":"4b963129-00a7-4abf-b5c9-ce60755effc7",
+      "delivery_status":"DELIVERED",
+      "business_projection_version_verified":true
+    }
+  ],
+  "restart": {
+    "worker_id":"execution-worker-s3-0",
+    "drained_before_restart":true,
+    "encrypted_identities_preserved":3,
+    "control_version_preserved":5,
+    "pvc_preserved":true,
+    "new_process_heartbeat_verified":true,
+    "original_worker_preserved":true,
+    "restored_status":"RUNNING"
+  },
+  "browser": {
+    "pages":["/workers","/","/proxies"],
+    "widths":[1920,390],
+    "horizontal_overflow":0,
+    "page_errors":0,
+    "api_errors":0,
+    "new_plan_assignments_after_pause":0,
+    "new_search_claims_after_pause":0,
+    "reader_write_status":403,
+    "public_status":200
+  },
+  "runtime": {
+    "videos_before":51382,
+    "videos_after":51576,
+    "delivered_before":1858,
+    "delivered_after":1868,
+    "pending_after":0,
+    "failed_after":0,
+    "pg_comment_bodies":0,
+    "cdc_state":"RUNNING",
+    "replication_slot_active":true,
+    "completed_full_plans":{"execution-worker-0":9,"execution-worker-s3-0":1},
+    "new_search_runs":0,
+    "normal_qualification_cancellation":{"subscribers":734,"threshold":1000}
+  },
+  "checks": {
+    "typecheck":"PASSED",
+    "worker_integration":{"passed":31,"failed":0},
+    "kubernetes_server_dry_run":"PASSED"
+  },
+  "limits": [
+    "Short real acceptance; shared s3 with Kafka and ClickHouse",
+    "No automatic takeover of a permanently unavailable worker queue",
+    "No new search run during this acceptance window",
+    "Stable proxy provider and fixed console domain remain pending"
+  ]
+}

@@ -110,6 +110,11 @@ case "${1:-}" in
   cleanup-data) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/cleanup-e3.ts "${@:2}") ;;
   cleanup-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-e3-browser.ts) ;;
   cleanup-runtime) command=(env K3S_CONFIG_FILE=/dev/null D3_RUNTIME_DIR=.runtime/e3 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
+  multinode-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-e4.ts "${@:2}") ;;
+  multinode-runtime) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-e4-runtime.ts "${@:2}") ;;
+  multinode-plans) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-e4-plans.ts "${@:2}") ;;
+  multinode-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-e4-browser.ts) ;;
+  multinode-restart) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-e4-restart.ts) ;;
   backup-runtime) command=(env K3S_CONFIG_FILE=/dev/null D3_RUNTIME_DIR=.runtime/e1 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
   backup-now) command=(sudo env KUBECTL_REMOTE_COMMAND_WEBSOCKETS=false CRAWLSYSTEM_INFRA_ROOT=/home/ubuntu/workspace/newcrawsystem/docs/crawlsystem-infra-a1-s3 python3 docs/crawlsystem-infra-a1-s3/scripts/local-backup.py) ;;
   backup-restore) command=(sudo env KUBECTL_REMOTE_COMMAND_WEBSOCKETS=false python3 docs/crawlsystem-infra-a1-s3/scripts/verify-local-restore.py "${@:2}") ;;
