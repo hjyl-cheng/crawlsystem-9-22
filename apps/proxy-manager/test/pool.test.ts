@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ProxyPool, proxyUrl, type Lease } from '../src/pool.ts';
 import type { ProxyAssignment } from '@crawlsystem/contracts';
+import {ProxyPolicySchema} from '../../../packages/contracts/src/proxy-policy.ts';
 
 const assignment = (id: string, extra: Partial<ProxyAssignment> = {}): ProxyAssignment => ({ proxy_id: id, generation: 1, protocol: 'socks5', host: '192.0.2.1', port: 1080, username: null, password: null, kind: 'static', max_concurrency: 2, tls_insecure: false, ...extra });
 const P1 = '00000000-0000-4000-8000-000000000001', P2 = '00000000-0000-4000-8000-000000000002';
@@ -14,6 +15,16 @@ function setup(assignments = [assignment(P1)], { qualified = true } = {}) {
   return { pool, advance: (ms: number) => { now += ms; }, now: () => now };
 }
 const lease = (value: ReturnType<ProxyPool['acquire']>) => { assert.ok('lease_id' in value, JSON.stringify(value)); return value as Lease; };
+test('published proxy policy affects new failures and trials without resetting existing leases or cooldown',()=>{
+ const {pool,now,advance}=setup();const active=lease(pool.acquire());
+ pool.configure(ProxyPolicySchema.parse({blocked_cooldown_seconds:90,failures_before_cooldown:1,cooldown_base_seconds:20,trial_passes:3}));
+ assert.equal((pool.acquire() as {reason:string}).reason,'in_trial');
+ pool.probed(P1,true,null);assert.ok('lease_id' in pool.acquire());
+ assert.ok(pool.release(active.lease_id,'blocked'));assert.equal(Date.parse(pool.observations()[0]!.cooldown_until!)-now(),90000);
+ pool.configure(ProxyPolicySchema.parse({blocked_cooldown_seconds:60}));
+ assert.equal(Date.parse(pool.observations()[0]!.cooldown_until!)-now(),90000);
+ advance(90001);qualify(pool,P1);const next=lease(pool.acquire());pool.release(next.lease_id,'success');
+});
 
 test('per-proxy concurrency is enforced across all callers on the node', () => {
   const { pool } = setup();

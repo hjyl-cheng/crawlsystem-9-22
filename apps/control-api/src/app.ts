@@ -49,6 +49,13 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     return workload.exchangeTemporal(request.headers.authorization);
   });
   app.get('/v1/session',async request=>({...request.principal,contract_version:CONTRACT_VERSION}));
+  app.get('/v1/config',async request=>{z.strictObject({}).parse(request.query);return store.config(request.principal);});
+  app.post('/v1/config',{bodyLimit:4096},async request=>store.publishConfig(request.principal,request.body));
+  app.get('/v1/config/history',async request=>{
+    const q=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(50),cursor:z.string().regex(/^\d{1,6}$/).default('0')}).parse(request.query);
+    if(Number(q.cursor)>100000)throw new StoreError('INVALID_REQUEST','Cursor exceeds maximum',400);
+    return store.configHistory(request.principal,q.limit,Number(q.cursor));
+  });
   app.get('/v1/failures',async request=>{
     const schema=z.object({state:FailureStateSchema.optional()}),q=pagination(request.query,schema.shape),filter=schema.parse(request.query);
     return store.failures(request.principal,q.limit,q.offset,filter.state);

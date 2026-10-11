@@ -42,6 +42,18 @@
 .group-counts>div { display: flex; justify-content: space-between; gap: 6px; padding: 3px 8px; border-radius: 4px; background: #f5f8fc; font-size: var(--fs-meta); color: #52688c; }
 .group-counts b { font-weight: 500; color: #253f6a; font-variant-numeric: tabular-nums; }
 .check-empty { margin: 0 12px; font-size: var(--fs-text); color: #8797b0; }
+.config-editor { border: 0; padding: 0; margin: 0; min-width: 0; }
+.config-editor input[type=number], .config-editor select { width: 100%; min-width: 0; padding: 8px; border: 1px solid #dde6f1; border-radius: 5px; font: inherit; }
+.config-domains { display: grid; gap: 8px; }
+.config-domains label, .config-confirm { display: flex; align-items: flex-start; gap: 6px; }
+.config-confirm { margin: 12px 0; font-size: var(--fs-meta); }
+.config-explainer { margin: 8px 12px; color: #52688c; font-size: var(--fs-meta); line-height: 1.6; overflow-wrap: anywhere; }
+.config-consumers { display: grid; gap: 8px; padding: 0 12px; }
+.config-consumers>div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px; font-size: var(--fs-meta); }
+.config-consumers small { width: 100%; color: #8797b0; }
+.config-page .resource-meta { flex: none; }
+.config-detail .detail-body { min-height: 0; overflow: auto; }
+.config-page td { overflow-wrap: anywhere; }
 
 @media (max-width: 1040px), (max-height: 600px) {
   .config-page .config-main { flex: none; grid-template-rows: none; }

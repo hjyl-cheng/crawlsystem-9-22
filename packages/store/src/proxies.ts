@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
+import {runtimeSettings,settingsConsumed} from './runtime-settings.ts';
+import {defaultSettings} from '../../contracts/src/configuration.ts';
 import { MAX_PROXIES_PER_SERVER, ProxyImportSchema, ProxySourceCreateSchema, ProxySourceUpdateSchema, ProxySyncRequestSchema, ProxyUpdateSchema, type Principal, type ProxyAssignment, type ProxyEndpoint, type ProxyExitResult, type ProxyOverview, type ProxySourceView, type ProxyState, type ProxySyncResponse, type ProxyView } from '@crawlsystem/contracts';
 import { StoreError, requireRole } from './index.ts';
 import type { CredentialBox } from './credentials.ts';
@@ -205,7 +207,9 @@ export class ProxyStore {
       const expires = lease[0]?.lease_expires_at ?? (await client.query(`SELECT clock_timestamp()+($1*interval '1 second') AS t`, [LEASE_SECONDS])).rows[0]!.t;
       const assignments: ProxyAssignment[] = lease.map(r => ({ proxy_id: r.proxy_id, generation: Number(r.generation), protocol: r.protocol, host: r.host, port: r.port, username: r.username,
         password: r.credential === null ? null : this.sealer().open(r.credential, context(principal.workspace_id, r.proxy_id)), kind: r.kind, max_concurrency: r.max_concurrency, tls_insecure: r.tls_insecure === true, egress_country: r.exit_country ?? null }));
-      return { server_id: server, lease_expires_at: iso(expires)!, assignments };
+      const config=await runtimeSettings(client,principal.workspace_id,defaultSettings());
+      if(report.config_version!==undefined&&report.config_version<=config.version)await settingsConsumed(client,principal.workspace_id,'proxy:'+server,report.config_version);
+      return { server_id: server, lease_expires_at: iso(expires)!, assignments,...(config.source==='DATABASE'?{configuration:{version:config.version,policy:config.settings.proxy}}:{}) };
     });
   }
 

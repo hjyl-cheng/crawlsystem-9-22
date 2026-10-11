@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {ConfigSnapshotSchema,ConfigHistorySchema,ConfigCommandSchema,type ConfigCommand} from '../../../packages/contracts/src/configuration.ts';
 import {DeliveryRecordSchema,DeliverySummarySchema,DeliveryRetrySchema} from '../../../packages/contracts/src/delivery.ts';
 import { PipelineProgressSchema } from '@crawlsystem/contracts/pipeline';
 import {FailureSchema,FailureCommandSchema,AnalyticsSchema,StorageSchema,EvidencePreviewSchema,ChannelHistorySchema,type FailureCommand} from '@crawlsystem/contracts/analytics';
@@ -44,6 +45,9 @@ export function normalizeBaseUrl(raw: string): string {
 }
 
 export class ControlApi {
+  config(signal?:AbortSignal){return this.request('/v1/config',ConfigSnapshotSchema,signal);}
+  configHistory(cursor='0',signal?:AbortSignal){return this.request('/v1/config/history?limit=50&cursor='+encodeURIComponent(cursor),ConfigHistorySchema,signal);}
+  publishConfig(command:ConfigCommand,signal?:AbortSignal){return this.request('/v1/config',ConfigSnapshotSchema,signal,ConfigCommandSchema.parse(command));}
   deliverySummary(signal?:AbortSignal){return this.request('/v1/deliveries/summary',DeliverySummarySchema,signal);}
   deliveries(signal?:AbortSignal,status?:string,search?:string,cursor?:string){const q=new URLSearchParams({limit:'50',...(status?{status}:{}),...(search?{search}:{}),...(cursor?{cursor}:{})});return this.request('/v1/deliveries?'+q,pageSchema(DeliveryRecordSchema),signal);}
   delivery(id:string,signal?:AbortSignal){return this.request('/v1/deliveries/'+encodeURIComponent(id),DeliveryRecordSchema,signal);}

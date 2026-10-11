@@ -1,120 +1,91 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowRight, CircleCheck, Clock, Link2, MoreHorizontal, Plus, RotateCcw, Search, Send, Settings2, TriangleAlert, Upload } from 'lucide-react';
-import { Empty } from '../ui.js';
-import type { ConfigItem, ConfigState, ConfigView, Risk } from './config-sample.js';
+import {useMemo,useRef,useState} from 'react';
+import {CircleCheck,Clock,RefreshCw,RotateCcw,Search,Settings2,TriangleAlert} from 'lucide-react';
+import {CONFIG_CATALOG,changedSettings,defaultSettings,settingValue,type ConfigKey,type ConfigValue,type ConfigSnapshot,type ConfigHistoryItem,type ConfigCommand} from '../../../../packages/contracts/src/configuration.ts';
+import {useAuth} from '../auth.js';
+import {useResource} from '../resource.js';
+import {ApiFailure} from '../api.js';
+import {Empty,ErrorBox,ResourceView} from '../ui.js';
 import './overview.css';
 import './discover.css';
 import './config.css';
 
-const NOT_CONNECTED = '配置中心尚未接入';
-const stateMeta: Record<ConfigState, { label: string; tone: string }> = {
-  active: { label: '已生效', tone: 'green' }, pending: { label: '待发布', tone: 'amber' }, draft: { label: '草稿', tone: 'blue' }, disabled: { label: '已停用', tone: 'slate' },
-};
-const riskMeta: Record<Risk, { label: string; tone: string }> = { low: { label: '低', tone: 'green' }, medium: { label: '中', tone: 'amber' }, high: { label: '高', tone: 'red' } };
-const resultMeta = { published: { label: '发布成功', tone: 'green' }, pending: { label: '待发布', tone: 'amber' }, draft: { label: '保存草稿', tone: 'blue' } } as const;
-const fmt = (n: number) => n.toLocaleString('zh-CN');
-const pct = (part: number, total: number) => `${(part / total * 100).toFixed(1)}%`;
-
-function Card({ title, extra, className = '', children }: { title: string; extra?: ReactNode; className?: string; children: ReactNode }) {
-  return <section className={`panel discover-card ${className}`}><div className="panel-heading"><div><h2>{title}</h2></div>{extra}</div>{children}</section>;
+const show=(v:ConfigValue)=>Array.isArray(v)?(v.map(d=>({ABOUT:'频道资料',VIDEO:'视频与评论',AGENT:'Agent 画像'}[d])).join('、')||'无自动更新范围'):typeof v==='boolean'?(v?'开启':'关闭'):v.toLocaleString('zh-CN');
+const time=(v:string|null)=>v?new Date(v).toLocaleString('zh-CN',{hour12:false}):'环境初值';
+const names={ABOUT:'频道资料',VIDEO:'视频与评论',AGENT:'Agent 画像'} as const;
+function Detail({snapshot,selected,operator,previous,onDone}:{snapshot:ConfigSnapshot;selected:ConfigKey;operator:boolean;previous?:ConfigHistoryItem;onDone:()=>void}){
+ const {api}=useAuth(),meta=CONFIG_CATALOG.find(m=>m[0]===selected)!;
+ const [base,setBase]=useState(snapshot),[value,setValue]=useState<ConfigValue>(settingValue(snapshot.settings,selected));
+ const [reason,setReason]=useState(''),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState<ApiFailure>(),[message,setMessage]=useState('');
+ const pending=useRef<ConfigCommand|undefined>(undefined);
+ const stale=base.version!==snapshot.version,dirty=JSON.stringify(value)!==JSON.stringify(settingValue(base.settings,selected));
+ const change=(next:ConfigValue)=>{setValue(next);setConfirmed(false);setMessage('');pending.current=undefined;};
+ const reset=()=>{setBase(snapshot);change(settingValue(snapshot.settings,selected));setReason('');setError(undefined);};
+ const submit=async()=>{
+  try{changedSettings(base.settings,selected,value);}catch{setError(new ApiFailure('取值超出允许范围，或与其他配置冲突；请核对冷却上限和 API 预留。',400,'INVALID_REQUEST'));return;}
+  setBusy(true);setError(undefined);setMessage('');
+  const command=pending.current??{command_id:crypto.randomUUID(),expected_version:base.version,key:selected,value,reason:reason.trim(),confirm_risk:confirmed};
+  pending.current=command;
+  try{const next=await api.publishConfig(command);setBase(next);setValue(settingValue(next.settings,selected));setReason('');setConfirmed(false);pending.current=undefined;setMessage('配置已发布，版本 v'+next.version+'；后台服务将读取新版本。');onDone();}
+  catch(e){setError(e instanceof ApiFailure?e:new ApiFailure('发布失败，请刷新核对。'));}
+  finally{setBusy(false);}
+ };
+ return <section className="panel config-detail"><div className="panel-heading"><div><h2>配置详情</h2></div><span className={'status-chip '+(meta[4]==='high'?'red':'amber')}>{meta[4]==='high'?'高风险':'中风险'}</span></div>
+  <header className="detail-head"><span className="config-icon"><Settings2 size={18}/></span><div><b>{meta[1]}</b><small className="mono">{selected}</small></div></header>
+  <div className="detail-body"><dl>
+   <div className="kv-row"><dt>分组</dt><dd>{meta[2]}</dd></div><div className="kv-row"><dt>当前值</dt><dd>{show(settingValue(snapshot.settings,selected))}</dd></div>
+   <div className="kv-row"><dt>默认值</dt><dd>{show(settingValue(defaultSettings(),selected))}</dd></div><div className="kv-row"><dt>说明</dt><dd>{meta[5]}</dd></div>
+   <div className="kv-row"><dt>编辑版本</dt><dd>v{base.version}</dd></div></dl>
+   {stale&&<div className="notice warning" role="status">配置已更新到 v{snapshot.version}，请载入当前版本后重新编辑。<button className="text-button" disabled={busy} onClick={reset}>载入当前版本</button></div>}
+   <h3>配置值</h3>
+   <fieldset disabled={!operator||busy||stale} className="config-editor">
+    {meta[3]==='boolean'?<select aria-label="配置值" value={String(value)} onChange={e=>change(e.target.value==='true')}><option value="true">开启</option><option value="false">关闭</option></select>
+     :meta[3]==='domains'?<div className="config-domains">{(['ABOUT','VIDEO','AGENT'] as const).map(d=><label key={d}><input type="checkbox" checked={Array.isArray(value)&&value.includes(d)} onChange={e=>change(e.target.checked?[...(Array.isArray(value)?value:[]),d]:(Array.isArray(value)?value:[]).filter(v=>v!==d))}/>{names[d]}</label>)}</div>
+     :<input aria-label="配置值" type="number" step="1" value={typeof value==='number'&&Number.isFinite(value)?value:''} onChange={e=>change(e.target.value===''?NaN:Number(e.target.value))}/>}
+   </fieldset>
+   <h3>变更说明</h3><textarea aria-label="变更说明" className="config-note" placeholder="请输入本次修改原因（3～200 字）" maxLength={200} value={reason} disabled={!operator||busy||stale} onChange={e=>{setReason(e.target.value);pending.current=undefined;}}/>
+   {meta[4]==='high'&&<label className="config-confirm"><input type="checkbox" checked={confirmed} disabled={!operator||busy||stale} onChange={e=>{setConfirmed(e.target.checked);pending.current=undefined;}}/>我已核对变更前后值及影响范围</label>}
+   {!operator&&<p className="notice">当前身份只读，可查看配置和变更记录。</p>}
+   {message&&<p className="notice" role="status">{message}</p>}{error&&<ErrorBox error={error}/>}
+  </div>
+  <footer className="detail-actions"><button className="button small" disabled={!operator||busy||stale||!previous} onClick={()=>{change(previous!.before);setReason('回滚到上一条变更前的值');}}><RotateCcw size={13}/>载入上个值</button>
+   <button className="button small" disabled={busy} onClick={reset}>放弃编辑</button>
+   <button className="button small primary" disabled={!operator||busy||stale||!dirty||reason.trim().length<3||(meta[4]==='high'&&!confirmed)} onClick={()=>void submit()}>{busy?'正在发布…':'发布配置'}</button></footer>
+ </section>;
 }
-function Kpi({ label, tone, icon, value, foot }: { label: string; tone: string; icon: ReactNode; value?: ReactNode; foot: ReactNode }) {
-  return <section className={`panel discover-kpi tone-${tone}`}><span className="kpi-icon">{icon}</span><div><small>{label}</small><strong>{value ?? '—'}</strong><span className="kpi-foot"><span>{foot}</span></span></div></section>;
-}
-const Row = ({ label, children }: { label: string; children: ReactNode }) => <div className="kv-row"><dt>{label}</dt><dd>{children}</dd></div>;
-const StateChip = ({ state }: { state: ConfigState }) => <span className={`status-chip ${stateMeta[state].tone}`}><i/>{stateMeta[state].label}</span>;
-const RiskMark = ({ risk }: { risk: Risk }) => <span className={`risk-mark ${riskMeta[risk].tone}`}><i/>{riskMeta[risk].label}</span>;
-
-function Detail({ item }: { item?: ConfigItem }) {
-  if (!item) return <section className="panel config-detail"><div className="panel-heading"><div><h2>配置详情</h2></div></div>
-    <div className="detail-body"><Empty title="选择配置项查看详情">目前系统参数写在部署清单和环境变量中，修改后需重新发布服务。配置中心接入后，可在此查看当前值与默认值、编辑并发布，高风险项需二次确认。</Empty></div></section>;
-  return <section className="panel config-detail">
-    <div className="panel-heading"><div><h2>配置详情</h2></div></div>
-    <header className="detail-head"><span className="config-icon"><Settings2 size={18}/></span><div><b>{item.name}</b><small className="mono">{item.key}</small></div><StateChip state={item.state}/></header>
-    <div className="detail-body">
-      <dl><Row label="分组">{item.group}</Row><Row label="当前值"><span className="mono">{item.value}</span></Row><Row label="默认值"><span className="mono">{item.defaultValue}</span></Row>
-        <Row label="风险等级"><RiskMark risk={item.risk}/></Row><Row label="适用范围">{item.scope}</Row><Row label="说明">{item.description}</Row><Row label="最后更新">{item.updated} · {item.operator}</Row></dl>
-      <h3>配置值（JSON / 文本）</h3>
-      <pre className="config-value"><span>1</span><code>{item.value}</code></pre>
-      <h3>变更说明</h3>
-      <textarea className="config-note" placeholder="请输入本次变更的说明…" maxLength={200} disabled title={NOT_CONNECTED}/>
-    </div>
-    <footer className="detail-actions">
-      <button className="button small" disabled title={NOT_CONNECTED}><RotateCcw size={13}/>回滚到上个版本</button><button className="button small" disabled title={NOT_CONNECTED}><Link2 size={13}/>查看引用模块</button>
-      <button className="button small" disabled title={NOT_CONNECTED}>保存草稿</button><button className="button small primary" disabled title={NOT_CONNECTED}>发布配置</button>
-    </footer>
-  </section>;
-}
-
-export default function Config() {
-  const [sampleOn, setSampleOn] = useState(false);
-  const [data, setData] = useState<ConfigView>();
-  const [selected, setSelected] = useState<string>();
-  const [query, setQuery] = useState(''), [group, setGroup] = useState(''), [state, setState] = useState(''), [risk, setRisk] = useState('');
-  // The sample module loads only when asked for, so it never ships with the default view.
-  useEffect(() => {
-    setQuery(''); setGroup(''); setState(''); setRisk('');
-    if (!sampleOn) { setData(undefined); setSelected(undefined); return; }
-    let live = true;
-    void import('./config-sample.js').then(module => { if (live) { setData(module.configSample); setSelected(module.configSample.items[1]!.key); } });
-    return () => { live = false; };
-  }, [sampleOn]);
-  const rows = useMemo(() => data?.items.filter(item => (!query || `${item.name} ${item.key} ${item.description}`.toLowerCase().includes(query.trim().toLowerCase()))
-    && (!group || item.group === group) && (!state || item.state === state) && (!risk || item.risk === risk)), [data, query, group, state, risk]);
-  const k = data?.kpis, checks = data?.checks;
-  const reset = () => { setQuery(''); setGroup(''); setState(''); setRisk(''); };
-  return <div className="dashboard discover config-page">
-    <header className="dashboard-heading">
-      <div><h1>配置管理</h1><p>统一管理系统参数、采集策略、代理规则、发布与告警配置</p>
-        {data ? <span className="data-freshness failing"><i/>示例数据</span> : <span className="data-freshness failing" title="当前参数由部署清单与环境变量管理"><i/>{NOT_CONNECTED} · 参数目前由部署清单管理</span>}</div>
-      <div className="dashboard-period"><label className="sample-switch" htmlFor="config-sample"><input id="config-sample" type="checkbox" checked={sampleOn} onChange={event => setSampleOn(event.target.checked)}/>预览示例数据</label>
-        <button className="button small" disabled title={NOT_CONNECTED}><Upload size={13}/>导入配置</button><button className="button small" disabled title={NOT_CONNECTED}><Plus size={13}/>新建配置项</button><button className="button small primary" disabled title={NOT_CONNECTED}><Send size={13}/>发布配置</button></div>
-    </header>
-    {data && <div className="sample-banner" role="note"><TriangleAlert size={14}/>以下为设计示例数据：配置项、取值与操作账号均为虚构，不是当前实际部署的参数。</div>}
-
-    <div className="discover-kpis">
-      <Kpi label="配置项总数" tone="blue" icon={<Settings2 size={22}/>} value={k && fmt(k.total)} foot={data ? `${data.groups.length} 个分组` : NOT_CONNECTED}/>
-      <Kpi label="已生效" tone="green" icon={<CircleCheck size={22}/>} value={k && fmt(k.active)} foot={k ? `占比 ${pct(k.active, k.total)}` : NOT_CONNECTED}/>
-      <Kpi label="待发布变更" tone="amber" icon={<Clock size={22}/>} value={k && fmt(k.pending)} foot={k ? `草稿 ${k.draft} · 近 7 天变更 ${k.changes7d} 次` : NOT_CONNECTED}/>
-      <Kpi label="高风险配置" tone="red" icon={<TriangleAlert size={22}/>} value={k && fmt(k.high)} foot={k ? `占比 ${pct(k.high, k.total)} · 发布需二次确认` : NOT_CONNECTED}/>
-    </div>
-
-    <div className="discover-row config-main">
-      <section className="panel config-list">
-        <div className="panel-heading"><div><h2>配置项列表{rows && <small className="config-count">共 {rows.length} 条{data ? '（示例）' : ''}</small>}</h2></div>
-        <div className="list-tools config-filters">
-          <label className="list-search" htmlFor="config-search"><Search size={13}/><input id="config-search" placeholder="搜索配置名称 / 配置键 / 说明…" value={query} onChange={event => setQuery(event.target.value)} disabled={!data}/></label>
-          <select aria-label="配置分组" value={group} onChange={event => setGroup(event.target.value)} disabled={!data}><option value="">全部分组</option>{data?.groups.map(g => <option key={g.group}>{g.group}</option>)}</select>
-          <select aria-label="状态" value={state} onChange={event => setState(event.target.value)} disabled={!data}><option value="">全部状态</option>{Object.entries(stateMeta).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}</select>
-          <select aria-label="风险等级" value={risk} onChange={event => setRisk(event.target.value)} disabled={!data}><option value="">全部风险等级</option>{Object.entries(riskMeta).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}</select>
-          <button className="button small" onClick={reset} disabled={!data}>重置</button>
-        </div></div>
-        {rows ? <div className="table-scroll"><table><thead><tr><th>配置名称</th><th>配置键</th><th>分组</th><th>当前值</th><th>状态</th><th>风险等级</th><th>最后更新</th><th>操作人</th><th>操作</th></tr></thead>
-          <tbody>{rows.map(item => <tr key={item.key} className={item.key === selected ? 'selected' : ''} onClick={() => setSelected(item.key)} aria-selected={item.key === selected}>
-            <td className="cell-title">{item.name}</td><td className="mono">{item.key}</td><td>{item.group}</td><td className="mono">{item.value}</td><td><StateChip state={item.state}/></td><td><RiskMark risk={item.risk}/></td><td>{item.updated}</td><td>{item.operator}</td><td className="row-actions"><MoreHorizontal size={14}/></td></tr>)}
-            {!rows.length && <tr><td colSpan={9} className="config-no-match">没有符合条件的配置项</td></tr>}</tbody></table></div>
-          : <Empty title="尚无配置项">{NOT_CONNECTED}。目前系统参数写在部署清单和环境变量中，修改需要重新发布服务；接入后在此统一查看、校验、发布配置，并保留变更记录。</Empty>}
-      </section>
-
-      <Detail item={data?.items.find(item => item.key === selected)}/>
-
-      <Card title="配置变更记录" className="config-changes" extra={<span className="dashboard-unavailable" title={NOT_CONNECTED}>查看全部<ArrowRight size={12}/></span>}>
-        {data ? <div className="table-scroll"><table><thead><tr><th>时间</th><th>配置项</th><th>变更前</th><th>变更后</th><th>操作人</th><th>结果</th></tr></thead>
-          <tbody>{data.changes.map(c => <tr key={`${c.time}-${c.name}`}><td>{c.time}</td><td>{c.name}</td><td className="mono">{c.before}</td><td className="mono">{c.after}</td><td>{c.operator}</td><td><span className={`status-chip ${resultMeta[c.result].tone}`}><i/>{resultMeta[c.result].label}</span></td></tr>)}</tbody></table></div>
-          : <Empty title="暂无变更记录">{NOT_CONNECTED}</Empty>}
-      </Card>
-
-      <Card title="配置校验与发布检查" className="config-checks">
-        <div className="check-body"><div className="check-tiles">
-          <div className="green"><CircleCheck size={16}/><span>必填项校验</span><b>{checks ? `${checks.required[0]} / ${checks.required[1]}` : '—'}</b></div>
-          <div className="amber"><TriangleAlert size={16}/><span>高风险需二次确认</span><b>{checks ? `${checks.highRisk} 项` : '—'}</b></div>
-          <div className="green"><CircleCheck size={16}/><span>引用模块检查</span><b>{checks ? `${checks.references[0]} / ${checks.references[1]}` : '—'}</b></div>
-          <div className="blue"><Clock size={16}/><span>待发布项</span><b>{checks ? `${checks.pending} 条` : '—'}</b></div>
-        </div>
-        <h3 className="check-sub">配置分组统计</h3>
-        {data ? <div className="group-counts">{data.groups.map(g => <div key={g.group}><span>{g.group}</span><b>{g.count}</b></div>)}</div> : <p className="check-empty">{NOT_CONNECTED}</p>}</div>
-      </Card>
-    </div>
-    <footer className="dashboard-foot"><span>高风险配置发布前需二次确认；每次发布保留变更前后值，可回滚到上个版本。</span><span>“预览示例数据”仅用于查看页面设计</span></footer>
-  </div>;
+export default function Config(){
+ const {api,session}=useAuth(),config=useResource('configuration',s=>api.config(s),true,15000);
+ const [cursor,setCursor]=useState('0'),history=useResource('configuration-history:'+cursor,s=>api.configHistory(cursor,s),true,15000);
+ const [selected,setSelected]=useState<ConfigKey>('update.enabled'),[query,setQuery]=useState(''),[group,setGroup]=useState(''),[risk,setRisk]=useState('');
+ const rows=useMemo(()=>CONFIG_CATALOG.filter(m=>(!query||(m[0]+' '+m[1]+' '+m[5]).toLowerCase().includes(query.trim().toLowerCase()))&&(!group||m[2]===group)&&(!risk||m[4]===risk)),[query,group,risk]);
+ const refresh=()=>{config.refresh();history.refresh();};
+ const groups=[...new Set(CONFIG_CATALOG.map(m=>m[2]))],high=CONFIG_CATALOG.filter(m=>m[4]==='high').length;
+ return <div className="dashboard discover config-page"><header className="dashboard-heading"><div><h1>配置管理</h1><p>统一管理更新采集、搜索准入、代理规则与告警阈值</p><span className={'data-freshness '+(config.error?'failing':'')}><i/>{config.data?('当前发布版本 v'+config.data.version+' · '+(config.data.source==='DATABASE'?'数据库配置':'环境初值')):'正在读取配置'}</span></div>
+  <div className="dashboard-period"><button className="button small" disabled={config.refreshing} onClick={refresh}><RefreshCw size={13}/>刷新配置</button></div></header>
+  <div className="discover-kpis">{[
+   ['配置项总数',CONFIG_CATALOG.length,'4 个配置分组',<Settings2 size={22}/>,'blue'],
+   ['当前发布版本',config.data?'v'+config.data.version:'—',config.data?.source==='DATABASE'?'已持久保存':'等待持久配置',<CircleCheck size={22}/>,'green'],
+   ['服务读取版本',config.data?.consumers.filter(c=>c.version===config.data!.version&&Date.now()-Date.parse(c.observed_at)<120000).length??'—','调度器与代理节点',<Clock size={22}/>,'amber'],
+   ['高风险配置',high,'发布前核对影响并确认',<TriangleAlert size={22}/>,'red'],
+  ].map(([label,value,foot,icon,tone])=><section className={'panel discover-kpi tone-'+tone} key={String(label)}><span className="kpi-icon">{icon}</span><div><small>{label}</small><strong>{value}</strong><span className="kpi-foot">{foot}</span></div></section>)}</div>
+  <ResourceView resource={config} showMeta={false}>{snapshot=><div className="discover-row config-main">
+   <section className="panel config-list"><div className="panel-heading"><div><h2>配置项列表<small className="config-count">共 {rows.length} 条</small></h2></div><div className="list-tools config-filters">
+    <label className="list-search"><Search size={13}/><input aria-label="搜索配置" placeholder="配置名称 / 键 / 说明" value={query} onChange={e=>setQuery(e.target.value)}/></label>
+    <select aria-label="配置分组" value={group} onChange={e=>setGroup(e.target.value)}><option value="">全部分组</option>{groups.map(g=><option key={g} value={g}>{g}</option>)}</select>
+    <select aria-label="风险等级" value={risk} onChange={e=>setRisk(e.target.value)}><option value="">全部风险等级</option><option value="high">高风险</option><option value="medium">中风险</option></select>
+    <button className="button small" onClick={()=>{setQuery('');setGroup('');setRisk('');}}>重置</button></div></div>
+    <div className="table-scroll"><table><thead><tr><th>配置名称</th><th>配置键</th><th>分组</th><th>当前值</th><th>风险</th></tr></thead><tbody>{rows.map(m=><tr key={m[0]} className={selected===m[0]?'selected':''} aria-selected={selected===m[0]} onClick={()=>setSelected(m[0])}><td><button className="text-button" onClick={()=>setSelected(m[0])}>{m[1]}</button></td><td className="mono">{m[0]}</td><td>{m[2]}</td><td>{show(settingValue(snapshot.settings,m[0]))}</td><td><span className={'risk-mark '+(m[4]==='high'?'red':'amber')}><i/>{m[4]==='high'?'高':'中'}</span></td></tr>)}
+    {!rows.length&&<tr><td colSpan={5}>没有符合条件的配置项</td></tr>}</tbody></table></div></section>
+   <Detail key={selected} snapshot={snapshot} selected={selected} operator={session.role==='operator'} previous={cursor==='0'?history.data?.items.find(h=>h.key===selected):undefined} onDone={refresh}/>
+   <section className="panel config-changes"><div className="panel-heading"><div><h2>配置变更记录</h2></div></div><ResourceView resource={history} showMeta={false}>{h=><>
+    {h.items.length?<div className="table-scroll"><table><thead><tr><th>版本 / 时间</th><th>配置项</th><th>变更前</th><th>变更后</th><th>操作人 / 原因</th></tr></thead><tbody>{h.items.map(c=><tr key={c.command_id}><td>v{c.version}<br/>{time(c.created_at)}</td><td>{CONFIG_CATALOG.find(m=>m[0]===c.key)?.[1]}</td><td>{show(c.before)}</td><td>{show(c.after)}</td><td>{c.operator}<br/>{c.reason}</td></tr>)}</tbody></table></div>:<Empty title="暂无变更记录">初始参数已保留，每次发布记录前后值、操作人和原因。</Empty>}
+    <footer className="pagination"><span>每页最多 50 条</span><div><button className="button small" disabled={cursor==='0'} onClick={()=>setCursor(String(Math.max(0,Number(cursor)-50)))}>上一页</button><button className="button small" disabled={!h.next_cursor} onClick={()=>setCursor(h.next_cursor!)}>下一页</button></div></footer>
+   </>}</ResourceView></section>
+   <section className="panel config-checks"><div className="panel-heading"><div><h2>配置生效情况</h2></div></div><div className="check-body">
+    <p className="config-explainer">API 按请求读取当前值。调度器下一轮扫描读取；代理节点定期同步。告警阈值在下次指标采样和规则计算时生效。</p>
+    <div className="config-consumers">{snapshot.consumers.length?snapshot.consumers.map(c=><div key={c.name}><b>{c.name==='dispatcher'?'调度器':c.name.replace('proxy:','代理节点 ')}</b><span className={'status-chip '+(c.version===snapshot.version&&Date.now()-Date.parse(c.observed_at)<120000?'green':'amber')}>v{c.version}{c.version===snapshot.version&&Date.now()-Date.parse(c.observed_at)<120000?' 已读取':' 待同步'}</span><small>{time(c.observed_at)}</small></div>):<p>尚无服务读取记录</p>}</div>
+    <h3 className="check-sub">最近发布</h3><p className="config-explainer">{time(snapshot.updated_at)}<br/>{snapshot.operator??'环境变量'}</p>
+   </div></section>
+  </div>}</ResourceView>
+  <footer className="dashboard-foot"><span>变更只影响后续准入、任务与新失败处理；已冻结任务和已有冷却截止时间保持。</span><span>回滚载入旧值后，填写原因并重新发布。</span></footer>
+ </div>;
 }

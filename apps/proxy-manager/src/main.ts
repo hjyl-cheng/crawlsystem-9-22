@@ -21,14 +21,16 @@ const api = new ExecutionApi({ controlUrl: control, ingestUrl: control, timeoutM
 const pool = new ProxyPool();
 const bootId = randomUUID();
 let sequence = 0, stopping = false;
+let configVersion:number|undefined;
 const server = localServer(pool).listen(Number(process.env.PORT ?? '18110'), '0.0.0.0');
 const stop = () => { stopping = true; server.close(); };
 process.once('SIGTERM', stop); process.once('SIGINT', stop);
 
 async function sync() {
-  const response = await api.proxySync({ node_boot_id: bootId, report_sequence: ++sequence, observed_at: new Date().toISOString(), observations: pool.observations() }, { attempts: 1 });
+  const response = await api.proxySync({...(configVersion===undefined?{}:{config_version:configVersion}), node_boot_id: bootId, report_sequence: ++sequence, observed_at: new Date().toISOString(), observations: pool.observations() }, { attempts: 1 });
   if (response.server_id !== node) throw new Error('Control assigned a different server identity');
   pool.apply(response.assignments, Date.parse(response.lease_expires_at));
+  if(response.configuration){pool.configure(response.configuration.policy);configVersion=response.configuration.version;}
   return response.assignments.length;
 }
 async function probeRound() {

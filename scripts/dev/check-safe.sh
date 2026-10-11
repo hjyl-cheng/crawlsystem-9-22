@@ -62,6 +62,13 @@ case "${1:-}" in
   overview-control-deploy) command=(node --import tsx scripts/dev/deploy-c3-control.ts) ;;
   overview-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-c3-browser.ts) ;;
   overview-runtime) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-c3-runtime.ts "${@:2}") ;;
+  config-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 tests/integration/configuration.test.ts tests/integration/update-scheduler.test.ts tests/integration/query-runs.test.ts tests/integration/proxies.test.ts) ;;
+  config-control-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --d1-control-only) ;;
+  config-prepare) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-d1.ts) ;;
+  config-deploy) command=(node --import tsx scripts/dev/deploy-d1.ts) ;;
+  config-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d1-browser.ts) ;;
+  config-runtime) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d1-runtime.ts "${@:2}") ;;
+  config-monitoring) command=(python3 scripts/dev/configure-d1-monitoring.py) ;;
   pipeline-roles) command=(node --env-file=.runtime/r3-test.env --import tsx scripts/dev/verify-r3-roles.ts) ;;
   collection-parity) command=(node --import tsx scripts/dev/verify-r2-parity.ts) ;;
   collection-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-r2-browser.ts) ;;

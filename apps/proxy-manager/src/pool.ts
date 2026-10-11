@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ProxyAssignment } from '@crawlsystem/contracts';
+import {ProxyPolicySchema,type ProxyPolicy} from '../../../packages/contracts/src/proxy-policy.ts';
 import { proxyUrlOf } from '@crawlsystem/execution-client/proxy-connect';
 
 // Node-local proxy selection (24.8 §10.2): one pool per server, shared by every Worker on
@@ -13,13 +14,17 @@ interface Health {
   // Trial: a proxy is leased only after TRIAL_PASSES content probes in a row pass; a block sends it back to trial.
   qualified: boolean; trialPasses: number;
 }
-const COOLDOWN_BASE_MS = 60_000, COOLDOWN_MAX_MS = 30 * 60_000, BLOCKED_COOLDOWN_MS = 10 * 60_000;
-const FAILURES_BEFORE_COOLDOWN = 3, COOLDOWNS_BEFORE_FAILED = 3, TRIAL_PASSES = 2;
 
 // The fragment never leaves this host; connectViaProxy reads it (and ignores it if credentials are present).
 export const proxyUrl = (a: ProxyAssignment): string => proxyUrlOf(a);
 
 export class ProxyPool {
+  private policy:ProxyPolicy=ProxyPolicySchema.parse({});
+  configure(policy:ProxyPolicy){
+    const next=ProxyPolicySchema.parse(policy);
+    if(next.trial_passes!==this.policy.trial_passes)for(const h of this.health.values())h.qualified=h.trialPasses>=next.trial_passes;
+    this.policy=next;
+  }
   private assignments = new Map<string, ProxyAssignment>();
   private health = new Map<string, Health>();
   private leases = new Map<string, Lease>();
@@ -78,7 +83,7 @@ export class ProxyPool {
     h.probedAt = this.now();
     if (ok) {
       h.consecutiveFailures = 0; h.cooldowns = 0; h.lastSuccess = this.now(); h.latencyMs = latencyMs; h.cooldownUntil = 0;
-      if (++h.trialPasses >= TRIAL_PASSES) h.qualified = true;
+      if (++h.trialPasses >= this.policy.trial_passes) h.qualified = true;
       return;
     }
     h.trialPasses = 0;
@@ -98,13 +103,13 @@ export class ProxyPool {
   }
   /** YouTube refused this egress: cool down, and require a fresh trial before it is leased again. */
   private block(h: Health, error: string) {
-    h.lastFailure = this.now(); h.lastError = error.slice(0, 120); h.cooldownUntil = this.now() + BLOCKED_COOLDOWN_MS; h.cooldowns++;
+    h.lastFailure = this.now(); h.lastError = error.slice(0, 120); h.cooldownUntil = this.now() + this.policy.blocked_cooldown_seconds*1000; h.cooldowns++;
     h.qualified = false; h.trialPasses = 0;
   }
   private fail(h: Health, error: string) {
     h.consecutiveFailures++; h.lastFailure = this.now(); h.lastError = error.slice(0, 120);
-    if (h.consecutiveFailures >= FAILURES_BEFORE_COOLDOWN) {
-      h.cooldownUntil = this.now() + Math.min(COOLDOWN_MAX_MS, COOLDOWN_BASE_MS * 2 ** h.cooldowns);
+    if (h.consecutiveFailures >= this.policy.failures_before_cooldown) {
+      h.cooldownUntil = this.now() + Math.min(this.policy.cooldown_max_seconds*1000, this.policy.cooldown_base_seconds*1000 * 2 ** h.cooldowns);
       h.cooldowns++; h.consecutiveFailures = 0;
     }
   }
@@ -130,7 +135,7 @@ export class ProxyPool {
       const h = this.health.get(a.proxy_id);
       if (!h || (h.lastSuccess === null && h.lastFailure === null)) return [];
       // `failed` (three cooldowns without a success in between) is what Control retires on.
-      const state = h.cooldownUntil > now ? (h.cooldowns >= COOLDOWNS_BEFORE_FAILED ? 'failed' as const : 'cooldown' as const)
+      const state = h.cooldownUntil > now ? (h.cooldowns >= this.policy.cooldowns_before_failed ? 'failed' as const : 'cooldown' as const)
         : !h.qualified ? 'trial' as const : h.consecutiveFailures > 0 ? 'degraded' as const : 'healthy' as const;
       return [{ proxy_id: a.proxy_id, generation: a.generation, state, cooldown_until: h.cooldownUntil > now ? iso(h.cooldownUntil) : null, last_success_at: iso(h.lastSuccess),
         last_failure_at: iso(h.lastFailure), last_error: h.lastError, requests_total: h.requests, failures_total: h.failures, latency_ms: h.latencyMs }];

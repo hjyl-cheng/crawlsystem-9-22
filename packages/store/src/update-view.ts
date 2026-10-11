@@ -50,8 +50,8 @@ export async function readUpdates(pool: Pool, workspace: string, limits: UpdateL
     await client.query("SET LOCAL statement_timeout='5s'");
     await client.query("SET LOCAL transaction_timeout='10s'");
     const state = await schedulerState(client, workspace, limits);
-    // Limits as the scheduler last applied them; defaults fill fields older scans did not record.
-    const effective = UpdateLimitsSchema.parse(state?.limits ?? limits);
+    // The config centre owns current limits; last_scan_at is independent consumption evidence.
+    const effective = UpdateLimitsSchema.parse(limits);
     const budget = await apiBudget(client, workspace, now);
     const params = [workspace, now, effective.enabled, effective.max_active_plans, effective.max_agent_plans, effective.daily_plan_limit, effective.api_daily_limit, budget.used, budget.reserved, effective.auto_domains];
     const row = (await client.query(`${VIEW} SELECT count(*)::int AS managed,

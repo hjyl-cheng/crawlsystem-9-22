@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { test, expect, type Page } from '@playwright/test';
 import { CONTRACT_VERSION, type PlanDetail, type Role, type CreatePlan, type Worker, type ProxyView, type ProxySourceView, type UpdateChannel, type AgentTask, type QueryBinding, type Candidate } from '@crawlsystem/contracts';
 import type {DeliveryRecord} from '../../../packages/contracts/src/delivery.ts';
+import {defaultSettings,changedSettings,type ConfigSnapshot,type ConfigHistoryItem,type ConfigCommand} from '../../../packages/contracts/src/configuration.ts';
 import { detailFixture, channelFixture, workerFixture, errorFixture, updateSummaryFixture, updateChannelFixture, agentTaskFixtures, agentSummaryFixture, dataApiSummaryFixture, queryBindingFixture, querySummaryFixture, candidateFixture, candidateSummaryFixture } from './fixtures.js';
 
 async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
   const state = { detail, role, authenticated: false, fail: false, malformed: false, conflict: false, forbidden: false, loseCreate: false, creates: [] as CreatePlan[], cancels: [] as { command_id: string; expected_version: number }[], reads: [] as string[], workers: [] as Worker[], proxies: [] as ProxyView[], imports: [] as unknown[], proxyUpdates: [] as unknown[], sources: [] as ProxySourceView[], sourceUpdates: [] as unknown[], errors: detail ? [errorFixture(detail.plan.plan_id)] : [], pageTwo: false, strictSource: false, managed: false, updates: [] as UpdateChannel[], updateRequests: [] as unknown[], agentTasks: [] as AgentTask[], dataApiCalls: false, channelImports: [] as unknown[], queryBindings: [] as QueryBinding[], queryRequests: [] as unknown[], candidates: [] as Candidate[], candidateRequests: [] as unknown[] };
   const deliveries:DeliveryRecord[]=[],deliveryRetries:unknown[]=[];
+  const config:ConfigSnapshot={version:1,source:'DATABASE',settings:{...defaultSettings(),discovery:{...defaultSettings().discovery,daily_run_limit:300}},updated_at:new Date().toISOString(),operator:'bootstrap',consumers:[]};
+  const configHistory:ConfigHistoryItem[]=[],configRequests:ConfigCommand[]=[];
+  let configLoseResponse=false;
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); const method = route.request().method();
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
@@ -20,6 +24,20 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (method === 'GET') state.reads.push(url.pathname + url.search);
     if (state.fail) return failure(503, 'UNAVAILABLE');
     if (state.malformed) return json({ unexpected: true });
+    if(path==='/v1/config/history')return json({items:configHistory,next_cursor:null});
+    if(path==='/v1/config'){
+      if(method==='GET')return json(config);
+      if(state.role!=='operator')return failure(403,'FORBIDDEN');
+      const command:ConfigCommand=route.request().postDataJSON();configRequests.push(command);
+      if(configHistory.some(h=>h.command_id===command.command_id))return json(config);
+      if(state.conflict||command.expected_version!==config.version)return failure(409,'CONFLICT');
+      const before=config.settings[command.key.split('.')[0] as keyof typeof config.settings] as Record<string,any>;
+      const old=before[command.key.split('.')[1]!];
+      config.settings=changedSettings(config.settings,command.key,command.value);config.version++;config.operator='browser-fixture';config.updated_at=new Date().toISOString();
+      configHistory.unshift({command_id:command.command_id,version:config.version,key:command.key,before:old,after:command.value,reason:command.reason,operator:config.operator,created_at:config.updated_at});
+      if(configLoseResponse){configLoseResponse=false;return route.abort('failed');}
+      return json(config);
+    }
     if(path==='/v1/overview/resources'){
       const by_state={healthy:0,trial:0,degraded:0,cooldown:0,failed:0,disabled:0,unassigned:0,unknown:0};for(const p of state.proxies)by_state[p.state]++;
       return json({observed_at:new Date().toISOString(),proxies:{total:state.proxies.length,by_state,assignments:[]},monitoring:{source:'prometheus',available:true,nodes:state.workers.map(w=>({server_id:w.server_id,cpu_percent:13.5,memory_used_bytes:2147483648,memory_total_bytes:8589934592,sampled_at:new Date().toISOString()}))}});
@@ -128,7 +146,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
     if (path.startsWith('/v1/receipts/') && state.detail) return json(state.detail.receipts.find(receipt => path.endsWith(receipt.submission_id)));
     return failure(404, 'NOT_FOUND');
   });
-  return Object.assign(state,{deliveries,deliveryRetries});
+  return Object.assign(state,{deliveries,deliveryRetries,config,configHistory,configRequests,loseConfigResponse:()=>{configLoseResponse=true;}});
 }
 async function login(page: Page, path = '/') {
   await page.goto(path); await page.getByLabel('账号', { exact: true }).fill('fixture'); await page.getByLabel('密码', { exact: true }).fill('browser-fixture-password'); await page.getByRole('button', { name: '进入控制台' }).click();
@@ -564,20 +582,36 @@ test('worker management merges the node menus and shows real heartbeats with ser
   await expect(page.getByText('资源指标尚未接入（Prometheus）', { exact: false }).first()).toBeVisible();
   await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
 });
-test('configuration management says the configuration centre is not connected and shows invented items only behind the switch', async ({ page }) => {
-  await mock(page); await login(page, '/config');
-  const nav = page.getByRole('navigation', { name: '主导航' });
-  await expect(nav.getByRole('link', { name: '配置管理' })).toBeVisible();
-  await expect(page.getByText('尚无配置项', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('配置分组')).toBeDisabled();
-  await page.getByLabel('预览示例数据').check();
-  await expect(page.getByText('以下为设计示例数据', { exact: false })).toBeVisible();
-  await expect(page.locator('.config-list tbody tr')).toHaveCount(8);
-  await page.getByLabel('风险等级').selectOption('high');
-  await expect(page.locator('.config-list tbody tr')).toHaveCount(3);
-  await page.locator('.config-list tbody tr', { hasText: 'IP 冷却时长' }).click();
-  await expect(page.locator('.config-detail')).toContainText('proxy.ip.cooldown_minutes');
-  await expect(page.locator('.config-detail').getByRole('button', { name: '发布配置' })).toBeDisabled();
+test('configuration reads real defaults, validates risk, publishes history and loads a rollback', async ({ page }) => {
+  const state=await mock(page); await login(page,'/config');
+  await expect(page.locator('.config-list tbody tr')).toHaveCount(24);
+  await expect(page.getByLabel('配置值')).toHaveValue('true');
+  await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
+  await page.getByLabel('配置值').selectOption('false');await page.getByLabel('变更说明').fill('暂停更新验收');
+  await expect(page.getByRole('button',{name:'发布配置',exact:true})).toBeDisabled();
+  await page.getByLabel('我已核对变更前后值及影响范围').check();await page.getByRole('button',{name:'发布配置',exact:true}).click();
+  await expect(page.getByText('配置已发布，版本 v2',{exact:false})).toBeVisible();
+  await expect(page.locator('.config-changes')).toContainText('暂停更新验收');assert.equal(state.config.settings.update.enabled,false);
+  await page.getByRole('button',{name:'载入上个值',exact:true}).click();await expect(page.getByLabel('配置值')).toHaveValue('true');
+  await page.getByLabel('我已核对变更前后值及影响范围').check();await page.getByRole('button',{name:'发布配置',exact:true}).click();
+  await expect(page.getByText('配置已发布，版本 v3',{exact:false})).toBeVisible();assert.equal(state.config.settings.update.enabled,true);
+  await page.getByLabel('配置分组').selectOption('告警阈值');await expect(page.locator('.config-list tbody tr')).toHaveCount(2);
+});
+test('configuration preserves edits after conflict and reuses identity after a lost response',async({page})=>{
+ const state=await mock(page);await login(page,'/config');await page.getByRole('button',{name:'统计归档延迟告警秒数',exact:true}).click();
+ await page.getByLabel('配置值').fill('700');await page.getByLabel('变更说明').fill('调高告警阈值');state.conflict=true;
+ await page.getByRole('button',{name:'发布配置',exact:true}).click();await expect(page.getByRole('alert')).toContainText('冲突');await expect(page.getByLabel('配置值')).toHaveValue('700');
+ state.conflict=false;state.loseConfigResponse();await page.getByRole('button',{name:'发布配置',exact:true}).click();
+ await expect(page.getByRole('alert')).toContainText('无法连接');await page.getByRole('button',{name:'发布配置',exact:true}).click();
+ await expect(page.getByText('配置已发布，版本 v2',{exact:false})).toBeVisible();
+ assert.equal(new Set(state.configRequests.map(c=>c.command_id)).size,1);assert.equal(state.configHistory.length,1);
+});
+test('configuration reader permissions, failure recovery and mobile layout',async({page})=>{
+ const state=await mock(page,undefined,'reader');state.fail=true;await login(page,'/config');await expect(page.getByRole('alert')).toBeVisible();
+ state.fail=false;await page.getByRole('button',{name:'刷新配置',exact:true}).click();await expect(page.locator('.config-list tbody tr')).toHaveCount(24);
+ await expect(page.getByLabel('配置值')).toBeDisabled();await expect(page.getByRole('button',{name:'发布配置',exact:true})).toBeDisabled();
+ await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
+ await page.getByRole('button',{name:'自动更新范围',exact:true}).click();await expect(page.getByLabel('视频与评论',{exact:true})).toBeChecked();
 });
 test('user management lists the real workspace accounts without credentials and keeps account changes on the command line', async ({ page }) => {
   await mock(page); await login(page, '/users');

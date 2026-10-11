@@ -26,6 +26,8 @@ import {outbox,acknowledge,claimReplays,finishReplay,storage,maintain} from './t
 import type {FailureCommand} from '@crawlsystem/contracts/analytics';
 import {queuePublication,readDeliveries,deliverySummary,getDelivery,retryDelivery} from './publication.ts';
 import {DeliveryRetrySchema} from '../../contracts/src/delivery.ts';
+import {defaultSettings,type RuntimeSettings} from '../../contracts/src/configuration.ts';
+import {runtimeSettings,settingsSnapshot,publishSettings,settingsHistory,settingsConsumed} from './runtime-settings.ts';
 
 export interface PipelineOptions { enabled?: boolean; loadComments?: (ref: ObjectReference) => Promise<CommentPage | null>; }
 
@@ -58,6 +60,11 @@ export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'C
 
 export class Store {
   constructor(public readonly pool: Pool, public readonly updateLimits: UpdateLimits = UpdateLimitsSchema.parse({}), public readonly discoveryLimits: DiscoveryLimits = DiscoveryLimitsSchema.parse({}), private pipeline: PipelineOptions = {}) {}
+  private settingsFallback():RuntimeSettings{return {...defaultSettings(),update:this.updateLimits,discovery:this.discoveryLimits};}
+  private async settings(db:Pool|PoolClient,workspace:string){return runtimeSettings(db,workspace,this.settingsFallback());}
+  async config(principal:Principal){requireRole(principal,'reader','operator');return settingsSnapshot(this.pool,principal.workspace_id,this.settingsFallback());}
+  async publishConfig(principal:Principal,raw:unknown){requireRole(principal,'operator');return this.tx(c=>publishSettings(c,principal.workspace_id,principal.subject,raw,this.settingsFallback()));}
+  async configHistory(principal:Principal,limit=50,offset=0){requireRole(principal,'reader','operator');return settingsHistory(this.pool,principal.workspace_id,limit,offset);}
   async deliveries(principal:Principal,limit=50,offset=0,status?:string,search?:string){requireRole(principal,'reader','operator');return readDeliveries(this.pool,principal.workspace_id,limit,offset,status,search);}
   async deliverySummary(principal:Principal){requireRole(principal,'reader','operator');return deliverySummary(this.pool,principal.workspace_id);}
   async delivery(principal:Principal,id:string){requireRole(principal,'reader','operator');return getDelivery(this.pool,principal.workspace_id,id);}
@@ -152,12 +159,12 @@ export class Store {
   }
   async querySummary(principal: Principal): Promise<QuerySummary> {
     requireRole(principal, 'reader', 'operator');
-    return querySummary(this.pool, principal.workspace_id, this.discoveryLimits);
+    return querySummary(this.pool, principal.workspace_id, (await this.settings(this.pool,principal.workspace_id)).settings.discovery);
   }
   /** Worker: the next due search under the discovery limits, or why there is none. */
   async claimQueryRun(principal: Principal): Promise<QueryRunClaim> {
     requireRole(principal, 'worker');
-    return this.tx(client => claimRun(client, principal.workspace_id, principal.subject, this.discoveryLimits, this.updateLimits.api_daily_limit));
+    return this.tx(async client => {const {settings}=await this.settings(client,principal.workspace_id);return claimRun(client, principal.workspace_id, principal.subject, settings.discovery, settings.update.api_daily_limit);});
   }
   async queryRunHeartbeat(principal: Principal, runId: string, raw: unknown) {
     requireRole(principal, 'worker');
@@ -177,7 +184,7 @@ export class Store {
   }
   async queryRunPermit(principal: Principal, runId: string, raw: unknown): Promise<DataApiPermit> {
     requireRole(principal, 'worker');
-    return this.tx(client => discovery(() => runPermit(client, principal.workspace_id, principal.subject, runId, raw, this.discoveryLimits, this.updateLimits.api_daily_limit)));
+    return this.tx(async client => {const {settings}=await this.settings(client,principal.workspace_id);return discovery(() => runPermit(client, principal.workspace_id, principal.subject, runId, raw, settings.discovery, settings.update.api_daily_limit));});
   }
   async queryRunPermitFailure(principal: Principal, runId: string, raw: unknown) {
     requireRole(principal, 'worker');
@@ -189,7 +196,7 @@ export class Store {
   }
   async candidateSummary(principal: Principal): Promise<CandidateSummary> {
     requireRole(principal, 'reader', 'operator');
-    return candidateSummary(this.pool, principal.workspace_id, this.discoveryLimits);
+    return candidateSummary(this.pool, principal.workspace_id, (await this.settings(this.pool,principal.workspace_id)).settings.discovery);
   }
   async candidateCommand(principal: Principal, channelId: string, raw: unknown): Promise<Candidate> {
     requireRole(principal, 'operator');
@@ -197,7 +204,7 @@ export class Store {
   }
   /** Scheduler: keep the import queue topped up from qualified candidates (before plans are admitted). */
   async admitCandidates(workspaceId: string): Promise<string[]> {
-    return this.tx(client => admitCandidates(client, workspaceId, this.discoveryLimits));
+    return this.tx(async client => admitCandidates(client, workspaceId, (await this.settings(client,workspaceId)).settings.discovery));
   }
   async createQuery(principal: Principal, raw: unknown): Promise<QueryBinding> {
     requireRole(principal, 'operator');
@@ -246,8 +253,8 @@ export class Store {
     return ChannelImportsSchema.parse({ counts, items: items.map(r => ({ ...r, requested_at: iso(r.requested_at), title: r.title ?? null })) });
   }
   /** First collections for queued imports, while active plans and the Data API quota allow (oldest first). */
-  private async admitImports(client: PoolClient, workspace: string, now: Date): Promise<Plan[]> {
-    const plans: Plan[] = [], limits = this.updateLimits;
+  private async admitImports(client: PoolClient, workspace: string, now: Date, limits:UpdateLimits): Promise<Plan[]> {
+    const plans: Plan[] = [];
     const queue = (await client.query(`SELECT channel_id FROM control.channel_imports WHERE workspace_id=$1 AND state='queued' ORDER BY requested_at,channel_id LIMIT 10`, [workspace])).rows;
     for (const { channel_id } of queue) {
       const active = (await client.query("SELECT count(*)::int AS n FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube' AND status IN ('QUEUED','RUNNING','WAITING')", [workspace])).rows[0]!.n as number;
@@ -272,22 +279,24 @@ export class Store {
   async scheduleUpdates(workspaceId: string, now = new Date()): Promise<Plan[]> {
     return this.tx(async client => {
       await client.query("SELECT pg_advisory_xact_lock(hashtext('update-admission:' || $1))", [workspaceId]);
-      await schedulerState(client, workspaceId, this.updateLimits, now);
-      if (!this.updateLimits.enabled) return [];
+      const config=await this.settings(client,workspaceId),limits=config.settings.update;
+      await schedulerState(client, workspaceId, limits, now);
+      await settingsConsumed(client,workspaceId,'dispatcher',config.version);
+      if (!limits.enabled) return [];
       // Only clocks in auto_domains are scheduled; the others stay due until updated manually.
       const candidates = await client.query(`SELECT c.channel_id,min(k.due_at) AS due FROM control.channel_overview c JOIN control.channel_clocks k USING(workspace_id,channel_id)
         WHERE c.workspace_id=$1 AND c.management_state='managed' AND k.due_at<=$2 AND k.clock=ANY($3::text[])
           AND (k.last_scheduled_at IS NULL OR k.last_scheduled_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
           AND (k.last_attempt_at IS NULL OR k.last_attempt_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
           AND NOT EXISTS(SELECT 1 FROM control.plans p WHERE p.workspace_id=c.workspace_id AND p.channel_id=c.channel_id AND p.status IN ('QUEUED','RUNNING','WAITING'))
-        GROUP BY c.channel_id ORDER BY due,c.channel_id LIMIT 25`, [workspaceId, now, this.updateLimits.auto_domains]);
+        GROUP BY c.channel_id ORDER BY due,c.channel_id LIMIT 25`, [workspaceId, now, limits.auto_domains]);
       const plans: Plan[] = [];
       for (const candidate of candidates.rows) {
-        const plan = await this.insertUpdate(client, workspaceId, candidate.channel_id, now);
+        const plan = await this.insertUpdate(client, workspaceId, candidate.channel_id, now,undefined,limits);
         if (plan) plans.push(plan);
       }
       // Imported channels take what capacity the updates left, oldest first.
-      plans.push(...await this.admitImports(client, workspaceId, now));
+      plans.push(...await this.admitImports(client, workspaceId, now,limits));
       return plans;
     });
   }
@@ -308,10 +317,10 @@ export class Store {
   }
   async updates(principal: Principal, limit=20, offset=0, filter: { state?: string; search?: string } = {}) {
     requireRole(principal, 'reader', 'operator');
-    return readUpdates(this.pool, principal.workspace_id, this.updateLimits, toPlan, limit, offset, filter);
+    return readUpdates(this.pool, principal.workspace_id, (await this.settings(this.pool,principal.workspace_id)).settings.update, toPlan, limit, offset, filter);
   }
   private async insertUpdate(client: PoolClient, workspace: string, channelId: string, now: Date,
-    manual?: { request_id: string; expected_version: number; domains?: Domain[]; requestHash: string }): Promise<Plan | null> {
+    manual?: { request_id: string; expected_version: number; domains?: Domain[]; requestHash: string }, scanLimits?:UpdateLimits): Promise<Plan | null> {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('channel-plan:' || $1 || ':' || $2))", [workspace, channelId]);
     const channel = (await client.query('SELECT * FROM control.channel_overview WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE', [workspace, channelId])).rows[0];
     if (!channel) throw new StoreError('NOT_FOUND', 'Channel not found', 404);
@@ -325,7 +334,8 @@ export class Store {
     const clocks = (await client.query('SELECT * FROM control.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 ORDER BY clock', [workspace, channelId])).rows;
     const utcStart = Date.parse(now.toISOString().slice(0, 10));
     const due = clocks.filter(k => new Date(k.due_at).getTime() <= now.getTime());
-    const domains = manual?.domains ?? CLOCK_NAMES.filter(d => due.some(k => k.clock === d && (manual || (this.updateLimits.auto_domains.includes(d) &&
+    const limits = scanLimits ?? (await this.settings(client,workspace)).settings.update;
+    const domains = manual?.domains ?? CLOCK_NAMES.filter(d => due.some(k => k.clock === d && (manual || (limits.auto_domains.includes(d) &&
       (!k.last_scheduled_at || new Date(k.last_scheduled_at).getTime() < utcStart) && (!k.last_attempt_at || new Date(k.last_attempt_at).getTime() < utcStart)))));
     if (!domains.length) { if (manual) throw new StoreError('CONFLICT', 'No channel domain is due; choose a domain explicitly'); return null; }
     const counts = (await client.query(`SELECT count(*) FILTER(WHERE status IN ('QUEUED','RUNNING','WAITING'))::int AS active,
@@ -333,7 +343,6 @@ export class Store {
       count(*) FILTER(WHERE plan_kind='UPDATE' AND created_at>=date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
         AND created_at<((date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC')+interval '1 day') AT TIME ZONE 'UTC'))::int AS daily
       FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube'`, [workspace, now])).rows[0]!;
-    const limits = this.updateLimits;
     if (counts.active >= limits.max_active_plans || counts.daily >= limits.daily_plan_limit || (domains.includes('AGENT') && counts.agent >= limits.max_agent_plans)) return null;
     const previous = (await client.query('SELECT frozen_input FROM control.plans WHERE plan_id=$1', [channel.latest_plan_id])).rows[0]!.frozen_input as FrozenInput;
     if (previous.source_mode !== 'youtube') throw new StoreError('INVALID_REQUEST', 'Only real channels can be updated', 400);
@@ -451,13 +460,14 @@ export class Store {
       if (old && old.plan_id !== plan.plan_id) throw new StoreError('CONFLICT', 'Permit identity belongs to another plan');
       if (old && old.quota_day !== budget.day) throw new StoreError('CONFLICT', 'Permit belongs to a previous quota day');
       const reserved = reservation && reservation.quota_day === budget.day && reservation.remaining > 0;
-      const granted = !!old || (reserved ? budget.used < this.updateLimits.api_daily_limit : budget.used + budget.reserved < this.updateLimits.api_daily_limit);
+      const limits=(await this.settings(client,principal.workspace_id)).settings.update;
+      const granted = !!old || (reserved ? budget.used < limits.api_daily_limit : budget.used + budget.reserved < limits.api_daily_limit);
       if (granted && !old) {
         await client.query('INSERT INTO control.data_api_permits(workspace_id,request_id,plan_id,quota_day,granted_at,endpoint) VALUES($1,$2,$3,$4,$5,$6)', [principal.workspace_id, command.request_id, plan.plan_id, budget.day, now, command.endpoint ?? null]);
         await client.query('UPDATE control.data_api_budget SET used_units=used_units+1,reserved_units=reserved_units-$3 WHERE workspace_id=$1 AND quota_day=$2', [principal.workspace_id, budget.day, reserved ? 1 : 0]);
         if (reserved) await client.query('UPDATE control.plan_api_reservations SET remaining=remaining-1 WHERE plan_id=$1', [plan.plan_id]);
       }
-      return { granted, quota_day: budget.day, reset_at: budget.reset_at, used_units: budget.used + (granted && !old ? 1 : 0), limit: this.updateLimits.api_daily_limit };
+      return { granted, quota_day: budget.day, reset_at: budget.reset_at, used_units: budget.used + (granted && !old ? 1 : 0), limit: limits.api_daily_limit };
     });
   }
   /** A permitted request failed: record why, once (the console's failure breakdown). */
@@ -473,7 +483,7 @@ export class Store {
   }
   async dataApiSummary(principal: Principal, now = new Date(),currentOnly=false): Promise<DataApiSummary> {
     requireRole(principal, 'reader', 'operator');
-    return readDataApiSummary(this.pool, principal.workspace_id, this.updateLimits.api_daily_limit, now,currentOnly);
+    return readDataApiSummary(this.pool, principal.workspace_id, (await this.settings(this.pool,principal.workspace_id)).settings.update.api_daily_limit, now,currentOnly);
   }
   async agentTasks(principal: Principal, limit = 20, offset = 0, state?: string): Promise<Page<AgentTask>> {
     requireRole(principal, 'reader', 'operator');
@@ -846,12 +856,12 @@ export class Store {
     return page(rows.rows.map(r => ({...r.heartbeat,last_heartbeat_at:iso(r.last_heartbeat_at),stale:r.stale,proxy_status:r.heartbeat.collector ? 'CONFIGURED' : 'NOT_CONFIGURED'} as Worker)),limit,offset);
   }
   async failures(principal:Principal,limit=20,offset=0,state?:string) {
-    requireRole(principal,'reader','operator');return listFailures(this.pool,principal.workspace_id,limit,offset,state,this.discoveryLimits.enabled);
+    requireRole(principal,'reader','operator');return listFailures(this.pool,principal.workspace_id,limit,offset,state,(await this.settings(this.pool,principal.workspace_id)).settings.discovery.enabled);
   }
-  async failure(principal:Principal,id:string) {requireRole(principal,'reader','operator','analytics');return getFailure(this.pool,principal.workspace_id,id,this.discoveryLimits.enabled);}
+  async failure(principal:Principal,id:string) {requireRole(principal,'reader','operator','analytics');return getFailure(this.pool,principal.workspace_id,id,(await this.settings(this.pool,principal.workspace_id)).settings.discovery.enabled);}
   async reportFailure(principal:Principal,raw:unknown) {requireRole(principal,'analytics');return this.tx(c=>reportFailure(c,principal,raw));}
   async commandFailure(principal:Principal,id:string,raw:FailureCommand) {
-    requireRole(principal,'operator');return this.tx(c=>commandFailure(c,principal,id,raw,this.discoveryLimits.enabled,async(client,r,command)=>{
+    requireRole(principal,'operator');return this.tx(async c=>commandFailure(c,principal,id,raw,(await this.settings(c,principal.workspace_id)).settings.discovery.enabled,async(client,r,command)=>{
       const old=await this.planRow(client,principal,r.plan_id),now=new Date();
       if(old.plan_kind==='UPDATE') {
         const channel=(await client.query('SELECT * FROM control.channels WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[principal.workspace_id,old.channel_id])).rows[0];
@@ -953,11 +963,12 @@ export class Store {
     });
   }
   private async management(client: PoolClient | Pool, channel: QueryResultRow): Promise<ChannelManagement> {
+    const limits=(await this.settings(client,channel.workspace_id)).settings.update;
     // A removed channel's clocks are stale history; only managed and paused channels show them.
     const clocks = ['managed','paused'].includes(channel.management_state) ? (await client.query('SELECT * FROM control.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 AND clock=ANY($3::text[])',[channel.workspace_id,channel.channel_id,CLOCK_NAMES])).rows : [];
     const order = (c: string) => CLOCK_NAMES.indexOf(c as ClockName);
     return { state:channel.management_state ?? null, version:channel.management_version ?? 0, changed_at:channel.management_changed_at ? iso(channel.management_changed_at) : null,
-      auto_domains:this.updateLimits.enabled ? CLOCK_NAMES.filter(d => this.updateLimits.auto_domains.includes(d)) : [],
+      auto_domains:limits.enabled ? CLOCK_NAMES.filter(d => limits.auto_domains.includes(d)) : [],
       clocks:clocks.sort((a,b) => order(a.clock)-order(b.clock)).map(k => ({ clock:k.clock, due_at:iso(k.due_at), retry_at:k.retry_at ? iso(k.retry_at) : null, next_due_at:iso(k.retry_at ?? k.due_at),
         interval_days:k.interval_days, reasons:k.reasons?.length ? k.reasons : [k.reason], policy_version:k.policy_version, last_success_at:k.last_success_at ? iso(k.last_success_at) : null,
         last_attempt_at:k.last_attempt_at ? iso(k.last_attempt_at) : null, last_plan_id:k.last_plan_id ?? null, override_days:k.override_days ?? null })) };
@@ -1182,6 +1193,9 @@ export class Store {
       UNION ALL SELECT 'telemetry_outbox','UNARCHIVED',count(*)::float8 FROM telemetry.outbox WHERE workspace_id=$1 AND archived_at IS NULL
       UNION ALL SELECT 'oldest_unarchived_seconds','UNARCHIVED',coalesce(extract(epoch FROM clock_timestamp()-min(created_at)),0)::float8 FROM telemetry.outbox WHERE workspace_id=$1 AND archived_at IS NULL
       UNION ALL SELECT 'failure_evidence','PENDING',count(*)::float8 FROM control.failures WHERE workspace_id=$1 AND evidence_state='PENDING'`,[workspaceId]);
-    return result.rows as Array<{metric:string;state:string;value:number}>;
+    const config=await this.settings(this.pool,workspaceId);
+    return [...result.rows,{metric:'config_threshold',state:'archive_delay_seconds',value:config.settings.alerts.archive_delay_seconds},
+      {metric:'config_threshold',state:'evidence_pending_count',value:config.settings.alerts.evidence_pending_count},
+      {metric:'config_version',state:'PUBLISHED',value:config.version}] as Array<{metric:string;state:string;value:number}>;
   }
 }

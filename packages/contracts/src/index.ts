@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {ProxyPolicySchema,type ProxyPolicy} from './proxy-policy.ts';
 import { CLOCK_NAMES, OVERRIDE_DAYS, type ClockName } from './clocks.ts';
 export { CLOCK_NAMES, CLOCK_POLICY_VERSION, OVERRIDE_DAYS, MANUAL_OVERRIDE_REASON, BOOTSTRAP_BASELINE_REASON, type ClockName } from './clocks.ts';
 
@@ -443,14 +444,15 @@ export const ProxyObservationSchema = z.strictObject({
   requests_total: Tally, failures_total: Tally, latency_ms: z.number().int().nonnegative().max(600_000).nullable(),
 });
 export const ProxySyncRequestSchema = z.strictObject({
+  config_version:z.number().int().nonnegative().optional(),
   node_boot_id: z.string().regex(/^[A-Za-z0-9-]{8,64}$/), report_sequence: z.number().int().nonnegative(),
   observed_at: Timestamp, observations: z.array(ProxyObservationSchema).max(MAX_PROXIES_PER_SERVER),
 });
 export type ProxySyncRequest = z.infer<typeof ProxySyncRequestSchema>;
 /** `tls_insecure`: an HTTPS proxy whose own certificate is not verified (only credential-free endpoints; the tunnelled TLS to the target is always verified). */
 export interface ProxyAssignment { proxy_id: string; generation: number; protocol: 'http' | 'https' | 'socks5'; host: string; port: number; username: string | null; password: string | null; kind: 'static' | 'rotating'; max_concurrency: number; tls_insecure: boolean; egress_country?: string | null; }
-export interface ProxySyncResponse { server_id: string; lease_expires_at: string; assignments: ProxyAssignment[]; }
-export const ProxySyncResponseSchema: z.ZodType<ProxySyncResponse> = z.strictObject({ server_id: IdSchema, lease_expires_at: Timestamp, assignments: z.array(z.strictObject({
+export interface ProxySyncResponse { server_id: string; lease_expires_at: string; assignments: ProxyAssignment[]; configuration?:{version:number;policy:ProxyPolicy}; }
+export const ProxySyncResponseSchema: z.ZodType<ProxySyncResponse> = z.strictObject({configuration:z.strictObject({version:z.number().int().nonnegative(),policy:ProxyPolicySchema}).optional(), server_id: IdSchema, lease_expires_at: Timestamp, assignments: z.array(z.strictObject({
   proxy_id: z.uuid(), generation: z.number().int().nonnegative(), protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: z.number().int(), username: z.string().nullable(),
   password: z.string().nullable(), kind: z.enum(['static', 'rotating']), max_concurrency: z.number().int(), tls_insecure: z.boolean(), egress_country: z.string().regex(/^[A-Z]{2}$/).nullable().optional() })).max(MAX_PROXIES_PER_SERVER) });
 /** Subscription source: an HTTPS URL listing endpoints (host:port or scheme://[user:pass@]host:port per line), refreshed on a schedule. */
