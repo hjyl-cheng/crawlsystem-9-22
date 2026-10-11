@@ -1,0 +1,97 @@
+{
+  "result": "PASSED",
+  "accepted_at": "2026-10-11T09:59:29.337Z",
+  "deployed_revision": "5b8423b7b2ea297b4328b7583f94004adcca8a51",
+  "source_schema": 37,
+  "settings_version": 5,
+  "legacy_business_tables": 64,
+  "checks": {
+    "typecheck": "PASSED",
+    "console_build": "PASSED",
+    "integration_passed": 38,
+    "historical_bootstrap_passed_separately": 1,
+    "parser_passed": 5,
+    "original_raw_offline_replay": "PASSED",
+    "permissions": "PASSED",
+    "workspace_isolation": "PASSED",
+    "browser_page_errors": 0,
+    "public_status": 200,
+    "layouts": [1920, 390],
+    "candidate_waiting_exhausted_cancelled_labels": "read-only browser response fixtures",
+    "duplicate_active_retry_plans": 0
+  },
+  "retry_policy": {
+    "max_auto_retries": 3,
+    "backoff_minutes": [5, 15, 60],
+    "eligible_codes": ["UNAVAILABLE", "INTERNAL_ERROR", "BUDGET_EXHAUSTED"]
+  },
+  "real_completed_retry": {
+    "channel_id": "UCBasfqywokm9AQh3JXpFCcw",
+    "original_plan_id": "f51a2921-83d1-4d9d-a642-68ec269c91ea",
+    "original_status": "FAILED",
+    "retry_plan_id": "d979b685-6204-4c3c-9e53-a8c383bc2171",
+    "retry_status": "COMPLETED",
+    "auto_retry_count": 1,
+    "applied_domains": ["ABOUT", "VIDEO", "AGENT"],
+    "stored_videos": 30,
+    "original_failure_state": "RESOLVED",
+    "delivery_id": "3f95c8e3-7364-4086-952e-09bc6b273009",
+    "delivery_status": "DELIVERED",
+    "qualification_preserved": true
+  },
+  "historical_retry_results": [
+    {
+      "channel_id": "UCQm0f2MItHBDSLJ0GL4OaqA",
+      "auto_retry_count": 1,
+      "state": "failed",
+      "code": "UNAVAILABLE",
+      "next_retry_at": "2026-10-11T10:07:10.934Z"
+    },
+    {
+      "channel_id": "UCzoP7l5bzSzi2gUUNn0I79w",
+      "auto_retry_count": 1,
+      "state": "failed",
+      "code": "UNAVAILABLE",
+      "next_retry_at": "2026-10-11T10:08:40.511Z",
+      "search_run_id_preserved": "f055ef96-bd17-4152-b260-7fe7b2698104",
+      "min_subscribers": 1000,
+      "override": false
+    },
+    {
+      "channel_id": "UCUp6wodtd6vPPj1ZmFfVoIQ",
+      "auto_retry_count": 0,
+      "state": "failed",
+      "code": "NOT_FOUND",
+      "blocked_reason": "non_retryable"
+    }
+  ],
+  "parser_verification": {
+    "failure_id": "4acf3940-e4ed-4258-9a3f-b0f1d94f810d",
+    "unit_id": "U2fI2EtbsM4",
+    "source_sha256": "b1e360cabf407250d38f1c34366dbbc03382a6e5f43c16bfb002845054e21867",
+    "captured_responses": 3,
+    "checked_fields": ["source_content_id", "title", "published_at", "content_type", "duration_seconds", "view_count"],
+    "production_writes_from_offline_verification": 0,
+    "boundary": "Successful live replacement completed before the raw-parser patch rollout; the exact previously blocked raw unit was verified offline, and the parser fix was then deployed."
+  },
+  "runtime": {
+    "before_at": "2026-10-11T09:27:18.001Z",
+    "after_at": "2026-10-11T09:59:29.337Z",
+    "videos_before": 50680,
+    "videos_after": 50904,
+    "completed_full_before": 1766,
+    "completed_full_after": 1775,
+    "delivered_before": 1834,
+    "delivered_after_snapshot": 1842,
+    "delivered_final": 1843,
+    "pending_final": 0,
+    "failed_deliveries_final": 0,
+    "cdc_connector": "RUNNING",
+    "replication_slot_active": true,
+    "postgres_comment_bodies": 0,
+    "search_admission_updates_enabled": true,
+    "changed_workloads": ["control/control-api-preview", "control/intent-dispatcher", "crawler/raw-parser"],
+    "cloudflare_tunnel_pid": 1882,
+    "console_original_dirty_file_sha256": "57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709"
+  }
+}

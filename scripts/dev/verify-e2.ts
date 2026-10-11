@@ -7,7 +7,9 @@ import {issueToken,loadSigningKey} from '@crawlsystem/http/auth';
 import {ChannelImportsSchema} from '@crawlsystem/contracts';
 const dir='.runtime/e2',origin='http://127.0.0.1:18103',workspace='m1-main',pool=createPool();
 const bootstrap=JSON.parse(readFileSync(dir+'/bootstrap.json','utf8'));
-const eligible=bootstrap.failures.filter((r:any)=>r.retry_at && !r.retry_blocked_reason),ids=eligible.map((r:any)=>r.channel_id);
+const eligible=bootstrap.failures.filter((r:any)=>r.retry_at && !r.retry_blocked_reason);
+const additional=(await pool.query("SELECT channel_id FROM control.channel_imports WHERE workspace_id=$1 AND auto_retry_count>0",[workspace])).rows;
+const ids=[...new Set<string>([...eligible.map((r:any)=>r.channel_id),...additional.map(r=>r.channel_id)])];
 const key=loadSigningKey(),token=await issueToken({subject:'e2-verification',workspace_id:workspace,role:'operator'},key,600),headers={authorization:'Bearer '+token};
 const get=async(path:string)=>{const r=await fetch(origin+'/api'+path,{headers,signal:AbortSignal.timeout(15000)});assert.equal(r.status,200);return r.json();};
 const browser=await chromium.launch({headless:true}),errors:string[]=[];let phase='api';
@@ -50,10 +52,14 @@ try{
     await setTimeout(5000);
   }
   const recovered=live.find(r=>r.auto_retry_count>0 && r.state==='done');assert.ok(recovered,'a real automatic retry must finish collecting');
-  const original=eligible.find((r:any)=>r.channel_id===recovered.channel_id);assert.notEqual(recovered.plan_id,original.plan_id);assert.equal(recovered.status,'COMPLETED');assert.equal(recovered.applied_domains,3);assert.ok(recovered.videos>0);
+  const original=eligible.find((r:any)=>r.channel_id===recovered.channel_id)??(await pool.query(`SELECT channel_id,plan_id FROM control.plans WHERE workspace_id=$1 AND channel_id=$2 AND status='FAILED'
+    AND source_revision<(SELECT source_revision FROM control.plans WHERE plan_id=$3) ORDER BY source_revision DESC LIMIT 1`,[workspace,recovered.channel_id,recovered.plan_id])).rows[0];
+  assert.ok(original);assert.notEqual(recovered.plan_id,original.plan_id);assert.equal(recovered.status,'COMPLETED');assert.equal(recovered.applied_domains,3);assert.ok(recovered.videos>0);
   const old=(await pool.query("SELECT status,frozen_input->'discovery_qualification' qualification FROM control.plans WHERE plan_id=$1",[original.plan_id])).rows[0];assert.equal(old.status,'FAILED');assert.deepEqual(recovered.qualification,old.qualification);
   const offline=JSON.parse(readFileSync(dir+'/offline-replay.json','utf8'));
-  const blocker=(await pool.query('SELECT p.plan_id,p.status,f.state AS failure_state FROM control.plans p JOIN control.failures f USING(plan_id) WHERE f.failure_id=$1',[offline.failure_id])).rows[0];assert.equal(blocker.status,'COMPLETED');assert.equal(blocker.failure_state,'RESOLVED');
+  const blocker=(await pool.query(`SELECT p.plan_id,p.status,f.state AS failure_state,f.retry_plan_id,r.status AS retry_status FROM control.plans p
+    JOIN control.failures f USING(plan_id) LEFT JOIN control.plans r ON r.plan_id=f.retry_plan_id WHERE f.failure_id=$1`,[offline.failure_id])).rows[0];
+  assert.equal(blocker.status,'FAILED');assert.equal(blocker.retry_status,'COMPLETED');assert.equal(blocker.failure_state,'RESOLVED');
   const duplicates=(await pool.query("SELECT channel_id,count(*)::int n FROM control.plans WHERE workspace_id=$1 AND channel_id=ANY($2::text[]) AND status IN ('QUEUED','RUNNING','WAITING') GROUP BY channel_id HAVING count(*)>1",[workspace,ids])).rows;assert.equal(duplicates.length,0);
   const publicPage=await fetch('https://controversy-roughly-kiss-genealogy.trycloudflare.com/channels',{signal:AbortSignal.timeout(30000)});assert.equal(publicPage.status,200);assert.equal(errors.length,0);
   writeFileSync(dir+'/evidence.json',JSON.stringify({result:'PASSED',at:new Date().toISOString(),schema:37,backoff_minutes:[5,15,60],max_auto_retries:3,permissions:true,workspace_isolation:true,pages,ui_retry_labels_verified_with_readonly_fixtures:true,page_errors:errors,public_status:200,original,recovered,live,blocker_recovery:blocker,offline_replay:offline,duplicate_active_plans:0},null,2)+'\n',{mode:0o600});
