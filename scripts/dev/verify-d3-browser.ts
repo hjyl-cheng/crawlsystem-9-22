@@ -24,8 +24,13 @@ try{
   phase='login';await page.goto(origin+'/users');await page.getByLabel('账号',{exact:true}).fill(name);await page.getByLabel('密码',{exact:true}).fill(password);await page.getByRole('button',{name:'进入控制台'}).click();await expect(page.locator('.user-list tbody tr')).toHaveCount(1);
   await expect(page.locator('.user-events')).toContainText('已拒绝 · 401');await expect(page.locator('.user-events')).toContainText('成功');
   await page.getByRole('tab',{name:'登录历史',exact:true}).click();await expect(page.locator('.user-detail .audit-history tbody tr')).toHaveCount(2);
+  await page.screenshot({path:dir+'/login-history.png',fullPage:true});
   phase='command';const commandId=randomUUID();
-  const rejected=await page.request.post(origin+'/api/v1/workers/'+randomUUID()+'/pause',{headers:{origin,'x-console-request':'1'},data:{expected_version:1,reason:'D3 隔离空间验证不存在的 Worker',command_id:commandId}});assert.equal(rejected.status(),404);
+  // Execute inside the browser so its Secure localhost cookie follows the same
+  // policy as UI commands; Playwright's APIRequestContext does not share that policy.
+  const rejected=await page.evaluate(async({commandId,id})=>{
+    const r=await fetch('/api/v1/workers/'+id+'/pause',{method:'POST',credentials:'same-origin',headers:{'x-console-request':'1','content-type':'application/json'},body:JSON.stringify({expected_version:1,reason:'D3 隔离空间验证不存在的 Worker',command_id:commandId})});return r.status;
+  },{commandId,id:randomUUID()});evidence.command_http_status=rejected;assert.equal(rejected,404);
   await page.getByRole('button',{name:'刷新记录',exact:true}).click();await page.getByLabel('记录类型',{exact:true}).selectOption('COMMAND');await expect(page.locator('.user-events')).toContainText('已拒绝 · 404');
   const auditGet=async(extra='')=>{const r=await fetch(origin+'/api/v1/console/audit?limit=25'+extra,{headers,signal:AbortSignal.timeout(15000)});assert.equal(r.status,200);return ConsoleAuditPageSchema.parse(await r.json());};
   const records=await auditGet();assert.ok(records.items.some(e=>e.command_id===commandId&&e.http_status===404));evidence.records=records;
@@ -36,6 +41,9 @@ try{
   const other=await issueToken({subject:'other',workspace_id:'another-d3-workspace',role:'operator'},key,600);
   const isolated=await fetch(origin+'/api/v1/console/audit?actor='+name,{headers:{authorization:'Bearer '+other}});assert.equal(ConsoleAuditPageSchema.parse(await isolated.json()).items.length,0);evidence.workspace_isolation=true;
   for(const role of ['reader','worker'] as const){const t=await issueToken({subject:'d3-'+role,workspace_id:workspace,role},key,600);for(const path of ['/v1/console/audit','/v1/console/logins/summary']){const r=await fetch(origin+'/api'+path,{headers:{authorization:'Bearer '+t}});assert.equal(r.status,403);}}evidence.reader_worker_read_status=403;
+  const reader=await issueToken({subject:'d3-reader',workspace_id:workspace,role:'reader'},key,600);
+  const denied=await fetch(origin+'/api/v1/workers/'+randomUUID()+'/pause',{method:'POST',headers:{authorization:'Bearer '+reader,'content-type':'application/json'},body:JSON.stringify({expected_version:1,reason:'D3 只读权限验证',command_id:randomUUID()})});assert.equal(denied.status,403);
+  assert.ok((await auditGet('&actor=d3-reader')).items.some(e=>e.outcome==='REJECTED'&&e.http_status===403));evidence.reader_write_audited=true;
   const summaryResponse=await fetch(origin+'/api/v1/console/logins/summary',{headers});const summary=ConsoleLoginSummarySchema.parse(await summaryResponse.json());assert.equal(summary.points.at(-1)!.success,1);assert.equal(summary.points.at(-1)!.rejected,1);evidence.login_summary=summary;
   phase='layouts';const production=await issueToken({subject:'d3-layout',workspace_id:'m1-main',role:'operator'},key,600);
   const live=await browser.newPage({viewport:{width:1920,height:937},extraHTTPHeaders:{authorization:'Bearer '+production}});live.on('pageerror',e=>errors.push(e.name));await live.goto(origin+'/users');await expect(live.locator('.user-list tbody tr')).not.toHaveCount(0);await expect(live.locator('.audit-pager').first()).toBeVisible();

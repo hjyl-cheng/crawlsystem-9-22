@@ -53,3 +53,9 @@
   .dashboard.users-page .user-list, .dashboard.users-page .user-detail, .dashboard.users-page .login-trend, .dashboard.users-page .user-events { grid-column: 1 / -1; min-height: 300px; }
   .user-list .panel-heading, .user-filters { flex-wrap: wrap; }
 }
+@media (max-width:680px){
+  .users-page .discover-kpis {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .users-page .discover-kpi {min-height:104px;padding:12px;gap:8px;}
+  .users-page .kpi-icon {width:32px;height:32px;}
+  .users-page .kpi-foot {overflow-wrap:anywhere;}
+}

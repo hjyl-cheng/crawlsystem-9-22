@@ -33,7 +33,7 @@ export default function LineChart({ points, series, max, format = v => v.toLocal
       {points && <>
         {points.map((pt, i) => (i % every === 0 && i < points.length - (every > 1 ? 3 : 0)) || i === points.length - 1 ? <text key={pt.x} x={x(i)} y={pad.t + h + 15} textAnchor="middle" className="axis">{pt.x}</text> : null)}
         {series.map(s => <g key={s.key}>{s.area && points.every(p=>p.values[s.key]!==null) && <path d={`${path(s.key)}L${x(points.length - 1)},${y(0)}L${x(0)},${y(0)}Z`} fill={s.color} fillOpacity=".1"/>}<path d={path(s.key)} fill="none" stroke={s.color} strokeWidth="2"/></g>)}
-        {points.length===1&&series.filter(s=>points[0]!.values[s.key]!=null).map(s=><circle key={s.key} cx={x(0)} cy={y(points[0]!.values[s.key]!)} r="3" fill={s.color}/>)}
+        {series.flatMap(s=>points.map((pt,i)=>pt.values[s.key]!=null&&points[i-1]?.values[s.key]==null&&points[i+1]?.values[s.key]==null?<circle key={s.key+':'+i} cx={x(i)} cy={y(pt.values[s.key]!)} r="3" fill={s.color}/>:null))}
         {p && <><line x1={x(hover!)} x2={x(hover!)} y1={pad.t} y2={pad.t + h} className="crosshair"/>{series.filter(s=>p.values[s.key]!==null).map(s => <circle key={s.key} cx={x(hover!)} cy={y(p.values[s.key] ?? 0)} r="4" fill={s.color} stroke="#fff" strokeWidth="2"/>)}</>}
       </>}
     </svg>}
