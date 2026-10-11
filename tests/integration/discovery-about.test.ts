@@ -12,9 +12,9 @@ import {PgSink} from '../../apps/pg-sink/src/sink.ts';
 import {prepareDatabase} from './database-ready.ts';
 const pool=createPool(),sink=new PgSink(pool);
 before(async()=>{await prepareDatabase(pool);});after(async()=>{await pool.end();});
-async function setup(count=1) {
+async function setup(count=1,api_daily_limit=1) {
   const workspace='r4-'+randomUUID(),as=(role:Principal['role']):Principal=>({workspace_id:workspace,subject:role,role});
-  const store=new Store(pool,UpdateLimitsSchema.parse({api_daily_limit:1}),DiscoveryLimitsSchema.parse({api_reserve:10000,auto_admit:false}),{enabled:true});
+  const store=new Store(pool,UpdateLimitsSchema.parse({api_daily_limit}),DiscoveryLimitsSchema.parse({api_reserve:10000,auto_admit:false}),{enabled:true});
   await upsertBindings(pool,workspace,[{text:'teste',country:'BR',language:'pt',category:'Music',source_type:'MANUAL',source_ref:'r4-test'}]);
   const worker=as('worker'),op=as('operator'),reader=as('reader'),receiver=as('sink');
   const run=(await store.claimQueryRun(worker)).run!;
@@ -42,6 +42,50 @@ async function about(t:Awaited<ReturnType<typeof setup>>,plan:Plan,subscribers:n
   await sink.apply(fact);
   return {fact,plan:await t.store.confirmPipeline(t.receiver,plan.plan_id)};
 }
+
+test('automatic import retry retains the original About gate and stops when qualification rejects it',async()=>{
+  const t=await setup(1,10000),c=(await t.store.candidates(t.reader)).items[0]!;
+  await t.store.candidateCommand(t.op,c.channel_id,{action:'admit',expected_version:c.version});
+  const plan=(await t.store.scheduleUpdates(t.workspace))[0]!;
+  const failed={event_id:randomUUID(),execution_epoch:1,worker_id:'worker',phase:'ABOUT',kind:'FAILED' as const,domain:'ABOUT' as const,message:'Temporary outage',error_code:'UNAVAILABLE' as const};
+  await t.store.event(t.worker,plan.plan_id,failed);
+  await pool.query("UPDATE control.channel_imports SET retry_at=clock_timestamp()-interval '1 second' WHERE workspace_id=$1",[t.workspace]);
+  const retry=(await t.store.scheduleUpdates(t.workspace))[0]!;
+  const nextInput=(await t.store.getInput(t.worker,retry.plan_id)).input,oldInput=(await t.store.getInput(t.worker,plan.plan_id)).input;
+  assert.ok(nextInput.source_mode==='youtube' && oldInput.source_mode==='youtube');
+  assert.deepEqual(nextInput.discovery_qualification,oldInput.discovery_qualification);
+  assert.equal((await about(t,retry,999)).plan.status,'CANCELLED');
+  assert.equal((await t.store.channelImports(t.reader)).items[0]!.state,'rejected');
+  assert.deepEqual(await t.store.scheduleUpdates(t.workspace,new Date(Date.now()+86400000)),[]);
+});
+
+test('explicit candidate rejection wins over a pending automatic import retry',async()=>{
+  const t=await setup(1,10000),c=(await t.store.candidates(t.reader)).items[0]!;
+  await t.store.candidateCommand(t.op,c.channel_id,{action:'admit',expected_version:c.version});
+  const plan=(await t.store.scheduleUpdates(t.workspace))[0]!;
+  await t.store.event(t.worker,plan.plan_id,{event_id:randomUUID(),execution_epoch:1,worker_id:'worker',phase:'ABOUT',kind:'FAILED',domain:'ABOUT',message:'Temporary outage',error_code:'UNAVAILABLE'});
+  const updated=(await t.store.candidates(t.reader)).items[0]!;
+  await t.store.candidateCommand(t.op,c.channel_id,{action:'reject',expected_version:updated.version,reason:'Operator rejected this channel'});
+  assert.equal((await t.store.channelImports(t.reader)).items[0]!.retry!.blocked_reason,'candidate_rejected');
+  assert.deepEqual(await t.store.scheduleUpdates(t.workspace,new Date(Date.now()+86400000)),[]);
+});
+
+test('automatic and manual retry keep an explicit override and its original search provenance',async()=>{
+  const t=await setup(1,10000),c=(await t.store.candidates(t.reader)).items[0]!;
+  await t.store.candidateCommand(t.op,c.channel_id,{action:'admit',expected_version:c.version});
+  const first=(await t.store.scheduleUpdates(t.workspace))[0]!;await about(t,first,500);
+  const rejected=(await t.store.candidates(t.reader)).items[0]!;
+  await t.store.candidateCommand(t.op,c.channel_id,{action:'admit',expected_version:rejected.version,reason:'Approved exception'});
+  const override=(await t.store.scheduleUpdates(t.workspace))[0]!;await about(t,override,500);
+  await t.store.event(t.worker,override.plan_id,{event_id:randomUUID(),execution_epoch:1,worker_id:'worker',phase:'VIDEO',kind:'FAILED',domain:'VIDEO',message:'Temporary outage',error_code:'UNAVAILABLE'});
+  await pool.query("UPDATE control.channel_imports SET retry_at=clock_timestamp()-interval '1 second' WHERE workspace_id=$1",[t.workspace]);
+  const retry=(await t.store.scheduleUpdates(t.workspace))[0]!,input=(await t.store.getInput(t.worker,retry.plan_id)).input;
+  assert.ok(input.source_mode==='youtube');assert.equal(input.discovery_qualification!.override,true);assert.equal(input.discovery_qualification!.run_id,t.run.run_id);
+  await t.store.event(t.worker,retry.plan_id,{event_id:randomUUID(),execution_epoch:1,worker_id:'worker',phase:'ABOUT',kind:'FAILED',domain:'ABOUT',message:'Temporary outage',error_code:'UNAVAILABLE'});
+  const failed=(await t.store.candidates(t.reader)).items[0]!;await t.store.candidateCommand(t.op,c.channel_id,{action:'admit',expected_version:failed.version});
+  const manual=(await t.store.scheduleUpdates(t.workspace))[0]!,manualInput=(await t.store.getInput(t.worker,manual.plan_id)).input;
+  assert.ok(manualInput.source_mode==='youtube');assert.deepEqual(manualInput.discovery_qualification,input.discovery_qualification);
+});
 test('discovery deduplicates across pages, preserves replay and blocks another search until About decisions',async()=>{
   const t=await setup(3);
   const listed=await t.store.candidates(t.reader);assert.equal(listed.items.length,3);assert.ok(listed.items.every(c=>c.state==='DISCOVERED' && c.qualification?.state==='PENDING'));

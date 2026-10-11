@@ -573,10 +573,12 @@ export const ChannelImportResultSchema = z.strictObject({
 export type ChannelImportResult = z.infer<typeof ChannelImportResultSchema>;
 /** An imported channel: queued until admitted, then planned, then done or failed with its first collection. */
 export const ImportStateSchema = z.enum(['queued', 'planned', 'done', 'failed','rejected']);
-export const ChannelImportItemSchema = z.strictObject({ channel_id: YoutubeChannelIdSchema, state: ImportStateSchema, requested_at: Timestamp, plan_id: z.uuid().nullable(), title: z.string().nullable() });
+export const ImportRetrySchema = z.strictObject({ attempts:z.number().int().min(0).max(3),next_at:Timestamp.nullable(),blocked_reason:z.string().nullable(),last_code:z.string().nullable() });
+export const ChannelImportItemSchema = z.strictObject({ channel_id: YoutubeChannelIdSchema, state: ImportStateSchema, requested_at: Timestamp, plan_id: z.uuid().nullable(), title: z.string().nullable(),retry:ImportRetrySchema.optional() });
 export const ChannelImportsSchema = z.strictObject({
   counts: z.strictObject({ queued: Count, planned: Count, done: Count, failed: Count, rejected: Count.optional() }),
   items: z.array(ChannelImportItemSchema).max(100),
+  retry_counts:z.strictObject({waiting:Count,manual:Count}).optional(),
 });
 export type ChannelImports = z.infer<typeof ChannelImportsSchema>;
 
@@ -715,6 +717,7 @@ export const CandidateSchema = z.strictObject({
   found_count: Count, discovered_at: Timestamp,
   decided_by: z.string().max(200).nullable(), decided_at: Timestamp.nullable(), decision_reason: z.string().max(300).nullable(),
   import_state: z.enum(['queued', 'planned', 'done', 'failed', 'rejected']).nullable(), version: z.number().int().positive(),
+  import_retry:ImportRetrySchema.optional(),
 });
 export type Candidate = z.infer<typeof CandidateSchema>;
 export const CandidateSummarySchema = z.strictObject({

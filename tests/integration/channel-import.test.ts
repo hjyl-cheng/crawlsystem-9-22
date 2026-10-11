@@ -80,3 +80,90 @@ test('no import is admitted while the Data API quota cannot cover a first collec
   assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id), []);
   assert.deepEqual((await t.store.channelImports(t.reader)).counts.queued, 1);
 });
+
+async function failImport(t: ReturnType<typeof setup>, plan: Plan, code: 'UNAVAILABLE'|'NOT_FOUND'|'INVALID_REQUEST'|'BUDGET_EXHAUSTED' = 'UNAVAILABLE') {
+  const event = {event_id:randomUUID(),execution_epoch:plan.execution_epoch,worker_id:t.worker.subject,phase:'ABOUT',kind:'FAILED' as const,domain:'ABOUT' as const,message:'Integration dependency failure',error_code:code};
+  await t.store.event(t.worker,plan.plan_id,event);
+  return event;
+}
+const item = async (t:ReturnType<typeof setup>) => (await t.store.channelImports(t.reader)).items[0]!;
+async function dueRetry(t:ReturnType<typeof setup>) {
+  await pool.query("UPDATE control.channel_imports SET retry_at=clock_timestamp()-interval '1 second' WHERE workspace_id=$1 AND state='failed' AND retry_at IS NOT NULL",[t.op.workspace_id]);
+}
+
+test('failed imports back off 5/15/60 minutes, schedule exactly three retries and preserve the original failures',async()=>{
+  const t=setup({max_active_plans:1}),id=channelId();await importLines(t,[id]);
+  let plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;
+  const original=plan.plan_id;
+  for(let attempt=0;attempt<=3;attempt++) {
+    const started=Date.now(),event=await failImport(t,plan),failed=await item(t);
+    assert.equal(failed.retry!.attempts,attempt);
+    await t.store.event(t.worker,plan.plan_id,event);assert.deepEqual((await item(t)).retry,failed.retry,'duplicate terminal events do not reschedule');
+    assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id),[],'not before the backoff');
+    if(attempt===3){assert.equal(failed.retry!.next_at,null);assert.equal(failed.retry!.blocked_reason,'exhausted');break;}
+    const delay=Date.parse(failed.retry!.next_at!)-started,expected=[5,15,60][attempt]!*60000;
+    assert.ok(delay>=expected && delay<expected+10000);
+    await dueRetry(t);
+    const admitted=await Promise.all([t.store.scheduleUpdates(t.op.workspace_id),t.store.scheduleUpdates(t.op.workspace_id)]);
+    assert.equal(admitted.flat().length,1,'two dispatchers admit only one retry');
+    const next=admitted.flat()[0]!;assert.notEqual(next.plan_id,plan.plan_id);assert.equal(next.execution_epoch,1);
+    assert.equal((await t.store.getPlan(t.reader,plan.plan_id)).plan.status,'FAILED');plan=next;
+  }
+  assert.equal((await t.store.getPlan(t.reader,original)).plan.status,'FAILED');
+  assert.deepEqual((await importLines(t,[id])).items.map(i=>i.outcome),['queued']);assert.equal((await item(t)).retry!.attempts,0,'an explicit manual import starts a new bounded cycle');
+});
+
+test('successful automatic retry completes the import and resolves failures across its retry chain',async()=>{
+  const t=setup(),id=channelId();await importLines(t,[id]);
+  let plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;
+  for(let n=0;n<2;n++){await failImport(t,plan);await dueRetry(t);plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;}
+  await completeFirstCollection(t,plan);
+  assert.equal((await item(t)).state,'done');assert.equal((await item(t)).retry!.next_at,null);
+  assert.ok((await t.store.failures(t.reader)).items.every(f=>f.state==='RESOLVED'),'all linked failures are resolved only after the replacement completes');
+});
+
+test('cancelled and permanent-error imports stay manual; operators can explicitly queue them again',async()=>{
+  for(const code of ['cancelled','NOT_FOUND','INVALID_REQUEST'] as const){
+    const t=setup(),id=channelId();await importLines(t,[id]);const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;
+    if(code==='cancelled')await t.store.cancel(t.op,plan.plan_id,{command_id:randomUUID(),expected_version:plan.version});else await failImport(t,plan,code);
+    assert.equal((await item(t)).retry!.next_at,null);assert.equal((await item(t)).retry!.blocked_reason,code==='cancelled'?'cancelled':'non_retryable');
+    assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id,new Date(Date.now()+86400000)),[]);
+    assert.equal((await importLines(t,[id])).queued,1);
+  }
+});
+
+test('ignored failures stop the scheduled automatic retry',async()=>{
+  const t=setup();await importLines(t,[channelId()]);const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;await failImport(t,plan);
+  const failure=(await t.store.failures(t.reader)).items[0]!;
+  await t.store.commandFailure(t.op,failure.failure_id,{command_id:randomUUID(),expected_version:failure.version,action:'ignore',reason:'Operator closed this collection'});
+  assert.equal((await item(t)).retry!.blocked_reason,'ignored');assert.equal((await item(t)).retry!.next_at,null);
+  assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id,new Date(Date.now()+86400000)),[]);
+});
+
+test('the dispatcher repairs failures settled by an old API during rollout and keeps cancellation manual',async()=>{
+  for(const cancelled of [false,true]){
+    const t=setup();await importLines(t,[channelId()]);const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;
+    if(cancelled)await t.store.cancel(t.op,plan.plan_id,{command_id:randomUUID(),expected_version:plan.version});else await failImport(t,plan);
+    await pool.query('UPDATE control.channel_imports SET retry_at=NULL,retry_blocked_reason=NULL,last_failure_code=NULL WHERE workspace_id=$1',[t.op.workspace_id]);
+    assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id),[]);
+    assert.equal((await item(t)).retry!.attempts,0);
+    if(cancelled)assert.equal((await item(t)).retry!.blocked_reason,'cancelled');else assert.ok((await item(t)).retry!.next_at);
+  }
+});
+
+test('due retries wait for API budget, Agent capacity and the scheduler switch without spending retry attempts',async()=>{
+  const t=setup({max_active_plans:2,max_agent_plans:1});await importLines(t,[channelId()]);
+  const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;await failImport(t,plan);await dueRetry(t);
+  const config=await t.store.config(t.reader);
+  config.settings.discovery.api_reserve=0;
+  await pool.query('INSERT INTO control.runtime_settings(workspace_id,version,settings,operator) VALUES($1,1,$2,$3)',[t.op.workspace_id,config.settings,t.op.subject]);
+  for(const [field,value] of [['api_daily_limit',1],['enabled',false]] as const){
+    await pool.query('UPDATE control.runtime_settings SET settings=jsonb_set(settings,$2,$3::jsonb) WHERE workspace_id=$1',[t.op.workspace_id,['update',field],JSON.stringify(value)]);
+    assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id),[]);assert.equal((await item(t)).retry!.attempts,0);
+    await pool.query('UPDATE control.runtime_settings SET settings=jsonb_set(settings,$2,$3::jsonb) WHERE workspace_id=$1',[t.op.workspace_id,['update',field],JSON.stringify(field==='enabled'?true:10000)]);
+  }
+  const other=await t.store.createPlan(t.op,{request_id:randomUUID(),source_mode:'youtube',channel_id:channelId()} as never);
+  assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id),[],'Agent concurrency holds even with a free total plan slot');assert.equal((await item(t)).retry!.attempts,0);
+  await t.store.cancel(t.op,other.plan_id,{command_id:randomUUID(),expected_version:other.version});
+  assert.equal((await t.store.scheduleUpdates(t.op.workspace_id)).length,1);
+});

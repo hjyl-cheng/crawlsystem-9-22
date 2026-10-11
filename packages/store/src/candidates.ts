@@ -6,6 +6,7 @@ import {
 } from '@crawlsystem/contracts';
 import { DiscoveryError } from './discovery.ts';
 import { settleQualifiedRun } from './query-runs.ts';
+import { importRetry } from './import-retry.ts';
 
 /**
  * New discoveries and historical qualified candidates enter the bounded import queue,
@@ -20,7 +21,8 @@ async function queueImports(client: PoolClient, workspace: string, channelIds: s
   await client.query(`INSERT INTO control.channel_imports(workspace_id,channel_id,requested_by,request_id,discovery_qualification)
     SELECT $1,k.channel_id,$3,$4,CASE WHEN k.qualification_state IS NOT NULL THEN jsonb_build_object('run_id',k.first_run_id,'min_subscribers',k.min_subscribers,'policy_version','r4.about.v1','override',$5::boolean) END
     FROM control.channel_candidates k WHERE k.workspace_id=$1 AND k.channel_id=ANY($2::text[])
-    ON CONFLICT(workspace_id,channel_id) DO UPDATE SET state='queued',plan_id=NULL,requested_by=EXCLUDED.requested_by,request_id=EXCLUDED.request_id,discovery_qualification=EXCLUDED.discovery_qualification,requested_at=clock_timestamp(),updated_at=clock_timestamp()
+    ON CONFLICT(workspace_id,channel_id) DO UPDATE SET state='queued',plan_id=NULL,auto_retry_count=0,retry_at=NULL,retry_blocked_reason=NULL,last_failure_code=NULL,requested_by=EXCLUDED.requested_by,request_id=EXCLUDED.request_id,
+      discovery_qualification=CASE WHEN control.channel_imports.discovery_qualification->>'override'='true' THEN control.channel_imports.discovery_qualification ELSE EXCLUDED.discovery_qualification END,requested_at=clock_timestamp(),updated_at=clock_timestamp()
     WHERE control.channel_imports.state IN ('failed','rejected')`, [workspace, channelIds, requestedBy, randomUUID(),override]);
 }
 
@@ -49,6 +51,7 @@ export async function admitCandidates(client: PoolClient, workspace: string, lim
 
 export async function commandCandidate(client: PoolClient, workspace: string, actor: string, channelId: string, raw: unknown, now = new Date()): Promise<Candidate> {
   const command = CandidateCommandSchema.parse(raw);
+  await client.query("SELECT pg_advisory_xact_lock(hashtext('update-admission:' || $1))",[workspace]);
   const row = (await client.query(`SELECT k.state,k.version,k.qualification_state,k.first_run_id,i.state AS import_state FROM control.channel_candidates k
     LEFT JOIN control.channel_imports i ON i.workspace_id=k.workspace_id AND i.channel_id=k.channel_id WHERE k.workspace_id=$1 AND k.channel_id=$2 FOR UPDATE OF k`, [workspace, channelId])).rows[0];
   if (!row) throw new DiscoveryError('NOT_FOUND', 'Candidate not found');
@@ -72,6 +75,7 @@ export async function commandCandidate(client: PoolClient, workspace: string, ac
   }
   await client.query(`UPDATE control.channel_candidates SET state=$3,decided_by=$4,decided_at=$5,decision_reason=$6,version=version+1 WHERE workspace_id=$1 AND channel_id=$2`,
     [workspace, channelId, command.action === 'admit' ? 'ADMITTED' : 'REJECTED', actor, now, command.reason ?? null]);
+  if(command.action==='reject')await client.query("UPDATE control.channel_imports SET retry_at=NULL,retry_blocked_reason='candidate_rejected',updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2 AND state='failed'",[workspace,channelId]);
   if (command.action === 'reject' && row.qualification_state === 'PENDING') {
     await client.query("UPDATE control.channel_candidates SET qualification_state='REJECTED' WHERE workspace_id=$1 AND channel_id=$2",[workspace,channelId]);
     await settleQualifiedRun(client,workspace,row.first_run_id,now);
@@ -82,7 +86,7 @@ export async function commandCandidate(client: PoolClient, workspace: string, ac
 export interface CandidateFilter { channel_id?: string; state?: string; category?: string; search?: string }
 
 export async function listCandidates(client: PoolClient | Pool, workspace: string, filter: CandidateFilter, limit: number, offset: number): Promise<Candidate[]> {
-  const rows = (await client.query(`SELECT k.*,b.country AS found_country,b.category,t.text,i.state AS import_state,
+  const rows = (await client.query(`SELECT k.*,b.country AS found_country,b.category,t.text,i.state AS import_state,i.auto_retry_count,i.retry_at,i.retry_blocked_reason,i.last_failure_code,
       (SELECT count(*)::int FROM control.query_run_channels rc JOIN control.query_runs r USING (run_id) WHERE rc.channel_id=k.channel_id AND r.workspace_id=k.workspace_id) AS found_count
     FROM control.channel_candidates k JOIN control.query_bindings b ON b.binding_id=k.first_binding_id JOIN control.query_terms t ON t.term_id=b.term_id
     LEFT JOIN control.channel_imports i ON i.workspace_id=k.workspace_id AND i.channel_id=k.channel_id
@@ -98,7 +102,7 @@ export async function listCandidates(client: PoolClient | Pool, workspace: strin
     ...(r.qualification_state ? {qualification:{state:r.qualification_state,min_subscribers:r.min_subscribers}} : {}),
     found_by: { binding_id: r.first_binding_id, text: r.text, country: r.found_country, category: r.category }, found_count: r.found_count,
     discovered_at: iso(r.discovered_at), decided_by: r.decided_by, decided_at: iso(r.decided_at), decision_reason: r.decision_reason,
-    import_state: r.import_state, version: r.version }));
+    import_state: r.import_state, ...(r.import_state?{import_retry:importRetry(r)}:{}), version: r.version }));
 }
 
 export async function candidateSummary(pool: Pool, workspace: string, limits: DiscoveryLimits, now = new Date()): Promise<CandidateSummary> {

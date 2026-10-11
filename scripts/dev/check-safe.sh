@@ -97,6 +97,13 @@ case "${1:-}" in
   query-collection-refine) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/refine-b2.ts) ;;
   query-collection-runtime) command=(env K3S_CONFIG_FILE=/dev/null D3_RUNTIME_DIR=.runtime/b2 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
   backup-unit) command=(env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/ops -p 'test_backup*.py') ;;
+  import-retry-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 --test-skip-pattern='historical bootstrap' tests/integration/channel-import.test.ts tests/integration/candidates.test.ts tests/integration/update-scheduler.test.ts tests/integration/discovery-about.test.ts tests/integration/failure-analytics.test.ts) ;;
+  import-retry-bootstrap) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-name-pattern='historical bootstrap' tests/integration/failure-analytics.test.ts) ;;
+  import-retry-prepare) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-e2.ts) ;;
+  import-retry-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --e2-control-only) ;;
+  import-retry-deploy) command=(node --import tsx scripts/dev/deploy-e2.ts) ;;
+  import-retry-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-e2.ts) ;;
+  import-retry-runtime) command=(env K3S_CONFIG_FILE=/dev/null D3_RUNTIME_DIR=.runtime/e2 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
   backup-runtime) command=(env K3S_CONFIG_FILE=/dev/null D3_RUNTIME_DIR=.runtime/e1 node --env-file=.runtime/main.env --import tsx scripts/dev/verify-d2-runtime.ts "${@:2}") ;;
   backup-now) command=(sudo env KUBECTL_REMOTE_COMMAND_WEBSOCKETS=false CRAWLSYSTEM_INFRA_ROOT=/home/ubuntu/workspace/newcrawsystem/docs/crawlsystem-infra-a1-s3 python3 docs/crawlsystem-infra-a1-s3/scripts/local-backup.py) ;;
   backup-restore) command=(sudo env KUBECTL_REMOTE_COMMAND_WEBSOCKETS=false python3 docs/crawlsystem-infra-a1-s3/scripts/verify-local-restore.py "${@:2}") ;;

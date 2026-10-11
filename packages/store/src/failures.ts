@@ -53,6 +53,7 @@ export async function reportFailure(client:PoolClient,principal:Principal,raw:un
 }
 export async function commandFailure(client:PoolClient,principal:Principal,id:string,raw:FailureCommand,searchEnabled:boolean,restart:(client:PoolClient,row:QueryResultRow,command:FailureCommand)=>Promise<Plan>):Promise<Failure> {
   const input=FailureCommandSchema.parse(raw),hash=contentHash({id,...input});
+  await client.query("SELECT pg_advisory_xact_lock(hashtext('update-admission:' || $1))",[principal.workspace_id]);
   await client.query("SELECT pg_advisory_xact_lock(hashtext('failure-command:'||$1||':'||$2))",[principal.workspace_id,input.command_id]);
   const prior=(await client.query('SELECT command_hash,result FROM control.failure_commands WHERE workspace_id=$1 AND command_id=$2',[principal.workspace_id,input.command_id])).rows[0];
   if(prior) {if(prior.command_hash!==hash)throw new StoreError('CONFLICT','Command identity differs');return FailureSchema.parse(prior.result);}
@@ -66,6 +67,7 @@ export async function commandFailure(client:PoolClient,principal:Principal,id:st
   if(input.action==='ignore') {
     if(r.state==='RETRYING')throw new StoreError('CONFLICT','Wait for the requested retry to settle');
     await client.query("UPDATE control.failures SET state='IGNORED',reason=$3,decided_by=$4,resolved_at=clock_timestamp(),version=version+1 WHERE workspace_id=$1 AND failure_id=$2",[principal.workspace_id,id,input.reason,principal.subject]);
+    await client.query("UPDATE control.channel_imports SET retry_at=NULL,retry_blocked_reason='ignored',updated_at=clock_timestamp() WHERE workspace_id=$1 AND state='failed' AND (plan_id=$2 OR plan_id=$3)",[principal.workspace_id,r.plan_id,r.retry_plan_id]);
   }else {
     const reason=blocked(r,searchEnabled);if(reason)throw new StoreError('CONFLICT',reason);
     let newPlan:string|null=null;

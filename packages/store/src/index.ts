@@ -17,6 +17,7 @@ import { claimRun, completeRun, extendLease, failRun, recordPage, runPermit, run
 import { admitCandidates, candidateSummary, commandCandidate, listCandidates, type CandidateFilter } from './candidates.ts';
 import { apiBudget, estimateApiUnits, releaseApiReservation, schedulerState } from './update-budget.ts';
 import { readUpdates } from './update-view.ts';
+import { importRetry, settleImport, IMPORT_RETRY_MINUTES } from './import-retry.ts';
 import { nextChangeProbability, planRecentSampling, RECENT_SAMPLING } from './recent-sampling.ts';
 import { StepManifestSchema, PipelineFactSchema, type ObjectReference, type PipelineProgress } from '@crawlsystem/contracts/pipeline';
 import { CommentPageSchema, type CommentPage } from '@crawlsystem/contracts';
@@ -230,6 +231,7 @@ export class Store {
     requireRole(principal, 'operator');
     const command = ChannelImportSchema.parse(raw);
     return this.tx(async client => {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('update-admission:' || $1))", [principal.workspace_id]);
       const items: ChannelImportResult['items'] = [], seen = new Set<string>();
       for (const line of command.lines.map(l => l.trim()).filter(Boolean)) {
         const ref = parseChannelReference(line);
@@ -242,7 +244,7 @@ export class Store {
         const known = (await client.query('SELECT 1 FROM control.channel_overview WHERE workspace_id=$1 AND channel_id=$2 AND management_state IS NOT NULL', [principal.workspace_id, id])).rowCount;
         if (known) { items.push({ line, channel_id: id, outcome: 'known' }); continue; }
         const queued = await client.query(`INSERT INTO control.channel_imports(workspace_id,channel_id,requested_by,request_id) VALUES($1,$2,$3,$4)
-          ON CONFLICT(workspace_id,channel_id) DO UPDATE SET state='queued',plan_id=NULL,requested_by=EXCLUDED.requested_by,request_id=EXCLUDED.request_id,requested_at=clock_timestamp(),updated_at=clock_timestamp()
+          ON CONFLICT(workspace_id,channel_id) DO UPDATE SET state='queued',plan_id=NULL,auto_retry_count=0,retry_at=NULL,retry_blocked_reason=NULL,last_failure_code=NULL,requested_by=EXCLUDED.requested_by,request_id=EXCLUDED.request_id,requested_at=clock_timestamp(),updated_at=clock_timestamp()
           WHERE control.channel_imports.state='failed' RETURNING 1`, [principal.workspace_id, id, principal.subject, command.request_id]);
         items.push({ line, channel_id: id, outcome: queued.rowCount ? 'queued' : 'already_queued' });
       }
@@ -253,27 +255,60 @@ export class Store {
     requireRole(principal, 'reader', 'operator');
     const counts = (await this.pool.query(`SELECT count(*) FILTER(WHERE state='queued')::int AS queued,count(*) FILTER(WHERE state='planned')::int AS planned,
       count(*) FILTER(WHERE state='done')::int AS done,count(*) FILTER(WHERE state='failed')::int AS failed,count(*) FILTER(WHERE state='rejected')::int AS rejected FROM control.channel_imports WHERE workspace_id=$1`, [principal.workspace_id])).rows[0]!;
-    const items = (await this.pool.query(`SELECT i.channel_id,i.state,i.requested_at,i.plan_id,c.about->>'title' AS title FROM control.channel_imports i
+    const retryCounts = (await this.pool.query(`SELECT count(*) FILTER(WHERE state='failed' AND retry_at IS NOT NULL AND retry_blocked_reason IS NULL)::int waiting,
+      count(*) FILTER(WHERE state='failed' AND (retry_at IS NULL OR retry_blocked_reason IS NOT NULL))::int manual FROM control.channel_imports WHERE workspace_id=$1`, [principal.workspace_id])).rows[0]!;
+    const items = (await this.pool.query(`SELECT i.*,c.about->>'title' AS title FROM control.channel_imports i
       LEFT JOIN control.channel_overview c USING(workspace_id,channel_id) WHERE i.workspace_id=$1
       ORDER BY CASE i.state WHEN 'planned' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END,i.updated_at DESC,i.channel_id LIMIT 100`, [principal.workspace_id])).rows;
-    return ChannelImportsSchema.parse({ counts, items: items.map(r => ({ ...r, requested_at: iso(r.requested_at), title: r.title ?? null })) });
+    return ChannelImportsSchema.parse({ counts, retry_counts: retryCounts, items: items.map(r => ({ channel_id:r.channel_id,state:r.state,plan_id:r.plan_id,requested_at:iso(r.requested_at),title:r.title??null,retry:importRetry(r) })) });
   }
   /** First collections for queued imports, while active plans and the Data API quota allow (oldest first). */
   private async admitImports(client: PoolClient, workspace: string, now: Date, limits:UpdateLimits): Promise<Plan[]> {
     const plans: Plan[] = [];
-    const queue = (await client.query(`SELECT channel_id FROM control.channel_imports WHERE workspace_id=$1 AND state='queued' ORDER BY requested_at,channel_id LIMIT 10`, [workspace])).rows;
+    // An old API replica can settle a plan between migration and rollout. Classify
+    // those untouched failures once, with the same bounded delay and cancel guard.
+    await client.query(`WITH missed AS (
+      SELECT i.plan_id,p.status,i.auto_retry_count,e.data->>'error_code' code FROM control.channel_imports i
+      JOIN control.plans p USING(plan_id)
+      LEFT JOIN LATERAL (SELECT data FROM control.events WHERE plan_id=i.plan_id AND data->>'kind'='FAILED' ORDER BY created_at DESC,event_id DESC LIMIT 1) e ON true
+      WHERE i.workspace_id=$1 AND i.state='failed' AND i.retry_at IS NULL AND i.retry_blocked_reason IS NULL AND p.status IN ('FAILED','CANCELLED') LIMIT 10
+    ) UPDATE control.channel_imports i SET last_failure_code=m.code,
+      retry_blocked_reason=CASE WHEN m.status='CANCELLED' THEN 'cancelled' WHEN m.code IS NULL OR m.code NOT IN ('UNAVAILABLE','INTERNAL_ERROR','BUDGET_EXHAUSTED') THEN 'non_retryable' WHEN m.auto_retry_count>=3 THEN 'exhausted' END,
+      retry_at=CASE WHEN m.status='FAILED' AND m.code IN ('UNAVAILABLE','INTERNAL_ERROR','BUDGET_EXHAUSTED') AND m.auto_retry_count<3 THEN $2::timestamptz+((ARRAY[5,15,60])[m.auto_retry_count+1]*interval '1 minute') END,
+      updated_at=clock_timestamp() FROM missed m WHERE i.plan_id=m.plan_id AND i.state='failed' AND i.retry_at IS NULL AND i.retry_blocked_reason IS NULL`,[workspace,now]);
+    const queue = (await client.query(`SELECT channel_id FROM control.channel_imports WHERE workspace_id=$1 AND (state='queued' OR
+      state='failed' AND retry_at<=$2 AND retry_blocked_reason IS NULL AND auto_retry_count<3)
+      ORDER BY CASE state WHEN 'failed' THEN 0 ELSE 1 END,coalesce(retry_at,requested_at),channel_id LIMIT 10`, [workspace,now])).rows;
     for (const { channel_id } of queue) {
-      const active = (await client.query("SELECT count(*)::int AS n FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube' AND status IN ('QUEUED','RUNNING','WAITING')", [workspace])).rows[0]!.n as number;
-      if (active >= limits.max_active_plans) break;
+      const active = (await client.query("SELECT count(*)::int AS n,count(*) FILTER(WHERE 'AGENT'=ANY(required_domains))::int agent FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube' AND status IN ('QUEUED','RUNNING','WAITING')", [workspace])).rows[0]!;
+      if (active.n >= limits.max_active_plans || active.agent >= limits.max_agent_plans) break;
+      // Same channel -> candidate -> import order as manual plan creation and decisions.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('channel-plan:' || $1 || ':' || $2))", [workspace,channel_id]);
+      const candidate=(await client.query('SELECT state,qualification_state FROM control.channel_candidates WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[workspace,channel_id])).rows[0];
+      const queued=(await client.query('SELECT * FROM control.channel_imports WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[workspace,channel_id])).rows[0];
+      if (!queued || !['queued','failed'].includes(queued.state)) continue;
+      const retry=queued.state==='failed';
+      if (retry && (!queued.retry_at || new Date(queued.retry_at)>now || queued.retry_blocked_reason || queued.auto_retry_count>=IMPORT_RETRY_MINUTES.length)) continue;
+      const management=(await client.query('SELECT management_state FROM control.channels WHERE workspace_id=$1 AND channel_id=$2',[workspace,channel_id])).rows[0]?.management_state;
+      const ignored=retry && (await client.query("SELECT 1 FROM control.failures WHERE (plan_id=$1 OR retry_plan_id=$1) AND state='IGNORED'",[queued.plan_id])).rowCount;
+      const blocked=candidate?.state==='REJECTED'?'candidate_rejected':candidate?.state==='UNAVAILABLE'?'non_retryable'
+        : candidate && (candidate.state==='UNQUALIFIED' || candidate.qualification_state==='REJECTED') && !queued.discovery_qualification?.override ? 'qualification_rejected'
+        : management ? 'managed' : ignored ? 'ignored' : null;
+      if(blocked){await client.query(`UPDATE control.channel_imports SET retry_at=NULL,retry_blocked_reason=$3,
+        state=CASE WHEN state='queued' THEN CASE WHEN $3='managed' THEN 'done' ELSE 'rejected' END ELSE state END,
+        updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2`,[workspace,channel_id,blocked]);continue;}
       if ((await client.query("SELECT 1 FROM control.plans WHERE workspace_id=$1 AND channel_id=$2 AND status IN ('QUEUED','RUNNING','WAITING')", [workspace, channel_id])).rowCount) continue;
       const input = CreatePlanSchema.parse({ request_id: randomUUID(), source_mode: 'youtube', channel_id });
       if (!('source_mode' in input)) continue;
       const units = estimateApiUnits(input.required_domains, input.scope.video_limit), budget = await apiBudget(client, workspace, now, true);
       if (budget.used + budget.reserved + units > limits.api_daily_limit) break;
+      if(retry)await client.query("UPDATE control.channel_imports SET state='queued',auto_retry_count=auto_retry_count+1,retry_at=NULL WHERE workspace_id=$1 AND channel_id=$2",[workspace,channel_id]);
       const planId = randomUUID(), deadline = new Date(now.getTime() + 120 * 60_000).toISOString();
       const frozen = FrozenInputSchema.parse({ schema_version: CONTRACT_VERSION, source_mode: 'youtube', channel_id, required_domains: input.required_domains,
         scope: input.scope, reference_time: now.toISOString(), deadline_at: deadline, max_attempts: 3, ...(this.pipeline.enabled ? {pipeline_version:'r3.v1'} : {}) });
       const plan = await this.insertCreatedPlan(client, workspace, input, frozen, contentHash(input), planId, deadline, null);
+      if(retry)await client.query(`UPDATE control.failures SET state='RETRYING',retry_plan_id=$2,retry_at=$3,decided_by='auto-import',reason='失败导入自动重试',version=version+1
+        WHERE (plan_id=$1 OR retry_plan_id=$1) AND state='OPEN'`,[queued.plan_id,plan.plan_id,now]);
       await client.query('UPDATE control.data_api_budget SET reserved_units=reserved_units+$3 WHERE workspace_id=$1 AND quota_day=$2', [workspace, budget.day, units]);
       await client.query('INSERT INTO control.plan_api_reservations(plan_id,workspace_id,quota_day,remaining) VALUES($1,$2,$3,$4)', [plan.plan_id, workspace, budget.day, units]);
       await client.query("UPDATE control.channel_imports SET state='planned',plan_id=$3,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2", [workspace, channel_id, plan.plan_id]);
@@ -301,7 +336,7 @@ export class Store {
         const plan = await this.insertUpdate(client, workspaceId, candidate.channel_id, now,undefined,limits);
         if (plan) plans.push(plan);
       }
-      // Imported channels take what capacity the updates left, oldest first.
+      // Updates have priority, then due retries, then new imports oldest first.
       plans.push(...await this.admitImports(client, workspaceId, now,limits));
       return plans;
     });
@@ -885,7 +920,7 @@ export class Store {
         :{request_id:command.command_id,source_mode:'youtube',channel_id:frozen.channel_id,required_domains:frozen.required_domains,scope:frozen.scope};
       // The failed import follows its replacement plan; otherwise a completed retry
       // leaves the candidate permanently displaying the original import failure.
-      if(frozen.source_mode==='youtube')await client.query("UPDATE control.channel_imports SET state='queued',plan_id=NULL,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2 AND plan_id=$3 AND state='failed'",[principal.workspace_id,frozen.channel_id,old.plan_id]);
+      if(frozen.source_mode==='youtube')await client.query("UPDATE control.channel_imports SET state='queued',plan_id=NULL,auto_retry_count=0,retry_at=NULL,retry_blocked_reason=NULL,last_failure_code=NULL,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2 AND plan_id=$3 AND state='failed'",[principal.workspace_id,frozen.channel_id,old.plan_id]);
       return this.insertCreatedPlan(client,principal.workspace_id,input,frozen,contentHash(input),randomUUID(),deadline,null);
     }));
   }
@@ -1014,7 +1049,7 @@ export class Store {
    */
   private async settleClocks(client: PoolClient, plan: QueryResultRow, status: 'COMPLETED' | 'FAILED' | 'CANCELLED'): Promise<void> {
     await releaseApiReservation(client, plan.plan_id);
-    await client.query("UPDATE control.channel_imports SET state=$2,updated_at=clock_timestamp() WHERE plan_id=$1 AND state='planned'", [plan.plan_id, status === 'COMPLETED' ? 'done' : 'failed']);
+    await settleImport(client,plan,status);
     if ((plan.frozen_input as FrozenInput).source_mode !== 'youtube') return;
     const channel = (await client.query('SELECT management_state,about,agent FROM control.channel_overview WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[plan.workspace_id,plan.channel_id])).rows[0];
     if (!channel || channel.management_state === 'removed') return;

@@ -77,7 +77,9 @@ export default function Candidates() {
             <td><span className={`status-chip ${meta.tone}`}><i/>{meta.label}</span>
               {c.reason && <small className="cell-sub">{reasonText[c.reason]}</small>}
               {c.qualification && <small className="cell-sub">{c.qualification.state==='PENDING'?'首次频道资料采集后验证':c.qualification.state==='PASSED'?'订阅门槛已通过':'未通过订阅门槛'} · ≥{fmt(c.qualification.min_subscribers)}</small>}
-              {c.import_state && <small className="cell-sub">{importText[c.import_state]}</small>}
+              {c.import_state && <small className="cell-sub">{c.import_state==='failed' && c.import_retry?.next_at ? `等待自动重试 · ${time(c.import_retry.next_at)}` : importText[c.import_state]}</small>}
+              {c.import_retry && c.import_retry.attempts>0 && <small className="cell-sub">自动重试 {c.import_retry.attempts}/3{c.import_retry.blocked_reason==='exhausted'?' · 次数用尽，需人工处理':''}</small>}
+              {c.import_retry?.blocked_reason==='cancelled' && <small className="cell-sub">已人工取消，不自动重试</small>}
               {c.decided_by && c.decided_by !== 'auto' && <small className="cell-sub" title={c.decision_reason ?? ''}>{c.decided_by}{c.decision_reason ? `：${c.decision_reason}` : ''}</small>}</td>
             <td>{time(c.discovered_at)}</td>
             {operator && <td className="row-actions">
