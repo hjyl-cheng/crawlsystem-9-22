@@ -17,7 +17,8 @@ if(input.operation==='batch') {
  const refs=[];
  for(const ref of input.refs) {
   if(!['crawl-raw','crawl-parsed','crawl-evidence'].includes(ref.bucket)||typeof ref.key!=='string')throw new Error('Invalid bucket');
-  const store=ref.bucket==='crawl-evidence'?new MinioStore(endpoint,ref.bucket,await secret('/minio','access_key'),await secret('/minio','secret_key')):ref.bucket==='crawl-raw'?raw:parsed;
+  const useEvidenceReader=ref.bucket==='crawl-evidence'||ref.bucket==='crawl-raw'&&ref.key.startsWith('failures/');
+  const store=useEvidenceReader?new MinioStore(endpoint,ref.bucket,await secret('/minio','access_key'),await secret('/minio','secret_key')):ref.bucket==='crawl-raw'?raw:parsed;
   refs.push({...ref,actual_bytes:await store.head(ref.key,AbortSignal.timeout(10_000))});
  }
  console.log(JSON.stringify({refs}));

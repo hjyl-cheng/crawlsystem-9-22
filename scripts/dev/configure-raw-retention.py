@@ -44,6 +44,8 @@ mc admin policy attach local raw-retention --user raw-retention >/dev/null 2>&1
     save('policy',policy);print(json.dumps({'account':'raw-retention','workspace':'m1-main','raw_success_delete_only':True,'parsed_read_only':True,'evidence_access':False}))
 def disable_expiry():
     before=audit()
+    rules=before[0].get('Rules')
+    assert rules==[] or 'NoSuchLifecycleConfiguration' in json.dumps(before[0]) or (len(rules)==1 and rules[0]['Status']=='Enabled' and rules[0]['Expiration']['Days']==14 and not rules[0].get('Filter') and not rules[0].get('Prefix'))
     if not (root/'lifecycle-before.json').exists():save('lifecycle-before',before)
     minio('mc ilm rm --all --force local/crawl-raw >/dev/null 2>&1\n')
     after=audit()
