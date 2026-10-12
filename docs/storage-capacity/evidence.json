@@ -1,0 +1,83 @@
+{
+  "result": "PASSED",
+  "scope": "MinIO capacity monitoring, alerts, console and retention configuration audit",
+  "source_revision": "200abaa94e4cf83006d090b4a7ef5532fd246c59",
+  "control_image": "docker.io/crawlsystem/control-api:main-200abaa94e4c-64651cb7",
+  "console_release": "200abaa94e4c-1b3da5d8a679",
+  "previous_console_release": "ea54cd9a1420-687edbab9e41",
+  "public_url": "https://controversy-roughly-kiss-genealogy.trycloudflare.com/storage",
+  "before_at": "2026-10-12T03:22:47.365Z",
+  "browser_verified_at": "2026-10-12T03:28:34.519Z",
+  "runtime_verified_at": "2026-10-12T03:29:03.876Z",
+  "monitoring_verified_at": "2026-10-12T03:29:24Z",
+  "checks": {"unit_passed": 8, "alert_scenarios_passed": 13, "typecheck": "PASSED", "server_dry_run": "PASSED", "release_hashes": "PASSED"},
+  "browser": {
+    "layouts": [{"width": 1920, "horizontal_overflow": 0, "buckets": 3}, {"width": 390, "horizontal_overflow": 0, "buckets": 3}],
+    "live_values_match_api": true,
+    "unknown_not_zero": true,
+    "warning_critical_states": true,
+    "error_recovery": true,
+    "original_pipeline_panels": true,
+    "reader": true,
+    "public": true,
+    "page_errors": [],
+    "api_errors": []
+  },
+  "capacity_api_sample": {
+    "observed_at": "2026-10-12T03:29:03.843Z",
+    "sampled_at": "2026-10-12T03:28:35.820Z",
+    "available": true,
+    "warning_percent": 70,
+    "critical_percent": 85,
+    "scan_age_seconds": 22.940978325,
+    "disk": {"total_bytes": 181734363136, "free_bytes": 95552184320},
+    "buckets": [
+      {"bucket": "crawl-raw", "used_bytes": 5653586227, "quota_bytes": 64424509440, "remaining_bytes": 58770923213, "objects": 72610, "used_percent": 8.775520801233748, "retention_days": 14, "state": "ok"},
+      {"bucket": "crawl-parsed", "used_bytes": 201497665, "quota_bytes": 16106127360, "remaining_bytes": 15904629695, "objects": 123451, "used_percent": 1.2510621609787145, "retention_days": 90, "state": "ok"},
+      {"bucket": "crawl-evidence", "used_bytes": 398642, "quota_bytes": 5368709120, "remaining_bytes": 5368310478, "objects": 152, "used_percent": 0.007425285875797271, "retention_days": 90, "state": "ok"}
+    ]
+  },
+  "monitoring": {
+    "targets_up": 2,
+    "previous_jobs_preserved": 8,
+    "unrelated_jobs_and_rules_preserved": true,
+    "prometheus_restarted": false,
+    "minio_restarted": false,
+    "alerts": [
+      {"name": "CrawlMinioMetricsUnavailable", "health": "ok", "state": "inactive"},
+      {"name": "CrawlMinioCapacityMetricsIncomplete", "health": "ok", "state": "inactive"},
+      {"name": "CrawlMinioBucketCapacityWarning", "health": "ok", "state": "inactive"},
+      {"name": "CrawlMinioBucketCapacityCritical", "health": "ok", "state": "inactive"},
+      {"name": "CrawlMinioUsageScanDelayed", "health": "ok", "state": "inactive"},
+      {"name": "CrawlMinioDiskCapacityCritical", "health": "ok", "state": "inactive"}
+    ]
+  },
+  "lifecycle": {
+    "configuration_verified": true,
+    "hard_quotas_verified": true,
+    "versioning_enabled": false,
+    "bucket_scans_finished_before": 11828,
+    "bucket_scans_finished_after": 11840,
+    "expiry_pending": 0,
+    "expiry_scanned_versions": 0,
+    "objects_deleted_by_audit": 0,
+    "actual_expiry_acceptance": "PENDING_NATURALLY_AGED_SAMPLE"
+  },
+  "preservation": {
+    "schema": 39,
+    "settings_version": 5,
+    "preserved_video_identities": 63556,
+    "current_video_identities": 63628,
+    "active_plan_count": 1,
+    "active_plan_recovery_identities": true,
+    "unrelated_workload_specs_pods_restarts": true,
+    "tunnel_pid": 1882,
+    "console_dirty_evidence_sha256": "57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709"
+  },
+  "runtime": {
+    "workers": [{"worker_id": "execution-worker-0", "status": "RUNNING"}, {"worker_id": "execution-worker-s3-0", "status": "RUNNING"}],
+    "completed_since_baseline": [{"worker_id": "execution-worker-0", "completed": 3}],
+    "delivery": {"delivered": 2362, "pending": 0, "failed": 0, "not_ready": 2, "unchanged": 7},
+    "cdc": "RUNNING"
+  }
+}

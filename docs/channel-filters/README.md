@@ -1,5 +1,7 @@
 # 频道搜索、筛选与运营核对（2026-10-12）
 
+本页保留当时的运营审计快照；后续 [MinIO 容量监控与告警](../storage-capacity/README.md) 已上线，补齐本页记录的 MinIO 用量指标缺口。
+
 频道管理页的搜索和筛选已接真实数据并上线。入口沿用 <https://controversy-roughly-kiss-genealogy.trycloudflare.com/channels>，公开验收结果见 [evidence.json](evidence.json)，完整私密证据位于忽略的 `.runtime/channel-filters/`。本记录补充 [三项收尾验收](../finish/README.md)，运营核对与升级建议不代表整体高可用已实施。
 
 ## 页面行为
