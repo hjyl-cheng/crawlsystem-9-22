@@ -19,7 +19,8 @@ try {
      u.fact->'payload'->'comments_ref' comments FROM crawl_data.ingest_units u JOIN control.plans p USING(plan_id)
      WHERE u.workspace_id=$1 AND p.status='COMPLETED' AND p.finished_at<clock_timestamp()-interval '24 hours' AND u.fact ? 'kind'
      ORDER BY (u.fact->'payload'->'comments_ref' IS NOT NULL AND u.fact->'payload'->'comments_ref'<>'null'::jsonb) DESC,u.applied_at LIMIT 20`,[workspace])).rows;
-   const protectedRefs=(await pool.query(`SELECT coalesce(raw,raw_object) ref FROM control.failures WHERE workspace_id=$1 AND coalesce(raw,raw_object) IS NOT NULL LIMIT 5`,[workspace])).rows;
+   const protectedRefs=(await pool.query(`SELECT coalesce(raw,raw_object) ref FROM control.failures WHERE workspace_id=$1 AND coalesce(raw,raw_object) IS NOT NULL
+     AND (state IN ('OPEN','RETRYING') OR evidence_state='PENDING' OR coalesce(raw,raw_object)->>'key' LIKE 'failures/%') LIMIT 5`,[workspace])).rows;
    const primary=kube(['-n','db','get','pods','-l','cnpg.io/instanceRole=primary','-o','jsonpath={.items[0].metadata.name}']);
    writeFileSync(dir+'/schema-before.sql',kube(['-n','db','exec',primary,'--','pg_dump','-U','postgres','-d','crawlsystem_m1_main_test','--schema-only'],undefined,60000),{mode:0o600});
    save('before',{at:new Date().toISOString(),settings,signatures,counts,sample,protected_refs:protectedRefs.map(r=>r.ref),capacity:await api('/v1/storage/capacity'),migrations:(await pool.query('SELECT version,checksum FROM m1.migrations ORDER BY version')).rows});

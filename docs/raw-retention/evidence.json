@@ -1,0 +1,164 @@
+{
+  "result": "PASSED",
+  "verified_at": "2026-10-12T06:46:11.060Z",
+  "implementation_revision": "91a46f82f6362769a888ac7a0f2f7144f4016120",
+  "control_image": "docker.io/crawlsystem/control-api:main-91a46f82f636-2263d0df",
+  "console_release": "165b3ab58540-640ac5316c8e",
+  "policy": {
+    "success_after_completion_and_ingestion_hours": 24,
+    "active_unconfirmed_and_retry_protected": true,
+    "pending_evidence_and_replay_protected": true,
+    "unknown_and_failed_originals_protected": true,
+    "raw_upload_age_expiry_disabled": true,
+    "parsed_days": 90,
+    "evidence_days": 90,
+    "workspace": "m1-main"
+  },
+  "tests": {
+    "raw_cleanup_unit": 4,
+    "raw_retention_integration": 5,
+    "failure_analytics_regression": 11,
+    "storage_capacity_regression": 8,
+    "typecheck": "PASSED",
+    "console_build": "PASSED"
+  },
+  "first_batch": {
+    "deleted": 10,
+    "deleted_bytes": 399264,
+    "all_deleted_objects_confirmed_absent": true
+  },
+  "automatic_enabled": true,
+  "automatic_results": {
+    "retention_hours": 24,
+    "pending": 0,
+    "leased": 0,
+    "deleted": 674,
+    "deleted_bytes": 53579886,
+    "missing": 0,
+    "errors": 0,
+    "last_deleted_at": "2026-10-12T06:46:00.557Z"
+  },
+  "baseline_counts": {
+    "channels": 2316,
+    "videos": 65362,
+    "units": 62790
+  },
+  "current_counts": {
+    "channels": 2319,
+    "videos": 65464,
+    "units": 62901
+  },
+  "completed_youtube_plans_after_baseline": 3,
+  "verification": {
+    "parsed_and_comments_preserved": true,
+    "comments_api_after_raw_deletion": {
+      "state": "AVAILABLE",
+      "comments": 20
+    },
+    "failed_originals_preserved": true,
+    "saved_failure_evidence_preserved": true,
+    "ingestion_identities_preserved": true,
+    "business_and_control_table_schema_preserved": true,
+    "minio_not_restarted": true,
+    "original_cloudflare_pid": 1882
+  },
+  "capacity": {
+    "baseline_raw_metric_bytes": 5829296395,
+    "current_raw_metric_bytes": 5809350590,
+    "net_metric_change_bytes": -19945805,
+    "note": "Bucket scanning lags deletion; new collection continues, so net bucket change differs from deleted bytes."
+  },
+  "permissions": {
+    "delete_denied": [
+      {
+        "bucket": "crawl-parsed",
+        "key": "v1/m1-main/retention-permission-probe"
+      },
+      {
+        "bucket": "crawl-evidence",
+        "key": "retention-permission-probe"
+      },
+      {
+        "bucket": "crawl-raw",
+        "key": "v1/other-workspace/retention-permission-probe"
+      },
+      {
+        "bucket": "crawl-raw",
+        "key": "failures/v1/m1-main/retention-permission-probe"
+      }
+    ]
+  },
+  "browser": {
+    "result": "PASSED",
+    "layouts": [
+      {
+        "origin": "http://127.0.0.1:18103",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "origin": "http://127.0.0.1:18103",
+        "width": 390,
+        "horizontal_overflow": 0
+      },
+      {
+        "origin": "https://controversy-roughly-kiss-genealogy.trycloudflare.com",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "origin": "https://controversy-roughly-kiss-genealogy.trycloudflare.com",
+        "width": 390,
+        "horizontal_overflow": 0
+      }
+    ],
+    "page_errors": []
+  },
+  "deleted_kinds_sample": {
+    "at": "2026-10-12T06:43:43.829Z",
+    "summary": [
+      {
+        "kind": "MANIFEST",
+        "fact_kind": "MANIFEST_OR_SEARCH",
+        "objects": 115,
+        "bytes": 57899,
+        "with_comments": 0
+      },
+      {
+        "kind": "SEARCH",
+        "fact_kind": "MANIFEST_OR_SEARCH",
+        "objects": 25,
+        "bytes": 5039681,
+        "with_comments": 0
+      },
+      {
+        "kind": "UNIT",
+        "fact_kind": "ABOUT",
+        "objects": 88,
+        "bytes": 10308757,
+        "with_comments": 0
+      },
+      {
+        "kind": "UNIT",
+        "fact_kind": "AGENT",
+        "objects": 6,
+        "bytes": 12182,
+        "with_comments": 0
+      },
+      {
+        "kind": "UNIT",
+        "fact_kind": "TARGETS",
+        "objects": 7,
+        "bytes": 459677,
+        "with_comments": 0
+      },
+      {
+        "kind": "UNIT",
+        "fact_kind": "VIDEO",
+        "objects": 124,
+        "bytes": 13241667,
+        "with_comments": 117
+      }
+    ]
+  }
+}
