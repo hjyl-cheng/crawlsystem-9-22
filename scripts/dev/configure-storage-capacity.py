@@ -36,6 +36,7 @@ done
     result=[]
     for i,(bucket,days,quota) in enumerate([('crawl-raw',None,60*1024**3),('crawl-parsed',90,15*1024**3),('crawl-evidence',90,5*1024**3)]):
         ilm,limit,version=rows[i*3:i*3+3]
+        ilm=ilm.get('config',ilm)
         if bucket=='crawl-raw':
             assert ilm.get('Rules')==[] or 'NoSuchLifecycleConfiguration' in json.dumps(ilm)
         else:

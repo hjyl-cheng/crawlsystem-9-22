@@ -23,6 +23,7 @@ mc ilm export local/crawl-parsed
 mc ilm export local/crawl-evidence
 ''').splitlines() if line.strip()]
     assert len(rows)==3
+    rows=[row.get('config',row) for row in rows]
     for row in rows[1:]:assert len(row['Rules'])==1 and row['Rules'][0]['Expiration']['Days']==90 and row['Rules'][0]['Status']=='Enabled'
     return rows
 def credentials():
