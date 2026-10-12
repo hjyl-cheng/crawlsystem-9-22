@@ -126,6 +126,8 @@ case "${1:-}" in
     command=(env LD_LIBRARY_PATH=.runtime/profile-agent/python/usr/local/lib PYTHONPATH=apps/fingerprint-gateway:.runtime/fingerprint-gateway/site PYTHONDONTWRITEBYTECODE=1 .runtime/profile-agent/python/usr/local/bin/python3.12 -m unittest discover -s apps/fingerprint-gateway/tests)
     ;;
   build-console) heap_mib=512; command=(npm run build:console) ;;
+  console-gateway) command=(node --test apps/console/tests/gateway.test.mjs) ;;
+  console-release) heap_mib=512; command=(node scripts/dev/release-console.mjs "${@:2}") ;;
   browser) command=(npm run test:browser -- "${@:2}") ;;
   # Python Profile Agent with the pinned interpreter, wheels and verified model bundle (prepared on first use).
   profile-agent)

@@ -1,0 +1,22 @@
+[Unit]
+Description=Production console release gateway
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/workspace/crawlsystem-business
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=CONSOLE_RELEASE_ROOT=/home/ubuntu/workspace/crawlsystem-business/.runtime/console-release
+EnvironmentFile=/home/ubuntu/workspace/crawlsystem-console/.runtime/console-preview/preview.env
+ExecStart=/usr/bin/node /home/ubuntu/workspace/crawlsystem-business/.runtime/console-release/current/gateway.mjs
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+MemoryHigh=128M
+MemoryMax=192M
+CPUQuota=75%
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
