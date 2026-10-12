@@ -35,6 +35,8 @@ test('release gateway preserves SPA, sessions and old chunks across activation; 
   try {
     assert.equal(await (await get('/channels', { accept: 'text/html' })).text(), first);
     assert.equal((await get('/assets/missing.js')).status, 404);
+    assert.equal((await get('/release.json')).status,404);
+    assert.equal((await get('/gateway.mjs')).status,404);
     assert.equal((await get('/healthz')).status, 200);
     assert.equal((await get('/', { host: 'evil.example' })).status, 403);
     assert.equal((await get('/api/v1/test', { origin: 'https://evil.example' })).status, 403);

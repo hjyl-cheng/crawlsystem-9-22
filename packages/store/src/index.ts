@@ -32,8 +32,9 @@ import {runtimeSettings,settingsSnapshot,publishSettings,settingsHistory,setting
 import {lockWorkerAdmission,queryAdmission,recordWorker,workerView,getWorker,commandWorker,routePlan,workerMetrics} from './workers.ts';
 import type {WorkerControl} from '../../contracts/src/workers.ts';
 import {collectQueries,collectionSummary,querySources} from './query-collection.ts';
+import {resolveImportHandles,type HandleResolver} from './handle-import.ts';
 
-export interface PipelineOptions { enabled?: boolean; loadComments?: (ref: ObjectReference) => Promise<CommentPage | null>; }
+export interface PipelineOptions { enabled?: boolean; loadComments?: (ref: ObjectReference) => Promise<CommentPage | null>; resolveHandle?:HandleResolver; }
 
 export class StoreError extends Error {
   constructor(public code: ErrorCode, message: string, public status = 409, public retryable = false) { super(message); }
@@ -230,14 +231,16 @@ export class Store {
   async importChannels(principal: Principal, raw: unknown): Promise<ChannelImportResult> {
     requireRole(principal, 'operator');
     const command = ChannelImportSchema.parse(raw);
+    const handles=await resolveImportHandles(this.pool,principal,command,(await this.settings(this.pool,principal.workspace_id)).settings.update,this.pipeline.resolveHandle);
     return this.tx(async client => {
       await client.query("SELECT pg_advisory_xact_lock(hashtext('update-admission:' || $1))", [principal.workspace_id]);
       const items: ChannelImportResult['items'] = [], seen = new Set<string>();
       for (const line of command.lines.map(l => l.trim()).filter(Boolean)) {
         const ref = parseChannelReference(line);
         if (!ref) { items.push({ line, channel_id: null, outcome: 'invalid' }); continue; }
-        if ('handle' in ref) { items.push({ line, channel_id: null, outcome: 'handle_unsupported' }); continue; }
-        const id = ref.channel_id;
+        const resolved='handle' in ref?handles.get(ref.handle.toLowerCase()):undefined;
+        if ('handle' in ref && !resolved?.channel_id) { items.push({ line, channel_id: null, outcome: resolved?.outcome??'resolution_unavailable' }); continue; }
+        const id = 'channel_id' in ref?ref.channel_id:resolved!.channel_id!;
         if (seen.has(id)) { items.push({ line, channel_id: id, outcome: 'duplicate' }); continue; }
         seen.add(id);
         // Known = managed, paused or removed; a channel whose first collection stopped half-way can be queued again.
@@ -758,6 +761,23 @@ export class Store {
         AND stage IN ('PARSER','SINK') AND state IN ('OPEN','RETRYING') AND (EXISTS(SELECT 1 FROM crawl_data.ingest_units u WHERE u.plan_id=f.plan_id AND u.execution_epoch=f.execution_epoch AND u.step=f.step AND u.unit_id=f.unit_id)
           OR f.unit_id='_manifest' AND f.step=ANY($4::text[]))`,[principal.workspace_id,planId,row.execution_epoch,[...complete]]);
       const domains=(await client.query('SELECT domain,state FROM control.domains WHERE plan_id=$1',[planId])).rows;
+      const removal=complete.has('ABOUT')?ledger.filter(l=>l.step==='ABOUT').map(l=>PipelineFactSchema.parse(l.fact)).find(f=>f.kind==='CHANNEL_REMOVED'):undefined;
+      if(removal?.kind==='CHANNEL_REMOVED'&&frozen.source_mode==='youtube') {
+        const channel=(await client.query('SELECT o.* FROM control.channel_overview o JOIN control.channels c USING(workspace_id,channel_id) WHERE o.workspace_id=$1 AND o.channel_id=$2 FOR UPDATE OF c',[principal.workspace_id,row.channel_id])).rows[0];
+        if(channel?.about && (Number(channel.about_revision)>removal.source_revision || new Date(channel.about.observed_at)>new Date(removal.raw.captured_at)))throw new StoreError('STALE_EXECUTION','Removal observation predates current channel data');
+        const wasManaged=channel&&['managed','paused'].includes(channel.management_state),status=wasManaged?'CANCELLED':'FAILED';
+        if(wasManaged) {
+          await client.query("UPDATE control.channels SET management_state='removed',management_version=management_version+1,management_changed_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2",[principal.workspace_id,row.channel_id]);
+          await queuePublication(client,principal.workspace_id,row.channel_id,null,true);
+        }
+        const message:ExecutionEvent={event_id:randomUUID(),execution_epoch:row.execution_epoch,worker_id:'control-api',kind:wasManaged?'PROGRESS':'FAILED',phase:'ABOUT',domain:'ABOUT',message:'YouTube channel removal confirmed by archived webpage and official API responses',...(wasManaged?{}:{error_code:'NOT_FOUND' as const})};
+        await client.query('INSERT INTO control.events(plan_id,event_id,event_hash,data) VALUES($1,$2,$3,$4)',[planId,message.event_id,contentHash(message),message]);
+        await client.query("UPDATE control.domains SET state='APPLIED',completed_at=clock_timestamp() WHERE plan_id=$1 AND domain='ABOUT'",[planId]);
+        const updated=(await client.query('UPDATE control.plans SET status=$2,version=version+1,execution_epoch=execution_epoch+1,finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE plan_id=$1 RETURNING *',[planId,status])).rows[0]!;
+        await client.query("UPDATE control.intents SET state='SKIPPED' WHERE plan_id=$1 AND state='PENDING' AND kind='START'",[planId]);
+        await this.settleClocks(client,row,status);
+        return toPlan(updated);
+      }
       if (frozen.source_mode==='youtube' && frozen.discovery_qualification && complete.has('ABOUT')) {
         const about=ledger.filter(l=>l.step==='ABOUT').map(l=>PipelineFactSchema.parse(l.fact)).find(f=>f.kind==='ABOUT');
         if (!about || about.kind!=='ABOUT') throw new StoreError('DOMAIN_INCOMPLETE','ABOUT manifest has no durable channel fact');
@@ -1241,7 +1261,16 @@ export class Store {
       UNION ALL SELECT 'failures',state,count(*)::float8 FROM control.failures WHERE workspace_id=$1 AND archived_at IS NULL GROUP BY state
       UNION ALL SELECT 'telemetry_outbox','UNARCHIVED',count(*)::float8 FROM telemetry.outbox WHERE workspace_id=$1 AND archived_at IS NULL
       UNION ALL SELECT 'oldest_unarchived_seconds','UNARCHIVED',coalesce(extract(epoch FROM clock_timestamp()-min(created_at)),0)::float8 FROM telemetry.outbox WHERE workspace_id=$1 AND archived_at IS NULL
-      UNION ALL SELECT 'failure_evidence','PENDING',count(*)::float8 FROM control.failures WHERE workspace_id=$1 AND evidence_state='PENDING'`,[workspaceId]);
+      UNION ALL SELECT 'failure_evidence','PENDING',count(*)::float8 FROM control.failures WHERE workspace_id=$1 AND evidence_state='PENDING'
+      UNION ALL SELECT 'real_active_plans','ACTIVE',count(*)::float8 FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube' AND status IN ('QUEUED','RUNNING','WAITING')
+      UNION ALL SELECT 'overdue_plans','ACTIVE',count(*)::float8 FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube' AND status IN ('QUEUED','RUNNING','WAITING') AND deadline_at<clock_timestamp()-interval '5 minutes'
+      UNION ALL SELECT 'pipeline_oldest_pending_seconds','PENDING',greatest(coalesce(extract(epoch FROM clock_timestamp()-min(s.created_at)),0),0)::float8
+        FROM control.pipeline_steps s JOIN control.plans p USING(plan_id) WHERE p.workspace_id=$1 AND p.source_mode='youtube' AND p.status IN ('QUEUED','RUNNING','WAITING') AND s.execution_epoch=p.execution_epoch AND s.state='PENDING'
+      UNION ALL SELECT 'delivery_oldest_pending_seconds','PENDING',greatest(coalesce(extract(epoch FROM clock_timestamp()-min(created_at)),0),0)::float8 FROM delivery.records WHERE workspace_id=$1 AND status='PENDING'
+      UNION ALL SELECT 'delivery_failed','FAILED',count(*)::float8 FROM delivery.records WHERE workspace_id=$1 AND status='FAILED'
+      UNION ALL SELECT 'ready_workers','RUNNING',count(*)::float8 FROM control.workers WHERE workspace_id=$1 AND desired_mode='RUNNING' AND last_heartbeat_at>clock_timestamp()-interval '90 seconds'
+      UNION ALL SELECT 'healthy_proxies','HEALTHY',count(*)::float8 FROM control.proxies p JOIN control.proxy_observations o USING(workspace_id,proxy_id)
+        WHERE p.workspace_id=$1 AND p.enabled AND p.retired_at IS NULL AND p.server_id=o.server_id AND p.generation=o.generation AND o.state='healthy' AND o.reported_at>clock_timestamp()-interval '180 seconds'`,[workspaceId]);
     const config=await this.settings(this.pool,workspaceId);
     return [...result.rows,{metric:'config_threshold',state:'archive_delay_seconds',value:config.settings.alerts.archive_delay_seconds},
       {metric:'config_threshold',state:'evidence_pending_count',value:config.settings.alerts.evidence_pending_count},

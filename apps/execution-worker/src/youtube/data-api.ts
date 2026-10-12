@@ -53,6 +53,13 @@ export class DataApi {
     const body = await this.get<{ items?: ApiChannel[] }>('channels', { part: 'snippet,statistics,contentDetails,brandingSettings', id, maxResults: '1' }, guard);
     return body.items?.[0] ?? null;
   }
+  async channelForHandle(handle:string,guard?:RequestGuard,signal?:AbortSignal):Promise<string|null> {
+    const api=new DataApi(this.key,(input,init)=>this.fetcher(input,{...init,signal:signal?AbortSignal.any([signal,init?.signal??AbortSignal.timeout(15000)]):init?.signal}),this.base);
+    const body=await api.get<{items?:Array<{id?:string}>}>('channels',{part:'id',forHandle:handle,maxResults:'1'},guard);
+    const id=body.items?.[0]?.id;
+    if(id&&!/^UC[A-Za-z0-9_-]{22}$/.test(id))throw new DataApiError('unavailable','invalid_channel_id');
+    return id??null;
+  }
   /** Basic facts (title, country, counts) of up to 50 channels; channels that do not exist are absent. */
   async channelFacts(ids: string[], guard?: RequestGuard): Promise<ApiChannel[]> {
     if (!ids.length) return [];

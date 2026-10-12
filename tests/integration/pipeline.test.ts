@@ -42,6 +42,24 @@ async function finishData(t:Awaited<ReturnType<typeof setup>>) {
   for(const f of [t.about,t.tf,t.vf]) {await store.pipelineManifest(t.receiver,t.manifest(f.raw.step,[f.raw]));await sink.apply(f);}
   return store.confirmPipeline(t.receiver,t.plan.plan_id);
 }
+test('a confirmed source removal stops a managed update, retracts once and preserves stored facts',async()=>{
+ const t=await setup(['ABOUT','VIDEO','AGENT']);
+ await pool.query("INSERT INTO delivery.targets(workspace_id,name,stream_id,enabled) VALUES($1,'removal-test',gen_random_uuid(),true)",[t.op.workspace_id]);
+ await finishData(t);const input=await store.agentInput(t.worker,t.plan.plan_id),profile=JSON.parse(readFileSync(new URL('../../apps/profile-agent/tests/expected-profile.json',import.meta.url),'utf8'));
+ const agent=t.fact('AGENT','AGENT','profile',{channel_id:t.channel,input_hash:input.input_hash,model_version:profile.model_version,taxonomy_version:profile.taxonomy_version,observed_at:new Date().toISOString(),facts:profile.facts});
+ await sink.apply(agent);await store.pipelineManifest(t.receiver,t.manifest('AGENT',[agent.raw]));await store.confirmPipeline(t.receiver,t.plan.plan_id);
+ const before=await store.getChannel(t.reader,t.channel);assert.equal(before.management.state,'managed');
+ assert.equal((await pool.query('SELECT count(*)::int n FROM delivery.channel_state WHERE workspace_id=$1',[t.op.workspace_id])).rows[0].n,1);
+ const update=await store.updateChannel(t.op,t.channel,{request_id:randomUUID(),expected_version:before.management.version,domains:['ABOUT']});
+ const at=new Date().toISOString(),key=`v1/${t.op.workspace_id}/${update.plan_id}/1/ABOUT/channel`,raw={...t.about.raw,plan_id:update.plan_id,input_hash:update.input_hash,captured_at:at,key:key+'.json.gz'};
+ const removal=PipelineFactSchema.parse({...t.about,kind:'CHANNEL_REMOVED',payload:{channel_id:t.channel,observed_at:at,reason:'source_removed',source:'youtubei:unavailable+data_api:absent'},source_revision:update.source_revision,raw,parsed:{...t.about.parsed,key:key+'.youtube-raw-1.'+raw.sha256+'.json.gz'}});
+ const owner={...t.owner,plan_id:update.plan_id,input_hash:update.input_hash,workflow_id:update.workflow_id};
+ await sink.apply(removal);await store.pipelineManifest(t.receiver,{...t.manifest('ABOUT',[raw]),owner,key:key.replace('/channel','/_manifest.json.gz')});
+ assert.equal((await store.confirmPipeline(t.receiver,update.plan_id)).status,'CANCELLED');
+ const after=await store.getChannel(t.reader,t.channel);assert.equal(after.management.state,'removed');assert.deepEqual(after.about,before.about);assert.deepEqual(after.videos,before.videos);
+ const records=(await pool.query('SELECT status,shard FROM delivery.records WHERE workspace_id=$1 ORDER BY created_at',[t.op.workspace_id])).rows;assert.equal(records.length,2);assert.match(JSON.stringify(records[1].shard),/retract_channel/);
+ assert.equal((await store.confirmPipeline(t.receiver,update.plan_id)).status,'CANCELLED');assert.equal(await sink.apply(removal),'DUPLICATE');assert.equal((await pool.query('SELECT count(*)::int n FROM delivery.records WHERE workspace_id=$1',[t.op.workspace_id])).rows[0].n,2);
+});
 test('manifests can arrive before facts; completion requires every durable receipt and no comment body reaches PG',async()=>{
   const t=await setup();
   for(const f of [t.about,t.tf,t.vf]) await store.pipelineManifest(t.receiver,t.manifest(f.raw.step,[f.raw]));

@@ -10,6 +10,7 @@ import { topComments } from '../../execution-worker/src/youtube/scrape.ts';
 import { toVideoFacts, unavailableVideo } from '../../execution-worker/src/youtube/map.ts';
 import { ScrapeError } from '../../execution-worker/src/youtube/scrape.ts';
 import type { ApiVideo } from '../../execution-worker/src/youtube/map.ts';
+import {confirmedChannelRemoval} from '../../execution-worker/src/youtube/channel-removal.ts';
 
 Log.setLevel(Log.Level.NONE);
 export class ParseFailure extends Error {
@@ -72,7 +73,7 @@ export class RawParser {
       if (!bytes) throw new ParseFailure('INTEGRITY');
     }
     const fact = PipelineFactSchema.parse({ ...record, schema_version: 'crawl.fact.v1', parsed: { bucket: 'crawl-parsed', key: parsedKey, sha256: hash(bytes), bytes: bytes.length } });
-    const topic = fact.kind === 'ABOUT' ? 'facts.channel' : fact.kind === 'AGENT' ? 'facts.agent' : fact.kind === 'SAMPLING' ? 'facts.observation' : 'facts.video';
+    const topic = ['ABOUT','CHANNEL_REMOVED'].includes(fact.kind) ? 'facts.channel' : fact.kind === 'AGENT' ? 'facts.agent' : fact.kind === 'SAMPLING' ? 'facts.observation' : 'facts.video';
     await this.options.publish(topic, raw.channel_id, fact); return fact;
   }
   private async decode(unit: RawUnit, plan: PlanInput, raw: RawReference, signal: AbortSignal): Promise<Pick<ParsedUnit,'kind'|'payload'>> {
@@ -87,7 +88,10 @@ export class RawParser {
       if (!fixture) throw new ParseFailure('REPLAY_INCOMPLETE');
       return { kind: unit.step === 'ABOUT' ? 'ABOUT' : 'VIDEO', payload: unit.step === 'ABOUT' ? input.sample.about : await this.comments(input.sample.videos.find(v => v.source_content_id === unit.unit_id)!, raw, signal) };
     }
-    if (unit.step === 'ABOUT') return { kind: 'ABOUT', payload: await channelFacts(await replay.client(), raw.channel_id, observed) };
+    if (unit.step === 'ABOUT') {
+      if(confirmedChannelRemoval(unit.responses,raw.channel_id))return {kind:'CHANNEL_REMOVED',payload:{channel_id:raw.channel_id,observed_at:observed,reason:'source_removed',source:'youtubei:unavailable+data_api:absent'}};
+      return { kind: 'ABOUT', payload: await channelFacts(await replay.client(), raw.channel_id, observed) };
+    }
     if (unit.step === 'TARGETS') {
       const listed = await uploads(await replay.client(), raw.channel_id, input.plan_kind === 'UPDATE' ? 100 : input.scope.video_limit, input.plan_kind === 'UPDATE' ? input.discovery_anchor_ids ?? [] : undefined);
       return { kind: 'TARGETS', payload: input.plan_kind === 'UPDATE' ? { kind: 'discovery', channel_id: raw.channel_id, video_ids: listed.ids,

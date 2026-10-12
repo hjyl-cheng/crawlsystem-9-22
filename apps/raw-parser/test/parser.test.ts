@@ -21,6 +21,22 @@ function input(): PlanInput {
     status:'RUNNING',version:1,execution_epoch:1,input_hash:contentHash(frozen),workflow_id:`m1/parser-test/${id}`,created_at:now,updated_at:now,finished_at:null,deadline_at:frozen.deadline_at,publication_status:'NOT_ENABLED' },
     input:frozen,domains:[],receipts:[] };
 }
+test('offline removal parsing requires both captured sources and ignores an untrusted removal projection',async()=>{
+ const context=input(),channel='UC1234567890123456789012',raw=memory(),parsed=memory();
+ const frozen=FrozenInputSchema.parse({schema_version:CONTRACT_VERSION,source_mode:'youtube',pipeline_version:'r3.v1',channel_id:channel,required_domains:['ABOUT'],scope:{video_limit:30,max_age_days:90,comments_per_video:0,comment_sort:'TOP_COMMENTS'},reference_time:context.plan.created_at,deadline_at:context.plan.deadline_at,max_attempts:3});
+ context.input=frozen;context.plan={...context.plan,channel_id:channel,source_mode:'youtube',fixture_id:null,required_domains:['ABOUT'],input_hash:contentHash(frozen)};
+ const owner={schema_version:CONTRACT_VERSION,workspace_id:context.plan.workspace_id,plan_id:context.plan.plan_id,execution_epoch:1,input_hash:context.plan.input_hash,workflow_id:context.plan.workflow_id};
+ const unit:RawUnit={schema_version:'crawl.unit.v1',owner,channel_id:channel,step:'ABOUT',unit_id:'channel',captured_at:context.plan.created_at,result:{reason:'source_removed'},responses:[
+  {endpoint:'https://www.youtube.com/youtubei/v1/browse',method:'POST',status:200,captured_at:context.plan.created_at,body:JSON.stringify({alerts:[{alertRenderer:{text:{simpleText:'This channel is not available.'}}}]})},
+  {endpoint:'https://www.googleapis.com/youtube/v3/channels',method:'GET',status:200,captured_at:context.plan.created_at,body:'{"items":[]}'}]};
+ const ref=await new RawArchive(raw.store,{async send(){}}).save(unit,new AbortController().signal);let published=0;
+ const parser=new RawParser({raw:raw.store,parsed:parsed.store,loadPlan:async()=>context,publish:async(topic,_id,fact)=>{assert.equal(topic,'facts.channel');assert.equal(fact.kind,'CHANNEL_REMOVED');published++;}});
+ assert.equal((await parser.parse(ref,new AbortController().signal))!.kind,'CHANNEL_REMOVED');assert.equal(published,1);
+ const incomplete=memory(),untrusted={...unit,owner:{...owner,plan_id:randomUUID()},responses:unit.responses.slice(0,1)};
+ context.plan.plan_id=untrusted.owner.plan_id;context.plan.workflow_id=untrusted.owner.workflow_id;
+ const missing=await new RawArchive(incomplete.store,{async send(){}}).save(untrusted,new AbortController().signal);
+ await assert.rejects(()=>new RawParser({raw:incomplete.store,parsed:memory().store,loadPlan:async()=>context,publish:async()=>{throw new Error('must not publish');}}).parse(missing,new AbortController().signal));
+});
 async function saved(context: PlanInput, store: ObjectStore) {
   const owner = { schema_version:CONTRACT_VERSION,workspace_id:context.plan.workspace_id,plan_id:context.plan.plan_id,execution_epoch:1,input_hash:context.plan.input_hash,workflow_id:context.plan.workflow_id };
   const unit: RawUnit = { schema_version:'crawl.unit.v1',owner,channel_id:context.plan.channel_id,step:'VIDEO-0',unit_id:'fixture:video:basic',captured_at:context.plan.created_at,

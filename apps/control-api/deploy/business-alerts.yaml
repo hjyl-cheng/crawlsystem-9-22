@@ -1,0 +1,59 @@
+groups:
+  - name: crawl-business
+    rules:
+      - alert: CrawlControlMetricsUnavailable
+        expr: (max(up{job="crawlsystem-control-preview"}) == 0) or max(absent(up{job="crawlsystem-control-preview"}))
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: 采集控制服务指标不可用
+          description: 两个控制服务实例均无法采集指标，请检查控制服务和数据库连接。
+      - alert: CrawlIntentDispatchDelayed
+        expr: max(m1_oldest_intent_seconds{state="PENDING"}) > 300
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: 采集任务派发积压
+          description: 持久任务指令等待超过五分钟，请检查调度程序和 Temporal。
+      - alert: CrawlPlansPastDeadline
+        expr: max(m1_overdue_plans{state="ACTIVE"}) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: 采集任务超过截止时间仍未结束
+          description: 请检查执行节点、工作流及任务恢复情况。
+      - alert: CrawlPipelineIngestionDelayed
+        expr: max(m1_pipeline_oldest_pending_seconds{state="PENDING"}) > 600
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: 采集数据解析入库积压
+          description: 进行中任务的步骤清单超过十分钟尚未确认入库，请检查 Kafka、解析程序和入库程序。
+      - alert: CrawlDeliveryDelayed
+        expr: max(m1_delivery_oldest_pending_seconds{state="PENDING"}) > 600
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: 业务数据交付积压
+          description: 交付超过十分钟未收到成功回执，请检查 CDC、业务入库程序和回执程序。
+      - alert: CrawlDeliveryFailed
+        expr: max(m1_delivery_failed{state="FAILED"}) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: 业务数据交付失败
+          description: 发布交付页面存在失败记录，请核对错误并重试。
+      - alert: CrawlNoReadyWorker
+        expr: (max(m1_ready_workers{state="RUNNING"}) == 0) and (max(m1_real_active_plans{state="ACTIVE"}) > 0)
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: 有采集任务但没有可接单执行节点
+          description: 请检查执行节点心跳与暂停、排空状态。
+      - alert: CrawlNoHealthyProxy
+        expr: (max(m1_healthy_proxies{state="HEALTHY"}) == 0) and (max(m1_real_active_plans{state="ACTIVE"}) > 0) and (max(m1_ready_workers{state="RUNNING"}) > 0)
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 采集任务等待可用代理
+          description: 正在运行任务的集群连续十分钟没有近期健康代理，请检查 IP 资源及订阅来源。

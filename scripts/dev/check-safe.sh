@@ -128,6 +128,15 @@ case "${1:-}" in
   build-console) heap_mib=512; command=(npm run build:console) ;;
   console-gateway) command=(node --test apps/console/tests/gateway.test.mjs) ;;
   console-release) heap_mib=512; command=(node scripts/dev/release-console.mjs "${@:2}") ;;
+  business-monitoring) command=(python3 scripts/dev/configure-business-monitoring.py) ;;
+  business-alert-tests) command=(python3 tests/ops/check_business_alerts.py) ;;
+  business-metrics-tests) command=(node --env-file=.runtime/r3-test.env --import tsx --test tests/integration/business-metrics.test.ts) ;;
+  completion-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 tests/integration/handle-import.test.ts tests/integration/channel-import.test.ts tests/integration/pipeline.test.ts tests/integration/business-metrics.test.ts) ;;
+  completion-unit) command=(node --import tsx --test --test-concurrency=1 apps/execution-worker/test/channel-removal.test.ts apps/raw-parser/test/parser.test.ts apps/execution-worker/test/web-collector.test.ts apps/console/tests/gateway.test.mjs) ;;
+  completion-images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --completion-images) ;;
+  completion-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-completion.ts "${@:2}") ;;
+  completion-live) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-completion.ts "${@:2}") ;;
+  completion-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-completion-browser.ts) ;;
   browser) command=(npm run test:browser -- "${@:2}") ;;
   # Python Profile Agent with the pinned interpreter, wheels and verified model bundle (prepared on first use).
   profile-agent)

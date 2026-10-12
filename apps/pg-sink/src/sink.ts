@@ -41,11 +41,14 @@ export class PgSink {
       if (Number(plan.source_revision) !== fact.source_revision || plan.channel_id !== r.channel_id) throw new SinkFailure('INPUT_MISMATCH');
       const required = frozen.required_domains;
       const targets: string[] | null = frozen.source_mode === 'fixture' ? frozen.target_video_ids : plan.video_targets;
-      if(frozen.source_mode==='youtube' && frozen.discovery_qualification && fact.kind!=='ABOUT' && !plan.qualification_passed) throw new SinkFailure('DOMAIN_INCOMPLETE');
+      if(frozen.source_mode==='youtube' && frozen.discovery_qualification && !['ABOUT','CHANNEL_REMOVED'].includes(fact.kind) && !plan.qualification_passed) throw new SinkFailure('DOMAIN_INCOMPLETE');
       if(['TARGETS','VIDEO'].includes(fact.kind) && !targets) throw new SinkFailure('DOMAIN_INCOMPLETE');
       if (fact.kind === 'ABOUT') {
         if (r.step !== 'ABOUT' || r.unit_id !== 'channel' || !required.includes('ABOUT') || fact.payload.channel_id !== r.channel_id) throw new SinkFailure('TARGET_MISMATCH');
         await this.channel(client,fact,'about');
+      } else if(fact.kind==='CHANNEL_REMOVED') {
+        if(frozen.source_mode!=='youtube'||r.step!=='ABOUT'||r.unit_id!=='channel'||!required.includes('ABOUT')||fact.payload.channel_id!==r.channel_id||fact.payload.observed_at!==r.captured_at)throw new SinkFailure('INPUT_MISMATCH');
+        // Durable fact only. Control seals the removal and publication atomically.
       } else if (fact.kind === 'AGENT') {
         if (r.step !== 'AGENT' || r.unit_id !== 'profile' || !required.includes('AGENT') || fact.payload.channel_id !== r.channel_id
           || fact.payload.input_hash !== plan.pipeline_agent_hash) throw new SinkFailure('INPUT_MISMATCH');

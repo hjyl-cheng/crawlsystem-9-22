@@ -177,6 +177,16 @@ export function createActivities(options: ActivityOptions) {
           const about = await withProxy(ref, scope, descriptor.deadlineAt, async fetcher => aboutPage(await session(fetcher), input.channel_id));
           facts = toChannelFacts(channel, about, new Date().toISOString());
         }
+        if('reason' in facts && facts.reason==='source_removed') {
+          if(input.pipeline_version!=='r3.v1')throw new ExecutionApiError('NOT_FOUND',false);
+          await event(ref,scope,'PROGRESS','ABOUT','Source channel unavailable; two-source evidence archived, awaiting removal confirmation','ABOUT');
+          for(;;){
+            const budget={deadline:descriptor.deadlineAt,signal:Context.current().cancellationSignal,traceparent:scope.traceparent};
+            const plan=await api.pipelineConfirm(ref.plan_id,budget);
+            if(terminal(plan.status))return {plan_id:ref.plan_id,status:plan.status};
+            await sleep(1500,undefined,{signal:budget.signal});
+          }
+        }
         const receipt = await submitOnce(ref, value, submissionOf(ref, 'ABOUT', 'about:channel', facts, true), descriptor.deadlineAt);
         await event(ref, scope, 'PROGRESS', 'ABOUT', input.pipeline_version==='r3.v1'?'Channel response archived; awaiting independent parsing and ingestion':`APPLIED receipt=${receipt?.submission_id ?? 'existing'}`, 'ABOUT');
         return { plan_id: ref.plan_id, status: (await read(ref, scope, descriptor.deadlineAt)).plan.status };

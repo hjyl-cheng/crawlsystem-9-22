@@ -552,20 +552,21 @@ export type AgentSummary = z.infer<typeof AgentSummarySchema>;
 export function parseChannelReference(text: string): { channel_id: string } | { handle: string } | null {
   const value = text.trim();
   if (/^UC[A-Za-z0-9_-]{22}$/.test(value)) return { channel_id: value };
-  if (/^@[A-Za-z0-9._-]{3,30}$/.test(value)) return { handle: value };
+  if (/^@[\p{L}\p{N}._·-]{3,30}$/u.test(value)) return { handle: value };
   try {
     const url = new URL(value);
+    if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return null;
     if (!/(^|\.)youtube\.com$/.test(url.hostname)) return null;
     const id = url.pathname.match(/^\/channel\/(UC[A-Za-z0-9_-]{22})(?:\/|$)/)?.[1];
     if (id) return { channel_id: id };
-    const handle = url.pathname.match(/^\/(@[A-Za-z0-9._-]{3,30})(?:\/|$)/)?.[1];
+    const handle = decodeURIComponent(url.pathname).match(/^\/(@[\p{L}\p{N}._·-]{3,30})(?:\/|$)/u)?.[1];
     return handle ? { handle } : null;
   } catch { return null; }
 }
 /** Operator command: queue channels for a first collection (one per line, at most 500). */
 export const ChannelImportSchema = z.strictObject({ request_id: z.uuid(), lines: z.array(z.string().max(300)).min(1).max(500) });
 export type ChannelImport = z.infer<typeof ChannelImportSchema>;
-export const ImportOutcomeSchema = z.enum(['queued', 'already_queued', 'known', 'duplicate', 'handle_unsupported', 'invalid']);
+export const ImportOutcomeSchema = z.enum(['queued', 'already_queued', 'known', 'duplicate', 'handle_unsupported', 'handle_not_found', 'resolution_unavailable', 'quota_exhausted', 'invalid']);
 export const ChannelImportResultSchema = z.strictObject({
   items: z.array(z.strictObject({ line: z.string().max(300), channel_id: IdSchema.nullable(), outcome: ImportOutcomeSchema })).max(500),
   queued: Count,

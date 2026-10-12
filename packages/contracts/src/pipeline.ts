@@ -4,6 +4,8 @@ import { AgentResultSchema, ChannelFactsSchema, IdSchema, ObjectStorageReference
 
 export const ObjectReferenceSchema = ObjectStorageReferenceSchema;
 export type ObjectReference = z.infer<typeof ObjectReferenceSchema>;
+export const ChannelRemovalSchema=z.strictObject({channel_id:IdSchema,observed_at:z.iso.datetime({offset:true}),reason:z.literal('source_removed'),source:z.literal('youtubei:unavailable+data_api:absent')});
+export type ChannelRemoval=z.infer<typeof ChannelRemovalSchema>;
 export const CommentSummarySchema = StoredCommentSummarySchema;
 export const PipelineStepSchema = z.string().regex(/^(ABOUT|TARGETS|VIDEO-\d{1,2}|SAMPLING|AGENT)$/);
 export const RawReferenceSchema = ObjectReferenceSchema.extend({ schema_version: z.literal('crawl.raw.v1'), workspace_id: IdSchema,
@@ -22,11 +24,12 @@ const Common = { schema_version: z.literal('crawl.fact.v1'), raw: RawReferenceSc
 export const StoredVideoSchema = VideoItemSchema.refine(v => 'unavailable' in v || !v.comments_first_page?.comments.length, 'Comment bodies belong in MinIO');
 interface FactReference { schema_version:'crawl.fact.v1'; raw:RawReference;parsed:ObjectReference;parser_version:'youtube-raw/1';source_revision:number; }
 export type PipelineFact = FactReference & (
-  {kind:'ABOUT';payload:ChannelFacts} | {kind:'TARGETS';payload:VideoTargetManifest|VideoDiscoveryManifest}
+  {kind:'ABOUT';payload:ChannelFacts} | {kind:'CHANNEL_REMOVED';payload:ChannelRemoval} | {kind:'TARGETS';payload:VideoTargetManifest|VideoDiscoveryManifest}
   | {kind:'VIDEO';payload:VideoItem} | {kind:'SAMPLING';payload:VideoSamples} | {kind:'AGENT';payload:AgentResult}
 );
 export const PipelineFactSchema: z.ZodType<PipelineFact> = z.discriminatedUnion('kind', [
   z.strictObject({ ...Common, kind: z.literal('ABOUT'), payload: ChannelFactsSchema }),
+  z.strictObject({ ...Common, kind: z.literal('CHANNEL_REMOVED'), payload: ChannelRemovalSchema }),
   z.strictObject({ ...Common, kind: z.literal('TARGETS'), payload: z.union([VideoTargetManifestSchema, VideoDiscoveryManifestSchema]) }),
   z.strictObject({ ...Common, kind: z.literal('VIDEO'), payload: StoredVideoSchema }),
   z.strictObject({ ...Common, kind: z.literal('SAMPLING'), payload: VideoSamplesSchema }),

@@ -7,6 +7,8 @@ import { DataApi, type RequestGuard } from './data-api.ts';
 import { ScrapeError } from './scrape.ts';
 import { toVideoFacts, unavailableVideo } from './map.ts';
 import { browserSession, channelFacts, uploads, videoDetail } from './web-scrape.ts';
+import {channelUnavailablePage,confirmedChannelRemoval} from './channel-removal.ts';
+import type {ChannelRemoval} from '@crawlsystem/contracts/pipeline';
 
 export interface CollectionContext { owner: WorkflowInput; channelId: string; signal: AbortSignal; deadline: number; note: (message: string) => Promise<void>; guard: RequestGuard; }
 export const webOperations = { browserSession, channelFacts, uploads, videoDetail };
@@ -56,8 +58,17 @@ export class WebCollector {
     if(ctx.signal.aborted||!(error instanceof Error))return;
     try {Object.assign(error,{raw_evidence:await this.archive.failure(ctx.owner,step,unit,responses,'COLLECTION_FAILED')});}catch{ /* The execution error still survives a storage outage. */ }
   }
-  async about(ctx: CollectionContext): Promise<ChannelFacts> {
-    const unit = await this.unit(ctx, 'ABOUT', 'channel', responses => this.web(ctx, responses, yt => this.operations.channelFacts(yt, ctx.channelId)));
+  async about(ctx: CollectionContext): Promise<ChannelFacts|ChannelRemoval> {
+    const unit = await this.unit<ChannelFacts|ChannelRemoval>(ctx, 'ABOUT', 'channel', async responses => {
+      try{return await this.web(ctx,responses,yt=>this.operations.channelFacts(yt,ctx.channelId));}
+      catch(error){
+        ctx.signal.throwIfAborted();
+        if(!channelUnavailablePage(responses,ctx.channelId))throw error;
+        const guard:RequestGuard={...ctx.guard,response:(endpoint,status,body)=>responses.push({endpoint:`https://www.googleapis.com/youtube/v3/${endpoint}`,method:'GET',status,body,captured_at:new Date().toISOString()})};
+        if(await this.dataApi.channel(ctx.channelId,guard) || !confirmedChannelRemoval(responses,ctx.channelId))throw error;
+        return {channel_id:ctx.channelId,observed_at:new Date().toISOString(),reason:'source_removed',source:'youtubei:unavailable+data_api:absent'};
+      }
+    });
     await this.archive.finish(ctx.owner, ctx.channelId, 'ABOUT', [unit.reference], ctx.signal);
     return unit.result;
   }

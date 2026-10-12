@@ -64,6 +64,7 @@ export function createGateway({ root, publicHost, target, browserOrigin, port = 
       return;
     }
     if (!['GET', 'HEAD'].includes(req.method ?? '')) { res.setHeader('allow', 'GET, HEAD'); json(res, 405, 'INVALID_REQUEST'); return; }
+    if(['/release.json','/gateway.mjs'].includes(path)){json(res,404,'NOT_FOUND');return;}
     try {
       const release = JSON.parse(await readFile(resolve(current, 'release.json'), 'utf8'));
       res.setHeader('x-console-release', release.id);
@@ -82,7 +83,7 @@ export function createGateway({ root, publicHost, target, browserOrigin, port = 
           if (found) break;
         }
       }
-      if (!found && !isAsset && !extname(path) && (req.headers.accept ?? '').includes('text/html')) found = await asset(current, '/index.html');
+      if (!found && !isAsset && !extname(path)) found = await asset(current, '/index.html');
       if (!found && path === '/') found = await asset(current, '/index.html');
       if (!found) { json(res, 404, 'NOT_FOUND'); return; }
       res.writeHead(200, { 'content-type': types[extname(found.file)] ?? 'application/octet-stream', 'content-length': found.size, 'cache-control': isAsset ? 'public, max-age=31536000, immutable' : 'no-store' });
