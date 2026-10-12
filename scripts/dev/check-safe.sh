@@ -147,6 +147,7 @@ case "${1:-}" in
   storage-capacity-images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --storage-capacity-control-only) ;;
   storage-capacity-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-storage-capacity.ts "${@:2}") ;;
   storage-capacity-live) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-storage-capacity.ts "${@:2}") ;;
+  homepage-minio-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-homepage-minio.ts) ;;
   browser) command=(npm run test:browser -- "${@:2}") ;;
   # Python Profile Agent with the pinned interpreter, wheels and verified model bundle (prepared on first use).
   profile-agent)

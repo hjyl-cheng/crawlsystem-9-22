@@ -2,7 +2,9 @@ import {useState} from 'react';
 import { Link } from 'react-router';
 import { Activity, ArrowRight, CalendarDays, ChevronDown, CircleHelp, Cylinder, HardDrive, RefreshCw, Server } from 'lucide-react';
 import type { Completeness, Page, Plan, PlanDetail, Worker,OverviewResources } from '@crawlsystem/contracts';
+import type {StorageCapacity} from '../../../../packages/contracts/src/storage-capacity.ts';
 import { useAuth } from '../auth.js';
+import type {ControlApi} from '../api.js';
 import { useResource, type Resource } from '../resource.js';
 import { Badge, Empty, ErrorBox, Panel, PlanBadge, ResourceView } from '../ui.js';
 import { channelPath, errorCodeLabels, isTerminal, planPath, shortId, time } from '../presentation.js';
@@ -58,11 +60,25 @@ function IpUsage({resources}:{resources:Resource<OverviewResources>}) {
     }}</ResourceView>
   </Panel>;
 }
-function CapacityRisk() {
-  const {api}=useAuth(),r=useResource('overview-storage',signal=>api.storage(signal),true,30000);
-  return <Panel title="存储与归档" extra={<More to="/storage" children="查看详情"/>} className="capacity-panel"><ResourceView resource={r} showMeta={false}>{s=><div className="capacity-items">
+const capacitySize=(value:number)=>value>=1024**3?`${(value/1024**3).toFixed(2)} GiB`:`${(value/1024**2).toFixed(2)} MiB`;
+const capacityLabels={ok:'正常',warning:'容量预警',critical:'容量严重',unknown:'用量未知'};
+function MinioCapacity({resource}:{resource:Resource<StorageCapacity>}) {
+  const data=resource.error?undefined:resource.data,buckets=data?.buckets;
+  const used=buckets?.every(b=>b.used_bytes!==null)?buckets.reduce((n,b)=>n+b.used_bytes!,0):null;
+  const quota=buckets?.every(b=>b.quota_bytes!==null)?buckets.reduce((n,b)=>n+b.quota_bytes!,0):null;
+  const state=buckets?.some(b=>b.state==='critical')?'critical':buckets?.some(b=>b.state==='warning')?'warning':!data?.available||buckets?.some(b=>b.state==='unknown')?'unknown':'ok';
+  const status=resource.loading?'正在查询':resource.error?'查询失败':capacityLabels[state];
+  const description=data?['三个业务桶合计用量 / 硬配额；桶配额不等于独占磁盘容量',...data.buckets.map(b=>`${b.label}：${b.used_bytes===null?'未知':capacitySize(b.used_bytes)} / ${b.quota_bytes===null?'未知':capacitySize(b.quota_bytes)} · ${capacityLabels[b.state]}`),data.sampled_at?`指标采样 ${time(data.sampled_at)}`:'尚无有效采样'].join('\n'):status;
+  return <div className={`minio-capacity ${state}`} aria-label="MinIO 容量" title={description}>
+    <span><HardDrive size={12}/>MinIO</span><strong>{used===null?'—':capacitySize(used)}</strong>
+    <small aria-label={`${status}，合计硬配额${quota===null?'未知':capacitySize(quota)}`}>{status}{quota!==null&&` · ${capacitySize(quota)}`}{(resource.error||resource.paused)&&<button type="button" onClick={resource.refresh} disabled={resource.refreshing} aria-label="重新查询 MinIO 容量">重试</button>}</small>
+  </div>;
+}
+function CapacityRisk({storage,capacity}:{storage:Resource<Awaited<ReturnType<ControlApi['storage']>>>;capacity:Resource<StorageCapacity>}) {
+  return <Panel title="存储与归档" extra={<More to="/storage" children="查看详情"/>} className="capacity-panel"><ResourceView resource={storage} showMeta={false}>{s=><div className="capacity-items">
     <div><span><Cylinder size={12}/>PostgreSQL</span><strong>{(s.postgres_bytes/1024/1024).toFixed(1)} MiB</strong><small>数据库大小</small></div>
     <div><span><Cylinder size={12}/>ClickHouse</span><strong>{s.clickhouse.bytes===null?'—':`${(s.clickhouse.bytes/1024/1024).toFixed(1)} MiB`}</strong><small>{s.clickhouse.available?'正常':'暂时不可用'}</small></div>
+    <MinioCapacity resource={capacity}/>
     <div><span>待归档事件</span><strong>{s.outbox.unarchived}</strong><small>等待统计入库</small></div>
     <div><span>待处理失败</span><strong>{s.failures.open}</strong><small>重试中 {s.failures.retrying}</small></div>
   </div>}</ResourceView></Panel>;
@@ -86,8 +102,10 @@ export default function Overview() {
     delivery:useResource('overview-delivery',s=>api.deliverySummary(s),true,OVERVIEW_INTERVAL_MS),
   };
   const resources=useResource('overview-resources',s=>api.overviewResources(s),true,30000);
+  const storage=useResource('overview-storage',s=>api.storage(s),true,30000);
+  const capacity=useResource('overview-storage-capacity',s=>api.storageCapacity(s),true,30000);
   const planFor = (id: string): Plan | undefined => plans.data?.items.find(plan => plan.plan_id === id);
-  const snapshots = [plans, channels, workers, errors, completeness,resources,...Object.values(pipeline)];
+  const snapshots = [plans, channels, workers, errors, completeness,resources,storage,capacity,...Object.values(pipeline)];
   const updatedAt = Math.max(0, ...snapshots.map(resource => resource.updatedAt ?? 0));
   const failing = snapshots.some(resource => resource.error);
   return <div className="dashboard">
@@ -107,7 +125,7 @@ export default function Overview() {
       <Panel title="关键错误与 Bug 线索" extra={<More to="/errors"/>} className="bugs-panel"><ResourceView resource={errors} showMeta={false}>{page => page.items.length ? <div className="table-scroll"><table><thead><tr><th>时间</th><th>阶段</th><th>错误类型</th><th>定位线索</th></tr></thead><tbody>{page.items.map(event => <tr key={event.event_id}><td>{compactTime(event.created_at)}</td><td><span className="truncate" title={`${event.phase} · ${event.worker_id}`}>{event.phase}</span></td><td><span className="error-event-tag" title={`${event.error_code ?? event.kind} · ${event.message}`}>{event.error_code ? errorCodeLabels[event.error_code] : event.kind === 'FAILED' ? '执行失败' : '执行错误'}</span></td><td><Link to={`/errors?event=${encodeURIComponent(event.event_id)}`}>查看关联</Link></td></tr>)}</tbody></table></div> : <Empty title="查询范围内暂无错误事件"/>}</ResourceView></Panel>
       <div id="trends"><Trends days={days}/></div>
       <div className="stacked-panels">
-        <CapacityRisk/>
+        <CapacityRisk storage={storage} capacity={capacity}/>
         <Panel title="最近采集的频道" extra={<More to="/channels"/>} className="recent-panel"><ResourceView resource={channels} showMeta={false}>{page => page.items.length ? <div className="table-scroll"><table><thead><tr><th>频道名称</th><th>最近计划</th><th>更新时间</th></tr></thead><tbody>{page.items.map(channel => <tr key={channel.channel_id}><td><Link className="truncate" to={channelPath(channel.channel_id)} title={channel.channel_id}>{channel.title ?? '基础资料待入库'}</Link>{channel.source_mode === 'fixture' && <> <span className="fixture-tag">样本</span></>}</td><td>{planFor(channel.latest_plan_id) ? <PlanBadge status={planFor(channel.latest_plan_id)!.status}/> : <span className="text-muted">待查询</span>}</td><td>{compactTime(channel.updated_at)}</td></tr>)}</tbody></table></div> : <Empty title="尚无频道记录"/>}</ResourceView></Panel>
       </div>
     </div>
