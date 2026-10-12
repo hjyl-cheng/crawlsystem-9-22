@@ -62,9 +62,9 @@ export class ControlApi {
   }
   dispose() { this.token = ''; }
 
-  private async request<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal, body?: unknown): Promise<T> {
+  private async request<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal, body?: unknown, timeoutMs = this.timeoutMs): Promise<T> {
     const timeout = new AbortController();
-    const timer = setTimeout(() => timeout.abort(), this.timeoutMs);
+    const timer = setTimeout(() => timeout.abort(), timeoutMs);
     try {
       const response = await fetch(this.baseUrl + path, {
         method: body === undefined ? 'GET' : 'POST',
@@ -112,7 +112,7 @@ export class ControlApi {
   agentSummary = (signal?: AbortSignal) => this.request(ApiRoutes.agentSummary, AgentSummarySchema, signal);
   agentTasks = (cursor = '0', state?: AgentTask['state'], signal?: AbortSignal) => this.request(`${ApiRoutes.agentTasks}?${new URLSearchParams({ limit: '20', cursor, ...(state ? { state } : {}) })}`, pageSchema(AgentTaskSchema), signal);
   dataApiSummary = (signal?: AbortSignal) => this.request(ApiRoutes.dataApiSummary, DataApiSummarySchema, signal);
-  importChannels = (body: ChannelImport, signal?: AbortSignal) => this.request(ApiRoutes.channelImport, ChannelImportResultSchema, signal, ChannelImportSchema.parse(body));
+  importChannels = (body: ChannelImport, signal?: AbortSignal) => this.request(ApiRoutes.channelImport, ChannelImportResultSchema, signal, ChannelImportSchema.parse(body), Math.max(this.timeoutMs, 30_000));
   channelImports = (signal?: AbortSignal) => this.request(ApiRoutes.channelImports, ChannelImportsSchema, signal);
   querySummary = (signal?: AbortSignal) => this.request(ApiRoutes.queriesSummary, QuerySummarySchema, signal);
   queryCollection = (signal?:AbortSignal)=>this.request('/v1/queries/collection',QueryCollectionSummarySchema,signal);

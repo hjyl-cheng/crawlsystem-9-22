@@ -14,11 +14,13 @@ function cleanHeaders(headers) {
 }
 
 /** A release gateway: loopback only; static SPA and authenticated Control API. */
-export function createGateway({ root, publicHost, target, browserOrigin, port = 18103, proxyTimeout = 30000 }) {
+export function createGateway({ root, publicHost, target, browserOrigin = 'http://127.0.0.1:18102', port = 18103, proxyTimeout = 30000 }) {
   const current = resolve(root, 'current');
   const upstream = new URL(target);
   if (!['http:', 'https:'].includes(upstream.protocol) || upstream.username || upstream.password || upstream.pathname !== '/') throw new Error('Invalid API target');
   if (!publicHost || !/^[a-z0-9.-]+$/i.test(publicHost)) throw new Error('An exact public host is required');
+  const backendOrigin = new URL(browserOrigin);
+  if (!['http:', 'https:'].includes(backendOrigin.protocol) || backendOrigin.origin !== browserOrigin) throw new Error('Invalid backend browser origin');
   const hosts = new Set([publicHost, `127.0.0.1:${port}`, `localhost:${port}`]);
   const origins = new Set([`https://${publicHost}`, `http://127.0.0.1:${port}`, `http://localhost:${port}`]);
   const json = (res, status, code) => {

@@ -18,19 +18,26 @@ test('release gateway preserves SPA, sessions and old chunks across activation; 
   const api = createServer((req, res) => {
     assert.equal(req.url, '/v1/console/session?x=1'); assert.equal(req.headers.authorization, 'Bearer test');
     assert.equal(req.headers.cookie, 'session=test'); assert.equal(req.headers.origin, 'http://127.0.0.1:18102');
-    res.setHeader('set-cookie', 'session=renewed; HttpOnly; Secure; SameSite=Strict'); res.end('authenticated');
+    res.setHeader('set-cookie', 'session=renewed; HttpOnly; Secure; SameSite=Strict');
+    let body = ''; req.on('data', chunk => body += chunk); req.on('end', () => {
+      if (req.method === 'POST') assert.equal(body, '{"request":"import"}');
+      res.end('authenticated');
+    });
   });
   await new Promise(r => api.listen(0, '127.0.0.1', r));
-  const gateway = createGateway({ root, publicHost: 'console.example.com', target: `http://127.0.0.1:${api.address().port}`, browserOrigin: 'http://127.0.0.1:18102' });
+  const options = { root, publicHost: 'console.example.com', target: `http://127.0.0.1:${api.address().port}` };
+  assert.throws(() => createGateway({ ...options, browserOrigin: 'http://user:password@localhost/' }), /Invalid backend browser origin/);
+  // Existing preview.env can omit the origin mapping; browser POSTs must still work.
+  const gateway = createGateway(options);
   await new Promise(r => gateway.listen(0, '127.0.0.1', r));
-  const get = (path, headers = {}, method = 'GET') => new Promise((resolve, reject) => {
+  const get = (path, headers = {}, method = 'GET', body = '') => new Promise((resolve, reject) => {
     const call = request({ hostname: '127.0.0.1', port: gateway.address().port, path, method, headers: { host: 'console.example.com', ...headers } }, res => {
       const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('end', () => {
         const responseHeaders = new Headers();
         for (const [name, value] of Object.entries(res.headers)) for (const entry of Array.isArray(value) ? value : [value]) if (entry !== undefined) responseHeaders.append(name, entry);
         resolve(new Response(method === 'HEAD' ? null : Buffer.concat(chunks), { status: res.statusCode, headers: responseHeaders }));
       });
-    }); call.on('error', reject); call.end();
+    }); call.on('error', reject); call.end(body);
   });
   try {
     assert.equal(await (await get('/channels', { accept: 'text/html' })).text(), first);
@@ -47,6 +54,9 @@ test('release gateway preserves SPA, sessions and old chunks across activation; 
     const proxy = await get('/api/v1/console/session?x=1', { origin: 'https://console.example.com', authorization: 'Bearer test', cookie: 'session=test' });
     assert.equal(proxy.status, 200); assert.equal(proxy.headers.get('set-cookie'), 'session=renewed; HttpOnly; Secure; SameSite=Strict');
     assert.equal(await proxy.text(), 'authenticated');
+    const post = await get('/api/v1/console/session?x=1', { origin: 'https://console.example.com', authorization: 'Bearer test', cookie: 'session=test', 'content-type': 'application/json' }, 'POST', '{"request":"import"}');
+    assert.equal(post.status, 200); assert.equal(await post.text(), 'authenticated');
+    assert.equal((await get('/healthz')).status, 200);
     await symlink(join(root, 'releases', second), join(root, 'next')); await rename(join(root, 'next'), join(root, 'current'));
     assert.equal(await (await get('/channels', { accept: 'text/html' })).text(), second);
     const old = await get('/assets/old.js'); assert.equal(await old.text(), 'old'); assert.match(old.headers.get('cache-control'), /immutable/);

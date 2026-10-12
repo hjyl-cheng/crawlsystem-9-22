@@ -16,7 +16,10 @@ if not saved.exists(): saved.write_text(json.dumps(cm)); saved.chmod(0o600)
 cm['data']['business.yaml'] = rules; cm['metadata'].pop('managedFields', None)
 k('replace', '-f', '-', data=json.dumps(cm))
 for attempt in range(60):
-    if k('-n', 'monitoring', 'exec', 'deployment/prometheus', '--', 'cat', '/etc/prometheus/rules/business.yaml') == rules: break
+    try:
+        if k('-n', 'monitoring', 'exec', 'deployment/prometheus', '--', 'cat', '/etc/prometheus/rules/business.yaml') == rules: break
+    except RuntimeError:
+        pass  # A new rule file appears only after Kubernetes refreshes the volume.
     time.sleep(2)
 else: raise RuntimeError('Business rule projection timed out')
 k('-n', 'monitoring', 'exec', 'deployment/prometheus', '--', 'kill', '-HUP', '1')
