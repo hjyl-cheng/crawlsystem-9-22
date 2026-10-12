@@ -60,7 +60,10 @@ function IpUsage({resources}:{resources:Resource<OverviewResources>}) {
     }}</ResourceView>
   </Panel>;
 }
-const capacitySize=(value:number)=>value>=1024**3?`${(value/1024**3).toFixed(2)} GiB`:`${(value/1024**2).toFixed(2)} MiB`;
+const capacitySize=(value:number)=>{
+  const gib=value>=1024**3;
+  return `${Number((value/1024**(gib?3:2)).toFixed(2))} ${gib?'GiB':'MiB'}`;
+};
 const capacityLabels={ok:'正常',warning:'容量预警',critical:'容量严重',unknown:'用量未知'};
 function MinioCapacity({resource}:{resource:Resource<StorageCapacity>}) {
   const data=resource.error?undefined:resource.data,buckets=data?.buckets;
@@ -71,7 +74,7 @@ function MinioCapacity({resource}:{resource:Resource<StorageCapacity>}) {
   const description=data?['三个业务桶合计用量 / 硬配额；桶配额不等于独占磁盘容量',...data.buckets.map(b=>`${b.label}：${b.used_bytes===null?'未知':capacitySize(b.used_bytes)} / ${b.quota_bytes===null?'未知':capacitySize(b.quota_bytes)} · ${capacityLabels[b.state]}`),data.sampled_at?`指标采样 ${time(data.sampled_at)}`:'尚无有效采样'].join('\n'):status;
   return <div className={`minio-capacity ${state}`} aria-label="MinIO 容量" title={description}>
     <span><HardDrive size={12}/>MinIO</span><strong>{used===null?'—':capacitySize(used)}</strong>
-    <small aria-label={`${status}，合计硬配额${quota===null?'未知':capacitySize(quota)}`}>{status}{quota!==null&&` · ${capacitySize(quota)}`}{(resource.error||resource.paused)&&<button type="button" onClick={resource.refresh} disabled={resource.refreshing} aria-label="重新查询 MinIO 容量">重试</button>}</small>
+    <small aria-label={`${status}，合计硬配额${quota===null?'未知':capacitySize(quota)}`}>{status}{quota!==null&&<> · <b>配额 {capacitySize(quota)}</b></>}{(resource.error||resource.paused)&&<button type="button" onClick={resource.refresh} disabled={resource.refreshing} aria-label="重新查询 MinIO 容量">重试</button>}</small>
   </div>;
 }
 function CapacityRisk({storage,capacity}:{storage:Resource<Awaited<ReturnType<ControlApi['storage']>>>;capacity:Resource<StorageCapacity>}) {

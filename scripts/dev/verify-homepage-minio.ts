@@ -12,7 +12,7 @@ const page=await browser.newPage({viewport:{width:1920,height:937},extraHTTPHead
 const errors:string[]=[],failed:string[]=[],layouts:{width:number;height:number;horizontal_overflow:number;vertical_overflow?:number}[]=[];
 let phase='load',capacityReads=0,liveData:StorageCapacity|undefined;
 const card=page.getByLabel('MinIO 容量',{exact:true}),panel=page.locator('.capacity-panel');
-const size=(n:number)=>n>=1024**3?`${(n/1024**3).toFixed(2)} GiB`:`${(n/1024**2).toFixed(2)} MiB`;
+const size=(n:number)=>n>=1024**3?`${Number((n/1024**3).toFixed(2))} GiB`:`${Number((n/1024**2).toFixed(2))} MiB`;
 const save=(name:string,value:unknown)=>writeFileSync(`${dir}/${name}.json`,JSON.stringify(value,null,2)+'\n',{mode:0o600});
 page.on('pageerror',error=>errors.push(error.name));
 page.on('response',response=>{
@@ -55,6 +55,10 @@ try{
  liveData=await live(local);
  for(const [width,height] of [[1920,937],[1586,992],[390,844]] as const){
   phase='layout:'+width;await page.setViewportSize({width,height});
+  if(width===390){
+   await live(local);
+   await expect.poll(()=>page.locator('aside.sidebar').evaluate(el=>el.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
+  }
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
   if(width>1000){
    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollHeight-innerHeight)).toBe(0);
@@ -65,7 +69,7 @@ try{
   }
   await expect(card).toBeVisible();
   save('layout-'+width,await card.evaluate(el=>({card:el.getBoundingClientRect().toJSON(),parts:[...el.children].map(child=>({text:child.textContent,box:child.getBoundingClientRect().toJSON(),width:child.clientWidth,scroll_width:child.scrollWidth}))})));
-  await page.screenshot({path:`${dir}/overview-${width}.png`,fullPage:true});
+  await page.screenshot({path:`${dir}/overview-${width}.png`,fullPage:true,animations:'disabled'});
   layouts.push({width,height,horizontal_overflow:0,...width>1000?{vertical_overflow:0}:{}});
  }
  phase='details-link';await panel.getByRole('link',{name:'查看详情'}).click();
@@ -88,7 +92,7 @@ try{
  phase='critical-with-unknown';const criticalPartial=structuredClone(partial);criticalPartial.buckets[0]={...critical.buckets[0]!,used_bytes:Math.round(critical.buckets[0]!.quota_bytes!*.85),remaining_bytes:Math.round(critical.buckets[0]!.quota_bytes!*.15),state:'critical',used_percent:85};
  await mock(criticalPartial);await expect(card.locator('strong')).toHaveText('—');await expect(card.locator('small')).toContainText('容量严重');
  phase='empty-buckets';const empty=structuredClone(liveData);empty.buckets=empty.buckets.map(b=>({...b,used_bytes:0,remaining_bytes:b.quota_bytes,objects:0,used_percent:0,state:'ok'}));
- await mock(empty);await expect(card.locator('strong')).toHaveText('0.00 MiB');await expect(card.locator('small')).toContainText('正常');
+ await mock(empty);await expect(card.locator('strong')).toHaveText('0 MiB');await expect(card.locator('small')).toContainText('正常');
  phase='error-after-success';await live(local);
  await page.route('**/api/v1/storage/capacity',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{code:'UNAVAILABLE',message:'acceptance',retryable:false,correlation_id:'homepage-minio-acceptance'}})}),{times:1});
  await page.getByRole('button',{name:'刷新实时状态',exact:true}).click();

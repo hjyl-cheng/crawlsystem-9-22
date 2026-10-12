@@ -178,6 +178,7 @@
 .capacity-items .minio-capacity.ok small { color: #138460; }
 .capacity-items .minio-capacity.warning small { color: #9c6b15; }
 .capacity-items .minio-capacity.critical small { color: #d64747; }
+.minio-capacity b { font: inherit; white-space: nowrap; }
 .minio-capacity button { border: 0; background: transparent; color: #277cf7; font: inherit; padding: 0 0 0 4px; cursor: pointer; }
 .recent-panel td:first-child .truncate { max-width: 150px; }
 .fixture-tag { color: #9850d4; background: #f4edff; font-size: var(--fs-meta); padding: 1px 4px; border-radius: 3px; }
