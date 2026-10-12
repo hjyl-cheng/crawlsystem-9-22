@@ -1,0 +1,296 @@
+{
+  "result": "PASSED",
+  "before_at": "2026-10-12T01:50:00.868Z",
+  "verified_at": "2026-10-12T02:08:47.690Z",
+  "scope": [
+    "Production console releases and rollback",
+    "Business alerts",
+    "Handle import and evidenced channel removal"
+  ],
+  "console": {
+    "release": "f383f57fde2a-4045424b93c8",
+    "rollback_release": "3905f8b8497d-24c1dd80874d",
+    "public_url": "https://controversy-roughly-kiss-genealogy.trycloudflare.com/",
+    "service": "console-release-web",
+    "old_watch_and_vite_preview_disabled": true,
+    "immutable_files_with_sha256": true,
+    "atomic_activation": true,
+    "old_chunks_preserved": true
+  },
+  "images": {
+    "revision": "3905f8b8497d2ef23cb0f44c23d1cd98b00c35b8",
+    "control": "docker.io/crawlsystem/control-api:main-3905f8b8497d-0ee4ca1c",
+    "worker": "docker.io/crawlsystem/execution-worker:main-3905f8b8497d-6ab22a30"
+  },
+  "preservation": {
+    "schema": 39,
+    "original_migration_checksums": 37,
+    "settings_version": 5,
+    "legacy_business_tables": 64,
+    "video_identities": 62967,
+    "active_plan_recovery_identity": true,
+    "unrelated_workload_specs_pods_restarts": true,
+    "encrypted_browser_identities": 299,
+    "worker_pvcs_preserved": true,
+    "worker_identity_hashes_preserved": true,
+    "console_dirty_evidence_sha256": "57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709"
+  },
+  "backup": {
+    "bytes": 170400781,
+    "sha256": "355e6aa0f5f255d73e27dc182ba3f4aefb304023add179e4b07e02ad3e8dc97f"
+  },
+  "real_plans": [
+    {
+      "plan_id": "a59040c8-fb59-4f3e-92ab-c43d5faa5d3b",
+      "worker_id": "execution-worker-0",
+      "status": "COMPLETED",
+      "domains": [
+        {
+          "domain": "ABOUT",
+          "state": "APPLIED"
+        },
+        {
+          "domain": "AGENT",
+          "state": "APPLIED"
+        },
+        {
+          "domain": "VIDEO",
+          "state": "APPLIED"
+        }
+      ],
+      "video_targets": [
+        "syeXxWNuXlc",
+        "lrMryTrBxVw"
+      ],
+      "pipeline_steps": 4,
+      "durable_units": 5,
+      "delivery_id": "5371236d-cc76-42e1-8db8-61d852ea4e5d",
+      "delivery_status": "DELIVERED",
+      "business_projection_version_verified": true
+    },
+    {
+      "plan_id": "9e253777-5ff8-43ff-b4dc-203b3ef3a692",
+      "worker_id": "execution-worker-0",
+      "status": "COMPLETED",
+      "domains": [
+        {
+          "domain": "ABOUT",
+          "state": "APPLIED"
+        },
+        {
+          "domain": "AGENT",
+          "state": "APPLIED"
+        },
+        {
+          "domain": "VIDEO",
+          "state": "APPLIED"
+        }
+      ],
+      "video_targets": [
+        "ncIEH3I56-Q",
+        "PP-0af7umLM"
+      ],
+      "pipeline_steps": 4,
+      "durable_units": 5,
+      "delivery_id": "ad382bf6-93e7-442b-807d-6df921fe003b",
+      "delivery_status": "DELIVERED",
+      "business_projection_version_verified": true
+    }
+  ],
+  "browser": {
+    "layouts": [
+      {
+        "path": "/",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/channels",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/workers",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/delivery",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/storage",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/failures",
+        "width": 1920,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/",
+        "width": 390,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/channels",
+        "width": 390,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/workers",
+        "width": 390,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/delivery",
+        "width": 390,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/storage",
+        "width": 390,
+        "horizontal_overflow": 0
+      },
+      {
+        "path": "/failures",
+        "width": 390,
+        "horizontal_overflow": 0
+      }
+    ],
+    "handle_outcomes": [
+      "known",
+      "duplicate",
+      "duplicate",
+      "handle_not_found"
+    ],
+    "reader_write_status": 403,
+    "public_status": 200,
+    "cookie_session_across_rollback": true,
+    "logout_replay_status": 401,
+    "page_errors": [],
+    "api_errors": []
+  },
+  "channel_removal": {
+    "evidence_sources": [
+      "Successful captured browse with explicit unavailable alert",
+      "Successful official channels lookup with empty items"
+    ],
+    "offline_parser_and_database_checks": "PASSED",
+    "single_source_or_transport_errors_do_not_retract": true,
+    "durable_confirmation_before_retraction": true,
+    "retraction_uses_original_outbox": true,
+    "idempotent_confirmation": true,
+    "existing_facts_and_recovery_identity_preserved": true,
+    "real_removed_channel_live_acceptance": false
+  },
+  "alerts": {
+    "rules": [
+      {
+        "name": "CrawlControlMetricsUnavailable",
+        "health": "ok",
+        "state": "inactive"
+      },
+      {
+        "name": "CrawlIntentDispatchDelayed",
+        "health": "ok",
+        "state": "inactive"
+      },
+      {
+        "name": "CrawlPlansPastDeadline",
+        "health": "ok",
+        "state": "inactive"
+      },
+      {
+        "name": "CrawlPipelineIngestionDelayed",
+        "health": "ok",
+        "state": "inactive"
+      },
+      {
+        "name": "CrawlDeliveryDelayed",
+        "health": "ok",
+        "state": "inactive"
+      },
+      {
+        "name": "CrawlDeliveryFailed",
+        "health": "ok",
+        "state": "inactive"
+      },
+      {
+        "name": "CrawlNoReadyWorker",
+        "health": "ok",
+        "state": "inactive"
+      },
+      {
+        "name": "CrawlNoHealthyProxy",
+        "health": "ok",
+        "state": "inactive"
+      }
+    ],
+    "synthetic_scenarios": 12,
+    "existing_alertmanager_dingtalk_route": true,
+    "dingtalk_health": 200,
+    "new_test_notification_sent": false
+  },
+  "runtime": {
+    "workers": [
+      {
+        "worker_id": "execution-worker-0",
+        "server_id": "s2",
+        "status": "RUNNING"
+      },
+      {
+        "worker_id": "execution-worker-s3-0",
+        "server_id": "s3",
+        "status": "RUNNING"
+      }
+    ],
+    "current_video_identities": 63065,
+    "completed_after_deploy": [
+      {
+        "worker_id": "execution-worker-0",
+        "n": 4
+      },
+      {
+        "worker_id": "execution-worker-s3-0",
+        "n": 1
+      }
+    ],
+    "delivery": {
+      "enabled": true,
+      "target": "业务库（旧服务器结构）",
+      "total": 2352,
+      "pending": 0,
+      "delivered": 2343,
+      "failed": 0,
+      "not_ready": 2,
+      "unchanged": 7,
+      "delivered_today": 126,
+      "oldest_pending_at": null
+    },
+    "cdc": "RUNNING",
+    "pg_comment_bodies": 0,
+    "tunnel_pid": 1882
+  },
+  "checks": {
+    "typecheck": "PASSED",
+    "integration": {
+      "passed": 25,
+      "failed": 0
+    },
+    "unit": {
+      "passed": 9,
+      "failed": 0
+    },
+    "gateway_browser_post_regression": "PASSED",
+    "kubernetes_server_dry_run": "PASSED"
+  },
+  "limits": [
+    "Channel removal verified with isolated database checks and captured-response replay; no forged deletion in the live database",
+    "Both manually created collection acceptance plans were assigned to s2; s3 separately completed an automatic plan",
+    "Existing Quick Tunnel remains the public entry; fixed domain is optional",
+    "Short real acceptance; permanent worker takeover, full-stack HA, stable proxy provider and capacity expansion remain future operations work"
+  ]
+}

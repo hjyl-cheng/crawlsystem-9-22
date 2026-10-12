@@ -20,4 +20,4 @@ Query 发现页已接入自动收集状态和可分页查看的来源。从已�
 
 复核入口均通过 `npm run check:safe --`：`query-collection-integration`、`query-collection-browser`、`query-collection-runtime before|after`。发布使用 `query-collection-prepare`、`query-collection-image`、`query-collection-deploy`。`query-collection-refine` 是本轮迁移已有候选的幂等修正工具，要求先暂停自动收集；日常运行已使用收紧规则，不需要重复执行。私密备份、部署原始信息和完整运行快照位于 `.runtime/b2/`，不进入仓库。
 
-下一阶段 E：自动备份与隔离恢复演练、失败导入自动重试、调度与执行服务部署完善、补业务告警。固定域名和稳定代理来源仍需按实际可用资源推进。
+后续状态（2026-10-12）：[E1](../e1/README.md) 每日备份与恢复、[E2](../e2/README.md) 失败导入自动重试、[E4](../e4/README.md) 双采集节点及 [收尾验收](../finish/README.md) 正式控制台与业务告警均已完成。固定域名和稳定代理来源按后续运营需求推进，现有公网地址继续使用。

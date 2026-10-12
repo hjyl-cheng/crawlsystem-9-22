@@ -20,7 +20,7 @@ npm run preview --workspace @crawlsystem/console
 
 开发地址 `http://127.0.0.1:18102`，构建目录 `apps/console/dist`。
 
-公网开发预览已通过 Cloudflare 免费 HTTPS 子域名接入，自动构建、只读登录与停止方式见[预览说明](docs/preview.md)。
+公网控制台已使用不可变构建版本与正式静态 / API 网关，支持原子发布及回滚，沿用现有 Cloudflare HTTPS 地址。部署和复核见[正式部署说明](docs/deployment.md)；原 Vite 自动构建 / 预览已停用，[预览说明](docs/preview.md)保留历史入口信息。
 
 共享锁文件由主 Agent 管理。新增依赖由主线集中更新；浏览器回归在当前共用主机使用单 worker（根命令 `npm run test:browser`）。
 
@@ -39,7 +39,7 @@ npm run preview --workspace @crawlsystem/console
 
 默认使用账号和密码登录，Fastify 通过 `/v1/auth/login` 校验加盐 scrypt 密码摘要，并设置 HttpOnly / Secure / SameSite=Strict 会话 Cookie。页面刷新通过 `/v1/session` 恢复登录，最长 8 小时；退出调用 `/v1/auth/logout` 撤销服务端会话。账号密码与会话身份不写入浏览器存储、URL 或前端构建。`reader` 只读，`operator` 可创建和取消；`worker` 不可进入管理界面。
 
-账号与会话存于 `crawler` 库的 `console` schema，重启 API 不影响登录。Keycloak、账号管理页面、密码找回与审计表尚未接入。[后端账号配置](../control-api/README.md)说明凭据配置和测试方式。仅兼容旧 API 联调时显式设置 `VITE_AUTH_MODE=token`，公网预览不使用该模式。
+账号存于独立 `crawler` 库的 `console` schema，会话由采集库持久保存，重启 API 或控制台回滚不影响登录。用户页已接持久登录历史、操作审计与账号维护留痕，见 [D3 验收](../../docs/d3/README.md)。[后端账号配置](../control-api/README.md)说明凭据配置和测试方式。仅兼容旧 API 联调时显式设置 `VITE_AUTH_MODE=token`，公开控制台不使用该模式；Keycloak、密码找回与双因素认证可按后续需求增加。
 
 后端基础服务启动与 Worker 令牌签发见 [集成基线](../../docs/m1/integration-baseline.md)。静态前端不签发令牌，不需要 JWT 签名密钥。账号验证位于独立 Fastify API。
 
