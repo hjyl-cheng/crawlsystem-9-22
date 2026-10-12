@@ -239,7 +239,9 @@ export interface ChannelClock {
 export interface ChannelManagement { state: ManagementState | null; version: number; changed_at: string | null; clocks: ChannelClock[];
   /** Clocks the scheduler acts on by itself; the others wait for a manual update. */
   auto_domains: Domain[]; }
-export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; management_state: ManagementState | null; next_due_at: string | null;
+export const ChannelAgentStateSchema = z.enum(['not_scheduled','waiting','running','completed','failed']);
+export type ChannelAgentState = z.infer<typeof ChannelAgentStateSchema>;
+export interface ChannelListItem extends ChannelSummary { country: string | null; subscriber_count: number | null; stored_videos: number; latest_plan_status: PlanStatus; management_state: ManagementState | null; next_due_at: string | null; category?: string | null; agent_state?: ChannelAgentState;
   /** The three clocks in brief (managed and paused channels; empty otherwise). */
   clocks: Pick<ChannelClock, 'clock' | 'next_due_at' | 'interval_days' | 'retry_at' | 'override_days'>[]; }
 export interface ChannelDetail extends ChannelSummary { about: ChannelFacts | null; videos: VideoItem[]; agent: AgentResult | null; latest_plan: Plan; management: ChannelManagement; }
@@ -298,6 +300,7 @@ export const ChannelClockOverrideSchema = z.strictObject({ clock: z.enum(CLOCK_N
 export type ChannelClockOverride = z.infer<typeof ChannelClockOverrideSchema>;
 export const ChannelDetailSchema: z.ZodType<ChannelDetail> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), about: ChannelFactsSchema.nullable(), videos: z.array(VideoItemSchema).max(100), agent: AgentResultSchema.nullable(), latest_plan: PlanSchema, management: ChannelManagementSchema });
 export const ChannelListItemSchema: z.ZodType<ChannelListItem> = z.strictObject({ channel_id: IdSchema, title: z.string().nullable(), source_mode: SourceModeSchema, updated_at: Timestamp, latest_plan_id: z.uuid(), country: z.string().max(200).nullable(), subscriber_count: z.number().int().nonnegative().nullable(), stored_videos: z.number().int().nonnegative(), latest_plan_status: PlanStatusSchema, management_state: ManagementStateSchema.nullable(), next_due_at: Timestamp.nullable(),
+  category: z.string().max(100).nullable().optional(), agent_state: ChannelAgentStateSchema.optional(),
   clocks: z.array(z.strictObject({ clock: z.enum(CLOCK_NAMES), next_due_at: Timestamp, interval_days: z.number().int().min(1).max(365), retry_at: Timestamp.nullable(), override_days: z.number().int().min(1).max(365).nullable() })).max(3) });
 export const WorkerSchema: z.ZodType<Worker> = HeartbeatSchema.extend({ last_heartbeat_at: Timestamp, stale: z.boolean(), proxy_status: z.enum(['NOT_CONFIGURED', 'CONFIGURED']),control:WorkerControlSchema.optional() });
 export const SessionSchema: z.ZodType<Session> = z.strictObject({ subject: IdSchema, workspace_id: IdSchema, role: RoleSchema, server_id: IdSchema.optional(), contract_version: z.literal(CONTRACT_VERSION) });
@@ -589,6 +592,20 @@ export const BUSINESS_CATEGORIES = ['Automotive', 'Beauty Creators', 'Casual Vlo
   'Health & Wellness', 'Home', 'Music', 'Parenting', 'Pets & Animals', 'Self Improvement', 'Software & Internet', 'Sports & Outdoors', 'Tech', 'Travel'] as const;
 export const BusinessCategorySchema = z.enum(BUSINESS_CATEGORIES);
 export type BusinessCategory = typeof BUSINESS_CATEGORIES[number];
+export const ChannelListFiltersSchema = z.strictObject({
+  search: z.string().trim().max(160).optional(), country: z.string().trim().min(1).max(200).optional(),
+  category: z.union([BusinessCategorySchema,z.literal('__missing')]).optional(),
+  management_state: z.enum(['managed','paused','removed','unmanaged']).optional(),
+  agent_state: ChannelAgentStateSchema.optional(), state: z.enum(['ok','overdue','paused']).optional(),
+});
+export type ChannelListFilters = z.infer<typeof ChannelListFiltersSchema>;
+export const ChannelFilterOptionsSchema = z.strictObject({
+  observed_at: Timestamp,
+  counts: z.strictObject({all:Count,ok:Count,overdue:Count,paused:Count}),
+  countries: z.array(z.strictObject({value:z.string().min(1).max(200),label:z.string().max(200),count:Count})).max(500),
+  categories: z.array(z.strictObject({value:z.union([BusinessCategorySchema,z.literal('__missing')]),count:Count})).max(20),
+});
+export type ChannelFilterOptions = z.infer<typeof ChannelFilterOptionsSchema>;
 export const QUERY_STATES = ['BOOTSTRAP', 'ACTIVE', 'COOLDOWN', 'DORMANT', 'DISABLED'] as const;
 export const QueryStateSchema = z.enum(QUERY_STATES);
 export const QueryCadenceSchema = z.enum(['WEEK', 'MONTH']);

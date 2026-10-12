@@ -9,7 +9,10 @@
 .channels-list tbody tr.selected { background: #eef5ff; }
 .channels-list .resource-meta { padding: 0 14px; min-height: 26px; font-size: var(--fs-meta); }
 .channels-page .pagination { padding: 6px 14px; border-top: 1px solid #eef3f9; font-size: var(--fs-meta); }
-.channel-filters { justify-content: flex-start; padding: 8px 14px; }
+.channel-filters { justify-content: flex-start; padding: 8px 14px; flex-wrap: wrap; }
+.channel-filters .list-search { flex: 1 1 220px; min-width: 0; }
+.channel-filters select { max-width: 100%; }
+.channels-list .filter-error { padding: 0 14px 8px; }
 .channel-detail .detail-head>a { margin-left: auto; color: #277cf7; font-size: var(--fs-meta); white-space: nowrap; }
 .policy-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px 0; border-bottom: 1px solid #eef3f9; font-size: var(--fs-text); }
 .policy-row b { color: #193257; }

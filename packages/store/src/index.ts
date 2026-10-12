@@ -11,6 +11,8 @@ import { aboutObservation, agentObservation, applyObservations, loadClocks, vide
 import { ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, parseChannelReference, type ChannelImportResult, type ChannelImports } from '@crawlsystem/contracts';
 import { UpdateLimitsSchema, ChannelUpdateSchema, DataApiPermitRequestSchema, DataApiFailureReportSchema, type UpdateLimits, type DataApiPermit, type DataApiSummary, type AgentTask, type AgentSummary } from '@crawlsystem/contracts';
 import { readAgentSummary, readAgentTasks, readDataApiSummary } from './operations-view.ts';
+import {readChannelList,readChannelFilterOptions} from './channel-list.ts';
+import type {ChannelListFilters} from '@crawlsystem/contracts';
 import { commandQuery, createQuery, DiscoveryError, listBindings, querySummary, type BindingFilter } from './discovery.ts';
 import { CreateQuerySchema, DiscoveryLimitsSchema, QueryCommandSchema, type DiscoveryLimits, type QueryBinding, type QueryRunClaim, type QuerySummary, type Candidate, type CandidateSummary } from '@crawlsystem/contracts';
 import { claimRun, completeRun, extendLease, failRun, recordPage, runPermit, runPermitFailure, settleQualifiedRun } from './query-runs.ts';
@@ -961,22 +963,13 @@ export class Store {
     const rows = await this.pool.query("SELECT e.* FROM control.events e JOIN control.plans p USING(plan_id) WHERE p.workspace_id=$1 AND p.source_mode=$4 AND e.data->>'kind' IN ('ERROR','FAILED') ORDER BY e.created_at DESC,e.event_id LIMIT $2 OFFSET $3",[principal.workspace_id,limit+1,offset,mode]);
     return page(rows.rows.map(r => ({...r.data,plan_id:r.plan_id,created_at:iso(r.created_at)} as StoredEvent)),limit,offset);
   }
-  async listChannels(principal: Principal, limit=20, offset=0, mode: SourceMode='youtube'): Promise<Page<ChannelListItem>> {
+  async channelFilterOptions(principal:Principal,mode:SourceMode='youtube',filter:ChannelListFilters={}) {
     requireRole(principal,'reader','operator');
-    // Country and subscribers come from the current About facts; stored_videos counts this workspace's video rows.
-    const rows = await this.pool.query(`SELECT c.*, p.status AS latest_plan_status, p.source_mode,
-        (SELECT count(*)::int FROM control.videos v WHERE v.workspace_id=c.workspace_id AND v.channel_id=c.channel_id) AS stored_videos,
-        (SELECT min(coalesce(k.retry_at,k.due_at)) FROM control.channel_clocks k WHERE k.workspace_id=c.workspace_id AND k.channel_id=c.channel_id AND k.clock=ANY($5::text[])) AS next_due_at,
-        (SELECT coalesce(jsonb_agg(jsonb_build_object('clock',k.clock,'next_due_at',coalesce(k.retry_at,k.due_at),'interval_days',k.interval_days,'retry_at',k.retry_at,'override_days',k.override_days)
-           ORDER BY array_position($5::text[],k.clock)),'[]') FROM control.channel_clocks k WHERE k.workspace_id=c.workspace_id AND k.channel_id=c.channel_id AND k.clock=ANY($5::text[])) AS clocks
-      FROM control.channel_overview c JOIN control.plans p ON p.plan_id=c.latest_plan_id
-      WHERE c.workspace_id=$1 AND p.source_mode=$4 ORDER BY c.updated_at DESC,c.channel_id LIMIT $2 OFFSET $3`,[principal.workspace_id,limit+1,offset,mode,CLOCK_NAMES]);
-    return page(rows.rows.map(r => ({channel_id:r.channel_id,title:r.about?.title ?? null,source_mode:r.source_mode,updated_at:iso(r.updated_at),latest_plan_id:r.latest_plan_id,
-      country:r.about?.country ?? null, subscriber_count:typeof r.about?.subscriber_count?.value === 'number' ? r.about.subscriber_count.value : null,
-      stored_videos:r.stored_videos, latest_plan_status:r.latest_plan_status, management_state:r.management_state ?? null,
-      next_due_at:r.management_state === 'managed' && r.next_due_at ? iso(r.next_due_at) : null,
-      clocks:['managed','paused'].includes(r.management_state) ? (r.clocks as {clock:ClockName;next_due_at:string;interval_days:number;retry_at:string|null;override_days:number|null}[])
-        .map(k => ({...k,next_due_at:iso(k.next_due_at),retry_at:k.retry_at ? iso(k.retry_at) : null})) : []})),limit,offset);
+    return readChannelFilterOptions(this.pool,principal.workspace_id,mode,filter);
+  }
+  async listChannels(principal: Principal, limit=20, offset=0, mode: SourceMode='youtube',filter:ChannelListFilters={},includeDetails=false): Promise<Page<ChannelListItem>> {
+    requireRole(principal,'reader','operator');
+    return readChannelList(this.pool,principal.workspace_id,limit,offset,mode,filter,includeDetails);
   }
   async getChannel(principal: Principal, channelId: string): Promise<ChannelDetail> {
     requireRole(principal,'reader','operator');

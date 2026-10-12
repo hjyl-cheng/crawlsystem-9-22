@@ -137,6 +137,10 @@ case "${1:-}" in
   completion-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-completion.ts "${@:2}") ;;
   completion-live) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-completion.ts "${@:2}") ;;
   completion-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-completion-browser.ts) ;;
+  channel-filters-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 tests/integration/channel-filters.test.ts tests/integration/overview.test.ts tests/integration/operations-view.test.ts) ;;
+  channel-filters-images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --channel-filters-control-only) ;;
+  channel-filters-live) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-channel-filters.ts "${@:2}") ;;
+  channel-filters-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-channel-filters.ts "${@:2}") ;;
   browser) command=(npm run test:browser -- "${@:2}") ;;
   # Python Profile Agent with the pinned interpreter, wheels and verified model bundle (prepared on first use).
   profile-agent)

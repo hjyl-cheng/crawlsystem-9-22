@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {ChannelFilterOptionsSchema,ChannelListFiltersSchema,type ChannelListFilters} from '@crawlsystem/contracts';
 import {QueryCollectionSummarySchema,QuerySourcesSchema} from '../../../packages/contracts/src/query-collection.ts';
 import {ConsoleAuditPageSchema,ConsoleLoginSummarySchema} from '../../../packages/contracts/src/console-audit.ts';
 import {ProxyAvailabilitySchema} from '../../../packages/contracts/src/proxy-availability.ts';
@@ -48,6 +49,7 @@ export function normalizeBaseUrl(raw: string): string {
   return value;
 }
 
+const channelQuery=(filter:ChannelListFilters)=>Object.fromEntries(Object.entries(ChannelListFiltersSchema.parse(filter)).filter(([,v])=>v!==undefined&&v!=='')) as Record<string,string>;
 export class ControlApi {
   config(signal?:AbortSignal){return this.request('/v1/config',ConfigSnapshotSchema,signal);}
   configHistory(cursor='0',signal?:AbortSignal){return this.request('/v1/config/history?limit=50&cursor='+encodeURIComponent(cursor),ConfigHistorySchema,signal);}
@@ -134,7 +136,8 @@ export class ControlApi {
     z.strictObject({page:CommentPageSchema.nullable(),state:z.enum(['AVAILABLE','EXPIRED','NONE'])}),signal);
   create = (body: CreatePlan, signal?: AbortSignal) => this.request(ApiRoutes.plans, PlanSchema, signal, CreatePlanSchema.parse(body));
   cancel = (id: string, body: z.infer<typeof CancelPlanSchema>, signal?: AbortSignal) => this.request(ApiRoutes.cancel(id), PlanSchema, signal, CancelPlanSchema.parse(body));
-  channels = (cursor = '0', limit = 20, signal?: AbortSignal) => this.request(`${ApiRoutes.channels}?${new URLSearchParams({ limit: String(limit), cursor })}`, pageSchema(ChannelListItemSchema), signal);
+  channels = (cursor = '0', limit = 20, signal?: AbortSignal, filter:ChannelListFilters={}) => this.request(`${ApiRoutes.channels}?${new URLSearchParams({ limit: String(limit), cursor, include_details:'1', ...channelQuery(filter) })}`, pageSchema(ChannelListItemSchema), signal);
+  channelFilterOptions = (filter:ChannelListFilters={},signal?:AbortSignal) => this.request(`${ApiRoutes.channels}/filters?${new URLSearchParams(channelQuery(filter))}`,ChannelFilterOptionsSchema,signal);
   plansSummary = (signal?: AbortSignal) => this.request(ApiRoutes.plansSummary, PlansSummarySchema, signal);
   completeness = (signal?: AbortSignal) => this.request(ApiRoutes.completeness, CompletenessSchema, signal);
   overviewResources = (signal?:AbortSignal)=>this.request('/v1/overview/resources',OverviewResourcesSchema,signal);

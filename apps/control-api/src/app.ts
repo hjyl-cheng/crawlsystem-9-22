@@ -15,6 +15,7 @@ import {WorkerMetricsSchema} from '../../../packages/contracts/src/workers.ts';
 import {ConsoleAuditQuerySchema} from '../../../packages/contracts/src/console-audit.ts';
 import {registerConsoleAudit,type ConsoleAuditRepository} from './console-audit.ts';
 import {ProxyAvailabilityQuerySchema} from '../../../packages/contracts/src/proxy-availability.ts';
+import {ChannelListFiltersSchema,SourceModeSchema} from '@crawlsystem/contracts';
 
 export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; audit?:ConsoleAuditRepository; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore;clickhouse?:ClickHouse;monitoring?:Prometheus;evidencePreview?:(failure:Failure)=>Promise<unknown> }) {
   const auth=options.consoleAuth,workload=options.workloadIdentity;
@@ -152,7 +153,16 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
   app.post('/v1/plans/:id/cancel',async request=>store.cancel(request.principal,planId(request),CancelPlanSchema.parse(request.body)));
   app.post('/v1/plans/:id/events',async request=>store.event(request.principal,planId(request),ExecutionEventSchema.parse(request.body)));
   app.get('/v1/receipts/:id',async request=>store.getReceipt(request.principal,planId(request)));
-  app.get('/v1/channels',async request=>{const q=pagination(request.query);return store.listChannels(request.principal,q.limit,q.offset,q.sourceMode);});
+  app.get('/v1/channels/filters',async request=>{
+    const {source_mode,...filter}=ChannelListFiltersSchema.extend({source_mode:SourceModeSchema.default('youtube')}).parse(request.query);
+    return store.channelFilterOptions(request.principal,source_mode,filter);
+  });
+  app.get('/v1/channels',async request=>{
+    const q=pagination(request.query,{...ChannelListFiltersSchema.shape,include_details:z.literal('1').optional()});
+    const raw=request.query as Record<string,unknown>;
+    const filter=ChannelListFiltersSchema.parse(Object.fromEntries(Object.keys(ChannelListFiltersSchema.shape).map(k=>[k,raw[k]])));
+    return store.listChannels(request.principal,q.limit,q.offset,q.sourceMode,filter,raw.include_details==='1');
+  });
   app.get(ApiRoutes.plansSummary,async request=>{
     const mode=sourceMode(request.query),current=await store.plansSummary(request.principal,mode);if(!options.clickhouse)return current;
     try{return PlansSummarySchema.parse({...current,...await options.clickhouse.planHistory(request.principal.workspace_id,mode)});}catch{throw new StoreError('UNAVAILABLE','Historical plan statistics unavailable',503,true);}
