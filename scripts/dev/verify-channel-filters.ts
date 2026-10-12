@@ -25,17 +25,24 @@ try{
   page.on('pageerror',e=>errors.push(e.name));page.on('response',r=>{if(r.url().includes('/api/v1/')&&r.status()>=400&&!r.url().includes('/channels/filters'))bad.push(new URL(r.url()).pathname+':'+r.status());});
   const rows=()=>page!.locator('.channels-list tbody tr');
   const check=async(filter:ChannelListFilters)=>{
+   await expect.poll(()=>Object.fromEntries([...new URL(page!.url()).searchParams].filter(([key])=>['search','country','category','management_state','agent_state','state'].includes(key)))).toEqual(filter);
    const q=new URLSearchParams(filter as Record<string,string>),response=pageSchema(ChannelListItemSchema).parse(await api('/v1/channels?include_details=1&'+q));
    await expect(rows()).toHaveCount(response.items.length);
    if(response.items.length)await expect(rows().locator('td:first-child .mono')).toHaveText(response.items.map(c=>c.channel_id));
    else await expect(page!.getByText('当前条件下没有频道',{exact:true})).toBeVisible();
+   await expect(page!.locator('.channels-list .pagination>span')).toHaveText(`本页 ${response.items.length} 条 · 每页最多 20 条`);
+  };
+  const readyForScreenshot=async()=>{
+   await expect(page!.locator('.channels-list .status-tabs button span')).toHaveText([/\d/,/\d/,/\d/,/\d/]);
+   await expect(page!.locator('.channel-detail .detail-body')).not.toContainText('正在查询…');
+   await expect(page!.locator('.channels-list .loading-state')).toHaveCount(0);
   };
   for(const width of [1920,390]){
    phase='layouts:'+width;await page.setViewportSize({width,height:937});await page.goto(local+'/channels');await expect(page.getByRole('heading',{name:'频道管理',exact:true})).toBeVisible();await expect(rows()).toHaveCount(first.items.length);
    for(const label of ['搜索频道','国家 / 地区','业务分类','更新状态','Agent 状态'])await expect(page.getByLabel(label,{exact:true})).toBeEnabled();
    phase='search:'+width;await page.getByLabel('搜索频道',{exact:true}).fill(sample.channel_id);await expect(page).toHaveURL(new RegExp('search='+sample.channel_id));await check({search:sample.channel_id});
    await page.reload();await expect(page.getByLabel('搜索频道',{exact:true})).toHaveValue(sample.channel_id);await check({search:sample.channel_id});
-   await page.screenshot({path:dir+'/channels-search-'+width+'.png',fullPage:true});
+   await readyForScreenshot();await page.screenshot({path:dir+'/channels-search-'+width+'.png',fullPage:true});
    await page.getByRole('button',{name:'清除筛选',exact:true}).click();await expect(page.getByLabel('搜索频道',{exact:true})).toHaveValue('');
    phase='tabs:'+width;await page.getByRole('tab',{name:/^已暂停/}).click();await check({state:'paused'});await expect(page.getByRole('tab',{name:/^已暂停/})).toHaveAttribute('aria-selected','true');
    await page.getByRole('tab',{name:/^逾期/}).click();await check({state:'overdue'});
@@ -45,8 +52,11 @@ try{
    const category=metadata.categories.find(c=>c.value==='Music')??metadata.categories.find(c=>c.value!=='__missing');assert.ok(category);
    phase='combined:'+width;await page.getByLabel('国家 / 地区',{exact:true}).selectOption(country.value);await page.getByLabel('业务分类',{exact:true}).selectOption(category.value);await page.getByLabel('更新状态',{exact:true}).selectOption('managed');await page.getByLabel('Agent 状态',{exact:true}).selectOption('completed');
    await check({country:country.value,category:category.value,management_state:'managed',agent_state:'completed'});
+   await expect(page.getByRole('tab',{name:/^全部/})).toHaveAttribute('aria-selected','true');
+   await page.reload();await check({country:country.value,category:category.value,management_state:'managed',agent_state:'completed'});
+   for(const [label,value] of [['国家 / 地区',country.value],['业务分类',category.value],['更新状态','managed'],['Agent 状态','completed']])await expect(page.getByLabel(label!,{exact:true})).toHaveValue(value!);
    await expect.poll(()=>page!.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
-   await page.screenshot({path:dir+'/channels-filtered-'+width+'.png',fullPage:true});layouts.push({width,horizontal_overflow:0});
+   await readyForScreenshot();await page.screenshot({path:dir+'/channels-filtered-'+width+'.png',fullPage:true});layouts.push({width,horizontal_overflow:0});
    await page.getByRole('button',{name:'清除筛选',exact:true}).click();await expect(rows()).toHaveCount(first.items.length);
    phase='paging:'+width;await page.getByRole('button',{name:'下一页',exact:true}).click();await expect(page).toHaveURL(/cursor=20/);await page.getByLabel('搜索频道',{exact:true}).fill(sample.channel_id);await check({search:sample.channel_id});assert.equal(new URL(page.url()).searchParams.has('cursor'),false);
    phase='empty:'+width;await page.getByLabel('搜索频道',{exact:true}).fill('missing-channel-filter-'+Date.now());await expect(page.getByText('当前条件下没有频道',{exact:true})).toBeVisible();await expect(page.locator('.channel-detail .detail-head')).toHaveCount(0);
@@ -55,7 +65,7 @@ try{
   phase='public';const publicUrl=readFileSync('/home/ubuntu/workspace/crawlsystem-console/.runtime/console-preview/url','utf8').trim();await page.goto(publicUrl+'/channels?search='+sample.channel_id);await check({search:sample.channel_id});await page.reload();await check({search:sample.channel_id});
   await expect(page.getByRole('button',{name:'导入频道',exact:true})).toHaveCount(0);
   assert.deepEqual(errors,[]);assert.deepEqual(bad,[]);
-  save('browser',{result:'PASSED',at:new Date().toISOString(),layouts,search_beyond_first_page:true,combined_filters:true,tabs:true,pagination_reset:true,url_refresh:true,empty_state:true,selection_cleared:true,filter_error_recovery:true,reader:true,public:true,page_errors:errors,api_errors:bad});console.log(JSON.stringify({result:'PASSED',layouts:layouts.length,public:true,search_beyond_first_page:true,combined_filters:true}));
+  save('browser',{result:'PASSED',at:new Date().toISOString(),layouts,search_beyond_first_page:true,combined_filters:true,tabs:true,pagination_reset:true,url_refresh:true,filter_url_consistency:true,empty_state:true,selection_cleared:true,filter_error_recovery:true,reader:true,public:true,page_errors:errors,api_errors:bad});console.log(JSON.stringify({result:'PASSED',layouts:layouts.length,public:true,search_beyond_first_page:true,combined_filters:true}));
  }else if(mode==='runtime'){
   const before=load('before'),settings=(await pool.query('SELECT version,settings FROM control.runtime_settings WHERE workspace_id=$1',[workspace])).rows[0];assert.deepEqual(settings,before.settings);
   assert.deepEqual((await pool.query('SELECT version,checksum FROM m1.migrations ORDER BY version')).rows,before.migrations);
@@ -83,5 +93,5 @@ try{
   save('operations',{at:new Date().toISOString(),resources,storage,proxies,deleted_candidate_ids:removed.map(r=>r.channel_id),root_disk_free_percent:disks.data?.result.map((r:any)=>({node:r.metric.node,value:Number(r.value[1])})),single_point_workloads:workloads});
   console.log(JSON.stringify({proxies:proxies.map(p=>({kind:p.kind,provider:p.provider,node:p.server_id,enabled:p.total,healthy:p.healthy})),real_deleted_candidates:removed.length,monitoring_available:resources.monitoring.available,postgres_bytes:storage.postgres_bytes,single_points:workloads.map((w:any)=>({name:w.name,replicas:w.replicas}))}));
  }else throw new Error('Usage: verify-channel-filters browser|runtime|operations');
-}catch(error){if(page)await page.screenshot({path:dir+'/browser-failure.png',fullPage:true}).catch(()=>{});save('failure',{phase,error:error instanceof Error?error.name:'UnknownError',guard:error instanceof assert.AssertionError?error.message.split('\n')[0]:undefined});console.error(JSON.stringify({result:'FAILED',phase,error:error instanceof Error?error.name:'UnknownError',guard:error instanceof assert.AssertionError?error.message.split('\n')[0]:undefined}));process.exitCode=1;}
+}catch(error){if(page)await page.screenshot({path:dir+'/browser-failure.png',fullPage:true}).catch(()=>{});save('failure',{phase,error:error instanceof Error?error.name:'UnknownError',message:error instanceof Error?error.message:undefined,guard:error instanceof assert.AssertionError?error.message.split('\n')[0]:undefined});console.error(JSON.stringify({result:'FAILED',phase,error:error instanceof Error?error.name:'UnknownError',guard:error instanceof assert.AssertionError?error.message.split('\n')[0]:undefined}));process.exitCode=1;}
 finally{await browser?.close();await pool.end();}

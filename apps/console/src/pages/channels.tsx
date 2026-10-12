@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { CircleCheck, CirclePause, Download, Plus, Search, TriangleAlert, Tv } from 'lucide-react';
 import type { ChannelListItem } from '@crawlsystem/contracts';
@@ -80,7 +80,11 @@ export default function Channels() {
   const parsed=ChannelListFiltersSchema.safeParse(rawFilters),filter=parsed.success?parsed.data:{};
   const search=filter.search??'',state=filter.state??'all';
   const [searchText,setSearchText]=useState(search);
-  function changeFilter(key:string,value:string){const next=new URLSearchParams(paging.params);if(value)next.set(key,value);else next.delete(key);next.delete('cursor');paging.setParams(next);setSelected(undefined);}
+  // Router navigation may render after the next input event. Compose changes
+  // from the most recent selection so fast changes cannot restore an old filter.
+  const latestParams=useRef(paging.params);
+  useLayoutEffect(()=>{latestParams.current=paging.params;},[paging.params]);
+  function changeFilter(key:string,value:string){const next=new URLSearchParams(latestParams.current);if(value)next.set(key,value);else next.delete(key);next.delete('cursor');latestParams.current=next;paging.setParams(next);setSelected(undefined);}
   useEffect(()=>setSearchText(search),[search]);
   useEffect(()=>{if(searchText.trim()===search)return;const timer=setTimeout(()=>changeFilter('search',searchText.trim()),300);return()=>clearTimeout(timer);},[searchText,search,paging.params]);
   const resource = useResource(`channels:${paging.cursor}:${JSON.stringify(rawFilters)}`, signal => {if(!parsed.success)throw new ApiFailure('筛选条件不正确，请清除后重新选择',400,'INVALID_REQUEST');return api.channels(paging.cursor,20,signal,filter);});
@@ -92,7 +96,7 @@ export default function Channels() {
   const operator = session.role === 'operator', q = imports.data?.counts;
   const realFirst = resource.data?.items[0]?.channel_id;
   const current = resource.data?.items.some(ch=>ch.channel_id===selected)?selected:realFirst;
-  function clearFilters(){const next=new URLSearchParams(paging.params);for(const key of Object.keys(ChannelListFiltersSchema.shape))next.delete(key);next.delete('cursor');paging.setParams(next);setSearchText('');setSelected(undefined);}
+  function clearFilters(){const next=new URLSearchParams(latestParams.current);for(const key of Object.keys(ChannelListFiltersSchema.shape))next.delete(key);next.delete('cursor');latestParams.current=next;paging.setParams(next);setSearchText('');setSelected(undefined);}
   const c = completeness.data;
   return <div className="dashboard discover channels-page">
     <header className="dashboard-heading">
