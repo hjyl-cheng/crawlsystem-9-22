@@ -1,5 +1,7 @@
 # 本轮三项收尾验收（2026-10-12）
 
+本页保留三项收尾当时的版本与数据快照。后续频道搜索 / 筛选补齐已发布，当前版本、浏览器验收及代理 / 容量 / 高可用实际缺口见 [频道筛选与运营核对](../channel-filters/README.md)。
+
 控制台正式部署、业务告警、频道删除识别与 `@handle` 导入均已上线，按已约定的采集系统范围，本轮可验收收尾。公网沿用 <https://controversy-roughly-kiss-genealogy.trycloudflare.com/>，无需先提供新域名。公开结果见 [evidence.json](evidence.json)，完整运行证据与备份在忽略的 `.runtime/finish/`。
 
 ## 上线结果

@@ -1,0 +1,78 @@
+{
+  "ui_result": "PASSED",
+  "before_at": "2026-10-12T02:42:59.165Z",
+  "runtime_verified_at": "2026-10-12T02:46:02.562Z",
+  "browser_verified_at": "2026-10-12T02:50:41.858Z",
+  "operations_observed_at": "2026-10-12T02:53:29.271Z",
+  "console_release": "ea54cd9a1420-687edbab9e41",
+  "console_source_revision": "ea54cd9a14209ea986d20234952e9106a62c44bf",
+  "control_source_revision": "78f6a588e3e450ed616fcafe893f237926fba7ed",
+  "control_image": "docker.io/crawlsystem/control-api:main-78f6a588e3e4-1a2170a4",
+  "public_url": "https://controversy-roughly-kiss-genealogy.trycloudflare.com/channels",
+  "integration_tests": {"passed": 10, "failed": 0},
+  "browser": {
+    "layouts": [{"width": 1920, "horizontal_overflow": 0}, {"width": 390, "horizontal_overflow": 0}],
+    "search_beyond_first_page": true,
+    "combined_filters": true,
+    "tabs": true,
+    "pagination_reset": true,
+    "url_refresh": true,
+    "filter_url_consistency": true,
+    "empty_state": true,
+    "selection_cleared": true,
+    "filter_error_recovery": true,
+    "reader": true,
+    "public": true,
+    "page_errors": [],
+    "api_errors": []
+  },
+  "preservation": {
+    "schema": 39,
+    "settings_version": 5,
+    "video_identities": 63261,
+    "current_video_identities": 63293,
+    "active_plan_count": 1,
+    "active_plan_recovery_identities": true,
+    "unrelated_workload_specs_pods_restarts": true,
+    "tunnel_pid": 1882,
+    "console_dirty_evidence_sha256": "57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709"
+  },
+  "runtime": {
+    "workers": [{"worker_id": "execution-worker-0", "status": "RUNNING"}, {"worker_id": "execution-worker-s3-0", "status": "RUNNING"}],
+    "delivery": {"delivered": 2350, "pending": 0, "failed": 0, "not_ready": 2, "unchanged": 7},
+    "cdc": "RUNNING"
+  },
+  "operations": {
+    "result": "AUDITED_WITH_PENDING_WORK",
+    "deleted_candidates_from_managed_channel_not_found_failures": 0,
+    "real_deleted_channel_live_acceptance": "PENDING_REAL_SAMPLE",
+    "enabled_proxies": 99,
+    "recent_healthy_proxies": 59,
+    "stable_provider_migration": "NOT_PERFORMED",
+    "postgres_bytes": 947943103,
+    "clickhouse_bytes": 5546705,
+    "minio_metrics_present": false,
+    "minio_directory_scan": "TIMED_OUT_WITHOUT_USAGE_RESULT",
+    "minio_capacity_monitoring": "PENDING",
+    "root_disk": [
+      {"node": "a1", "available_bytes": 95448424448, "free_percent": 50.35270474967836},
+      {"node": "a2", "available_bytes": 36790636544, "free_percent": 43.86589924080319},
+      {"node": "a3", "available_bytes": 32525598720, "free_percent": 38.78064557246702},
+      {"node": "s1", "available_bytes": 52054515712, "free_percent": 62.065197989182096},
+      {"node": "s2", "available_bytes": 46170066944, "free_percent": 55.04910202041439},
+      {"node": "s3", "available_bytes": 49178624000, "free_percent": 58.63623921280489}
+    ],
+    "single_replica_core_workloads": [
+      {"name": "minio", "node": "a1", "replicas": 1},
+      {"name": "clickhouse", "node": "s3", "replicas": 1},
+      {"name": "temporal-frontend", "node": "a1", "replicas": 1},
+      {"name": "temporal-internal-frontend", "node": "a1", "replicas": 1},
+      {"name": "temporal-history", "node": "a1", "replicas": 1},
+      {"name": "temporal-matching", "node": "a1", "replicas": 1},
+      {"name": "temporal-worker", "node": "a1", "replicas": 1}
+    ],
+    "overall_ha_migration": "NOT_PERFORMED",
+    "local_gateway_latency_samples_ms": {"list": 298, "filters": 321, "combined": 300},
+    "load_test": false
+  }
+}

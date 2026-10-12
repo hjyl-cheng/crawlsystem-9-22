@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {existsSync,readFileSync} from 'node:fs';
+import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {chromium,expect} from '@playwright/test';
 import {createPool} from '@crawlsystem/store/config';
@@ -81,6 +81,10 @@ try{
   save('runtime-after',{result:'PASSED',at:new Date().toISOString(),schema:before.migrations.length,settings_version:settings.version,preserved_video_identities:originals.length,current_video_identities:ids.size,unrelated_specs_pods_restarts_preserved:true,active_plan_identities_preserved:true,workers:workers.map((w:any)=>({worker_id:w.worker_id,status:w.control.status})),delivery,cdc:'RUNNING',tunnel_pid:tunnel});console.log(JSON.stringify({result:'PASSED',delivery,preserved_video_identities:originals.length}));
  }else if(mode==='operations'){
   const resources=await api('/v1/overview/resources'),storage=await api('/v1/storage');
+  const filterLatency=[];
+  for(const path of ['/v1/channels?include_details=1','/v1/channels/filters','/v1/channels?include_details=1&country=BR&category=Music&management_state=managed&agent_state=completed']){
+   const start=performance.now();await api(path);filterLatency.push({path,milliseconds:Math.round(performance.now()-start)});
+  }
   const proxies=(await pool.query(`SELECT p.kind,p.provider,p.server_id,count(*)::int total,
    count(*) FILTER(WHERE o.state='healthy' AND o.reported_at>clock_timestamp()-interval '90 seconds')::int healthy
    FROM control.proxies p LEFT JOIN control.proxy_observations o ON o.workspace_id=p.workspace_id AND o.proxy_id=p.proxy_id AND o.server_id=p.server_id AND o.generation=p.generation
@@ -88,9 +92,11 @@ try{
   const removed=(await pool.query(`SELECT c.channel_id FROM control.channels c JOIN control.failures f ON f.workspace_id=c.workspace_id
    JOIN control.plans p ON p.plan_id=f.plan_id AND p.channel_id=c.channel_id
    WHERE c.workspace_id=$1 AND c.management_state IN ('managed','paused') AND f.code='NOT_FOUND' GROUP BY c.channel_id LIMIT 10`,[workspace])).rows;
-  const disks=JSON.parse(kube(['-n','monitoring','exec','deployment/prometheus','--','wget','-qO-','http://127.0.0.1:9090/api/v1/query?query=(node_filesystem_avail_bytes%7Bmountpoint%3D%22%2F%22%7D%2Fnode_filesystem_size_bytes%7Bmountpoint%3D%22%2F%22%7D)*100']));
-  const workloads=object(['get','deployment,statefulset','-A']).items.filter((w:any)=>['temporal-frontend','temporal-history','minio','clickhouse'].some(n=>w.metadata.name.includes(n))).map((w:any)=>({namespace:w.metadata.namespace,name:w.metadata.name,replicas:w.spec.replicas,node:w.spec.template.spec.nodeSelector??null}));
-  save('operations',{at:new Date().toISOString(),resources,storage,proxies,deleted_candidate_ids:removed.map(r=>r.channel_id),root_disk_free_percent:disks.data?.result.map((r:any)=>({node:r.metric.node,value:Number(r.value[1])})),single_point_workloads:workloads});
+  const metric=(query:string)=>JSON.parse(kube(['-n','monitoring','exec','deployment/prometheus','--','wget','-qO-','http://127.0.0.1:9090/api/v1/query?query='+encodeURIComponent(query)]));
+  const disks=metric('(node_filesystem_avail_bytes{mountpoint="/"}/node_filesystem_size_bytes{mountpoint="/"})*100');
+  const freeBytes=metric('node_filesystem_avail_bytes{mountpoint="/"}'),minioMetrics=metric('count({__name__=~"minio.*"})');
+  const workloads=object(['get','deployment,statefulset','-A']).items.filter((w:any)=>w.metadata.namespace==='temporal'||['minio','clickhouse'].includes(w.metadata.name)).map((w:any)=>({namespace:w.metadata.namespace,name:w.metadata.name,replicas:w.spec.replicas,node:w.spec.template.spec.nodeSelector??null}));
+  save('operations',{at:new Date().toISOString(),resources,storage,proxies,deleted_candidate_ids:removed.map(r=>r.channel_id),filter_latency_samples:filterLatency,minio_metrics_present:!!minioMetrics.data?.result.length,root_disk_available_bytes:freeBytes.data?.result.map((r:any)=>({node:r.metric.node,value:Number(r.value[1])})),root_disk_free_percent:disks.data?.result.map((r:any)=>({node:r.metric.node,value:Number(r.value[1])})),single_point_workloads:workloads});
   console.log(JSON.stringify({proxies:proxies.map(p=>({kind:p.kind,provider:p.provider,node:p.server_id,enabled:p.total,healthy:p.healthy})),real_deleted_candidates:removed.length,monitoring_available:resources.monitoring.available,postgres_bytes:storage.postgres_bytes,single_points:workloads.map((w:any)=>({name:w.name,replicas:w.replicas}))}));
  }else throw new Error('Usage: verify-channel-filters browser|runtime|operations');
 }catch(error){if(page)await page.screenshot({path:dir+'/browser-failure.png',fullPage:true}).catch(()=>{});save('failure',{phase,error:error instanceof Error?error.name:'UnknownError',message:error instanceof Error?error.message:undefined,guard:error instanceof assert.AssertionError?error.message.split('\n')[0]:undefined});console.error(JSON.stringify({result:'FAILED',phase,error:error instanceof Error?error.name:'UnknownError',guard:error instanceof assert.AssertionError?error.message.split('\n')[0]:undefined}));process.exitCode=1;}

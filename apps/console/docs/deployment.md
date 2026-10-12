@@ -56,4 +56,6 @@ npm run check:safe -- completion-browser
 
 浏览器验收会使用既有账号测试登录、刷新、真实回滚、恢复与退出，并执行一批去重 handle 导入；只读账号不能导入。完整结果见 [收尾验收](../../../docs/finish/README.md)。凭据仍从私有运行目录读取，检查输出只含脱敏结果。
 
+频道搜索 / 筛选补齐的当前发布与核对见 [验收记录](../../../docs/channel-filters/README.md)。后端筛选先发布，旧客户端保持原响应形状，然后发布控制台；日常复核可运行 `npm run check:safe -- channel-filters-live browser|runtime|operations`（选择其中一个模式）。
+
 当前继续使用既有 Cloudflare Quick Tunnel 地址。它可能在隧道重建时变化；需要固定域名时再接入 Cloudflare 账户或其他入口，并同步精确 Host、允许来源及私有 url 文件。固定域名属于后续运维升级，不是本轮正式版本发布的前提。
