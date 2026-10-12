@@ -2,6 +2,8 @@
 
 “存储与流水线”页已显示 MinIO 三个业务桶的用量、硬配额、配额剩余、对象数量、保留规则和所在磁盘余量，入口为 <https://controversy-roughly-kiss-genealogy.trycloudflare.com/storage>。公开结果见 [evidence.json](evidence.json)，截图见 [桌面](storage-capacity-1920.png) / [手机](storage-capacity-390.png)。完整原始指标、配置备份及部署基线位于忽略的 `.runtime/storage-capacity/`。
 
+随后首页“存储与归档”也已增加 MinIO 合计用量、配额及状态，使用相同容量接口；最终控制台 release 和独立验收见 [首页 MinIO 展示](../homepage-minio/README.md)。以下保留容量监控首次上线时的样本与发布记录。
+
 ## 当前容量与页面
 
 北京时间 11:29:03 的 API 样本：

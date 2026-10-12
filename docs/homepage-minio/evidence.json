@@ -1,0 +1,96 @@
+{
+  "result": "PASSED",
+  "at": "2026-10-12T03:48:48.329Z",
+  "layouts": [
+    {
+      "width": 1920,
+      "height": 937,
+      "horizontal_overflow": 0,
+      "vertical_overflow": 0
+    },
+    {
+      "width": 1586,
+      "height": 992,
+      "horizontal_overflow": 0,
+      "vertical_overflow": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "horizontal_overflow": 0
+    }
+  ],
+  "values_match_api": true,
+  "original_storage_values_preserved": true,
+  "unknown_not_zero": true,
+  "partial_unknown_not_summed": true,
+  "single_bucket_warning_critical": true,
+  "known_critical_not_hidden_by_unknown": true,
+  "empty_buckets_zero": true,
+  "error_clears_stale_value": true,
+  "initial_failure_isolated": true,
+  "local_retry": true,
+  "global_refresh": true,
+  "polling": true,
+  "details_link": true,
+  "reader": true,
+  "public": true,
+  "runtime_errors": [],
+  "failed_api_reads": [],
+  "live_capacity": {
+    "source": "prometheus",
+    "observed_at": "2026-10-12T03:47:58.932Z",
+    "available": true,
+    "sampled_at": "2026-10-12T03:47:35.820Z",
+    "scan_age_seconds": 13.557514853,
+    "warning_percent": 70,
+    "critical_percent": 85,
+    "disk": {
+      "total_bytes": 181734363136,
+      "free_bytes": 95574437888
+    },
+    "buckets": [
+      {
+        "bucket": "crawl-raw",
+        "label": "原始响应",
+        "retention_days": 14,
+        "used_bytes": 5675846212,
+        "quota_bytes": 64424509440,
+        "remaining_bytes": 58748663228,
+        "objects": 72916,
+        "used_percent": 8.810072845468918,
+        "state": "ok"
+      },
+      {
+        "bucket": "crawl-parsed",
+        "label": "解析结果与评论",
+        "retention_days": 90,
+        "used_bytes": 201953089,
+        "quota_bytes": 16106127360,
+        "remaining_bytes": 15904174271,
+        "objects": 123868,
+        "used_percent": 1.2538898053268592,
+        "state": "ok"
+      },
+      {
+        "bucket": "crawl-evidence",
+        "label": "失败证据",
+        "retention_days": 90,
+        "used_bytes": 398642,
+        "quota_bytes": 5368709120,
+        "remaining_bytes": 5368310478,
+        "objects": 152,
+        "used_percent": 0.007425285875797271,
+        "state": "ok"
+      }
+    ]
+  },
+  "release": "19aff600eacb-4768d2055d9a",
+  "revision": "19aff600eacbf6328e811af1d44ee86919954217",
+  "tunnel_pid": 1882,
+  "screenshots": {
+    "overview-1920.png": "731148c6e44ac07839e5202decd19db011b4ea92ee51d685ef9f5bbf642f0ebf",
+    "overview-1586.png": "baffd100d7d41d9c5e8f1fc1c8fad18e6f5459208d28b75b6f708d4bb9e4a041",
+    "overview-390.png": "8b82b0503134327cccd42ed26c6d10ed4561d08a7c1a4b69efcdb7e9b2e33d59"
+  }
+}
