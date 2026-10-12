@@ -26,6 +26,8 @@ import { CommentPageSchema, type CommentPage } from '@crawlsystem/contracts';
 import { expectedPipelineSteps } from './pipeline.ts';
 import {listFailures,getFailure,reportFailure,commandFailure} from './failures.ts';
 import {outbox,acknowledge,claimReplays,finishReplay,storage,maintain} from './telemetry.ts';
+import {claimRawCleanup,finishRawCleanup,rawRetentionStatus,populateRawCleanup} from './raw-retention.ts';
+import type {RawCleanupResult} from '../../contracts/src/raw-retention.ts';
 import type {FailureCommand} from '@crawlsystem/contracts/analytics';
 import {queuePublication,readDeliveries,deliverySummary,getDelivery,retryDelivery} from './publication.ts';
 import {DeliveryRetrySchema} from '../../contracts/src/delivery.ts';
@@ -958,6 +960,10 @@ export class Store {
   }
   async storage(principal:Principal,ch:unknown) {requireRole(principal,'reader','operator');return storage(this.pool,principal.workspace_id,ch);}
   async maintain(principal:Principal,dryRun=true) {requireRole(principal,'analytics','operator');return this.tx(c=>maintain(c,principal.workspace_id,dryRun));}
+  async rawCleanupClaim(principal:Principal,limit=100) {requireRole(principal,'analytics');return this.tx(c=>claimRawCleanup(c,principal.workspace_id,limit));}
+  async rawCleanupPreview(principal:Principal) {requireRole(principal,'operator');return this.tx(async c=>{await populateRawCleanup(c,principal.workspace_id);return claimRawCleanup(c,principal.workspace_id,100,true);});}
+  async rawCleanupDone(principal:Principal,results:RawCleanupResult[]) {requireRole(principal,'analytics');return this.tx(c=>finishRawCleanup(c,principal.workspace_id,results));}
+  async rawRetentionStatus(principal:Principal) {requireRole(principal,'reader','operator');return rawRetentionStatus(this.pool,principal.workspace_id);}
   async listErrors(principal: Principal, limit=20, offset=0, mode: SourceMode='youtube'): Promise<Page<StoredEvent>> {
     requireRole(principal,'reader','operator');
     const rows = await this.pool.query("SELECT e.* FROM control.events e JOIN control.plans p USING(plan_id) WHERE p.workspace_id=$1 AND p.source_mode=$4 AND e.data->>'kind' IN ('ERROR','FAILED') ORDER BY e.created_at DESC,e.event_id LIMIT $2 OFFSET $3",[principal.workspace_id,limit+1,offset,mode]);

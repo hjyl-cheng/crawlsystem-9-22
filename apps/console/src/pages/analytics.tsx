@@ -18,10 +18,10 @@ function ObjectCapacity({data}:{data:StorageCapacity}){
       <header><h3>{b.label}</h3><Badge tone={b.state==='critical'?'red':b.state==='warning'?'amber':b.state==='ok'?'green':'neutral'}>{capacityStates[b.state]}</Badge></header>
       <small>{b.bucket}</small><strong>{capacityBytes(b.used_bytes)} <span>/ {capacityBytes(b.quota_bytes)}</span></strong>
       {b.used_percent===null?<p>等待有效用量指标</p>:<><progress max="100" value={Math.min(100,b.used_percent)} aria-label={b.label+'配额使用率'}/><p>已用 {b.used_percent.toFixed(1)}% · 配额剩余 {capacityBytes(b.remaining_bytes)}</p></>}
-      <p>对象数 {b.objects===null?'未知':number(b.objects)} · 保留规则 {b.retention_days} 天</p>
+      <p>对象数 {b.objects===null?'未知':number(b.objects)} · {b.bucket==='crawl-raw'?'成功完成并入库后保留 1 天；处理中、待重试及失败原件受保护':`保留规则 ${b.retention_days} 天`}</p>
     </section>)}</div>
     <p className="fine-print inset">磁盘可用 {capacityBytes(data.disk.free_bytes)} / 总容量 {capacityBytes(data.disk.total_bytes)}，与同节点其他服务共享；桶配额剩余不等于独占磁盘余量。</p>
-    <p className="fine-print inset">容量预警 {data.warning_percent}% · 严重告警 {data.critical_percent}% · {data.sampled_at?'指标采样 '+time(data.sampled_at):'尚无有效采样'} · {data.scan_age_seconds===null?'扫描时间未知':`扫描数据距今约 ${Math.ceil(data.scan_age_seconds/60)} 分钟`}。用量来自后台扫描，保留规则到期后由扫描器异步清理。</p>
+    <p className="fine-print inset">容量预警 {data.warning_percent}% · 严重告警 {data.critical_percent}% · {data.sampled_at?'指标采样 '+time(data.sampled_at):'尚无有效采样'} · {data.scan_age_seconds===null?'扫描时间未知':`扫描数据距今约 ${Math.ceil(data.scan_age_seconds/60)} 分钟`}。原始响应按任务状态分批清理，解析结果与失败证据由生命周期清理；容量统计稍有延迟。</p>
   </>;
 }
 export function TrendChart({data}:{data:Analytics}) {
@@ -43,9 +43,14 @@ export default function AnalyticsPage({quality=false}:{quality?:boolean}) {
       <p className="fine-print">统计来源：ClickHouse · 更新于 {time(d.observed_at)} · 原始采集 {bytes(d.totals.raw_bytes)}</p></>}</ResourceView></>;
 }
 export function StoragePage() {
-  const {api}=useAuth(),r=useResource('storage',signal=>api.storage(signal)),capacity=useResource('storage-capacity',signal=>api.storageCapacity(signal),true,30000);
+  const {api}=useAuth(),r=useResource('storage',signal=>api.storage(signal)),capacity=useResource('storage-capacity',signal=>api.storageCapacity(signal),true,30000),retention=useResource('raw-retention',signal=>api.rawRetention(signal),true,30000);
   return <><PageHeading title="存储与流水线" description="查看对象容量、持久队列、统计入库和数据保留状态。"/>
     <Panel title="MinIO 容量"><ResourceView resource={capacity}>{d=><ObjectCapacity data={d}/>}</ResourceView></Panel>
+    <Panel title="原始响应清理"><ResourceView resource={retention}>{d=><><Fields rows={[
+      ['清理规则','成功完成且全部入库后保留 24 小时'],['等待 / 清理中',`${number(d.pending)} / ${number(d.leased)}`],
+      ['已确认清理对象',number(d.deleted-d.missing)],['已确认删除大小',capacityBytes(d.deleted_bytes)],['原本已不存在',number(d.missing)],
+      ['受阻对象',number(d.errors)],['最近清理',d.last_deleted_at?time(d.last_deleted_at):'尚未运行'],
+    ]}/><p className="fine-print inset">处理中、待重试、未入库和未保存证据的数据保留。删除前确认解析结果及评论对象存在；失败原件和无法核验归属的对象继续保留。</p></>}</ResourceView></Panel>
     <ResourceView resource={r}>{s=><>
     <Panel title="入库与恢复"><Fields rows={[
       ['PostgreSQL 数据库大小',bytes(s.postgres_bytes)],['等待发布的统计事件',number(s.outbox.pending)],['等待归档的统计事件',number(s.outbox.unarchived)],['最早待归档事件',s.outbox.oldest_pending_at?time(s.outbox.oldest_pending_at):'无'],

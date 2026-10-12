@@ -26,7 +26,7 @@ export MC_CONFIG_DIR="'''+config+'''"
 trap 'rm -rf "$MC_CONFIG_DIR"' EXIT
 mc alias set audit http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1
 for bucket in crawl-raw crawl-parsed crawl-evidence; do
-  mc ilm export "audit/$bucket"
+  mc ilm export "audit/$bucket" --json || true
   mc quota info "audit/$bucket" --json
   mc version info "audit/$bucket" --json
 done
@@ -34,14 +34,17 @@ done
     rows=[json.loads(line) for line in k('-n','storage','exec','-i','deployment/minio','--','sh',data=script).splitlines() if line.strip()]
     assert len(rows)==9
     result=[]
-    for i,(bucket,days,quota) in enumerate([('crawl-raw',14,60*1024**3),('crawl-parsed',90,15*1024**3),('crawl-evidence',90,5*1024**3)]):
+    for i,(bucket,days,quota) in enumerate([('crawl-raw',None,60*1024**3),('crawl-parsed',90,15*1024**3),('crawl-evidence',90,5*1024**3)]):
         ilm,limit,version=rows[i*3:i*3+3]
-        rules=ilm['Rules'];assert len(rules)==1 and rules[0]['Status']=='Enabled' and rules[0]['Expiration']['Days']==days
-        assert not rules[0].get('Filter') and not rules[0].get('Prefix')
+        if bucket=='crawl-raw':
+            assert ilm.get('Rules')==[] or 'NoSuchLifecycleConfiguration' in json.dumps(ilm)
+        else:
+            rules=ilm['Rules'];assert len(rules)==1 and rules[0]['Status']=='Enabled' and rules[0]['Expiration']['Days']==days
+            assert not rules[0].get('Filter') and not rules[0].get('Prefix')
         assert limit['status']=='success' and limit['bucket']==bucket and limit['quota']==quota and limit['type']=='hard'
         assert version['status']=='success' and version['versioning']['status']!='Enabled'
-        result.append({'bucket':bucket,'expiration_days':days,'quota_bytes':quota,'quota_type':'hard','versioning_enabled':False})
-    save('lifecycle',{'at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'rules':result,'objects_deleted_by_audit':0,'actual_expiry_acceptance':'NO_ELIGIBLE_AGED_SAMPLE_CHECKED'})
+        result.append({'bucket':bucket,'expiration_days':days,'retention_rule':'successful_completion_and_ingestion_plus_24h' if bucket=='crawl-raw' else 'upload_age','quota_bytes':quota,'quota_type':'hard','versioning_enabled':False})
+    save('lifecycle-current',{'at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'rules':result,'objects_deleted_by_audit':0,'actual_expiry_acceptance':'STATE_DRIVEN_RAW_SEPARATELY_VERIFIED'})
     return result
 def merge(cm,key,value):
     # Test resourceVersion, then update only this key. Preserve other data and

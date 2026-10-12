@@ -42,6 +42,18 @@ export class MinioStore implements ObjectStore {
     if (!response.ok) throw new ArchiveError('storage');
     await response.body?.cancel();
   }
+  async head(key:string,signal:AbortSignal):Promise<number|null> {
+    const response=await this.request(key,{method:'HEAD'},signal);
+    if(response.status===404)return null;
+    const size=Number(response.headers.get('content-length'));
+    if(!response.ok||!response.headers.has('content-length')||!Number.isSafeInteger(size)||size<0)throw new ArchiveError('storage');
+    return size;
+  }
+  async remove(key:string,signal:AbortSignal) {
+    const response=await this.request(key,{method:'DELETE'},signal);
+    if(!response.ok&&response.status!==404)throw new ArchiveError('storage');
+    await response.body?.cancel();
+  }
 }
 export class KafkaPublisher implements RawPublisher {
   private producer: Producer; private connected?: Promise<void>;

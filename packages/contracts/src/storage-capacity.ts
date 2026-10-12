@@ -1,7 +1,7 @@
 import {z} from 'zod';
 
 export const STORAGE_BUCKETS=[
-  {bucket:'crawl-raw',label:'原始响应',retention_days:14},
+  {bucket:'crawl-raw',label:'原始响应',retention_days:1},
   {bucket:'crawl-parsed',label:'解析结果与评论',retention_days:90},
   {bucket:'crawl-evidence',label:'失败证据',retention_days:90},
 ] as const;

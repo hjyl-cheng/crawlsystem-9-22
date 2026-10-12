@@ -17,6 +17,7 @@ import {registerConsoleAudit,type ConsoleAuditRepository} from './console-audit.
 import {ProxyAvailabilityQuerySchema} from '../../../packages/contracts/src/proxy-availability.ts';
 import {ChannelListFiltersSchema,SourceModeSchema} from '@crawlsystem/contracts';
 import {unknownStorageCapacity} from './storage-capacity.ts';
+import {RawCleanupResultSchema} from '../../../packages/contracts/src/raw-retention.ts';
 
 export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; audit?:ConsoleAuditRepository; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore;clickhouse?:ClickHouse;monitoring?:Prometheus;evidencePreview?:(failure:Failure)=>Promise<unknown> }) {
   const auth=options.consoleAuth,workload=options.workloadIdentity;
@@ -134,6 +135,10 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     return store.telemetryEvidenceDone(request.principal,z.object({id:z.uuid()}).parse(request.params).id,q.evidence,q.state);
   });
   app.post('/v1/telemetry/maintenance',{bodyLimit:1024},async request=>store.maintain(request.principal,z.strictObject({dry_run:z.boolean()}).parse(request.body).dry_run));
+  app.post('/v1/telemetry/raw-cleanup/claim',{bodyLimit:1024},async request=>store.rawCleanupClaim(request.principal,z.strictObject({limit:z.number().int().min(1).max(100).default(100)}).parse(request.body).limit));
+  app.post('/v1/telemetry/raw-cleanup/done',{bodyLimit:65536},async request=>store.rawCleanupDone(request.principal,z.strictObject({results:z.array(RawCleanupResultSchema).min(1).max(100)}).parse(request.body).results));
+  app.get('/v1/storage/raw-retention',async request=>store.rawRetentionStatus(request.principal));
+  app.post('/v1/storage/raw-retention/preview',async request=>store.rawCleanupPreview(request.principal));
   app.get(ApiRoutes.consoleAccounts,async request=>{
     if(!auth) throw new StoreError('DEPENDENCY_NOT_IMPLEMENTED','Account login is not configured',503);
     return auth.listAccounts(request.principal);

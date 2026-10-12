@@ -26,7 +26,7 @@ try{
    const data=StorageCapacitySchema.parse(await response.json());assert.equal(data.available,true);
    await expect(panel().locator('.storage-bucket')).toHaveCount(3);
    for(const bucket of data.buckets){
-    const card=page!.getByLabel(bucket.label+'容量',{exact:true});await expect(card).toContainText(size(bucket.used_bytes!));await expect(card).toContainText(size(bucket.quota_bytes!));await expect(card).toContainText(`配额剩余 ${size(bucket.remaining_bytes!)}`);await expect(card).toContainText('保留规则 '+bucket.retention_days+' 天');
+    const card=page!.getByLabel(bucket.label+'容量',{exact:true});await expect(card).toContainText(size(bucket.used_bytes!));await expect(card).toContainText(size(bucket.quota_bytes!));await expect(card).toContainText(`配额剩余 ${size(bucket.remaining_bytes!)}`);await expect(card).toContainText(bucket.bucket==='crawl-raw'?'成功完成并入库后保留 1 天':'保留规则 '+bucket.retention_days+' 天');
     await expect(card.locator('progress')).toHaveAttribute('value',String(Math.min(100,bucket.used_percent!)));
    }
    await expect(page!.getByRole('heading',{name:'入库与恢复',exact:true})).toBeVisible();await expect(page!.getByRole('heading',{name:'数据保留',exact:true})).toBeVisible();

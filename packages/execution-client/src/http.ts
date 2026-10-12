@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { PipelineProgressSchema, StepManifestSchema,RawReferenceSchema } from '@crawlsystem/contracts/pipeline';
 import {OpsEventSchema,FailureReportSchema,FailureSchema} from '@crawlsystem/contracts/analytics';
 import {ObjectStorageReferenceSchema} from '@crawlsystem/contracts';
+import {RawCleanupItemSchema,RawCleanupResultSchema,type RawCleanupResult} from '../../contracts/src/raw-retention.ts';
 import { PlanSchema, WorkflowInputSchema } from '@crawlsystem/contracts';
 import { ApiRoutes, ApiErrorSchema, MAX_BODY_BYTES, PlanInputSchema, AgentInputSchema, ReceiptSchema, SessionSchema, WorkerSchema,
   ExecutionEventSchema, HeartbeatSchema, SubmissionSchema, WorkloadTokenSchema, TemporalTokenSchema, ProxySyncRequestSchema, ProxySyncResponseSchema, type ProxySyncRequest, type ErrorCode, type ExecutionEvent, type Heartbeat, type Submission, type Receipt } from '@crawlsystem/contracts';
@@ -143,6 +144,8 @@ export class ExecutionApi {
   telemetryEvidence() {return this.request(this.control,'/v1/telemetry/evidence',z.array(z.object({failure_id:z.uuid(),workspace_id:z.string(),raw:z.union([RawReferenceSchema,StepManifestSchema,ObjectStorageReferenceSchema])})),undefined);}
   telemetryEvidenceDone(id:string,evidence:unknown,state:'SAVED'|'MISSING') {return this.request(this.control,`/v1/telemetry/evidence/${id}`,z.object({accepted:z.literal(true)}),{evidence,state});}
   telemetryMaintenance(dry_run=false) {return this.request(this.control,'/v1/telemetry/maintenance',z.object({dry_run:z.boolean(),events:z.number(),units:z.number(),failures:z.number()}),{dry_run});}
+  rawCleanupClaim(limit=100) {return this.request(this.control,'/v1/telemetry/raw-cleanup/claim',z.array(RawCleanupItemSchema),{limit},{attempts:1});}
+  rawCleanupDone(results:RawCleanupResult[]) {return this.request(this.control,'/v1/telemetry/raw-cleanup/done',z.object({accepted:z.literal(true)}),{results:results.map(r=>RawCleanupResultSchema.parse(r))});}
   navigation(value:Submission,budget?:RequestBudget) { return this.request(this.control,'/v1/pipeline/navigation',ReceiptSchema,SubmissionSchema.parse(value),budget); }
   async receipt(id: string, budget?: RequestBudget): Promise<Receipt | null> {
     try { return await this.request(this.control, ApiRoutes.receipt(id), ReceiptSchema, undefined, budget); }

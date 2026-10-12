@@ -6,10 +6,16 @@ import {clickHouseFromEnv} from '../../control-api/src/analytics.ts';
 import {pipelineApi,pipelineKafka,secret} from '../../raw-parser/src/runtime.ts';
 import {ExecutionApiError} from '@crawlsystem/execution-client/http';
 import {MinioStore} from '../../execution-worker/src/raw-archive.ts';
+import {cleanRawBatch} from './raw-retention.ts';
 const ch=clickHouseFromEnv();if(!ch)throw new Error('ClickHouse credentials required');
 const api=await pipelineApi(),kafka=await pipelineKafka('crawl-sink-ch'),producer=kafka.producer({idempotent:true,maxInFlightRequests:1,allowAutoTopicCreation:false}),consumer=kafka.consumer({groupId:'crawl-sink-ch',allowAutoTopicCreation:false,sessionTimeout:60000});
 const dir=process.env.MINIO_CREDENTIALS_DIRECTORY??'/minio',access=await secret(dir,'access_key'),key=await secret(dir,'secret_key'),endpoint=process.env.MINIO_URL??'http://minio.storage.svc.cluster.local:9000';
 const rawStore=new MinioStore(endpoint,'crawl-raw',access,key),evidenceStore=new MinioStore(endpoint,'crawl-evidence',access,key);
+const retentionDir=process.env.RAW_RETENTION_CREDENTIALS_DIRECTORY;
+const retentionAccess=retentionDir?await secret(retentionDir,'access_key'):null,retentionKey=retentionDir?await secret(retentionDir,'secret_key'):null;
+const cleanupRaw=retentionAccess&&retentionKey?new MinioStore(endpoint,'crawl-raw',retentionAccess,retentionKey):null;
+const cleanupParsed=retentionAccess&&retentionKey?new MinioStore(endpoint,'crawl-parsed',retentionAccess,retentionKey):null;
+let nextRawCleanup=0;
 let stopping=false,ready=false,lastTick=Date.now(),nextMaintenance=0;
 const server=createServer((req,res)=>{const ok=req.url==='/healthz'&&ready&&Date.now()-lastTick<120_000;res.statusCode=ok?200:503;res.end(ok?'ok':'starting');});server.listen(18103,'0.0.0.0');
 await producer.connect();await consumer.connect();
@@ -70,6 +76,13 @@ try {
         await api.telemetryReplayDone(replay.replay_id,replay.lease_token,true);
       }
       if(Date.now()>=nextMaintenance) {await api.telemetryMaintenance();nextMaintenance=Date.now()+3_600_000;}
+      if(process.env.RAW_RETENTION_ENABLED==='true'&&cleanupRaw&&cleanupParsed&&Date.now()>=nextRawCleanup) {
+        try {
+          const results=await cleanRawBatch(await api.rawCleanupClaim(),cleanupRaw,cleanupParsed);
+          if(results.length)await api.rawCleanupDone(results);
+        }catch {console.error(JSON.stringify({service:'raw-retention',code:'DEPENDENCY_UNAVAILABLE',durable_queue_retained:true}));}
+        nextRawCleanup=Date.now()+10_000;
+      }
       if(!events.length)await delay(2000);
     }catch(error){console.error(JSON.stringify({service:'crawl-sink-ch',code:error instanceof ExecutionApiError?error.code:'DEPENDENCY_UNAVAILABLE',durable_queue_retained:true}));await delay(3000);}
   }

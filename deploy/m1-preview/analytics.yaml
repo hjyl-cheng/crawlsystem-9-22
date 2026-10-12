@@ -29,6 +29,8 @@ spec:
             - {name: KAFKA_CREDENTIALS_DIRECTORY, value: /kafka}
             - {name: CLICKHOUSE_CREDENTIALS_DIRECTORY, value: /clickhouse}
             - {name: MINIO_CREDENTIALS_DIRECTORY, value: /minio}
+            - {name: RAW_RETENTION_CREDENTIALS_DIRECTORY, value: /retention}
+            - {name: RAW_RETENTION_ENABLED, value: "false"}
             - {name: NODE_OPTIONS, value: "--max-old-space-size=256"}
             - name: POD_NAME
               valueFrom: {fieldRef: {fieldPath: metadata.name}}
@@ -37,6 +39,7 @@ spec:
             - {name: kafka, mountPath: /kafka, readOnly: true}
             - {name: clickhouse, mountPath: /clickhouse, readOnly: true}
             - {name: minio, mountPath: /minio, readOnly: true}
+            - {name: retention, mountPath: /retention, readOnly: true}
           readinessProbe: {httpGet: {path: /healthz, port: http},periodSeconds: 10}
           livenessProbe: {httpGet: {path: /healthz, port: http},initialDelaySeconds: 90,periodSeconds: 20,failureThreshold: 6}
           resources: {requests: {cpu: 50m,memory: 96Mi},limits: {cpu: 500m,memory: 384Mi}}
@@ -53,6 +56,8 @@ spec:
           secret: {secretName: clickhouse-r5,defaultMode: 0440}
         - name: minio
           secret: {secretName: minio-crawl-analytics,defaultMode: 0440}
+        - name: retention
+          secret: {secretName: minio-raw-retention,defaultMode: 0440}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

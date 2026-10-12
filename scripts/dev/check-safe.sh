@@ -148,6 +148,12 @@ case "${1:-}" in
   storage-capacity-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-storage-capacity.ts "${@:2}") ;;
   storage-capacity-live) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-storage-capacity.ts "${@:2}") ;;
   homepage-minio-browser) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-homepage-minio.ts) ;;
+  raw-retention-unit) command=(node --import tsx --test apps/analytics/test/raw-retention.test.ts) ;;
+  raw-retention-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 tests/integration/raw-retention.test.ts) ;;
+  raw-retention-infra) command=(python3 scripts/dev/configure-raw-retention.py "${@:2}") ;;
+  raw-retention-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-raw-retention.ts "${@:2}") ;;
+  raw-retention-live) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-raw-retention.ts "${@:2}") ;;
+  raw-retention-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --raw-retention-control-only) ;;
   browser) command=(npm run test:browser -- "${@:2}") ;;
   # Python Profile Agent with the pinned interpreter, wheels and verified model bundle (prepared on first use).
   profile-agent)

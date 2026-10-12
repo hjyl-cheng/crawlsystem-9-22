@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {StorageCapacitySchema} from '../../../packages/contracts/src/storage-capacity.ts';
+import {RawRetentionStatusSchema} from '../../../packages/contracts/src/raw-retention.ts';
 import {ChannelFilterOptionsSchema,ChannelListFiltersSchema,type ChannelListFilters} from '@crawlsystem/contracts';
 import {QueryCollectionSummarySchema,QuerySourcesSchema} from '../../../packages/contracts/src/query-collection.ts';
 import {ConsoleAuditPageSchema,ConsoleLoginSummarySchema} from '../../../packages/contracts/src/console-audit.ts';
@@ -53,6 +54,7 @@ export function normalizeBaseUrl(raw: string): string {
 const channelQuery=(filter:ChannelListFilters)=>Object.fromEntries(Object.entries(ChannelListFiltersSchema.parse(filter)).filter(([,v])=>v!==undefined&&v!=='')) as Record<string,string>;
 export class ControlApi {
   storageCapacity(signal?:AbortSignal){return this.request('/v1/storage/capacity',StorageCapacitySchema,signal);}
+  rawRetention(signal?:AbortSignal){return this.request('/v1/storage/raw-retention',RawRetentionStatusSchema,signal);}
   config(signal?:AbortSignal){return this.request('/v1/config',ConfigSnapshotSchema,signal);}
   configHistory(cursor='0',signal?:AbortSignal){return this.request('/v1/config/history?limit=50&cursor='+encodeURIComponent(cursor),ConfigHistorySchema,signal);}
   publishConfig(command:ConfigCommand,signal?:AbortSignal){return this.request('/v1/config',ConfigSnapshotSchema,signal,ConfigCommandSchema.parse(command));}
