@@ -141,6 +141,12 @@ case "${1:-}" in
   channel-filters-images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --channel-filters-control-only) ;;
   channel-filters-live) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-channel-filters.ts "${@:2}") ;;
   channel-filters-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-channel-filters.ts "${@:2}") ;;
+  storage-capacity-unit) command=(node --import tsx --test --test-concurrency=1 apps/control-api/test/storage-capacity.test.ts apps/control-api/test/overview-resources.test.ts) ;;
+  storage-capacity-monitoring) command=(python3 scripts/dev/configure-storage-capacity.py "${@:2}") ;;
+  storage-capacity-alert-tests) command=(python3 tests/ops/check_storage_capacity_alerts.py) ;;
+  storage-capacity-images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --storage-capacity-control-only) ;;
+  storage-capacity-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-storage-capacity.ts "${@:2}") ;;
+  storage-capacity-live) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-storage-capacity.ts "${@:2}") ;;
   browser) command=(npm run test:browser -- "${@:2}") ;;
   # Python Profile Agent with the pinned interpreter, wheels and verified model bundle (prepared on first use).
   profile-agent)

@@ -16,6 +16,7 @@ import {ConsoleAuditQuerySchema} from '../../../packages/contracts/src/console-a
 import {registerConsoleAudit,type ConsoleAuditRepository} from './console-audit.ts';
 import {ProxyAvailabilityQuerySchema} from '../../../packages/contracts/src/proxy-availability.ts';
 import {ChannelListFiltersSchema,SourceModeSchema} from '@crawlsystem/contracts';
+import {unknownStorageCapacity} from './storage-capacity.ts';
 
 export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleAuth; audit?:ConsoleAuditRepository; workloadIdentity?:WorkloadIdentity; proxies?:ProxyStore;clickhouse?:ClickHouse;monitoring?:Prometheus;evidencePreview?:(failure:Failure)=>Promise<unknown> }) {
   const auth=options.consoleAuth,workload=options.workloadIdentity;
@@ -106,6 +107,16 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     requireRole(request.principal,'reader','operator');
     const ch=await options.clickhouse?.health().catch(()=>undefined);
     return store.storage(request.principal,ch??{available:false,bytes:null,events:null,last_event_at:null});
+  });
+  let capacityCache:{until:number;value:unknown}|undefined,capacityPending:Promise<unknown>|undefined;
+  app.get('/v1/storage/capacity',async request=>{
+    requireRole(request.principal,'reader','operator');z.strictObject({}).parse(request.query);
+    // Physical storage is shared infrastructure, scoped to its configured
+    // workspace. Other workspaces receive no cluster inventory or usage.
+    if(!options.monitoring||!options.metricsWorkspace||request.principal.workspace_id!==options.metricsWorkspace)return unknownStorageCapacity();
+    if(capacityCache&&capacityCache.until>Date.now())return capacityCache.value;
+    capacityPending??=options.monitoring.storageCapacity().catch(()=>unknownStorageCapacity()).then(value=>{capacityCache={until:Date.now()+30000,value};return value;}).finally(()=>{capacityPending=undefined;});
+    return capacityPending;
   });
   app.post('/v1/telemetry/failures',{bodyLimit:262144},async request=>store.reportFailure(request.principal,request.body));
   app.get('/v1/telemetry/outbox',async request=>store.telemetryOutbox(request.principal));

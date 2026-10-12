@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import {NodeResourcesSchema,type NodeResources} from '@crawlsystem/contracts';
+import {readStorageCapacity} from './storage-capacity.ts';
 
 const queries={
  cpu:'100*(1-avg by (node)(rate(node_cpu_seconds_total{job="nodes",mode="idle"}[2m])))',
@@ -8,12 +9,12 @@ const queries={
  sampled:'min by (node)(timestamp(node_memory_MemTotal_bytes{job="nodes"}))',
  up:'max by (node)(up{job="nodes"})',
 };
-const responseSchema=z.object({status:z.literal('success'),data:z.object({resultType:z.literal('vector'),result:z.array(z.object({metric:z.object({node:z.string().max(160)}),value:z.tuple([z.number(),z.string().max(80)])})).max(1000)})});
+const responseSchema=z.object({status:z.literal('success'),data:z.object({resultType:z.literal('vector'),result:z.array(z.object({metric:z.record(z.string(),z.string().max(200)),value:z.tuple([z.number(),z.string().max(80)])})).max(1000)})});
 export const unknownNode=(server_id:string):NodeResources=>({server_id,cpu_percent:null,memory_used_bytes:null,memory_total_bytes:null,sampled_at:null});
 /** Fixed queries only; tenant filtering uses the caller's registered Worker nodes. */
 export class Prometheus {
  constructor(private origin:string,private request:typeof fetch=fetch){const u=new URL(origin);if(!['http:','https:'].includes(u.protocol)||u.username||u.password||u.search||u.hash)throw new Error('Invalid monitoring origin');}
- private async query(query:string){
+ private async vector(query:string){
   const u=new URL('/api/v1/query',this.origin);u.searchParams.set('query',query);
   const response=await this.request(u,{signal:AbortSignal.timeout(4000),redirect:'error'});
   if(!response.ok)throw new Error('Monitoring unavailable');
@@ -21,8 +22,10 @@ export class Prometheus {
   const chunks:Uint8Array[]=[];let bytes=0;
   try{for(;;){const part=await reader.read();if(part.done)break;bytes+=part.value.length;if(bytes>1048576)throw new Error('Monitoring unavailable');chunks.push(part.value);}}finally{await reader.cancel();}
   const result=responseSchema.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
-  return new Map(result.data.result.map(r=>[r.metric.node,Number(r.value[1])]));
+  return result.data.result.map(r=>({labels:r.metric,value:Number(r.value[1])}));
  }
+ private async query(query:string){return new Map((await this.vector(query)).filter(r=>r.labels.node!==undefined).map(r=>[r.labels.node!,r.value]));}
+ storageCapacity(now=Date.now()){return readStorageCapacity(q=>this.vector(q),now);}
  async nodes(serverIds:string[],now=Date.now()):Promise<NodeResources[]>{
   if(!serverIds.length)return [];
   const values=await Promise.all(Object.values(queries).map(q=>this.query(q)));

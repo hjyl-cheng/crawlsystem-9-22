@@ -1,14 +1,29 @@
 import {useState} from 'react';
 import {Link} from 'react-router';
 import type {Analytics} from '@crawlsystem/contracts/analytics';
+import type {StorageCapacity} from '../../../../packages/contracts/src/storage-capacity.ts';
 import {useAuth} from '../auth.js';
 import {useResource} from '../resource.js';
-import {Empty,Fields,PageHeading,Panel,ResourceView} from '../ui.js';
+import {Badge,Empty,Fields,PageHeading,Panel,ResourceView} from '../ui.js';
 import {number,time} from '../presentation.js';
 import './analytics.css';
 const domainLabels:Record<string,string>={ABOUT:'频道资料',VIDEO:'视频',AGENT:'画像',SAMPLING:'统计重采样',TARGETS:'视频目录'};
 const statusLabels:Record<string,string>={APPLIED:'已入库',PARTIAL:'部分字段待解析',UNAVAILABLE:'视频不可访问'};
 const bytes=(n:number|null)=>n===null?'—':`${(n/1024/1024).toFixed(2)} MiB`;
+const capacityBytes=(n:number|null)=>n===null?'未知':n>=1024**3?`${(n/1024**3).toFixed(2)} GiB`:`${(n/1024**2).toFixed(2)} MiB`;
+const capacityStates={ok:'容量正常',warning:'容量预警',critical:'容量严重',unknown:'用量未知'};
+function ObjectCapacity({data}:{data:StorageCapacity}){
+  return <>{!data.available&&<div className="notice warning">部分容量指标暂不可用或扫描数据已过期，请核对监控；未知用量不会计为 0。</div>}
+    <div className="storage-buckets">{data.buckets.map(b=><section key={b.bucket} className={'storage-bucket '+b.state} aria-label={b.label+'容量'}>
+      <header><h3>{b.label}</h3><Badge tone={b.state==='critical'?'red':b.state==='warning'?'amber':b.state==='ok'?'green':'neutral'}>{capacityStates[b.state]}</Badge></header>
+      <small>{b.bucket}</small><strong>{capacityBytes(b.used_bytes)} <span>/ {capacityBytes(b.quota_bytes)}</span></strong>
+      {b.used_percent===null?<p>等待有效用量指标</p>:<><progress max="100" value={Math.min(100,b.used_percent)} aria-label={b.label+'配额使用率'}/><p>已用 {b.used_percent.toFixed(1)}% · 配额剩余 {capacityBytes(b.remaining_bytes)}</p></>}
+      <p>对象数 {b.objects===null?'未知':number(b.objects)} · 保留规则 {b.retention_days} 天</p>
+    </section>)}</div>
+    <p className="fine-print inset">磁盘可用 {capacityBytes(data.disk.free_bytes)} / 总容量 {capacityBytes(data.disk.total_bytes)}，与同节点其他服务共享；桶配额剩余不等于独占磁盘余量。</p>
+    <p className="fine-print inset">容量预警 {data.warning_percent}% · 严重告警 {data.critical_percent}% · {data.sampled_at?'指标采样 '+time(data.sampled_at):'尚无有效采样'} · {data.scan_age_seconds===null?'扫描时间未知':`扫描数据距今约 ${Math.ceil(data.scan_age_seconds/60)} 分钟`}。用量来自后台扫描，保留规则到期后由扫描器异步清理。</p>
+  </>;
+}
 export function TrendChart({data}:{data:Analytics}) {
   const max=Math.max(1,...data.trend.map(d=>d.videos+d.about+d.agent));
   return data.trend.length?<div className="analytics-trend" role="img" aria-label="每日采集趋势">{data.trend.map(d=><div className="trend-day" key={d.at} title={`${d.at.slice(0,10)}：视频 ${d.videos}、资料 ${d.about}、画像 ${d.agent}；完成 ${d.completed}、失败 ${d.failed}`}><strong>{number(d.collected)}</strong><div className="trend-bar" style={{height:`${Math.max(3,(d.videos+d.about+d.agent)/max*150)}px`}}><i style={{flex:d.videos||0,background:'var(--blue,#3b82f6)'}}/><i style={{flex:d.about||0,background:'#22c55e'}}/><i style={{flex:d.agent||0,background:'#a855f7'}}/></div><small>{d.at.slice(5,10)}</small></div>)}</div>:<Empty title="这段时间没有采集事件"/>;
@@ -28,8 +43,10 @@ export default function AnalyticsPage({quality=false}:{quality?:boolean}) {
       <p className="fine-print">统计来源：ClickHouse · 更新于 {time(d.observed_at)} · 原始采集 {bytes(d.totals.raw_bytes)}</p></>}</ResourceView></>;
 }
 export function StoragePage() {
-  const {api}=useAuth(),r=useResource('storage',signal=>api.storage(signal));
-  return <><PageHeading title="存储与流水线" description="查看持久队列、统计入库和数据保留状态。"/><ResourceView resource={r}>{s=><>
+  const {api}=useAuth(),r=useResource('storage',signal=>api.storage(signal)),capacity=useResource('storage-capacity',signal=>api.storageCapacity(signal),true,30000);
+  return <><PageHeading title="存储与流水线" description="查看对象容量、持久队列、统计入库和数据保留状态。"/>
+    <Panel title="MinIO 容量"><ResourceView resource={capacity}>{d=><ObjectCapacity data={d}/>}</ResourceView></Panel>
+    <ResourceView resource={r}>{s=><>
     <Panel title="入库与恢复"><Fields rows={[
       ['PostgreSQL 数据库大小',bytes(s.postgres_bytes)],['等待发布的统计事件',number(s.outbox.pending)],['等待归档的统计事件',number(s.outbox.unarchived)],['最早待归档事件',s.outbox.oldest_pending_at?time(s.outbox.oldest_pending_at):'无'],
       ['ClickHouse',s.clickhouse.available?'正常':'暂时不可用，事件仍保留'],['ClickHouse 存储',bytes(s.clickhouse.bytes)],['事件明细',number(s.clickhouse.events)],['最近统计事件',s.clickhouse.last_event_at??'—'],

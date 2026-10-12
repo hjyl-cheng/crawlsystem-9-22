@@ -1,0 +1,25 @@
+# Merge these jobs into the existing config; keep every other job unchanged.
+scrape_configs:
+  - job_name: minio-cluster
+    metrics_path: /minio/v2/metrics/cluster
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: [minio.storage.svc.cluster.local:9000]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: minio_cluster_capacity_usable_(free|total)_bytes|minio_cluster_usage_(total_bytes|object_total)|minio_usage_last_activity_nano_seconds|minio_node_scanner_bucket_scans_(started|finished)|minio_node_ilm_expiry_(pending_tasks|missed_tasks)|minio_node_ilm_versions_scanned
+        action: keep
+  - job_name: minio-buckets
+    metrics_path: /minio/v2/metrics/bucket
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: [minio.storage.svc.cluster.local:9000]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: minio_bucket_(quota_total_bytes|usage_total_bytes|usage_object_total)
+        action: keep
+      - source_labels: [bucket]
+        regex: crawl-raw|crawl-parsed|crawl-evidence
+        action: keep

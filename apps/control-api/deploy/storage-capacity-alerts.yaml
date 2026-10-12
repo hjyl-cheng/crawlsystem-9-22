@@ -1,0 +1,55 @@
+groups:
+  - name: crawl-storage-capacity
+    rules:
+      - record: minio:crawl_bucket_usage:ratio
+        expr: max by (bucket) (minio_bucket_usage_total_bytes{job="minio-buckets",bucket=~"crawl-raw|crawl-parsed|crawl-evidence"}) / max by (bucket) (minio_bucket_quota_total_bytes{job="minio-buckets",bucket=~"crawl-raw|crawl-parsed|crawl-evidence"} > 0)
+      - alert: CrawlMinioMetricsUnavailable
+        expr: (count(up{job=~"minio-cluster|minio-buckets"} == 1) or vector(0)) < 2
+        for: 5m
+        labels: {severity: warning, service: minio}
+        annotations:
+          summary: MinIO 容量监控不可用
+          description: 两个 MinIO 抓取目标未全部正常，无法可靠判断桶用量与磁盘余量。
+      - alert: CrawlMinioCapacityMetricsIncomplete
+        expr: |
+          (
+            (count(max by (bucket) (minio_bucket_usage_total_bytes{job="minio-buckets",bucket=~"crawl-raw|crawl-parsed|crawl-evidence"})) or vector(0)) < 3
+            or (count(max by (bucket) (minio_bucket_quota_total_bytes{job="minio-buckets",bucket=~"crawl-raw|crawl-parsed|crawl-evidence"} > 0)) or vector(0)) < 3
+            or (count(max by (bucket) (minio_bucket_usage_object_total{job="minio-buckets",bucket=~"crawl-raw|crawl-parsed|crawl-evidence"})) or vector(0)) < 3
+            or absent(minio_usage_last_activity_nano_seconds{job="minio-cluster"})
+            or absent(minio_cluster_capacity_usable_free_bytes{job="minio-cluster"})
+            or absent(minio_cluster_capacity_usable_total_bytes{job="minio-cluster"})
+          ) and on() ((count(up{job=~"minio-cluster|minio-buckets"} == 1) or vector(0)) == 2)
+        for: 5m
+        labels: {severity: warning, service: minio}
+        annotations:
+          summary: MinIO 容量指标不完整
+          description: 抓取成功但缺少三个业务桶的用量、有效配额、对象数或磁盘与扫描指标，未知用量不能视为零。
+      - alert: CrawlMinioBucketCapacityWarning
+        expr: minio:crawl_bucket_usage:ratio >= 0.70 and minio:crawl_bucket_usage:ratio < 0.85
+        for: 5m
+        labels: {severity: warning, service: minio}
+        annotations:
+          summary: MinIO 桶配额使用达到 70%
+          description: '{{ $labels.bucket }} 配额使用已达到预警阈值，请核对日增量、保留回收与实际磁盘余量。'
+      - alert: CrawlMinioBucketCapacityCritical
+        expr: minio:crawl_bucket_usage:ratio >= 0.85
+        for: 5m
+        labels: {severity: critical, service: minio}
+        annotations:
+          summary: MinIO 桶配额使用达到 85%
+          description: '{{ $labels.bucket }} 配额接近写入上限，请尽快处理容量，避免采集或证据写入失败。'
+      - alert: CrawlMinioUsageScanDelayed
+        expr: max(minio_usage_last_activity_nano_seconds{job="minio-cluster"}) / 1e9 > 21600
+        for: 15m
+        labels: {severity: warning, service: minio}
+        annotations:
+          summary: MinIO 用量扫描超过六小时未更新
+          description: 当前用量估计已过期，请检查扫描器和磁盘负载，控制台将桶用量显示为未知。
+      - alert: CrawlMinioDiskCapacityCritical
+        expr: max(minio_cluster_capacity_usable_free_bytes{job="minio-cluster"}) / max(minio_cluster_capacity_usable_total_bytes{job="minio-cluster"} > 0) < 0.15
+        for: 5m
+        labels: {severity: critical, service: minio}
+        annotations:
+          summary: MinIO 所在磁盘可用空间低于 15%
+          description: 该磁盘与其他服务共享，请同时核对节点用量与桶配额，避免写入受阻。
