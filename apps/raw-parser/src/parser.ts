@@ -150,7 +150,9 @@ export class RawParser {
       const previous=webResponses[start-1];
       const beginning=previous&&videoNext(previous)&&!webResponses.slice(start).some(videoNext)?start-1:start;
       const attempt=new ResponseReplay(webResponses.slice(beginning), locale);
-      try { return await videoDetail(await attempt.client(), raw.channel_id, raw.unit_id, input.scope.comments_per_video, raw.step === 'SAMPLING', attempt.played, raw.captured_at, locale); }
+      // Metrics refreshes captured before 10-13 read only the player; replay them the same way.
+      const metricsRead = webResponses.some(r => r.endpoint.endsWith('/next')) ? 'info' : 'basic';
+      try { return await videoDetail(await attempt.client(), raw.channel_id, raw.unit_id, input.scope.comments_per_video, raw.step === 'SAMPLING', attempt.played, raw.captured_at, locale, metricsRead); }
       catch(error) {
         if(error instanceof ScrapeError && error.kind==='not_found') {
           const missing=unavailableVideo(raw.channel_id,raw.unit_id,raw.captured_at);

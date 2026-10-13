@@ -245,11 +245,15 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
  * IP, so IOS through the same route would see it again (legacy asked IOS anyway); the collector rechecks it in the
  * channel's country instead (the legacy alternate_region retry mode, which legacy never carried out for videos).
  */
-export async function videoDetail(yt: Innertube, channelId: string, videoId: string, commentLimit: number, metricsOnly = false, responses: RawResponse[] = [], observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE): Promise<VideoItem> {
+/**
+ * `metricsRead` is how a metrics refresh reads the video: legacy reads player and next (youtubeJs.js:1857-1863), so likes
+ * and the comment count hint are refreshed too; 'basic' replays units captured before 10-13, which hold only the player.
+ */
+export async function videoDetail(yt: Innertube, channelId: string, videoId: string, commentLimit: number, metricsOnly = false, responses: RawResponse[] = [], observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE, metricsRead: 'info' | 'basic' = 'info'): Promise<VideoItem> {
   const surfaces: (Node | undefined)[] = [];
   for (const client of ['WEB', 'IOS'] as const) {
     let info: Node;
-    try { info = metricsOnly ? await yt.getBasicInfo(videoId, { client }) : await yt.getInfo(videoId, { client }); }
+    try { info = metricsOnly && metricsRead === 'basic' ? await yt.getBasicInfo(videoId, { client }) : await yt.getInfo(videoId, { client }); }
     catch (error) {
       const surface = (error as Node).info?.playability_status ?? (error as Node).info?.playabilityStatus ?? (error as Node).info;
       const decision = playability(surface);

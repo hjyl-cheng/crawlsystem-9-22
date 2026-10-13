@@ -164,3 +164,13 @@ test('IOS without a microformat cannot erase WEB Shorts evidence; a scheduled st
   const unknown = mapWebVideo(info(), channel, id, { kind: 'skipped' }, 0);
   assert.deepEqual([unknown.content_type, unknown.content_type_source], ['video', 'default:shorts_unknown']);
 });
+
+// Batch 2d: a metrics refresh reads player and next like legacy (youtubeJs.js:1857-1863); old units replay player-only.
+test('metrics refresh does not require a content type probe and refreshes likes from next', async () => {
+  const calls: string[] = [], withLikes = { ...info(), basic_info: { ...info().basic_info, like_count: 77 } };
+  const yt = { async getInfo() { calls.push('info'); return withLikes; }, async getBasicInfo() { calls.push('basic'); return info(); } };
+  const fresh = await videoDetail(yt as never, channel, id, 20, true);
+  assert.ok(!('unavailable' in fresh)); assert.deepEqual([fresh.like_count.value, fresh.comments_first_page], [77, null]); assert.deepEqual(calls, ['info']);
+  const old = await videoDetail(yt as never, channel, id, 20, true, [], undefined, 'pt-BR', 'basic');
+  assert.ok(!('unavailable' in old)); assert.equal(old.like_count.status, 'unresolved'); assert.deepEqual(calls, ['info', 'basic']);
+});
