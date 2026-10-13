@@ -9,7 +9,7 @@ test('channel metadata accepts the real quoted keyword string despite YouTube.js
   const yt = { async getChannel() { return { metadata: { title: 'channel', keywords: '"google developers" android', avatar: [] }, tabs: ['Home'],
     async getAbout() { return { metadata: { subscriber_count: '1,2 mi de inscritos', links: [] } }; } }; } };
   const facts = await channelFacts(yt as never, channel);
-  assert.deepEqual(facts.keywords, ['google developers', 'android']); assert.equal(facts.subscriber_count.value, 1_200_000);
+  assert.deepEqual(facts.keywords, ['android', 'google developers'], 'legacy keywordList is unique and sorted'); assert.equal(facts.subscriber_count.value, 1_200_000);
 });
 test('Portuguese counts and dates retain estimates, day precision and missing counts', () => {
   assert.deepEqual(parseCount('1,23 mi de inscritos', 'pt-BR'), { value: 1_230_000, exact: false });

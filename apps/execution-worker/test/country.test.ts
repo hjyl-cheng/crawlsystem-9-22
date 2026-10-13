@@ -42,3 +42,15 @@ test('channel links resolve their tap target, unwrap redirects, drop tracking an
   assert.equal(linkPurpose('website', 'Business inquiries'), 'contact');
   assert.equal(linkPurpose('instagram', 'Instagram'), 'contact');
 });
+// Batch 4e: legacy channel identity, fallbacks and About metric policy (youtubeJs.js:640-836, aboutMetrics.js:43-50).
+test('channel identity conflicts fail; title, handle, description and view count follow the legacy fallbacks', async () => {
+  const yt = (metadata: Record<string, unknown>, about: Record<string, unknown>, header: Record<string, unknown> = {}) => ({ async getChannel() {
+    return { metadata: { avatar: [], ...metadata }, header, tabs: [], has_videos: true, async getAbout() { return { metadata: { links: [], ...about } }; } }; } });
+  const id = 'UC_x5XG1OV2P6uZZ5FSM9Ttw';
+  await assert.rejects(channelFacts(yt({ title: 'x', external_id: 'UCzzzzzzzzzzzzzzzzzzzzzz' }, {}) as never, id), (e: unknown) => e instanceof ScrapeError && e.kind === 'parse');
+  const facts = await channelFacts(yt({ external_id: id, vanity_channel_url: 'http://www.youtube.com/@Some.Name' }, { description: '', subscriber_count: '1.2K subscribers' }, { page_title: 'Header Title', description: 'old header text' }) as never, id, undefined, 'en');
+  assert.deepEqual([facts.title, facts.handle, facts.about_description], ['Header Title', '@Some.Name', ''], 'an About page saying empty is not replaced by header text');
+  assert.deepEqual([facts.total_view_count.value, facts.total_view_count.source], [0, 'youtube_about_missing_view_count']);
+  assert.equal(facts.subscriber_count.source, 'youtubei:channel_about');
+  assert.deepEqual(facts.available_tabs, ['videos']);
+});

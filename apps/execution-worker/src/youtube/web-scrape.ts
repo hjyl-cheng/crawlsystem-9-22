@@ -94,30 +94,44 @@ export async function channelFacts(yt: Innertube, channelId: string, observedAt 
     const channel = await yt.getChannel(channelId), aboutNode = await channel.getAbout() as unknown as Node;
     const about: Node = aboutNode.metadata ?? aboutNode;
     const meta = channel.metadata, now = observedAt;
-    const header = strings(channel.header);
+    const header = strings(channel.header), head = channel.header as unknown as Node | undefined;
     // Legacy findSubscriberCountText: a labelled row, never a handle; an unlabelled row only when it is the one compact number.
-    const subscribers = text(about.subscriber_count) ?? findSubscriberCountText(header, locale);
-    const observed = (raw: unknown) => {
+    const aboutSubscribers = text(about.subscriber_count), subscribers = aboutSubscribers ?? findSubscriberCountText(header, locale);
+    const observed = (raw: unknown, source = 'youtubei:channel_about') => {
       const parsed = parseCount(text(raw), locale);
-      return { value: parsed?.value ?? null, status: parsed ? parsed.exact ? 'exact' : 'estimated' : 'unresolved', source: 'youtubei:channel_about', observed_at: now };
+      return { value: parsed?.value ?? null, status: parsed ? parsed.exact ? 'exact' : 'estimated' : 'unresolved', source, observed_at: now };
     };
     const joined = absoluteDate(about.joined_date, locale);
-    if (!meta.title) throw new ScrapeError('parse', 'Channel title missing');
+    // Legacy fullCrawlYoutubeJsFactory.js:67-70: a page of another channel (a redirect or a mixed-up ID) is not this channel.
+    if (meta.external_id && meta.external_id !== channelId) throw new ScrapeError('parse', `Channel identity conflicts: ${meta.external_id}`);
+    // Legacy youtubeJs.js:640-659, 809-814: title, handle, description and avatar fall back through the header.
+    const title = text(meta.title) ?? text(head?.author?.name) ?? text(head?.title) ?? text(head?.page_title);
+    if (!title) throw new ScrapeError('parse', 'Channel title missing');
+    const handleUrl = [meta.vanity_channel_url, meta.url, about.canonical_channel_url].map(u => /\/@([^/?#]+)/.exec(String(u ?? ''))?.[1]).find(Boolean);
+    const headerHandle = text(head?.channel_handle);
+    const handle = headerHandle ? (headerHandle.startsWith('@') ? headerHandle : `@${headerHandle}`) : handleUrl ? `@${decodeURIComponent(handleUrl)}` : header.find(s => /^@[\w.\-]+$/.test(s)) ?? null;
+    // Legacy longestText (youtubeJs.js:650-652, 810); the About text comes first so a tie keeps its line breaks. An observed
+    // About page without any description is an empty description, never replaced by older header text (aboutCurrent.js:82-83).
+    const descriptions = [about.description, meta.description, head?.description].map(text).filter((d): d is string => !!d);
+    const description = typeof about.description === 'string' && !about.description.trim() ? '' : descriptions.sort((a, b) => b.length - a.length)[0] ?? '';
     // Legacy parseYoutubeAboutCountry: an observed About country resolves to its ISO code; an unknown one fails loudly
     // rather than silently leaving the Agent to guess the country.
     const country = canonicalCountry(text(about.country));
     if (country.raw && !country.code) throw new ScrapeError('parse', `Unsupported localized About country: ${country.raw}`);
-    return ChannelFactsSchema.parse({ channel_id: channelId, channel_url: `https://www.youtube.com/channel/${channelId}`, title: meta.title,
-      handle: meta.vanity_channel_url?.match(/@[^/]+/)?.[0] ?? header.find(s => /^@[\w.\-]+$/.test(s)) ?? null,
-      avatar_url: thumb(meta.avatar ?? meta.thumbnail), summary: null, about_description: text(about.description) ?? meta.description ?? null,
+    return ChannelFactsSchema.parse({ channel_id: channelId, channel_url: `https://www.youtube.com/channel/${channelId}`, title, handle,
+      avatar_url: largestThumbnail(meta.avatar ?? meta.thumbnail, head?.author?.thumbnails, about.avatar, head?.content?.image), summary: null, about_description: description,
       country: country.raw, country_code: country.code, country_source: country.raw ? 'youtubei:about' : null,
       joined_at: joined.value?.slice(0, 10) ?? null, joined_date_text: text(about.joined_date), joined_at_precision: joined.value ? 'date_only' : 'unknown',
       // The channel declaration says string[], but YouTube still returns a quoted keyword string.
-      keywords: (Array.isArray(meta.keywords) ? meta.keywords : typeof meta.keywords === 'string' ? parseKeywords(meta.keywords) : meta.tags ?? []).slice(0, 100).map(s => s.slice(0, 200)), // Legacy youtubeJs.js:832-836: canonical content tabs from YouTube.js, which matches tab URLs, not their display text.
+      keywords: parseKeywords(meta.keywords ?? meta.tags),
+      // Legacy youtubeJs.js:832-836: canonical content tabs from YouTube.js, which matches tab URLs, not their display text.
       available_tabs: [channel.has_live_streams && 'live', channel.has_shorts && 'shorts', channel.has_videos && 'videos'].filter((t): t is string => typeof t === 'string'),
       // Legacy youtubeJsAboutLinks: the link's tap target, not its possibly truncated display text, normalized like publication.
       external_links: (about.links ?? []).slice(0, 100).flatMap((l: Node) => { const url = normalizeUrl(linkTarget(l), { contacts: true }); return url ? [{ title: (text(l.title) ?? '').slice(0, 500), url }] : []; }),
-      subscriber_count: observed(subscribers), total_view_count: observed(about.view_count), total_video_count: observed(about.video_count),
+      subscriber_count: observed(subscribers, aboutSubscribers ? 'youtubei:channel_about' : 'youtubei:channel_header'),
+      // Legacy aboutMetrics.js:43-50: an observed About page without lifetime views is a product-policy zero.
+      total_view_count: text(about.view_count) === null ? { value: 0, status: 'exact', source: 'youtube_about_missing_view_count', observed_at: now } : observed(about.view_count),
+      total_video_count: observed(about.video_count),
       is_verified: channelVerified(channel.header), is_family_safe: meta.is_family_safe ?? null, youtube_business_email_available: about.sign_in_for_business_email != null,
       observed_at: now, source: 'youtubei:channel_about' });
   } catch (error) { throw classify(error); }

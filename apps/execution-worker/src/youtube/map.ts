@@ -27,9 +27,14 @@ export function estimateRelative(text: string, observedAt: string, locale = 'en'
   return localizedEstimatedUtcTimestamp(text, locale, Date.parse(observedAt));
 }
 /** YouTube keyword strings quote multi-word terms: `"google developers" android`. */
-export function parseKeywords(text: string | undefined): string[] {
-  if (!text) return [];
-  return [...text.matchAll(/"([^"]+)"|(\S+)/g)].map(m => (m[1] ?? m[2])!.trim()).filter(Boolean).slice(0, 100).map(k => k.slice(0, 200));
+/** Legacy keywordList (aboutCurrent.js:24-42): an array, a JSON array, or YouTube's quoted keyword string; unique and sorted. */
+export function parseKeywords(value: unknown): string[] {
+  const list = (items: unknown[]) => [...new Set(items.map(i => typeof i === 'string' ? i.trim() : '').filter(Boolean))].sort().slice(0, 100).map(k => k.slice(0, 200));
+  if (Array.isArray(value)) return list(value);
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return [];
+  if (raw.startsWith('[') && raw.endsWith(']')) { try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return list(parsed); } catch { /* YouTube's quoted syntax */ } }
+  return list([...raw.matchAll(/"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^,;\s]+)/g)].map(m => (m[1] ?? m[2] ?? m[3] ?? '').replace(/\\(["'\\])/g, '$1')));
 }
 const textKey = (value: string) => value.normalize('NFKC').toLocaleLowerCase();
 /** Legacy normalizeVideoKeywords (videoMetadata.js:22-32): trimmed, first spelling kept, NFKC case-insensitive duplicates dropped. */
