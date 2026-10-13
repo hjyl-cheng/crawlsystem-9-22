@@ -1,0 +1,332 @@
+{
+  "result": "PASSED_WITH_RETAINED_SOURCE_ANOMALIES",
+  "at": "2026-10-13T08:26:07.446Z",
+  "baseline_failures": {
+    "reviewed": 93,
+    "ignored": 57,
+    "resolved": 17,
+    "open": 19
+  },
+  "historical_closures": {
+    "initial": 27,
+    "after_delivered_recovery": 30,
+    "baseline_total": 57,
+    "new_qualified_cancellation": 1,
+    "round_total": 58,
+    "result_state": "IGNORED",
+    "old_failed_plans_preserved": true
+  },
+  "controlled_retries": {
+    "plans": 16,
+    "collection_completed": 14,
+    "collection_failed": 2,
+    "collection_completion_is_not_delivery": true
+  },
+  "delivered_recoveries": {
+    "plans": 12,
+    "video_targets": 477,
+    "frozen_recovery_targets": 264,
+    "items": [
+      {
+        "plan_id": "92e971bd-8dec-468c-9c20-507192d7cc8c",
+        "channel_id": "UC7AqXU_kHCYqXzYhG1rpkkA",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 2,
+        "targets": 32,
+        "ingested_video_units": 32
+      },
+      {
+        "plan_id": "a4297301-ee5b-4bc8-b215-46790069f252",
+        "channel_id": "UCGempmZ532ey_qlftcUaruA",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 3,
+        "targets": 30,
+        "ingested_video_units": 30
+      },
+      {
+        "plan_id": "8acc1ac7-346c-4f56-bc7a-9504ffca063d",
+        "channel_id": "UCF8xr5b5dkKxxUN9qyWzaxw",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 4,
+        "targets": 30,
+        "ingested_video_units": 30
+      },
+      {
+        "plan_id": "112394f1-f5d2-4f5c-856b-aa8442d10d66",
+        "channel_id": "UCCedisdu-mmQSfhU0khpYmw",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 5,
+        "targets": 30,
+        "ingested_video_units": 30
+      },
+      {
+        "plan_id": "ef2119de-938c-4944-b4c8-9608355f1687",
+        "channel_id": "UCCgZZd8zy-OyiVtQ5WeOV6w",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 6,
+        "targets": 30,
+        "ingested_video_units": 30
+      },
+      {
+        "plan_id": "052cb1f0-1453-49ea-aca6-154d54a74155",
+        "channel_id": "UCFG7MfqhQ-T4-aENXjEtC2A",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 6,
+        "targets": 30,
+        "ingested_video_units": 30
+      },
+      {
+        "plan_id": "fca6fa95-3a80-44f7-8904-d2ff398f5e73",
+        "channel_id": "UCFLcgrpr6U1fbOaIL7uu92Q",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 14,
+        "targets": 30,
+        "ingested_video_units": 30
+      },
+      {
+        "plan_id": "629f469f-997b-4441-badb-f1228ee7397a",
+        "channel_id": "UCFKePk0rSAcE8jjBoGl9y-w",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 18,
+        "targets": 30,
+        "ingested_video_units": 30
+      },
+      {
+        "plan_id": "73286aca-9089-489e-abbd-08fc08b96368",
+        "channel_id": "UCFxHplbcoJK9m70c4VyTIxg",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 30,
+        "targets": 52,
+        "ingested_video_units": 52
+      },
+      {
+        "plan_id": "c08f7880-c362-488b-b5a5-0386d4f10a11",
+        "channel_id": "UCGV72aVJuWP0QPNGH4YgIww",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 37,
+        "targets": 37,
+        "ingested_video_units": 37
+      },
+      {
+        "plan_id": "82fe7e84-1739-43a3-a1a7-c9af510f2ca8",
+        "channel_id": "UCG12zAI4f4nIZ4mSmJOvATw",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 61,
+        "targets": 61,
+        "ingested_video_units": 61
+      },
+      {
+        "plan_id": "1a6249c8-d6b4-4a9e-9153-edc51aec5be8",
+        "channel_id": "UCCjG8NtOig0USdrT5D1FpxQ",
+        "status": "COMPLETED",
+        "publication_status": "DELIVERED",
+        "frozen_recovery_targets": 78,
+        "targets": 85,
+        "ingested_video_units": 85
+      }
+    ]
+  },
+  "previously_stuck_parser_plans": {
+    "plan_ids": [
+      "a24c1b96-1f69-4392-85ea-90ecc36b1322",
+      "0f0e5122-9b12-429c-b85c-b2004c226c85"
+    ],
+    "status": "COMPLETED",
+    "publication_status": "DELIVERED"
+  },
+  "checks": {
+    "unit": {
+      "result": "PASSED",
+      "tests": 23,
+      "command": "npm run check:safe -- failure-governance-unit"
+    },
+    "typecheck": {
+      "result": "PASSED",
+      "command": "npm run check:safe -- typecheck"
+    },
+    "earlier_stage_integration": {
+      "update_and_failure_tests": 19,
+      "business_publication_tests": 18,
+      "result": "PASSED",
+      "databases": "isolated integration environments"
+    },
+    "real_failed_capture_replay": {
+      "result": "PASSED",
+      "samples": 25,
+      "network_requests": 0,
+      "production_writes": 0
+    },
+    "artist_playlist_replay": {
+      "result": "PASSED",
+      "at": "2026-10-13T08:05:00.925Z",
+      "plan_id": "457c410e-1a44-469f-af64-24d2412fbea4",
+      "old_targets": 30,
+      "replayed_targets": 30,
+      "declared_playlist_videos": 211,
+      "captured_playlist_members": 100,
+      "diagnosed_videos": 10,
+      "confirmed_foreign_owners": 3,
+      "classification": "artist_playlist_ownership_conflict",
+      "recommendation_filter_would_not_resolve": true,
+      "offline_youtube_requests": 0,
+      "production_writes": 0
+    },
+    "browser": {
+      "result": "PASSED",
+      "at": "2026-10-13T08:19:45.898Z",
+      "plan_id": "92e971bd-8dec-468c-9c20-507192d7cc8c",
+      "recovery_videos": 2,
+      "layouts": [
+        {
+          "host": "local",
+          "width": 1920,
+          "plan_details": true,
+          "no_horizontal_overflow": true
+        },
+        {
+          "host": "local",
+          "width": 390,
+          "plan_details": true,
+          "no_horizontal_overflow": true
+        },
+        {
+          "host": "public",
+          "width": 1920,
+          "plan_details": true,
+          "no_horizontal_overflow": true
+        },
+        {
+          "host": "public",
+          "width": 390,
+          "plan_details": true,
+          "no_horizontal_overflow": true
+        }
+      ],
+      "page_errors": [],
+      "api_errors": []
+    }
+  },
+  "deployment": {
+    "revision": "9a0531a18bcda6c58a65f4c26f79c4bc71504e22",
+    "services_ready": 6,
+    "migrations_preserved": 40,
+    "settings_version": 5,
+    "unrelated_workloads_preserved": true,
+    "workers": [
+      {
+        "worker_id": "execution-worker-0",
+        "status": "RUNNING",
+        "desired_version": 14,
+        "applied_version": 14,
+        "stale": false,
+        "accepting_work": true
+      },
+      {
+        "worker_id": "execution-worker-s3-0",
+        "status": "RUNNING",
+        "desired_version": 14,
+        "applied_version": 14,
+        "stale": false,
+        "accepting_work": true
+      }
+    ],
+    "container_restarts": 0
+  },
+  "live_collection_after_deployment": {
+    "plan_id": "dedac2dd-0612-4fac-809d-7e8259277b0d",
+    "channel_id": "UCK91Uln3gp3TBn7Fc-jL3lQ",
+    "status": "COMPLETED",
+    "publication_status": "DELIVERED",
+    "video_units": 30,
+    "applied_domains": [
+      "ABOUT",
+      "AGENT",
+      "VIDEO"
+    ],
+    "finished_at": "2026-10-13T08:20:40.825433Z"
+  },
+  "delivery_snapshot": {
+    "total": 2767,
+    "pending": 0,
+    "delivered": 2746,
+    "failed": 0,
+    "not_ready": 14,
+    "unchanged": 7
+  },
+  "remaining_open": {
+    "count": 30,
+    "groups": [
+      {
+        "state": "OPEN",
+        "stage": "WORKER",
+        "code": "NOT_FOUND",
+        "n": 2
+      },
+      {
+        "state": "OPEN",
+        "stage": "WORKER",
+        "code": "UNAVAILABLE",
+        "n": 28
+      }
+    ],
+    "channels": [
+      {
+        "channel_id": "UCQm0f2MItHBDSLJ0GL4OaqA",
+        "records": 14,
+        "reason": "artist_playlist_ownership_conflict",
+        "action": "retain_ownership_checks_and_failures"
+      },
+      {
+        "channel_id": "UCzoP7l5bzSzi2gUUNn0I79w",
+        "records": 14,
+        "reason": "web_unavailable_but_api_channel_present",
+        "api_items": 1,
+        "confirmed_removal": false
+      },
+      {
+        "channel_id": "UCUp6wodtd6vPPj1ZmFfVoIQ",
+        "records": 2,
+        "reason": "historical_not_found_without_original_evidence",
+        "confirmed_removal": false
+      }
+    ]
+  },
+  "redundant_execution_stopped": {
+    "plan_id": "1f55be70-42d7-422d-9ba1-7c75089953ad",
+    "diagnosed_plan_id": "457c410e-1a44-469f-af64-24d2412fbea4",
+    "result": "CANCELLED",
+    "at": "2026-10-13T08:14:57.192Z"
+  },
+  "new_qualification_closure": {
+    "failure_id": "83d651c6-5dd0-42a9-8c9b-6a284ccb5864",
+    "plan_id": "9d52f920-acfe-4733-bbdc-85cdbfdf11e2",
+    "qualification_passed": false,
+    "result": "IGNORED",
+    "at": "2026-10-13T08:25:17.099Z"
+  },
+  "legacy_business": {
+    "tables": 64,
+    "schemas": {
+      "public": 26,
+      "publication": 19,
+      "raw_crawler": 15,
+      "result": 4
+    },
+    "schema_changed": false,
+    "old_server_accessed": false
+  },
+  "console_user_file_sha256": "57b4c57b3d8240d236feb8ec08845f17038adb1895afe9a4ae7e760ae8b4c709",
+  "private_audit_dir": ".runtime/failure-governance/",
+  "private_artifacts_committed": false
+}

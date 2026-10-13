@@ -115,6 +115,8 @@ case "${1:-}" in
   failure-governance-diagnose) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/diagnose-governance-source.mjs "${@:2}") ;;
   failure-governance-owners) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-governance-video-owners.mjs "${@:2}") ;;
   failure-governance-upload-replay) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-governance-upload-replay.mjs) ;;
+  failure-governance-stop-conflict) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/stop-governance-conflict.mjs "${@:2}") ;;
+  failure-governance-close-qualified) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/close-governance-qualified.mjs "${@:2}") ;;
   import-retry-prepare) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-e2.ts) ;;
   import-retry-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --e2-control-only) ;;
   import-retry-deploy) command=(node --import tsx scripts/dev/deploy-e2.ts) ;;
