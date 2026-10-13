@@ -96,7 +96,7 @@ export class RawParser {
       const listed = await uploads(await replay.client(), raw.channel_id, input.plan_kind === 'UPDATE' ? 100 : input.scope.video_limit, input.plan_kind === 'UPDATE' ? input.discovery_anchor_ids ?? [] : undefined);
       return { kind: 'TARGETS', payload: input.plan_kind === 'UPDATE' ? { kind: 'discovery', channel_id: raw.channel_id, video_ids: mergeRecoveryVideoTargets(listed.ids, input.recovery_video_ids),
         listed_at: observed, scanned_count: listed.scanned, pages: listed.pages, matched_anchor_id: listed.matched_anchor_id, stop_reason: listed.stop_reason, source: 'youtubei:uploads' }
-        : { kind: 'targets', channel_id: raw.channel_id, video_ids: listed.ids, listed_at: observed, window_start: new Date(0).toISOString(), exhausted: listed.exhausted, source: 'youtubei:uploads' } };
+        : { kind: 'targets', channel_id: raw.channel_id, video_ids: mergeRecoveryVideoTargets(listed.ids, input.recovery_video_ids), listed_at: observed, window_start: new Date(0).toISOString(), exhausted: listed.exhausted, source: 'youtubei:uploads' } };
     }
     const video = await this.video(replay, input, raw);
     if (unit.step === 'SAMPLING') return { kind: 'SAMPLING', payload: { kind: 'samples', observed_at: observed, source: 'youtubei:video_or_api_fallback',

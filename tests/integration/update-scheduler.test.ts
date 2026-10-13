@@ -184,6 +184,19 @@ test('updates freeze partial and missing video observations for recovery without
     plan_id: failed.plan_id, execution_epoch: 1, step: 'VIDEO-0', unit_id: missing, raw, attempts: 3 });
   await t.store.event(t.worker, failed.plan_id, { event_id: randomUUID(), execution_epoch: 1, worker_id: t.worker.subject,
     kind: 'FAILED', phase: 'VIDEO', domain: 'VIDEO', message: 'Partial collection failed', error_code: 'UNAVAILABLE' });
+  const fullCommand = { request_id: randomUUID(), source_mode: 'youtube' as const, channel_id: item.channel, required_domains: ['VIDEO'] as Domain[],
+    scope: { video_limit: 1, max_age_days: 90, comments_per_video: 0, comment_sort: 'TOP_COMMENTS' as const } };
+  const full = await t.store.createPlan(t.op, fullCommand);
+  const fullInput = (await t.store.getInput(t.worker, full.plan_id)).input;
+  assert.equal(fullInput.source_mode, 'youtube');
+  if(fullInput.source_mode==='youtube'){assert.deepEqual(fullInput.recovery_video_ids,[missing,partial]);assert.equal(fullInput.plan_kind,undefined);}
+  assert.equal((await t.store.createPlan(t.op, fullCommand)).input_hash,full.input_hash,'full retries preserve frozen recovery');
+  const fullManifest = { kind: 'targets', channel_id: item.channel, video_ids: [missing,partial,item.video_id], listed_at: new Date().toISOString(),
+    window_start: new Date(0).toISOString(), exhausted: true, source: 'youtubei:uploads' };
+  await reject(()=>apply(full,{...fullManifest,video_ids:[...fullManifest.video_ids,'extravid001']},'too-many',false),'TARGET_MISMATCH');
+  await reject(()=>apply(full,{...fullManifest,video_ids:[item.video_id]},'missing-recovery',false),'TARGET_MISMATCH');
+  await apply(full,fullManifest,'targets',false);
+  await t.store.cancel(t.op,full.plan_id,{command_id:randomUUID(),expected_version:(await t.store.getInput(t.worker,full.plan_id)).plan.version});
   const command = { request_id: randomUUID(), expected_version: 1, domains: ['VIDEO'] as Domain[] };
   const recovery = await t.store.updateChannel(t.op, item.channel, command), context = await t.store.getInput(t.worker, recovery.plan_id);
   assert.equal(context.input.source_mode, 'youtube'); if (context.input.source_mode !== 'youtube') return;

@@ -213,11 +213,12 @@ export function createActivities(options: ActivityOptions) {
         }
         if (!value.video_targets) {
           const windowStart = new Date(youtube().web ? 0 : Date.parse(input.reference_time) - input.scope.max_age_days * 86_400_000).toISOString();
-          const listed = youtube().web ? await youtube().web!.targets(collection(ref, input, scope, descriptor.deadlineAt), input.scope.video_limit)
+          const listed = youtube().web ? await youtube().web!.targets(collection(ref, input, scope, descriptor.deadlineAt), input.scope.video_limit, undefined, input.recovery_video_ids)
             : await youtube().dataApi.recentUploads(`UU${input.channel_id.slice(2)}`, windowStart, input.scope.video_limit, permit(ref, scope, descriptor.deadlineAt));
-          const manifest = { kind: 'targets', channel_id: input.channel_id, video_ids: listed.ids, listed_at: new Date().toISOString(), window_start: windowStart, exhausted: listed.exhausted, source: youtube().web ? 'youtubei:uploads' : 'data_api:playlistItems' };
-          await submitOnce(ref, value, submissionOf(ref, 'VIDEO', 'video:targets', manifest, listed.ids.length === 0), descriptor.deadlineAt);
-          await event(ref, scope, 'PROGRESS', 'TARGETS', `Frozen ${listed.ids.length} video targets since ${windowStart.slice(0, 10)}${listed.exhausted ? '' : ' (limit reached)'}`, 'VIDEO');
+          const targets = mergeRecoveryVideoTargets(listed.ids, input.recovery_video_ids);
+          const manifest = { kind: 'targets', channel_id: input.channel_id, video_ids: targets, listed_at: new Date().toISOString(), window_start: windowStart, exhausted: listed.exhausted, source: youtube().web ? 'youtubei:uploads' : 'data_api:playlistItems' };
+          await submitOnce(ref, value, submissionOf(ref, 'VIDEO', 'video:targets', manifest, targets.length === 0), descriptor.deadlineAt);
+          await event(ref, scope, 'PROGRESS', 'TARGETS', `Frozen ${targets.length} video targets since ${windowStart.slice(0, 10)}${listed.exhausted ? '' : ' (limit reached)'}; ${input.recovery_video_ids?.length ?? 0} recovery targets`, 'VIDEO');
           value = await read(ref, scope, descriptor.deadlineAt);
         }
         return { batches: Math.ceil((value.video_targets ?? []).length / VIDEO_BATCH), status: value.plan.status };

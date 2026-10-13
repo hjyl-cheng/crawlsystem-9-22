@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {execFileSync,spawn} from 'node:child_process';
-import {createReadStream,existsSync,readFileSync,writeFileSync} from 'node:fs';
+import {createReadStream,existsSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createPool} from '@crawlsystem/store/config';
@@ -8,7 +8,8 @@ import {kube,object,workspace,workerIds,client} from './finish-common.ts';
 
 // No migration, configuration edits or input re-freezing. Upgrade readers before
 // writers can freeze recovery_video_ids. Each phase has its own bounded check.
-const dir='.runtime/failure-governance',mode=process.argv[2],pool=createPool();
+const dir=process.env.FAILURE_GOVERNANCE_RELEASE_DIR??'.runtime/failure-governance',mode=process.argv[2],pool=createPool();
+assert.ok(dir.startsWith('.runtime/failure-governance'));mkdirSync(dir,{recursive:true,mode:0o700});
 const save=(name:string,value:unknown)=>writeFileSync(`${dir}/${name}.json`,JSON.stringify(value,null,2)+'\n',{mode:0o600});
 const load=(name:string)=>JSON.parse(readFileSync(`${dir}/${name}.json`,'utf8'));
 const git=(...args:string[])=>execFileSync('git',args,{encoding:'utf8'}).trim();

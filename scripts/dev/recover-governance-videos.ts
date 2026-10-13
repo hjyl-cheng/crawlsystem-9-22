@@ -8,7 +8,7 @@ import {workspace,client} from './finish-common.ts';
 // One audited VIDEO replacement per already reviewed channel, through the public
 // operator API. Interrupted requests replay the persisted request identity.
 const dir='.runtime/failure-governance',file=dir+'/video-recovery-actions.json',pool=createPool(),mode=process.argv[2];
-type Entry={channel_id:string;incomplete_ids:string[];command?:{request_id:string;expected_version:number;domains:['VIDEO']};plan_id?:string;recovery_ids?:string[];settled?:string};
+type Entry={channel_id:string;incomplete_ids:string[];command?:{request_id:string;expected_version?:number;domains?:['VIDEO'];source_mode?:'youtube';channel_id?:string;required_domains?:['VIDEO'];scope?:unknown};plan_id?:string;recovery_ids?:string[];settled?:string};
 type Audit={started_at:string;items:Entry[];last_run_at?:string};
 let audit:Audit;
 const save=()=>writeFileSync(file,JSON.stringify(audit,null,2)+'\n',{mode:0o600});
@@ -29,7 +29,7 @@ try {
   audit=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):{started_at:new Date().toISOString(),items:[]};
   const added=rows.filter(r=>!audit.items.some(i=>i.channel_id===r.channel_id));audit.items.push(...added);save();
   console.log(JSON.stringify({reviewed_channels:audit.items.length,new_candidates:added.length,unfinished_video_observations:added.reduce((n,r)=>n+r.incomplete_ids.length,0)}));
- }else if(mode==='apply') {
+ }else if(mode==='apply'||mode==='apply-full') {
   audit=JSON.parse(readFileSync(file,'utf8'));const {api,headers}=await client(),end=Date.now()+210_000;
   while(Date.now()<end&&audit.items.some(i=>!i.plan_id&&!i.settled)) {
    for(const item of audit.items.filter(i=>!i.plan_id&&!i.settled)) {
@@ -46,9 +46,16 @@ try {
     const active=(await pool.query("SELECT count(*)::int n FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube' AND status IN ('QUEUED','RUNNING','WAITING')",[workspace])).rows[0].n;
     if(active>=settings.max_active_plans)break;
     const channel=await api('/v1/channels/'+item.channel_id);
-    if(!item.command||item.command.expected_version!==channel.management.version)item.command={request_id:randomUUID(),expected_version:channel.management.version,domains:['VIDEO']};
+    if(mode==='apply-full') {
+     assert.ok(['managed','paused'].includes(channel.management.state));
+     if(item.command?.source_mode!=='youtube') {
+      const previous=(await pool.query('SELECT frozen_input FROM control.plans WHERE workspace_id=$1 AND channel_id=$2 ORDER BY created_at DESC LIMIT 1',[workspace,item.channel_id])).rows[0].frozen_input;
+      item.command={request_id:randomUUID(),source_mode:'youtube',channel_id:item.channel_id,required_domains:['VIDEO'],scope:previous.scope};
+     }
+    }else if(!item.command||item.command.expected_version!==channel.management.version)item.command={request_id:randomUUID(),expected_version:channel.management.version,domains:['VIDEO']};
     save();
-    const response=await fetch('http://127.0.0.1:18103/api/v1/channels/'+item.channel_id+'/update',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify(item.command),signal:AbortSignal.timeout(30_000)});
+    const endpoint:string=mode==='apply-full'?'/v1/plans':'/v1/channels/'+item.channel_id+'/update';
+    const response:Response=await fetch('http://127.0.0.1:18103/api'+endpoint,{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify(item.command),signal:AbortSignal.timeout(30_000)});
     if(response.status===409)continue;assert.equal(response.status,200,'VIDEO recovery admission');
     const plan=await response.json();item.plan_id=plan.plan_id;
     const frozen=(await pool.query('SELECT frozen_input FROM control.plans WHERE plan_id=$1',[item.plan_id])).rows[0].frozen_input;
@@ -60,7 +67,7 @@ try {
   }
   audit.last_run_at=new Date().toISOString();save();
   console.log(JSON.stringify({result:'PASSED',reviewed:audit.items.length,admitted:audit.items.filter(i=>i.plan_id).length,finalized_elsewhere:audit.items.filter(i=>i.settled).length,waiting:audit.items.filter(i=>!i.plan_id&&!i.settled).length}));
- }else throw new Error('Usage: recover-governance-videos prepare|refresh|apply');
+ }else throw new Error('Usage: recover-governance-videos prepare|refresh|apply|apply-full');
 }catch(error) {
  writeFileSync(dir+'/video-recovery-error.json',JSON.stringify({at:new Date().toISOString(),name:error instanceof Error?error.name:'UnknownError',message:error instanceof Error?error.message:undefined},null,2)+'\n',{mode:0o600});
  console.error(JSON.stringify({result:'FAILED',error:error instanceof Error?error.name:'UnknownError'}));process.exitCode=1;

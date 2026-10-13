@@ -143,6 +143,11 @@ export class Store {
           if (!frozen.required_domains.includes('ABOUT')) throw new StoreError('INVALID_REQUEST','Search-origin collection must check ABOUT first');
           frozen = FrozenInputSchema.parse({...frozen,discovery_qualification:qualification});
         }
+        if(frozen.source_mode==='youtube'&&frozen.required_domains.includes('VIDEO')) {
+          const recovery=await this.recoveryVideoIds(client,workspace,frozen.channel_id);
+          const {recovery_video_ids:_previousRecovery,...base}=frozen;
+          frozen=FrozenInputSchema.parse({...base,...(recovery.length?{recovery_video_ids:recovery}:{})});
+        }
       }
       const inserted = await client.query(`INSERT INTO control.plans(plan_id,run_id,workspace_id,request_id,request_hash,channel_id,source_mode,fixture_id,required_domains,status,frozen_input,input_hash,workflow_id,deadline_at,trace_context)
         VALUES($1,$2,$3,$4,$5,$6,$14,$7,$8,'QUEUED',$9,$10,$11,$12,$13) ON CONFLICT(workspace_id,request_id) DO NOTHING RETURNING *`,
@@ -477,14 +482,8 @@ export class Store {
       AND (data->>'published_at')::timestamptz >= ($3::date - $4::int)::timestamp AT TIME ZONE 'UTC'`,[plan.workspace_id,plan.channel_id,at.toISOString().slice(0,10),RECENT_SAMPLING.recentWindowDays])).rows[0]!.n as number;
     return { stop_reason: manifest?.stop_reason ?? 'anchor_matched', sampling: { ...facts, recent_count: recent, stale_ratio: frozen.recent_sampling?.stale_ratio ?? 0 } };
   }
-  /**
-   * What an incremental Video update freezes (legacy loadDiscoveryAnchors and Recent Sampling): the 20 newest
-   * completed videos as discovery anchors, unfinished observations as recovery targets,
-   * and the recent known videos the legacy planner picks for a re-read.
-   */
-  private async incrementalVideoInput(client: PoolClient, workspace: string, channelId: string, now: Date) {
-    const known = `FROM control.videos WHERE workspace_id=$1 AND channel_id=$2 AND NOT coalesce((data->>'unavailable')::boolean,false) AND data->>'published_at' IS NOT NULL`;
-    const recovery=(await client.query(`SELECT video_id FROM (
+  private async recoveryVideoIds(client: PoolClient, workspace: string, channelId: string): Promise<string[]> {
+    return (await client.query(`SELECT video_id FROM (
       SELECT f.unit_id video_id,0 priority FROM control.failures f JOIN control.plans failed USING(plan_id)
         LEFT JOIN crawl_data.videos v ON v.workspace_id=f.workspace_id AND v.channel_id=f.channel_id AND v.video_id=f.unit_id
         LEFT JOIN control.plans observed ON observed.workspace_id=v.workspace_id AND observed.channel_id=v.channel_id AND observed.source_revision=v.source_revision
@@ -496,6 +495,12 @@ export class Store {
         ON p.workspace_id=v.workspace_id AND p.channel_id=v.channel_id AND p.source_revision=v.source_revision
         WHERE v.workspace_id=$1 AND v.channel_id=$2 AND p.status IS DISTINCT FROM 'COMPLETED'
     ) candidates GROUP BY video_id ORDER BY min(priority),video_id LIMIT 100`,[workspace,channelId])).rows.map(r=>r.video_id as string);
+  }
+  /** Incremental discovery anchors come from completed observations; unfinished
+   * observations get full collection instead of a lightweight recent sample. */
+  private async incrementalVideoInput(client: PoolClient, workspace: string, channelId: string, now: Date) {
+    const known = `FROM control.videos WHERE workspace_id=$1 AND channel_id=$2 AND NOT coalesce((data->>'unavailable')::boolean,false) AND data->>'published_at' IS NOT NULL`;
+    const recovery=await this.recoveryVideoIds(client,workspace,channelId);
     const anchors = (await client.query(`SELECT video_id ${known}
       AND EXISTS(SELECT 1 FROM control.plans p WHERE p.workspace_id=$1 AND p.channel_id=$2 AND p.source_revision=control.videos.source_revision AND p.status='COMPLETED')
       ORDER BY (data->>'published_at')::timestamptz DESC,video_id LIMIT 20`, [workspace, channelId])).rows.map(r => r.video_id as string);
@@ -641,7 +646,9 @@ export class Store {
           // Web uploads freeze the latest N videos without an age cutoff; legacy API manifests retain their frozen window.
           const windowStart = manifest.source === 'youtubei:uploads' ? new Date(0).toISOString()
             : new Date(Date.parse(frozen.reference_time) - frozen.scope.max_age_days * 86_400_000).toISOString();
-          if (manifest.channel_id !== row.channel_id || manifest.video_ids.length > frozen.scope.video_limit || manifest.window_start !== windowStart
+          const recovery = frozen.recovery_video_ids ?? [];
+          if (manifest.channel_id !== row.channel_id || manifest.video_ids.filter(id=>!recovery.includes(id)).length > frozen.scope.video_limit
+            || recovery.some(id=>!manifest.video_ids.includes(id)) || manifest.window_start !== windowStart
             || manifest.video_ids.some(id => !YoutubeVideoIdSchema.safeParse(id).success)) throw new StoreError('TARGET_MISMATCH','Target manifest is outside the frozen scope');
           await client.query('INSERT INTO control.plan_video_targets(plan_id,submission_id,manifest) VALUES($1,$2,$3)',[input.plan_id,input.submission_id,manifest]);
           expected = manifest.video_ids;
