@@ -180,3 +180,19 @@ test('the largest thumbnail by area is kept as an absolute URL and none is never
   assert.equal(mapWebVideo(info(), channel, id, { kind: 'skipped' }, 0).thumbnail_url, null);
   assert.equal(mapWebVideo({ ...info(), basic_info: { ...info().basic_info, short_description: '' } }, channel, id, { kind: 'skipped' }, 0).description, '');
 });
+
+// Batch 3b/3c: legacy comment retry (youtubeJs.js:2054-2081) and author fields (youtubeCommentPage.js:167-233).
+test('transient comments failure retries only comments and preserves video metrics; a challenge fails the attempt', async () => {
+  let comments = 0, players = 0;
+  const flaky = { async getInfo() { players++; return info(); }, async getComments() { if (comments++ === 0) throw Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } });
+    return { header: { comments_count: '1' }, contents: [{ comment: { comment_id: 'Ugzabc', content: 'hi', author: { name: 'N/A', url: 'https://www.youtube.com/N/A', id: 'UC' + 'a'.repeat(22) } } }] }; } };
+  const video = await videoDetail(flaky as never, channel, id, 20);
+  assert.ok(!('unavailable' in video)); assert.deepEqual([comments, players], [2, 1], 'the player is not fetched again');
+  const [first] = video.comments_first_page?.comments ?? [];
+  assert.deepEqual([first?.author_name, first?.author_url, first?.is_verified, first?.is_hearted], [null, `https://www.youtube.com/channel/UC${'a'.repeat(22)}`, false, false]);
+  const challenged = { async getInfo() { return info(); }, async getComments() { throw new Error("Sign in to confirm you're not a bot"); } };
+  await assert.rejects(videoDetail(challenged as never, channel, id, 20), (e: unknown) => e instanceof ScrapeError && e.kind === 'blocked');
+  const odd = { async getInfo() { return info(); }, async getComments() { throw new Error('Cannot read properties of undefined (reading endpoint)'); } };
+  const kept = await videoDetail(odd as never, channel, id, 20);
+  assert.ok(!('unavailable' in kept)); assert.equal(kept.comment_count.status, 'unresolved', 'an unexpected comment page shape keeps the video');
+});

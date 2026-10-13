@@ -273,6 +273,19 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
  * `metricsRead` is how a metrics refresh reads the video: legacy reads player and next (youtubeJs.js:1857-1863), so likes
  * and the comment count hint are refreshed too; 'basic' replays units captured before 10-13, which hold only the player.
  */
+/**
+ * Legacy youtubeJs.js:2054-2081: the comment request alone is retried once after a transient failure. A challenge or a
+ * second route failure fails this video attempt, so the collector retries it on another route instead of storing the
+ * video without its first page; a page YouTube answered in an unexpected shape is recorded as unavailable.
+ */
+async function firstCommentPage(read: () => Promise<CommentsResult>, observedAt: string): Promise<CommentsResult> {
+  const transient = (error: unknown) => error instanceof ScrapeError && (error.kind === 'network' || error.kind === 'upstream');
+  try { return await read().catch(error => { if (transient(error)) return read(); throw error; }); }
+  catch (error) {
+    if (error instanceof ScrapeError && (error.kind === 'blocked' || error.kind === 'network')) throw error;
+    return { kind: 'unavailable', collected_at: observedAt };
+  }
+}
 export async function videoDetail(yt: Innertube, channelId: string, videoId: string, commentLimit: number, metricsOnly = false, responses: RawResponse[] = [], observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE, metricsRead: 'info' | 'basic' = 'info'): Promise<VideoItem> {
   const surfaces: (Node | undefined)[] = [];
   for (const client of ['WEB', 'IOS'] as const) {
@@ -304,7 +317,7 @@ export async function videoDetail(yt: Innertube, channelId: string, videoId: str
       surfaces.push(info.playability_status); continue;
     }
     const total = count(info.comments_entry_point_header?.comment_count, locale);
-    const comments: CommentsResult = metricsOnly || !commentLimit ? { kind: 'skipped' } : await topComments(yt, videoId, total === null ? undefined : String(total), locale, observedAt).catch(() => ({ kind: 'unavailable' as const, collected_at: observedAt }));
+    const comments: CommentsResult = metricsOnly || !commentLimit ? { kind: 'skipped' } : await firstCommentPage(() => topComments(yt, videoId, total === null ? undefined : String(total), locale, observedAt), observedAt);
     return mapWebVideo(info, channelId, videoId, comments, commentLimit, observedAt, locale, metricsOnly);
   }
   if (surfaces.length === 2 && surfaces.every(pleaseSignIn)) return terminalVideo(channelId, videoId, 'login_required', observedAt);

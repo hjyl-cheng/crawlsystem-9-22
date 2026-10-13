@@ -159,3 +159,21 @@ test('an Agent result is rejected if collected facts change after its input was 
   await pool.query(`UPDATE crawl_data.videos SET data=jsonb_set(data,'{title}','"Changed while profiling"') WHERE workspace_id=$1 AND channel_id=$2 AND video_id=$3`,[t.worker.workspace_id,t.channel,t.videoId]);
   await assert.rejects(()=>sink.apply(agent),/INPUT_MISMATCH/);
 });
+test('a re-collected video without a comment page keeps the stored non-empty first page',async()=>{
+  const t=await setup();await finishData(t);
+  const again=await store.createPlan(t.op,{request_id:randomUUID(),source_mode:'youtube',channel_id:t.channel,required_domains:['VIDEO']} as never);
+  const at=new Date().toISOString(),targets={kind:'targets' as const,channel_id:t.channel,video_ids:[t.videoId],listed_at:at,window_start:new Date(0).toISOString(),exhausted:true,source:'youtubei:uploads'};
+  await store.apply(t.worker,submission(again,'video:targets',targets));
+  const ref=(old:PipelineFact,kind:string,step:string,id:string,payload:unknown)=>PipelineFactSchema.parse({...old,kind,payload,source_revision:again.source_revision,
+    raw:{...old.raw,plan_id:again.plan_id,input_hash:again.input_hash,step,unit_id:id,captured_at:at,key:`v1/${t.worker.workspace_id}/${again.plan_id}/1/${step}/${id}.json.gz`},
+    parsed:{...old.parsed,key:`v1/${t.worker.workspace_id}/${again.plan_id}/1/${step}/${id}.youtube-raw-1.${old.raw.sha256}.json.gz`}});
+  const v=t.vf.payload as VideoFacts,owner={...t.owner,plan_id:again.plan_id,input_hash:again.input_hash,workflow_id:again.workflow_id};
+  const video=ref(t.vf,'VIDEO','VIDEO-0',t.videoId,{...v,observed_at:at,comments_ref:null,comments_summary:null,comments_disabled:null,comment_count:{...v.comment_count,value:null,status:'unresolved',observed_at:at}});
+  for(const fact of [ref(t.tf,'TARGETS','TARGETS','uploads',targets),video]) {
+    await store.pipelineManifest(t.receiver,{...t.manifest(fact.raw.step,[fact.raw]),owner,key:`v1/${t.worker.workspace_id}/${again.plan_id}/1/${fact.raw.step}/_manifest.json.gz`});
+    await sink.apply(fact);
+  }
+  const stored=(await pool.query('SELECT data FROM crawl_data.videos WHERE workspace_id=$1 AND video_id=$2',[t.worker.workspace_id,t.videoId])).rows[0].data;
+  assert.equal(stored.observed_at,at,'the newer observation was applied');
+  assert.deepEqual([stored.comments_ref?.sha256,stored.comments_summary?.returned_count],['c'.repeat(64),1],'legacy videoContentMutationPolicy keeps the first page');
+});

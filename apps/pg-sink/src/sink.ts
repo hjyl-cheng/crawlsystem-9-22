@@ -72,7 +72,12 @@ export class PgSink {
           VALUES($1,$2,$3,$4,$5,$6,$6) ON CONFLICT(workspace_id,channel_id,video_id) DO UPDATE
           SET data=CASE WHEN crawl_data.videos.stats_observed_at>EXCLUDED.stats_observed_at AND NOT coalesce((EXCLUDED.data->>'unavailable')::boolean,false)
             AND NOT coalesce((crawl_data.videos.data->>'unavailable')::boolean,false)
-            THEN EXCLUDED.data||jsonb_build_object('view_count',crawl_data.videos.data->'view_count','like_count',crawl_data.videos.data->'like_count','comment_count',crawl_data.videos.data->'comment_count') ELSE EXCLUDED.data END,
+            THEN EXCLUDED.data||jsonb_build_object('view_count',crawl_data.videos.data->'view_count','like_count',crawl_data.videos.data->'like_count','comment_count',crawl_data.videos.data->'comment_count') ELSE EXCLUDED.data END
+          -- Legacy videoContentMutationPolicy: a stored non-empty first comment page is kept unless the video became
+          -- unavailable or its comments were turned off.
+          ||CASE WHEN coalesce((crawl_data.videos.data#>>'{comments_summary,returned_count}')::int,0)>0
+            AND NOT coalesce((EXCLUDED.data->>'unavailable')::boolean,false) AND (EXCLUDED.data->>'comments_disabled') IS DISTINCT FROM 'true'
+            THEN jsonb_build_object('comments_ref',crawl_data.videos.data->'comments_ref','comments_summary',crawl_data.videos.data->'comments_summary') ELSE '{}'::jsonb END,
           source_revision=EXCLUDED.source_revision,observed_at=EXCLUDED.observed_at,
           stats_observed_at=greatest(crawl_data.videos.stats_observed_at,EXCLUDED.stats_observed_at),updated_at=clock_timestamp()
           WHERE (coalesce(crawl_data.videos.observed_at,'-infinity'),crawl_data.videos.source_revision) <= (EXCLUDED.observed_at,EXCLUDED.source_revision)`,

@@ -91,11 +91,15 @@ export async function topComments(yt: Innertube, videoId: string, apiCommentCoun
     }
     const comments: ScrapedComment[] = (page.contents ?? []).map(t => t.comment).filter((c): c is Record<string, unknown> => !!c && typeof c.comment_id === 'string').map(c => {
       const author = (c.author ?? {}) as { name?: string; id?: string; url?: string; is_verified?: boolean; best_thumbnail?: { url?: string } };
-      return { comment_id: c.comment_id as string, text: text(c.content) ?? '', author_name: author.name ?? null, author_channel_id: author.id && /^UC[\w-]{22}$/.test(author.id) ? author.id : null,
-        author_url: author.url ?? null, author_avatar_url: author.best_thumbnail?.url ?? (typeof c.creator_thumbnail_url === 'string' ? c.creator_thumbnail_url : null),
+      // Legacy youtubeCommentPage.js:167-233: YouTube.js fills missing names and links with 'N/A'; a channel link is rebuilt
+      // from the author id, and verified/hearted are false unless YouTube says so.
+      const authorId = author.id && /^UC[\w-]{22}$/.test(author.id) ? author.id : null;
+      const authorUrl = author.url && !/\/N\/A$/.test(author.url) ? author.url : authorId ? `https://www.youtube.com/channel/${authorId}` : null;
+      return { comment_id: c.comment_id as string, text: text(c.content) ?? '', author_name: author.name && author.name !== 'N/A' ? author.name : null, author_channel_id: authorId,
+        author_url: authorUrl, author_avatar_url: author.best_thumbnail?.url ?? (typeof c.creator_thumbnail_url === 'string' ? c.creator_thumbnail_url : null),
         published_text: text(c.published_time), like_text: text(c.like_count), reply_text: text(c.reply_count),
         is_pinned: typeof c.is_pinned === 'boolean' ? c.is_pinned : null, is_channel_owner: typeof c.author_is_channel_owner === 'boolean' ? c.author_is_channel_owner : null,
-        is_verified: typeof author.is_verified === 'boolean' ? author.is_verified : null, is_hearted: typeof c.is_hearted === 'boolean' ? c.is_hearted : null };
+        is_verified: author.is_verified === true, is_hearted: c.is_hearted === true };
     });
     return { kind: 'page', total_text: text(page.header?.comments_count) ?? (total === null ? null : String(total)), comments, collected_at, sort, locale, surface: 'available' };
   } catch (error) {
