@@ -6,16 +6,14 @@ import {observationFactsHash as hash,publicationResultHash,normalizePublicationE
 export type PublicationDomain='channel'|'video'|'agent';
 export interface PublicationState {revision:number;payloads:Partial<Record<PublicationDomain,LegacyValue>>;vector:Record<string,LegacyValue>;removed?:boolean;}
 export interface PublicationSnapshot {channel_id:string;about:ChannelFacts;agent:AgentResult;videos:VideoItem[];observed_at:string;source:LegacyValue;removed?:boolean;}
-/** Legacy normalizePublicationLinks: normalized targets, first label per target, typed by host, purpose by wording. */
-const publicLinks=(links:ChannelFacts['external_links'])=>{
-  const seen=new Set<string>();
-  return links.flatMap((l,position)=>{
-    const target=normalizeUrl(l.url,{contacts:true});
-    if(!target||seen.has(target))return [];
-    seen.add(target);const type=linkType(target);
-    return [{link_type:type,target_url:target,title:l.title||null,position,purpose:linkPurpose(type,l.title||null)}];
-  });
-};
+/** Legacy normalizePublicationLinks: normalized targets typed by host, purpose by wording. Every observed link is
+ * delivered as evidence; the business projection keeps one public link per target. */
+const publicLinks=(links:ChannelFacts['external_links'])=>links.flatMap((l,position)=>{
+  const target=normalizeUrl(l.url,{contacts:true});
+  if(!target)return [];
+  const type=linkType(target);
+  return [{link_type:type,target_url:target,title:l.title||null,position,purpose:linkPurpose(type,l.title||null)}];
+});
 const tabs=(a:ChannelFacts,pattern:RegExp)=>a.source.startsWith('data_api')&&!a.available_tabs.length?null:a.available_tabs.some(t=>pattern.test(t));
 const resolved=(m:VideoFacts['view_count'])=>['exact','estimated','disabled','zero_from_empty','zero_from_upcoming','zero_from_surface'].includes(m.status)?m.value:null;
 function channelPayload(a:ChannelFacts):LegacyValue {
