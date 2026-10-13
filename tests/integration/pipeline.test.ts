@@ -214,3 +214,13 @@ test('an unfinished live stream is rechecked after a day; login_required is neve
   const at=new Date().toISOString();
   await store.apply(t.worker,submission(update,'video:discovery',{kind:'discovery',channel_id:t.channel,video_ids:[t.videoId],listed_at:at,scanned_count:1,pages:1,matched_anchor_id:t.videoId,stop_reason:'anchor_matched',source:'youtubei:uploads'}));
 });
+test('a unit whose parse failed in the last 15 minutes is not resent by reconciliation (R8)',async()=>{
+  const t=await setup();
+  await store.pipelineManifest(t.receiver,t.manifest('ABOUT',[t.about.raw]));
+  await pool.query(`INSERT INTO control.failures(workspace_id,signature,stage,code,plan_id,execution_epoch,step,unit_id,state)
+    VALUES($1,$2,'PARSER','REPLAY_INCOMPLETE',$3,$4,'ABOUT','channel','OPEN')`,[t.worker.workspace_id,randomUUID(),t.plan.plan_id,t.plan.execution_epoch]);
+  assert.deepEqual((await store.pipelineReconciliation(t.receiver)).units,[],'the failed unit rests');
+  await pool.query(`UPDATE control.failures SET last_at=now()-interval '16 minutes' WHERE plan_id=$1`,[t.plan.plan_id]);
+  await pool.query(`UPDATE control.pipeline_steps SET last_reconciled_at=NULL WHERE plan_id=$1`,[t.plan.plan_id]);
+  assert.deepEqual((await store.pipelineReconciliation(t.receiver)).units,[t.about.raw],'after the rest it is tried again');
+});

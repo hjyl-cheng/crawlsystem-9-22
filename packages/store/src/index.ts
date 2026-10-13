@@ -896,7 +896,12 @@ export class Store {
       for(const s of steps) {
         owners.set(s.plan_id,{schema_version:CONTRACT_VERSION,workspace_id:s.workspace_id,plan_id:s.plan_id,execution_epoch:s.execution_epoch,input_hash:s.input_hash,workflow_id:s.workflow_id});
         const applied=(await client.query('SELECT unit_id,raw_hash FROM crawl_data.ingest_units WHERE plan_id=$1 AND execution_epoch=$2 AND step=$3',[s.plan_id,s.execution_epoch,s.step])).rows;
-        for(const r of StepManifestSchema.parse(s.manifest).units) if(!applied.some(a=>a.unit_id===r.unit_id && a.raw_hash===r.sha256)) units.push(r);
+        // A unit whose parse or sink already failed deterministically is resent at most every 15 minutes, not every
+        // 30 seconds (R8: ~80 identical failure reports per unit); a fixed parser still picks it up within 15 minutes.
+        const resting=new Set((await client.query(`SELECT unit_id FROM control.failures WHERE workspace_id=$4 AND state IN ('OPEN','RETRYING')
+          AND last_at>clock_timestamp()-interval '15 minutes' AND plan_id=$1 AND execution_epoch=$2 AND step=$3 AND stage IN ('PARSER','SINK')`,
+          [s.plan_id,s.execution_epoch,s.step,s.workspace_id])).rows.map(r=>r.unit_id as string));
+        for(const r of StepManifestSchema.parse(s.manifest).units) if(!resting.has(r.unit_id) && !applied.some(a=>a.unit_id===r.unit_id && a.raw_hash===r.sha256)) units.push(r);
         await client.query('UPDATE control.pipeline_steps SET last_reconciled_at=clock_timestamp() WHERE plan_id=$1 AND execution_epoch=$2 AND step=$3',[s.plan_id,s.execution_epoch,s.step]);
       }
       return {owners:[...owners.values()],units};
