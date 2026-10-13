@@ -74,14 +74,19 @@ export async function browserSession(fetcher: typeof fetch, identity: BrowserIde
 /** Legacy verifiedBadge (youtubeJs.js:729-738). */
 const verifiedBadge = (badge: Node) => ['BADGE_STYLE_TYPE_VERIFIED', 'BADGE_STYLE_TYPE_VERIFIED_ARTIST'].includes(String(badge?.style ?? badge?.badge_style ?? '').toUpperCase())
   || /(^|\W)verified(\W|$)/i.test([badge?.label, badge?.tooltip, badge?.accessibility_label].map(text).filter(Boolean).join(' '));
-/** Legacy youtubeJsChannelVerification (youtubeJs.js:740-763): the author flag, then badges, then title run attachments; else unknown. */
+/**
+ * Legacy youtubeJsChannelVerification (youtubeJs.js:740-763): the author flag, then badges, then title run attachments;
+ * nothing observed is unknown. Unlike legacy, empty badge lists are not a "not verified" answer: the current page header
+ * gives every metadata row an empty badge list and carries the check mark as a title attachment (CHECK_CIRCLE_FILLED).
+ */
 export function channelVerified(header: Node | undefined): boolean | null {
   if (!header || typeof header !== 'object') return null;
   if (typeof header.author?.is_verified === 'boolean') return header.author.is_verified;
   const badges = [header.badges, header.author?.badges, ...(header.content?.metadata?.metadata_rows ?? []).map((row: Node) => row?.badges)].filter(Array.isArray) as Node[][];
-  if (badges.length) return badges.some(list => list.some(verifiedBadge));
+  if (badges.some(list => list.some(verifiedBadge))) return true;
   const runs = header.content?.title?.text?.runs;
-  return Array.isArray(runs) ? runs.some((run: Node) => Boolean(run?.attachment) || verifiedBadge(run)) : null;
+  if (Array.isArray(runs) && runs.some((run: Node) => Boolean(run?.attachment) || verifiedBadge(run))) return true;
+  return badges.some(list => list.length) || Array.isArray(runs) ? false : null;
 }
 export async function channelFacts(yt: Innertube, channelId: string, observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE): Promise<ChannelFacts> {
   try {

@@ -24,7 +24,9 @@ test('channel verification reads the author flag, then badges, then title attach
   assert.equal(channelVerified({ author: { is_verified: false }, badges: [{ style: 'BADGE_STYLE_TYPE_VERIFIED' }] }), false, 'the explicit flag wins');
   assert.equal(channelVerified({ badges: [{ style: 'BADGE_STYLE_TYPE_VERIFIED_ARTIST' }] }), true);
   assert.equal(channelVerified({ content: { metadata: { metadata_rows: [{ badges: [{ tooltip: 'Verified' }] }] } } }), true);
-  assert.equal(channelVerified({ badges: [] }), false, 'observed badges without a verified one');
+  assert.equal(channelVerified({ badges: [{ style: 'BADGE_STYLE_TYPE_SIMPLE' }] }), false, 'observed badges without a verified one');
+  assert.equal(channelVerified({ content: { metadata: { metadata_rows: [{ badges: [] }] }, title: { text: { runs: [{ text: 'Name' }, { attachment: { element: {} } }] } } } }), true,
+    'empty row badge lists do not hide the title check mark');
   assert.equal(channelVerified({ content: { title: { text: { runs: [{ text: 'Name' }, { attachment: { icon: 'CHECK_CIRCLE' } }] } } } }), true);
   assert.equal(channelVerified({ content: {} }), null);
 });
