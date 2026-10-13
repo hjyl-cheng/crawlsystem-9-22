@@ -209,4 +209,8 @@ test('an unfinished live stream is rechecked after a day; login_required is neve
   const update=await store.updateChannel(t.op,t.channel,{request_id:randomUUID(),expected_version:version,domains:['VIDEO']});
   const input=(await store.getInput(t.worker,update.plan_id)).input;
   assert.ok(input.source_mode==='youtube'&&input.recovery_video_ids?.includes(t.videoId),'the live stream is collected again to complete its details');
+  // R6: the recheck target is also the newest anchor; the discovery that carries it is accepted.
+  assert.ok(input.source_mode==='youtube'&&input.discovery_anchor_ids?.includes(t.videoId));
+  const at=new Date().toISOString();
+  await store.apply(t.worker,submission(update,'video:discovery',{kind:'discovery',channel_id:t.channel,video_ids:[t.videoId],listed_at:at,scanned_count:1,pages:1,matched_anchor_id:t.videoId,stop_reason:'anchor_matched',source:'youtubei:uploads'}));
 });

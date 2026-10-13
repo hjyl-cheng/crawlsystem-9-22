@@ -670,8 +670,10 @@ export class Store {
           const manifest = input.payload, anchors = frozen.source_mode === 'youtube' ? frozen.discovery_anchor_ids ?? [] : [];
           if (!incremental) throw new StoreError('TARGET_MISMATCH','Discovery belongs to incremental updates');
           if (targets) throw new StoreError('CONFLICT','Video targets are already frozen for this plan');
+          // A recovery target may also be an anchor (a recent video due for a recheck); only discovered IDs stop at anchors.
+          const recovery = frozen.source_mode === 'youtube' ? frozen.recovery_video_ids ?? [] : [];
           if (manifest.channel_id !== row.channel_id || (manifest.matched_anchor_id !== null && !anchors.includes(manifest.matched_anchor_id))
-            || manifest.video_ids.some(id => anchors.includes(id))) throw new StoreError('TARGET_MISMATCH','Discovery is outside the frozen anchors');
+            || manifest.video_ids.some(id => anchors.includes(id) && !recovery.includes(id))) throw new StoreError('TARGET_MISMATCH','Discovery is outside the frozen anchors');
           await client.query('INSERT INTO control.plan_video_targets(plan_id,submission_id,manifest) VALUES($1,$2,$3)',[input.plan_id,input.submission_id,manifest]);
           expected = manifest.video_ids;
         } else if (input.payload.kind === 'samples') {
