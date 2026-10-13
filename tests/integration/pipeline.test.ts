@@ -201,3 +201,12 @@ test('a complete update scan without content in 90 days puts the channel to slee
   const probe=await store_.tx(c=>store_.insertUpdate(c,t.worker.workspace_id,t.channel,new Date(`${recheck}T01:00:00.000Z`))) as Plan;
   assert.deepEqual(probe.required_domains,['VIDEO'],'a sleeping channel gets only the Video probe');
 });
+test('an unfinished live stream is rechecked after a day; login_required is never rechecked',async()=>{
+  const t=await setup();await finishData(t);
+  const unfinished={live_ended_at:null,content_type:'live',duration_seconds:{value:null,status:'unavailable',source:'youtubei:video',observed_at:new Date().toISOString()}};
+  await pool.query(`UPDATE crawl_data.videos SET data=data||$4::jsonb,observed_at=now()-interval '2 days' WHERE workspace_id=$1 AND channel_id=$2 AND video_id=$3`,[t.worker.workspace_id,t.channel,t.videoId,JSON.stringify(unfinished)]);
+  const version=(await store.getChannel(t.reader,t.channel)).management.version;
+  const update=await store.updateChannel(t.op,t.channel,{request_id:randomUUID(),expected_version:version,domains:['VIDEO']});
+  const input=(await store.getInput(t.worker,update.plan_id)).input;
+  assert.ok(input.source_mode==='youtube'&&input.recovery_video_ids?.includes(t.videoId),'the live stream is collected again to complete its details');
+});

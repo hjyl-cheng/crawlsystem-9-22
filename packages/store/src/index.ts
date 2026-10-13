@@ -484,7 +484,12 @@ export class Store {
       AND (data->>'published_at')::timestamptz >= ($3::date - $4::int)::timestamp AT TIME ZONE 'UTC'`,[plan.workspace_id,plan.channel_id,at.toISOString().slice(0,10),RECENT_SAMPLING.recentWindowDays])).rows[0]!.n as number;
     return { stop_reason: manifest?.stop_reason ?? 'anchor_matched', sampling: { ...facts, recent_count: recent, stale_ratio: frozen.recent_sampling?.stale_ratio ?? 0 } };
   }
-  private async recoveryVideoIds(client: PoolClient, workspace: string, channelId: string): Promise<string[]> {
+  /**
+   * Recovery targets: failed parses, unfinished observations, then at most 10 stored videos due for the legacy
+   * disposition rechecks (videoDisposition.js): unavailable or restricted after 7 days (login_required never), a live
+   * stream that has not ended after 1 day (its details complete once it ends), an unresolved type after 6 hours.
+   */
+  private async recoveryVideoIds(client: PoolClient, workspace: string, channelId: string, now = new Date()): Promise<string[]> {
     return (await client.query(`SELECT video_id FROM (
       SELECT f.unit_id video_id,0 priority FROM control.failures f JOIN control.plans failed USING(plan_id)
         LEFT JOIN crawl_data.videos v ON v.workspace_id=f.workspace_id AND v.channel_id=f.channel_id AND v.video_id=f.unit_id
@@ -496,13 +501,19 @@ export class Store {
       SELECT v.video_id,1 priority FROM crawl_data.videos v LEFT JOIN control.plans p
         ON p.workspace_id=v.workspace_id AND p.channel_id=v.channel_id AND p.source_revision=v.source_revision
         WHERE v.workspace_id=$1 AND v.channel_id=$2 AND p.status IS DISTINCT FROM 'COMPLETED'
-    ) candidates GROUP BY video_id ORDER BY min(priority),video_id LIMIT 100`,[workspace,channelId])).rows.map(r=>r.video_id as string);
+      UNION ALL
+      SELECT video_id,2 priority FROM (SELECT v.video_id FROM crawl_data.videos v WHERE v.workspace_id=$1 AND v.channel_id=$2 AND (
+          coalesce((v.data->>'unavailable')::boolean,false) AND v.data->>'access_status'<>'login_required' AND v.observed_at<$3::timestamptz-interval '7 days'
+          OR v.data->>'content_type'='live' AND v.data->>'live_ended_at' IS NULL AND v.data#>>'{duration_seconds,value}' IS NULL AND v.observed_at<$3::timestamptz-interval '1 day'
+          OR v.data->>'content_type_source'='default:shorts_unknown' AND v.observed_at<$3::timestamptz-interval '6 hours')
+        ORDER BY v.observed_at,v.video_id LIMIT 10) due
+    ) candidates GROUP BY video_id ORDER BY min(priority),video_id LIMIT 100`,[workspace,channelId,now])).rows.map(r=>r.video_id as string);
   }
   /** Incremental discovery anchors come from completed observations; unfinished
    * observations get full collection instead of a lightweight recent sample. */
   private async incrementalVideoInput(client: PoolClient, workspace: string, channelId: string, now: Date) {
     const known = `FROM control.videos WHERE workspace_id=$1 AND channel_id=$2 AND NOT coalesce((data->>'unavailable')::boolean,false) AND data->>'published_at' IS NOT NULL`;
-    const recovery=await this.recoveryVideoIds(client,workspace,channelId);
+    const recovery=await this.recoveryVideoIds(client,workspace,channelId,now);
     const anchors = (await client.query(`SELECT video_id ${known}
       AND EXISTS(SELECT 1 FROM control.plans p WHERE p.workspace_id=$1 AND p.channel_id=$2 AND p.source_revision=control.videos.source_revision AND p.status='COMPLETED')
       ORDER BY (data->>'published_at')::timestamptz DESC,video_id LIMIT 20`, [workspace, channelId])).rows.map(r => r.video_id as string);
