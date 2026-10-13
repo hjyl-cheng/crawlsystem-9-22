@@ -92,17 +92,66 @@ export async function uploads(yt: Innertube, channelId: string, limit: number, a
     }
   } catch (error) { throw classify(error); }
 }
-export function playability(value: Node | undefined): { kind: 'ok' | 'blocked' | 'login' | 'terminal' | 'ambiguous'; status?: 'private' | 'removed' | 'members_only' | 'age_restricted' | 'region_blocked' } {
-  const status = String(value?.status ?? ''), reason = String(value?.reason ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-  if (/not a bot|nao (?:e|sou) (?:um )?(?:robo|bot)|captcha|unusual traffic|verify you are human/.test(reason)) return { kind: 'blocked' };
-  if (/private video|video is private|video privado|video particular/.test(reason)) return { kind: 'terminal', status: 'private' };
-  if (/member|subscriber.only|join this channel|membro/.test(reason)) return { kind: 'terminal', status: 'members_only' };
-  if (/removed|removido|copyright|direitos autorais|account.*terminated|conta.*encerrad|video.*not found/.test(reason)) return { kind: 'terminal', status: 'removed' };
-  if (/confirm your age|age.restricted|confirme sua idade/.test(reason)) return { kind: 'terminal', status: 'age_restricted' };
-  // Legacy region_restricted wording, plus the pt-BR player text this identity receives.
-  if (/not (?:made )?(?:this )?video available in your country|not available in your country|country where you are located|region restricted|nao (?:o )?disponibilizou no seu pais|nao esta disponivel (?:no|em) seu pais|bloqueado en tu pais/.test(reason)) return { kind: 'terminal', status: 'region_blocked' };
-  if (status === 'LOGIN_REQUIRED' && /^please\s+sign\s+in[.!]?$/.test(reason.trim())) return { kind: 'login' };
-  return { kind: status === 'OK' ? 'ok' : 'ambiguous' };
+/** A player playability surface classified by the legacy rules (oldsystem youtubePlayability.js:71-128, same order and wording). */
+export type Playability =
+  | { kind: 'bot' }
+  | { kind: 'content'; access: 'public' | 'members_only' | 'private' | 'unavailable'; availability: NonNullable<VideoFacts['availability']>; reason_code: string; alternate_region?: true }
+  | { kind: 'inconclusive'; reason_code: string };
+const fold = (value: unknown) => String(value ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
+export function playability(value: Node | undefined): Playability {
+  const status = String(value?.status ?? '').trim().toUpperCase(), reason = fold(value?.reason);
+  if (/not a bot|nao (?:e|sou) (?:um )?(?:robo|bot)|no (?:eres|soy) (?:un )?robot|captcha|unusual traffic|verify you are human/.test(reason)) return { kind: 'bot' };
+  if (/member|subscriber.only|premium|join this channel|membro|miembro/.test(reason)) return { kind: 'content', access: 'members_only', availability: 'subscriber_only', reason_code: 'members_only' };
+  if (/private video|video is private|video privado|video particular/.test(reason)) return { kind: 'content', access: 'private', availability: 'private', reason_code: 'private' };
+  if (/confirm your age|verify your age|age.restricted|confirme sua idade|verifica tu edad|confirma tu edad/.test(reason)) return { kind: 'content', access: 'public', availability: 'age_restricted', reason_code: 'age_restricted' };
+  // Legacy wording plus the pt-BR player texts the pt-BR identity received before 10-13.
+  if (/not (?:made )?(?:this )?video available in your country|not available in your country|country where you are located|region restricted|bloqueado en tu pais|nao esta disponivel (?:no|em) seu pais|nao (?:o )?disponibilizou no seu pais/.test(reason))
+    return { kind: 'content', access: 'public', availability: 'region_restricted', reason_code: 'region_restricted', alternate_region: true };
+  if (/removed by (?:the )?uploader|uploader has removed|removido pelo uploader|eliminado por quien lo subio/.test(reason)) return { kind: 'content', access: 'unavailable', availability: 'unavailable', reason_code: 'uploader_removed' };
+  if (/copyright|direitos autorais|derechos de autor/.test(reason)) return { kind: 'content', access: 'unavailable', availability: 'unavailable', reason_code: 'copyright_removed' };
+  if (/account (?:has been )?terminated|associated youtube account.*terminated|conta.*encerrad|cuenta.*cancelad/.test(reason)) return { kind: 'content', access: 'unavailable', availability: 'unavailable', reason_code: 'account_terminated' };
+  if (/video (?:does not exist|not found)|video.*no existe|video.*nao existe/.test(reason)) return { kind: 'content', access: 'unavailable', availability: 'unavailable', reason_code: 'not_found' };
+  if (/has been removed|video was removed|video foi removido|video ha sido eliminado/.test(reason)) return { kind: 'content', access: 'unavailable', availability: 'unavailable', reason_code: 'removed' };
+  if (status === 'OK') return { kind: 'content', access: 'public', availability: 'public', reason_code: 'playable' };
+  if (status === 'LOGIN_REQUIRED') return { kind: 'inconclusive', reason_code: 'unsupported_login_required_reason' };
+  if (['UNPLAYABLE', 'ERROR'].includes(status)) return { kind: 'inconclusive', reason_code: !reason || /^video unavailable[.!]?$/.test(reason) ? 'generic_video_unavailable' : 'unsupported_playability_reason' };
+  return { kind: 'inconclusive', reason_code: 'playability_unresolved' };
+}
+/** Legacy EXPLICIT_TERMINAL_REASON_CODES (youtubeJs.js:54): only these end the detail at once, on any client. */
+const explicitTerminal = (p: Playability) => p.kind === 'content' && (p.reason_code === 'private' || p.reason_code === 'uploader_removed');
+/** Legacy isPleaseSignInResponse (youtubeLoginRequired.js:2). */
+const pleaseSignIn = (surface: Node | undefined) => String(surface?.status ?? '').trim().toUpperCase() === 'LOGIN_REQUIRED' && /^please\s+sign\s+in[.!]?$/i.test(String(surface?.reason ?? '').trim());
+/**
+ * Legacy access rule (youtubeJs.js:1546-1566): unlisted from the microformat; a content decision keeps its access
+ * (age- and region-restricted stay public); an inconclusive or absent playability over a complete public surface
+ * (publication and views, which mapWebVideo requires) is public.
+ */
+function access(info: Node): Pick<VideoFacts, 'access_status' | 'access_status_source' | 'is_members_only' | 'availability'> {
+  const p = playability(info.playability_status), micro = info.page?.[0]?.microformat ?? {};
+  if (micro.is_unlisted === true || info.basic_info?.is_unlisted === true) return { access_status: 'unlisted', access_status_source: 'youtubei:microformat', is_members_only: false, availability: 'unlisted' };
+  if (p.kind === 'bot') return { access_status: 'unknown', access_status_source: 'youtubei:player', is_members_only: false };
+  if (p.kind === 'content') return { access_status: p.access, access_status_source: 'youtubei:player', is_members_only: p.access === 'members_only', availability: p.availability };
+  return { access_status: 'public', access_status_source: 'youtubei:public_metadata', is_members_only: false, availability: 'public' };
+}
+/** Legacy youtubeJsInfoNeedsAlternateClient (youtubeJs.js:1738-1764). */
+function needsAlternateClient(info: Node, p: Playability, metricsOnly: boolean, locale: string): boolean {
+  const basic = info.basic_info ?? {}, micro = info.page?.[0]?.microformat ?? {}, primary = info.primary_info ?? {};
+  if (basic.is_upcoming === true) return false;
+  if (p.kind === 'content' && p.access !== 'public') return false;
+  const published = absoluteDate(micro.publish_date ?? micro.upload_date, locale).value ?? absoluteDate(primary.published?.text ?? primary.published, locale).value;
+  const view = count(basic.view_count ?? micro.view_count ?? primary.view_count, locale);
+  if (metricsOnly) {
+    const status = String(info.playability_status?.status ?? '').toUpperCase();
+    return p.kind === 'inconclusive' && status && status !== 'OK' ? !(published && view !== null) : view === null;
+  }
+  const title = text(basic.title ?? micro.title), duration = count(basic.duration ?? micro.length_seconds, locale);
+  return !(title && published && view !== null && (duration || basic.is_live === true));
+}
+/** Legacy youtubeJsErrorNeedsTerminalProbe (youtubeJs.js:1767-1777): other request failures are not hidden behind IOS. */
+function errorNeedsAlternateClient(error: unknown, surface: Node | undefined, p: Playability): boolean {
+  if ((surface?.status || surface?.reason) && p.kind === 'inconclusive') return true;
+  const message = String((error as Error)?.message ?? '').trim();
+  return /^(?:this )?video is unavailable[.!]?$/i.test(message) || /login_required|please sign in|sign in to continue|not available on this app/i.test(message);
 }
 export function mapWebVideo(info: Node, channelId: string, videoId: string, comments: CommentsResult, commentLimit: number, observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE): VideoFacts {
   const basic = info.basic_info ?? {}, micro = info.page?.[0]?.microformat ?? {}, primary = info.primary_info ?? {}, observed = observedAt;
@@ -132,39 +181,54 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
     published_text_raw: publication.value ? text(micro.publish_date ?? micro.upload_date) : text(primary.published?.text ?? primary.published),
     duration_seconds: metric(duration || null), view_count: metric(view), like_count: metric(like),
     comment_count: comments.kind === 'disabled' ? { ...metric(0), status: 'disabled' } : { ...metric(commentCount), status: comments.kind === 'page' && commentCount !== null && !parseCount(comments.total_text, locale)?.exact ? 'estimated' : commentCount === null ? 'unresolved' : 'exact' },
-    access_status: micro.is_unlisted === true ? 'unlisted' : playability(info.playability_status).kind === 'ok' ? 'public' : 'unknown', access_status_source: 'youtubei:player',
+    ...access(info), 
     live_started_at: micro.start_timestamp ? new Date(micro.start_timestamp).toISOString() : null, live_ended_at: micro.end_timestamp ? new Date(micro.end_timestamp).toISOString() : null,
     extractor_version: 'yt-collector/2 (youtubei.js 18.1.0 web)', ...(actualChannel && actualChannel !== channelId ? { owner_channel_id: actualChannel } : {}) });
 }
+/**
+ * WEB, then IOS (legacy fetchYoutubeJsVideoInfoWithTerminalFallback, youtubeJs.js:1846-1897): a bot challenge fails the
+ * identity; private or uploader-removed ends at once; a client whose public surface is incomplete hands over to the next;
+ * members-only and removed content is accepted as it is. Both clients answering a plain "Please sign in" is the legacy
+ * login exclusion. A region restriction without a usable surface is region_blocked at once: the block follows the exit
+ * IP, so IOS through the same route would see it again (legacy asked IOS anyway); the collector rechecks it in the
+ * channel's country instead (the legacy alternate_region retry mode, which legacy never carried out for videos).
+ */
 export async function videoDetail(yt: Innertube, channelId: string, videoId: string, commentLimit: number, metricsOnly = false, responses: RawResponse[] = [], observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE): Promise<VideoItem> {
-  const logins: boolean[] = [];
+  const surfaces: (Node | undefined)[] = [];
   for (const client of ['WEB', 'IOS'] as const) {
     let info: Node;
     try { info = metricsOnly ? await yt.getBasicInfo(videoId, { client }) : await yt.getInfo(videoId, { client }); }
     catch (error) {
       const surface = (error as Node).info?.playability_status ?? (error as Node).info?.playabilityStatus ?? (error as Node).info;
       const decision = playability(surface);
-      if (decision.kind === 'blocked') throw new ScrapeError('blocked', 'YouTube challenged this identity');
-      if (decision.kind === 'terminal') return terminalVideo(channelId, videoId, decision.status!, observedAt);
-      logins.push(decision.kind === 'login');
-      const classified = classify(error); if (classified.kind === 'network' || classified.kind === 'blocked') throw classified;
+      if (decision.kind === 'bot') throw new ScrapeError('blocked', 'YouTube challenged this identity');
+      if (explicitTerminal(decision)) return terminalVideo(channelId, videoId, decision.kind === 'content' && decision.reason_code === 'private' ? 'private' : 'removed', observedAt);
+      if (decision.kind === 'content' && decision.alternate_region) return terminalVideo(channelId, videoId, 'region_blocked', observedAt);
+      if (!errorNeedsAlternateClient(error, surface, decision)) throw classify(error);
+      surfaces.push(surface);
       continue;
     }
     const decision = playability(info.playability_status);
     const playerBody = responses.slice().reverse().find(r => r.endpoint.endsWith('/player'))?.body;
     if (playerBody) { try { info._raw_player = JSON.parse(playerBody); } catch { /* Parser owns malformed response handling. */ } }
-    if (decision.kind === 'blocked') throw new ScrapeError('blocked', 'YouTube challenged this identity');
-    if (decision.kind === 'terminal') return terminalVideo(channelId, videoId, decision.status!, observedAt);
-    logins.push(decision.kind === 'login');
+    if (decision.kind === 'bot') throw new ScrapeError('blocked', 'YouTube challenged this identity');
+    if (explicitTerminal(decision)) return terminalVideo(channelId, videoId, decision.kind === 'content' && decision.reason_code === 'private' ? 'private' : 'removed', observedAt);
+    if (needsAlternateClient(info, decision, metricsOnly, locale)) {
+      if (decision.kind === 'content' && decision.alternate_region) return terminalVideo(channelId, videoId, 'region_blocked', observedAt);
+      surfaces.push(info.playability_status); continue;
+    }
+    if (decision.kind === 'content' && decision.access === 'unavailable') return terminalVideo(channelId, videoId, 'removed', observedAt);
+    // The fact contract needs title, publication, views and duration; a surface without them is handed to the next client.
     try { mapWebVideo(info, channelId, videoId, { kind: 'skipped' }, 0, observedAt, locale); }
-    catch { continue; }
-    // Plain sign-in responses are terminal only after both clients confirmed them.
-    if (decision.kind === 'login') continue;
+    catch {
+      if (decision.kind === 'content' && decision.access === 'members_only') return terminalVideo(channelId, videoId, 'members_only', observedAt);
+      surfaces.push(info.playability_status); continue;
+    }
     const total = count(info.comments_entry_point_header?.comment_count, locale);
     const comments: CommentsResult = metricsOnly || !commentLimit ? { kind: 'skipped' } : await topComments(yt, videoId, total === null ? undefined : String(total), locale, observedAt).catch(() => ({ kind: 'unavailable' as const, collected_at: observedAt }));
     return mapWebVideo(info, channelId, videoId, comments, commentLimit, observedAt, locale);
   }
-  if (logins.length === 2 && logins.every(Boolean)) return terminalVideo(channelId, videoId, 'login_required', observedAt);
+  if (surfaces.length === 2 && surfaces.every(pleaseSignIn)) return terminalVideo(channelId, videoId, 'login_required', observedAt);
   throw new ScrapeError('parse', 'WEB and IOS video details exhausted');
 }
 function terminalVideo(channelId: string, videoId: string, status: 'private' | 'removed' | 'members_only' | 'login_required' | 'age_restricted' | 'region_blocked', observedAt: string): VideoItem {

@@ -65,5 +65,55 @@ test('a listed upload owned by another channel stays with this channel and recor
 
 test('region blocks are recognised in the legacy English wording and the pt-BR player text', () => {
   for (const reason of ['The uploader has not made this video available in your country', 'O usuário que enviou o vídeo não o disponibilizou no seu país.', 'Este vídeo não está disponível em seu país'])
-    assert.deepEqual(playability({ status: 'UNPLAYABLE', reason }), { kind: 'terminal', status: 'region_blocked' }, reason);
+    assert.deepEqual(playability({ status: 'UNPLAYABLE', reason }), { kind: 'content', access: 'public', availability: 'region_restricted', reason_code: 'region_restricted', alternate_region: true }, reason);
+});
+
+// Ported from oldsystem qybullmq/test/youtubeJs.test.js (playability and access rules, batch 2a).
+const withPlayability = (playability_status: Record<string, string>) => ({ ...info(), playability_status });
+const client = (answers: Record<string, unknown>, calls: string[] = []) => ({ async getInfo(_id: string, opts: { client: string }) {
+  calls.push(opts.client); const answer = answers[opts.client]; if (answer instanceof Error) throw answer; return answer; } });
+test('generic WEB playability errors do not override a complete public metadata surface', async () => {
+  const calls: string[] = [];
+  const video = await videoDetail(client({ WEB: withPlayability({ status: 'UNPLAYABLE', reason: 'Video unavailable' }) }, calls) as never, channel, id, 0);
+  assert.ok(!('unavailable' in video)); assert.equal(video.access_status, 'public'); assert.equal(video.availability, 'public');
+  assert.equal(video.access_status_source, 'youtubei:public_metadata'); assert.deepEqual(calls, ['WEB'], 'a complete surface is accepted without IOS');
+});
+test('an unknown LOGIN_REQUIRED reason cannot override a complete public metadata surface', () => {
+  const facts = mapWebVideo(withPlayability({ status: 'LOGIN_REQUIRED', reason: '알 수 없는 새로운 로그인 제한' }), channel, id, { kind: 'skipped' }, 0);
+  assert.equal(facts.access_status, 'public'); assert.equal(facts.availability, 'public');
+  assert.deepEqual(playability({ status: 'LOGIN_REQUIRED', reason: '알 수 없는 새로운 로그인 제한' }), { kind: 'inconclusive', reason_code: 'unsupported_login_required_reason' });
+});
+test('age and region restrictions stay public with their availability; an explicit unlisted flag wins', () => {
+  const age = mapWebVideo(withPlayability({ status: 'LOGIN_REQUIRED', reason: 'Sign in to confirm your age' }), channel, id, { kind: 'skipped' }, 0);
+  assert.deepEqual([age.access_status, age.availability], ['public', 'age_restricted']);
+  const unlisted = info(); (unlisted.page[0]!.microformat as Record<string, unknown>).is_unlisted = true;
+  const facts = mapWebVideo(unlisted, channel, id, { kind: 'skipped' }, 0);
+  assert.deepEqual([facts.access_status, facts.access_status_source, facts.availability], ['unlisted', 'youtubei:microformat', 'unlisted']);
+});
+test('members-only content is kept as a members-only video; without a public surface it settles as members_only', async () => {
+  const members = await videoDetail(client({ WEB: withPlayability({ status: 'LOGIN_REQUIRED', reason: 'Join this channel to get access to members-only content' }) }) as never, channel, id, 0);
+  assert.ok(!('unavailable' in members)); assert.equal(members.access_status, 'members_only'); assert.equal(members.is_members_only, true); assert.equal(members.availability, 'subscriber_only');
+  const bare = await videoDetail(client({ WEB: { playability_status: { status: 'LOGIN_REQUIRED', reason: 'Members-only content' } } }) as never, channel, id, 0);
+  assert.ok('unavailable' in bare); assert.equal(bare.access_status, 'members_only');
+});
+test('Video Detail recovers an uploader-removed terminal reason hidden by WEB', async () => {
+  const calls: string[] = [];
+  const web = Object.assign(new Error('This video is unavailable'), { info: { status: 'ERROR', reason: 'Video unavailable' } });
+  const ios = Object.assign(new Error('This video is unavailable'), { info: { status: 'ERROR', reason: 'This video has been removed by the uploader' } });
+  const video = await videoDetail(client({ WEB: web, IOS: ios }, calls) as never, channel, id, 0);
+  assert.ok('unavailable' in video); assert.equal(video.access_status, 'removed'); assert.deepEqual(calls, ['WEB', 'IOS']);
+  const copyright = await videoDetail(client({ WEB: { playability_status: { status: 'UNPLAYABLE', reason: 'This video is no longer available due to a copyright claim' } } }) as never, channel, id, 0);
+  assert.ok('unavailable' in copyright); assert.equal(copyright.access_status, 'removed');
+});
+test('Video Detail does not run a terminal probe for an unrelated request failure', async () => {
+  const calls: string[] = [];
+  await assert.rejects(videoDetail(client({ WEB: new Error('socket connection reset by peer') }, calls) as never, channel, id, 0));
+  assert.deepEqual(calls, ['WEB'], 'IOS is not asked to hide a route failure');
+});
+test('legacy classification order: members before private, age before removal wording', () => {
+  assert.equal((playability({ status: 'UNPLAYABLE', reason: 'Private video for channel members' }) as { access?: string }).access, 'members_only');
+  assert.equal((playability({ status: 'UNPLAYABLE', reason: 'Confirm your age; some videos have been removed' }) as { availability?: string }).availability, 'age_restricted');
+  assert.equal((playability({ status: 'UNPLAYABLE', reason: 'This video is a YouTube Premium exclusive' }) as { access?: string }).access, 'members_only');
+  assert.deepEqual(playability({ status: 'OK' }), { kind: 'content', access: 'public', availability: 'public', reason_code: 'playable' });
+  assert.deepEqual(playability(undefined), { kind: 'inconclusive', reason_code: 'playability_unresolved' });
 });

@@ -85,6 +85,9 @@ export const VideoFactsSchema = z.strictObject({
   comments_ref: ObjectStorageReferenceSchema.nullable().optional(), comments_summary: StoredCommentSummarySchema.nullable().optional(),
   access_status: z.enum(['public', 'unlisted', 'members_only', 'private', 'unavailable', 'login_required', 'unknown']),
   access_status_source: z.string().min(1).max(120), is_members_only: z.boolean(),
+  /** Legacy availability, kept apart from access: age- and region-restricted videos are public but restricted
+   * (oldsystem youtubePlayability.js). Absent on facts written before 10-13 and on Data API facts. */
+  availability: z.enum(['public', 'unlisted', 'subscriber_only', 'private', 'age_restricted', 'region_restricted', 'unavailable']).optional(),
   live_scheduled_at: Timestamp.nullable(), live_started_at: Timestamp.nullable(), live_ended_at: Timestamp.nullable(),
   observed_at: Timestamp, extractor_version: z.string().min(1).max(120),
   /** Set only when the listed upload is owned by another channel (a collaboration or the artist's VEVO channel). */
