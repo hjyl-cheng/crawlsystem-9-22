@@ -14,10 +14,13 @@ const pool = createPool();
 before(async () => { await prepareDatabase(pool); });
 after(async () => { await pool.end(); });
 const model = JSON.parse(readFileSync(new URL('../../apps/profile-agent/tests/expected-profile.json', import.meta.url), 'utf8'));
-function setup(limits = {}) {
+/** A workspace whose one Worker reports `slots` free plan slots; first collections are admitted only into them. */
+async function setup(limits = {}, slots = 2) {
   const workspace_id = `test-import-${randomUUID()}`;
   const as = (role: Principal['role']): Principal => ({ workspace_id, subject: role, role });
-  return { store: new Store(pool, UpdateLimitsSchema.parse(limits)), op: as('operator'), reader: as('reader'), worker: as('worker') };
+  const t = { store: new Store(pool, UpdateLimitsSchema.parse(limits)), op: as('operator'), reader: as('reader'), worker: as('worker') };
+  await t.store.heartbeat(t.worker, { worker_id: t.worker.subject, server_id: 'test-node', build_version: 'test', accepting_work: true, capacity: slots, running_plan_ids: [] });
+  return t;
 }
 const channelId = () => 'UC' + randomUUID().replaceAll('-', '').slice(0, 22);
 function submit(plan: Plan, domain: Domain, key: string, payload: unknown, domain_complete: boolean): Submission {
@@ -25,10 +28,10 @@ function submit(plan: Plan, domain: Domain, key: string, payload: unknown, domai
     execution_epoch: plan.execution_epoch, input_hash: plan.input_hash, logical_batch_key: key, domain, payload, domain_complete };
   return { ...body, payload_hash: submissionHash(body as never) } as Submission;
 }
-const importLines = (t: ReturnType<typeof setup>, lines: string[]) => t.store.importChannels(t.op, { request_id: randomUUID(), lines });
-const applyAbout = (t: ReturnType<typeof setup>, plan: Plan) => t.store.apply(t.worker, submit(plan, 'ABOUT', 'about',
+const importLines = (t: Awaited<ReturnType<typeof setup>>, lines: string[]) => t.store.importChannels(t.op, { request_id: randomUUID(), lines });
+const applyAbout = (t: Awaited<ReturnType<typeof setup>>, plan: Plan) => t.store.apply(t.worker, submit(plan, 'ABOUT', 'about',
   { ...structuredClone(fixtureChannel), channel_id: plan.channel_id, channel_url: `https://www.youtube.com/channel/${plan.channel_id}`, observed_at: new Date().toISOString() }, true));
-async function completeFirstCollection(t: ReturnType<typeof setup>, plan: Plan) {
+async function completeFirstCollection(t: Awaited<ReturnType<typeof setup>>, plan: Plan) {
   const channel = plan.channel_id, input = (await t.store.getInput(t.worker, plan.plan_id)).input as YoutubeFrozenInput, video = randomUUID().replaceAll('-', '').slice(0, 11);
   await applyAbout(t, plan);
   await t.store.apply(t.worker, submit(plan, 'VIDEO', 'targets', { kind: 'targets', channel_id: channel, video_ids: [video], listed_at: new Date().toISOString(),
@@ -39,7 +42,7 @@ async function completeFirstCollection(t: ReturnType<typeof setup>, plan: Plan) 
 }
 
 test('each pasted line is queued once, or reported as known, repeated, a handle or unreadable', async () => {
-  const t = setup(), a = channelId(), b = channelId();
+  const t = await setup(), a = channelId(), b = channelId();
   const result = await importLines(t, [a, `https://www.youtube.com/channel/${a}/videos`, ` ${b} `, '@somecreator', 'https://www.youtube.com/@another', 'not a channel', 'https://example.com/channel/' + a, '']);
   assert.deepEqual(result.items.map(i => i.outcome), ['queued', 'duplicate', 'queued', 'handle_unsupported', 'handle_unsupported', 'invalid', 'invalid']);
   assert.equal(result.queued, 2);
@@ -49,13 +52,13 @@ test('each pasted line is queued once, or reported as known, repeated, a handle 
   await assert.rejects(() => t.store.importChannels(t.reader, { request_id: randomUUID(), lines: [a] }), (e: unknown) => e instanceof StoreError && e.code === 'FORBIDDEN');
 });
 
-test('the scheduler admits imports oldest first within the active-plan limit; outcomes follow the first collection', async () => {
-  const t = setup({ max_active_plans: 1 }), first = channelId(), second = channelId();
+test('the scheduler admits imports oldest first into free Worker slots; outcomes follow the first collection', async () => {
+  const t = await setup({}, 1), first = channelId(), second = channelId();
   await importLines(t, [first]); await importLines(t, [second]);
   const admitted = await t.store.scheduleUpdates(t.op.workspace_id);
   assert.deepEqual(admitted.map(p => [p.channel_id, p.plan_kind, p.required_domains]), [[first, 'FULL', ['ABOUT', 'VIDEO', 'AGENT']]], 'one at a time, oldest first');
   assert.deepEqual((await t.store.channelImports(t.reader)).counts, { queued: 1, planned: 1, done: 0, failed: 0, rejected:0 });
-  assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id), [], 'the limit holds');
+  assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id), [], 'the only slot is taken');
 
   // The first collection stops after the About page: the channel is known but not managed.
   await applyAbout(t, admitted[0]!);
@@ -75,24 +78,24 @@ test('the scheduler admits imports oldest first within the active-plan limit; ou
 });
 
 test('no import is admitted while the Data API quota cannot cover a first collection', async () => {
-  const t = setup({ api_daily_limit: 10 });
+  const t = await setup({ api_daily_limit: 10 });
   await importLines(t, [channelId()]);
   assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id), []);
   assert.deepEqual((await t.store.channelImports(t.reader)).counts.queued, 1);
 });
 
-async function failImport(t: ReturnType<typeof setup>, plan: Plan, code: 'UNAVAILABLE'|'NOT_FOUND'|'INVALID_REQUEST'|'BUDGET_EXHAUSTED' = 'UNAVAILABLE') {
+async function failImport(t: Awaited<ReturnType<typeof setup>>, plan: Plan, code: 'UNAVAILABLE'|'NOT_FOUND'|'INVALID_REQUEST'|'BUDGET_EXHAUSTED' = 'UNAVAILABLE') {
   const event = {event_id:randomUUID(),execution_epoch:plan.execution_epoch,worker_id:t.worker.subject,phase:'ABOUT',kind:'FAILED' as const,domain:'ABOUT' as const,message:'Integration dependency failure',error_code:code};
   await t.store.event(t.worker,plan.plan_id,event);
   return event;
 }
-const item = async (t:ReturnType<typeof setup>) => (await t.store.channelImports(t.reader)).items[0]!;
-async function dueRetry(t:ReturnType<typeof setup>) {
+const item = async (t:Awaited<ReturnType<typeof setup>>) => (await t.store.channelImports(t.reader)).items[0]!;
+async function dueRetry(t:Awaited<ReturnType<typeof setup>>) {
   await pool.query("UPDATE control.channel_imports SET retry_at=clock_timestamp()-interval '1 second' WHERE workspace_id=$1 AND state='failed' AND retry_at IS NOT NULL",[t.op.workspace_id]);
 }
 
 test('failed imports back off 5/15/60 minutes, schedule exactly three retries and preserve the original failures',async()=>{
-  const t=setup({max_active_plans:1}),id=channelId();await importLines(t,[id]);
+  const t=await setup({},1),id=channelId();await importLines(t,[id]);
   let plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;
   const original=plan.plan_id;
   for(let attempt=0;attempt<=3;attempt++) {
@@ -114,7 +117,7 @@ test('failed imports back off 5/15/60 minutes, schedule exactly three retries an
 });
 
 test('successful automatic retry completes the import and resolves failures across its retry chain',async()=>{
-  const t=setup(),id=channelId();await importLines(t,[id]);
+  const t=await setup(),id=channelId();await importLines(t,[id]);
   let plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;
   for(let n=0;n<2;n++){await failImport(t,plan);await dueRetry(t);plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;}
   await completeFirstCollection(t,plan);
@@ -124,7 +127,7 @@ test('successful automatic retry completes the import and resolves failures acro
 
 test('cancelled and permanent-error imports stay manual; operators can explicitly queue them again',async()=>{
   for(const code of ['cancelled','NOT_FOUND','INVALID_REQUEST'] as const){
-    const t=setup(),id=channelId();await importLines(t,[id]);const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;
+    const t=await setup(),id=channelId();await importLines(t,[id]);const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;
     if(code==='cancelled')await t.store.cancel(t.op,plan.plan_id,{command_id:randomUUID(),expected_version:plan.version});else await failImport(t,plan,code);
     assert.equal((await item(t)).retry!.next_at,null);assert.equal((await item(t)).retry!.blocked_reason,code==='cancelled'?'cancelled':'non_retryable');
     assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id,new Date(Date.now()+86400000)),[]);
@@ -133,7 +136,7 @@ test('cancelled and permanent-error imports stay manual; operators can explicitl
 });
 
 test('ignored failures stop the scheduled automatic retry',async()=>{
-  const t=setup();await importLines(t,[channelId()]);const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;await failImport(t,plan);
+  const t=await setup();await importLines(t,[channelId()]);const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;await failImport(t,plan);
   const failure=(await t.store.failures(t.reader)).items[0]!;
   await t.store.commandFailure(t.op,failure.failure_id,{command_id:randomUUID(),expected_version:failure.version,action:'ignore',reason:'Operator closed this collection'});
   assert.equal((await item(t)).retry!.blocked_reason,'ignored');assert.equal((await item(t)).retry!.next_at,null);
@@ -142,7 +145,7 @@ test('ignored failures stop the scheduled automatic retry',async()=>{
 
 test('the dispatcher repairs failures settled by an old API during rollout and keeps cancellation manual',async()=>{
   for(const cancelled of [false,true]){
-    const t=setup();await importLines(t,[channelId()]);const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;
+    const t=await setup();await importLines(t,[channelId()]);const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;
     if(cancelled)await t.store.cancel(t.op,plan.plan_id,{command_id:randomUUID(),expected_version:plan.version});else await failImport(t,plan);
     await pool.query('UPDATE control.channel_imports SET retry_at=NULL,retry_blocked_reason=NULL,last_failure_code=NULL WHERE workspace_id=$1',[t.op.workspace_id]);
     assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id),[]);
@@ -151,8 +154,8 @@ test('the dispatcher repairs failures settled by an old API during rollout and k
   }
 });
 
-test('due retries wait for API budget, Agent capacity and the scheduler switch without spending retry attempts',async()=>{
-  const t=setup({max_active_plans:2,max_agent_plans:1});await importLines(t,[channelId()]);
+test('due retries wait for API budget, a free Worker slot and the scheduler switch without spending retry attempts',async()=>{
+  const t=await setup({},1);await importLines(t,[channelId()]);
   const plan=(await t.store.scheduleUpdates(t.op.workspace_id))[0]!;await failImport(t,plan);await dueRetry(t);
   const config=await t.store.config(t.reader);
   config.settings.discovery.api_reserve=0;
@@ -163,7 +166,7 @@ test('due retries wait for API budget, Agent capacity and the scheduler switch w
     await pool.query('UPDATE control.runtime_settings SET settings=jsonb_set(settings,$2,$3::jsonb) WHERE workspace_id=$1',[t.op.workspace_id,['update',field],JSON.stringify(field==='enabled'?true:10000)]);
   }
   const other=await t.store.createPlan(t.op,{request_id:randomUUID(),source_mode:'youtube',channel_id:channelId()} as never);
-  assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id),[],'Agent concurrency holds even with a free total plan slot');assert.equal((await item(t)).retry!.attempts,0);
+  assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id),[],'a manual plan holds the only Worker slot');assert.equal((await item(t)).retry!.attempts,0);
   await t.store.cancel(t.op,other.plan_id,{command_id:randomUUID(),expected_version:other.version});
   assert.equal((await t.store.scheduleUpdates(t.op.workspace_id)).length,1);
 });

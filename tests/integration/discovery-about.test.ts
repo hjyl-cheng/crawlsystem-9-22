@@ -29,6 +29,8 @@ async function setup(count=1,api_daily_limit=1) {
   const result=await store.queryRunComplete(worker,run.run_id,{attempt:1,pages:1,stop_reason:'list_end'});
   assert.equal(result.qualification_pending,count);
   assert.equal(result.binding.next_run_at,null);
+  // First collections are admitted only into the free slots of a live Worker.
+  await store.heartbeat(worker,{worker_id:worker.subject,server_id:'test-node',build_version:'test',accepting_work:true,capacity:2,running_plan_ids:[]});
   return {workspace,store,run,ids,worker,op,reader,receiver};
 }
 async function about(t:Awaited<ReturnType<typeof setup>>,plan:Plan,subscribers:number|null) {
@@ -142,12 +144,13 @@ test('manual rejection resolves pending decisions and a disabled binding stays d
 });
 test('automatic admission queues unvalidated candidates fairly and import-created plans use the R3 gate',async()=>{
   const t=await setup(3);
-  const scheduler=new Store(pool,UpdateLimitsSchema.parse({max_active_plans:1}),DiscoveryLimitsSchema.parse({auto_admit:true,import_buffer:2}),{enabled:true});
+  const scheduler=new Store(pool,UpdateLimitsSchema.parse({}),DiscoveryLimitsSchema.parse({auto_admit:true,import_buffer:2}),{enabled:true});
+  await scheduler.heartbeat(t.worker,{worker_id:t.worker.subject,server_id:'test-node',build_version:'test',accepting_work:true,capacity:1,running_plan_ids:[]});
   assert.equal((await scheduler.admitCandidates(t.workspace)).length,2);
   const plans=await scheduler.scheduleUpdates(t.workspace);assert.equal(plans.length,1);
   const input=await scheduler.getInput(t.worker,plans[0]!.plan_id);
   assert.equal(input.input.pipeline_version,'r3.v1');assert.equal(input.input.source_mode==='youtube' && input.input.discovery_qualification?.min_subscribers,1000);
-  assert.equal((await scheduler.channelImports(t.reader)).counts.queued,1,'the buffer and plan limits both hold');
+  assert.equal((await scheduler.channelImports(t.reader)).counts.queued,1,'the buffer and the one Worker slot both hold');
   const plan=plans[0]!;
   const navigation={schema_version:CONTRACT_VERSION,plan_id:plan.plan_id,execution_epoch:1,input_hash:plan.input_hash,submission_id:randomUUID(),logical_batch_key:'video:targets',domain:'VIDEO',domain_complete:false,payload:{kind:'targets',channel_id:plan.channel_id,video_ids:[],listed_at:new Date().toISOString(),window_start:new Date(0).toISOString(),exhausted:true,source:'youtubei:uploads'}};
   await assert.rejects(()=>scheduler.apply(t.worker,{...navigation,payload_hash:submissionHash(navigation as never)} as never),(error:any)=>error.code==='DOMAIN_INCOMPLETE');

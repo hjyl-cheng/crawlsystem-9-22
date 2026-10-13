@@ -11,7 +11,7 @@ const env=(name:string)=>Object.fromEntries(JSON.parse(kube(['-n','control','get
 const api=env('control-api-preview'),dispatch=env('intent-dispatcher');
 const settings=RuntimeSettingsSchema.parse({...defaultSettings(),update:updateLimits(api),discovery:discoveryLimits(api)});
 assert.deepEqual(settings.update,updateLimits(dispatch));assert.deepEqual(settings.discovery,discoveryLimits(dispatch));
-assert.equal(settings.update.enabled,true);assert.equal(settings.discovery.enabled,true);assert.equal(settings.discovery.auto_admit,true);assert.equal(settings.update.daily_plan_limit,100);
+assert.equal(settings.update.enabled,true);assert.equal(settings.discovery.enabled,true);assert.equal(settings.discovery.auto_admit,true);
 const pool=createPool();assert.equal(new URL(process.env.DATABASE_URL!).pathname,'/crawlsystem_m1_main_test');
 const primary=kube(['-n','db','get','pods','-l','cnpg.io/instanceRole=primary','-o','jsonpath={.items[0].metadata.name}']).trim();
 try{

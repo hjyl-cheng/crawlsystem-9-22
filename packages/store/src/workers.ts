@@ -67,6 +67,19 @@ export async function recordWorker(db:PoolClient,workspace:string,input:Heartbea
  }
  return getWorker(db,workspace,input.worker_id);
 }
+/** Slots of the Workers that can take a plan now, and the plans already holding or awaiting one.
+ * A legacy Worker without a management protocol counts while it accepts work. */
+export async function workerCapacity(db:Pool|PoolClient,workspace:string){
+ const r=(await db.query(`SELECT coalesce((SELECT sum((w.heartbeat->>'capacity')::int) FROM control.workers w WHERE w.workspace_id=$1 AND w.desired_mode='RUNNING'
+   AND w.last_heartbeat_at>=clock_timestamp()-($2*interval '1 second') AND w.heartbeat->>'accepting_work'='true'
+   AND (w.heartbeat->'management' IS NULL OR w.heartbeat->'management'->>'protocol'='worker-control-1' AND w.heartbeat->'management'->>'ready'='true'
+     AND (w.heartbeat->'management'->>'applied_version')::int=w.control_version)),0)::int AS slots,
+  count(*)::int AS active_plans,count(*) FILTER(WHERE plan_kind='UPDATE')::int AS active_updates
+  FROM control.plans WHERE workspace_id=$1 AND status IN ('QUEUED','RUNNING','WAITING')`,[workspace,WORKER_STALE_SECONDS])).rows[0]!;
+ return {slots:r.slots as number,active_plans:r.active_plans as number,active_updates:r.active_updates as number};
+}
+/** While first collections wait, updates keep half of the slots (rounded up); otherwise either side may use all. */
+export const updateSlots=(slots:number,importsWaiting:boolean)=>importsWaiting?Math.ceil(slots/2):slots;
 /** Frozen ownership is written in the same transaction as the START lease, including RPC retries. */
 export async function routePlan(db:PoolClient,workspace:string,planId:string,attempts:number):Promise<string|null|false>{
  const existing=(await db.query('SELECT worker_id,queue_kind FROM control.worker_plans WHERE plan_id=$1',[planId])).rows[0];

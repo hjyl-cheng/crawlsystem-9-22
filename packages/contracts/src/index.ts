@@ -490,15 +490,15 @@ export const ProxySourceViewSchema: z.ZodType<ProxySourceView> = z.strictObject(
   last_count: z.number().int().nullable(), last_added: z.number().int().nullable(), last_retired: z.number().int().nullable(), active_proxies: Tally, retired_proxies: Tally,
 });
 
-export const UpdateLimitsSchema = z.strictObject({
+/** Fixed rollout limits replaced by live Worker capacity; stored settings may still carry them. */
+const RETIRED_UPDATE_LIMITS = ['max_active_plans', 'max_agent_plans', 'daily_plan_limit'];
+export const UpdateLimitsSchema = z.preprocess(value => value && typeof value === 'object' && !Array.isArray(value)
+  ? Object.fromEntries(Object.entries(value).filter(([key]) => !RETIRED_UPDATE_LIMITS.includes(key))) : value, z.strictObject({
   enabled: z.boolean().default(true),
   /** Domains the scheduler updates by itself (M3-D5: all three since incremental Video and Agent updates); any domain can still be updated manually. */
   auto_domains: z.array(DomainSchema).max(3).refine(a => new Set(a).size === a.length, 'duplicate domains').default(['ABOUT', 'VIDEO', 'AGENT']),
-  max_active_plans: z.number().int().min(1).max(100).default(2),
-  max_agent_plans: z.number().int().min(1).max(100).default(1),
-  daily_plan_limit: z.number().int().min(1).max(100000).default(100),
   api_daily_limit: z.number().int().min(1).max(1000000).default(10000),
-});
+}));
 export type UpdateLimits = z.infer<typeof UpdateLimitsSchema>;
 export const ChannelUpdateSchema = z.strictObject({ request_id: z.uuid(), expected_version: z.number().int().nonnegative(), domains: UniqueDomains.optional() });
 export type ChannelUpdate = z.infer<typeof ChannelUpdateSchema>;
@@ -521,7 +521,7 @@ export type DataApiSummary = z.infer<typeof DataApiSummarySchema>;
 export const DataApiPermitSchema = z.strictObject({ granted: z.boolean(), quota_day: z.iso.date(), reset_at: Timestamp, used_units: Count, limit: Count });
 export type DataApiPermit = z.infer<typeof DataApiPermitSchema>;
 export const UpdateStateSchema = z.enum(['scheduled', 'due', 'queued', 'running', 'completed', 'failed']);
-export const UpdateWaitSchema = z.enum(['scheduler_disabled', 'manual_only', 'active_plan', 'concurrency', 'agent_capacity', 'daily_plans', 'api_quota', 'attempted_today']);
+export const UpdateWaitSchema = z.enum(['scheduler_disabled', 'manual_only', 'active_plan', 'no_worker', 'concurrency', 'api_quota', 'attempted_today']);
 export const UpdateChannelSchema = z.strictObject({
   channel_id: YoutubeChannelIdSchema, title: z.string().nullable(), country: z.string().nullable(), management_version: Count,
   state: UpdateStateSchema, due_domains: z.array(DomainSchema).max(3), due_at: Timestamp.nullable(), last_success_at: Timestamp.nullable(),
@@ -532,6 +532,8 @@ export const UpdateSummarySchema = z.strictObject({
   observed_at: Timestamp, limits: UpdateLimitsSchema, last_scan_at: Timestamp.nullable(),
   managed: Count, due: Count, overdue: Count, queued: Count, running: Count, completed_24h: Count, failed_24h: Count,
   daily_plans: Count, api_quota_day: z.iso.date(), api_used_units: Count, api_reserved_units: Count, api_reset_at: Timestamp,
+  /** Live Worker slots and the plans holding them; updates keep half while first collections wait. */
+  capacity: z.strictObject({ slots: Count, active_plans: Count, active_updates: Count, update_slots: Count }),
   waiting: z.array(z.strictObject({ reason: UpdateWaitSchema, channels: Count })).max(8),
 });
 export type UpdateSummary = z.infer<typeof UpdateSummarySchema>;

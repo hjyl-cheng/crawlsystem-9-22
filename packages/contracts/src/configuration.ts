@@ -16,11 +16,8 @@ export const RuntimeSettingsSchema=z.strictObject({
 export type RuntimeSettings=z.infer<typeof RuntimeSettingsSchema>;
 export const defaultSettings=():RuntimeSettings=>RuntimeSettingsSchema.parse({update:{},discovery:{},proxy:{},alerts:{}});
 export const CONFIG_CATALOG=[
-  ['update.enabled','自动更新开关','更新采集','boolean','high','关闭后暂停自动更新和导入调度；已有计划继续执行。'],
+  ['update.enabled','自动更新开关','更新采集','boolean','high','关闭后暂停自动更新和导入调度；已有计划继续执行。并发由在线 Worker 的空位决定。'],
   ['update.auto_domains','自动更新范围','更新采集','domains','high','频道资料、视频与评论、Agent 画像；手动更新可单独选择。'],
-  ['update.max_active_plans','采集同时运行上限','更新采集','number','high','自动更新和首次导入共享的活动计划上限；降低时不取消已有计划。'],
-  ['update.max_agent_plans','Agent 同时运行上限','更新采集','number','high','含画像任务的活动采集计划上限。'],
-  ['update.daily_plan_limit','更新每日计划上限','更新采集','number','high','UTC 每日更新计划上限；首次导入另受并发和 API 配额限制。'],
   ['update.api_daily_limit','Data API 每日配额','更新采集','number','high','本系统准入上限；修改不会增加服务商提供的实际配额。'],
   ['discovery.enabled','自动搜索开关','搜索与准入','boolean','high','停止领取新的搜索任务；已领取任务按冻结参数完成。'],
   ['discovery.max_active_runs','搜索同时运行上限','搜索与准入','number','high','新搜索领取时检查，降低时保留已运行任务。'],

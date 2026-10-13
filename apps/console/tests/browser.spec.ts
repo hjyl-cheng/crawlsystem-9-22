@@ -665,7 +665,7 @@ test('automatic query collection shows bounded growth, source evidence and recov
 });
 test('configuration reads real defaults, validates risk, publishes history and loads a rollback', async ({ page }) => {
   const state=await mock(page); await login(page,'/config');
-  await expect(page.locator('.config-list tbody tr')).toHaveCount(28);
+  await expect(page.locator('.config-list tbody tr')).toHaveCount(25);
   await expect(page.getByLabel('配置值')).toHaveValue('true');
   await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
   await page.getByLabel('配置值').selectOption('false');await page.getByLabel('变更说明').fill('暂停更新验收');
@@ -689,7 +689,7 @@ test('configuration preserves edits after conflict and reuses identity after a l
 });
 test('configuration reader permissions, failure recovery and mobile layout',async({page})=>{
  const state=await mock(page,undefined,'reader');state.fail=true;await login(page,'/config');await expect(page.getByRole('alert')).toBeVisible();
- state.fail=false;await page.getByRole('button',{name:'刷新配置',exact:true}).click();await expect(page.locator('.config-list tbody tr')).toHaveCount(28);
+ state.fail=false;await page.getByRole('button',{name:'刷新配置',exact:true}).click();await expect(page.locator('.config-list tbody tr')).toHaveCount(25);
  await expect(page.getByLabel('配置值')).toBeDisabled();await expect(page.getByRole('button',{name:'发布配置',exact:true})).toBeDisabled();
  await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
  await page.getByRole('button',{name:'自动更新范围',exact:true}).click();await expect(page.getByLabel('视频与评论',{exact:true})).toBeChecked();

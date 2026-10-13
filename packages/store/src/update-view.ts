@@ -1,20 +1,19 @@
 import type { Pool, QueryResultRow } from 'pg';
 import { UpdateLimitsSchema, UpdateSummarySchema, UpdateChannelSchema, type Page, type Plan, type UpdateChannel, type UpdateLimits } from '@crawlsystem/contracts';
 import { apiBudget, schedulerState } from './update-budget.ts';
+import { workerCapacity, updateSlots } from './workers.ts';
 
 /** One shared SQL view for both global figures and paged rows; API readers never mutate clocks. */
 const VIEW = `WITH clock_rows AS (
   SELECT channel_id,min(due_at) AS due_at,max(last_success_at) AS last_success_at,
     coalesce(array_agg(clock ORDER BY clock) FILTER(WHERE due_at<=$2),'{}') AS due_domains,
-    coalesce(array_agg(clock ORDER BY clock) FILTER(WHERE due_at<=$2 AND clock=ANY($10::text[])),'{}') AS auto_due,
-    bool_or(due_at<=$2 AND clock=ANY($10::text[]) AND (last_scheduled_at IS NULL OR last_scheduled_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+    coalesce(array_agg(clock ORDER BY clock) FILTER(WHERE due_at<=$2 AND clock=ANY($9::text[])),'{}') AS auto_due,
+    bool_or(due_at<=$2 AND clock=ANY($9::text[]) AND (last_scheduled_at IS NULL OR last_scheduled_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
       AND (last_attempt_at IS NULL OR last_attempt_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')) AS eligible
   FROM control.channel_clocks WHERE workspace_id=$1 GROUP BY channel_id
 ), counts AS (
-  SELECT count(*) FILTER(WHERE status IN ('QUEUED','RUNNING','WAITING')) AS active,
-    count(*) FILTER(WHERE status IN ('QUEUED','RUNNING','WAITING') AND 'AGENT'=ANY(required_domains)) AS agent,
-    count(*) FILTER(WHERE plan_kind='UPDATE' AND created_at>=date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS daily
-  FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube'
+  SELECT count(*) AS active,count(*) FILTER(WHERE plan_kind='UPDATE') AS updates
+  FROM control.plans WHERE workspace_id=$1 AND status IN ('QUEUED','RUNNING','WAITING')
 ), view AS (
   SELECT c.channel_id,c.about->>'title' AS title,c.about->>'country' AS country,c.management_version,k.due_at,k.last_success_at,k.due_domains,
     a.plan_id AS active_plan_id,to_jsonb(p) AS plan,e.data || jsonb_build_object('plan_id',e.plan_id,'created_at',e.created_at) AS event,
@@ -28,11 +27,10 @@ const VIEW = `WITH clock_rows AS (
       WHEN NOT $3::boolean THEN 'scheduler_disabled'
       WHEN cardinality(k.auto_due)=0 THEN 'manual_only'
       WHEN NOT k.eligible THEN 'attempted_today'
-      WHEN counts.daily >= $6 THEN 'daily_plans'
-      WHEN $8::int + $9::int + 5 * (CASE WHEN 'ABOUT'=ANY(k.auto_due) THEN 1 ELSE 0 END +
-        CASE WHEN 'VIDEO'=ANY(k.auto_due) THEN 20+ceil(coalesce((latest.frozen_input->'scope'->>'video_limit')::numeric,30)/10)::int ELSE 0 END)>$7 THEN 'api_quota'
-      WHEN counts.active >= $4 THEN 'concurrency'
-      WHEN 'AGENT'=ANY(k.auto_due) AND counts.agent >= $5 THEN 'agent_capacity' ELSE NULL END AS waiting_reason
+      WHEN $4::int = 0 THEN 'no_worker'
+      WHEN $7::int + $8::int + 5 * (CASE WHEN 'ABOUT'=ANY(k.auto_due) THEN 1 ELSE 0 END +
+        CASE WHEN 'VIDEO'=ANY(k.auto_due) THEN 20+ceil(coalesce((latest.frozen_input->'scope'->>'video_limit')::numeric,30)/10)::int ELSE 0 END)>$6 THEN 'api_quota'
+      WHEN counts.active >= $4 OR counts.updates >= $5 THEN 'concurrency' ELSE NULL END AS waiting_reason
   FROM control.channel_overview c JOIN clock_rows k USING(channel_id) JOIN control.plans latest ON latest.plan_id=c.latest_plan_id CROSS JOIN counts
   LEFT JOIN LATERAL(SELECT * FROM control.plans WHERE workspace_id=c.workspace_id AND channel_id=c.channel_id AND plan_kind='UPDATE'
     ORDER BY created_at DESC,source_revision DESC LIMIT 1) p ON true
@@ -53,7 +51,11 @@ export async function readUpdates(pool: Pool, workspace: string, limits: UpdateL
     // The config centre owns current limits; last_scan_at is independent consumption evidence.
     const effective = UpdateLimitsSchema.parse(limits);
     const budget = await apiBudget(client, workspace, now);
-    const params = [workspace, now, effective.enabled, effective.max_active_plans, effective.max_agent_plans, effective.daily_plan_limit, effective.api_daily_limit, budget.used, budget.reserved, effective.auto_domains];
+    const capacity = await workerCapacity(client, workspace);
+    const importsWaiting = !!(await client.query(`SELECT 1 FROM control.channel_imports WHERE workspace_id=$1 AND (state='queued' OR state='failed'
+      AND retry_at<=$2 AND retry_blocked_reason IS NULL AND auto_retry_count<3) LIMIT 1`, [workspace, now])).rowCount;
+    const shares = updateSlots(capacity.slots, importsWaiting);
+    const params = [workspace, now, effective.enabled, capacity.slots, shares, effective.api_daily_limit, budget.used, budget.reserved, effective.auto_domains];
     const row = (await client.query(`${VIEW} SELECT count(*)::int AS managed,
       count(*) FILTER(WHERE cardinality(due_domains)>0)::int AS due,
       count(*) FILTER(WHERE due_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')::int AS overdue,
@@ -64,14 +66,15 @@ export async function readUpdates(pool: Pool, workspace: string, limits: UpdateL
       count(*) FILTER(WHERE status='FAILED' AND finished_at>$2::timestamptz-interval '24 hours')::int AS failed,
       count(*) FILTER(WHERE created_at>=date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')::int AS daily
       FROM control.plans WHERE workspace_id=$1 AND plan_kind='UPDATE'`, [workspace, now])).rows[0]!;
-    const rows = (await client.query(`${VIEW} SELECT * FROM view WHERE ($11::text IS NULL OR state=$11)
-      AND ($12::text IS NULL OR strpos(lower(coalesce(title,'')||' '||channel_id),lower($12))>0)
-      ORDER BY CASE state WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 WHEN 'due' THEN 3 ELSE 4 END,due_at,channel_id LIMIT $13 OFFSET $14`,
+    const rows = (await client.query(`${VIEW} SELECT * FROM view WHERE ($10::text IS NULL OR state=$10)
+      AND ($11::text IS NULL OR strpos(lower(coalesce(title,'')||' '||channel_id),lower($11))>0)
+      ORDER BY CASE state WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 WHEN 'due' THEN 3 ELSE 4 END,due_at,channel_id LIMIT $12 OFFSET $13`,
       [...params, filter.state ?? null, filter.search?.trim() || null, limit + 1, offset])).rows;
     await client.query('COMMIT');
     const summary = UpdateSummarySchema.parse({ observed_at: now.toISOString(), limits: effective, last_scan_at: state?.last_scan_at ? new Date(state.last_scan_at).toISOString() : null,
       managed: row.managed, due: row.due, overdue: row.overdue, queued: row.queued, running: row.running, completed_24h: outcomes.completed, failed_24h: outcomes.failed,
-      daily_plans: outcomes.daily, api_quota_day: budget.day, api_used_units: budget.used, api_reserved_units: budget.reserved, api_reset_at: budget.reset_at, waiting: row.waiting });
+      daily_plans: outcomes.daily, api_quota_day: budget.day, api_used_units: budget.used, api_reserved_units: budget.reserved, api_reset_at: budget.reset_at,
+      capacity: { ...capacity, update_slots: shares }, waiting: row.waiting });
     const items = rows.slice(0, limit).map(r => UpdateChannelSchema.parse({ ...r, due_at: r.due_at ? new Date(r.due_at).toISOString() : null,
       last_success_at: r.last_success_at ? new Date(r.last_success_at).toISOString() : null, plan: r.plan ? toPlan(r.plan) : null }));
     return { summary, page: { items, next_cursor: rows.length > limit ? String(offset + limit) : null } as Page<UpdateChannel> };

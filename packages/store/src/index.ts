@@ -33,7 +33,7 @@ import {queuePublication,readDeliveries,deliverySummary,getDelivery,retryDeliver
 import {DeliveryRetrySchema} from '../../contracts/src/delivery.ts';
 import {defaultSettings,type RuntimeSettings} from '../../contracts/src/configuration.ts';
 import {runtimeSettings,settingsSnapshot,publishSettings,settingsHistory,settingsConsumed} from './runtime-settings.ts';
-import {lockWorkerAdmission,queryAdmission,recordWorker,workerView,getWorker,commandWorker,routePlan,workerMetrics} from './workers.ts';
+import {lockWorkerAdmission,queryAdmission,recordWorker,workerView,getWorker,commandWorker,routePlan,workerMetrics,workerCapacity,updateSlots} from './workers.ts';
 import type {WorkerControl} from '../../contracts/src/workers.ts';
 import {collectQueries,collectionSummary,querySources} from './query-collection.ts';
 import {resolveImportHandles,type HandleResolver} from './handle-import.ts';
@@ -63,6 +63,8 @@ async function discovery<T>(run: () => Promise<T>): Promise<T> {
     throw error;
   }
 }
+/** Imports that can start a first collection now ($2 is the scan time). */
+const IMPORT_WAITING = `(state='queued' OR state='failed' AND retry_at<=$2 AND retry_blocked_reason IS NULL AND auto_retry_count<3)`;
 /** A count the source resolved (exact or estimated), else null. */
 const resolvedCount = (metric: { value: number | null; status: string }) => ['exact', 'estimated'].includes(metric.status) ? metric.value : null;
 export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; trace_context?: string; worker_id?:string; }
@@ -274,8 +276,8 @@ export class Store {
       ORDER BY CASE i.state WHEN 'planned' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END,i.updated_at DESC,i.channel_id LIMIT 100`, [principal.workspace_id])).rows;
     return ChannelImportsSchema.parse({ counts, retry_counts: retryCounts, items: items.map(r => ({ channel_id:r.channel_id,state:r.state,plan_id:r.plan_id,requested_at:iso(r.requested_at),title:r.title??null,retry:importRetry(r) })) });
   }
-  /** First collections for queued imports, while active plans and the Data API quota allow (oldest first). */
-  private async admitImports(client: PoolClient, workspace: string, now: Date, limits:UpdateLimits): Promise<Plan[]> {
+  /** First collections for queued imports, into free Worker slots while the Data API quota allows (oldest first). */
+  private async admitImports(client: PoolClient, workspace: string, now: Date, limits:UpdateLimits, slots:number): Promise<Plan[]> {
     const plans: Plan[] = [];
     // An old API replica can settle a plan between migration and rollout. Classify
     // those untouched failures once, with the same bounded delay and cancel guard.
@@ -288,12 +290,10 @@ export class Store {
       retry_blocked_reason=CASE WHEN m.status='CANCELLED' THEN 'cancelled' WHEN m.code IS NULL OR m.code NOT IN ('UNAVAILABLE','INTERNAL_ERROR','BUDGET_EXHAUSTED') THEN 'non_retryable' WHEN m.auto_retry_count>=3 THEN 'exhausted' END,
       retry_at=CASE WHEN m.status='FAILED' AND m.code IN ('UNAVAILABLE','INTERNAL_ERROR','BUDGET_EXHAUSTED') AND m.auto_retry_count<3 THEN $2::timestamptz+((ARRAY[5,15,60])[m.auto_retry_count+1]*interval '1 minute') END,
       updated_at=clock_timestamp() FROM missed m WHERE i.plan_id=m.plan_id AND i.state='failed' AND i.retry_at IS NULL AND i.retry_blocked_reason IS NULL`,[workspace,now]);
-    const queue = (await client.query(`SELECT channel_id FROM control.channel_imports WHERE workspace_id=$1 AND (state='queued' OR
-      state='failed' AND retry_at<=$2 AND retry_blocked_reason IS NULL AND auto_retry_count<3)
+    const queue = (await client.query(`SELECT channel_id FROM control.channel_imports WHERE workspace_id=$1 AND ${IMPORT_WAITING}
       ORDER BY CASE state WHEN 'failed' THEN 0 ELSE 1 END,coalesce(retry_at,requested_at),channel_id LIMIT 10`, [workspace,now])).rows;
     for (const { channel_id } of queue) {
-      const active = (await client.query("SELECT count(*)::int AS n,count(*) FILTER(WHERE 'AGENT'=ANY(required_domains))::int agent FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube' AND status IN ('QUEUED','RUNNING','WAITING')", [workspace])).rows[0]!;
-      if (active.n >= limits.max_active_plans || active.agent >= limits.max_agent_plans) break;
+      if (plans.length >= slots) break;
       // Same channel -> candidate -> import order as manual plan creation and decisions.
       await client.query("SELECT pg_advisory_xact_lock(hashtext('channel-plan:' || $1 || ':' || $2))", [workspace,channel_id]);
       const candidate=(await client.query('SELECT state,qualification_state FROM control.channel_candidates WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE',[workspace,channel_id])).rows[0];
@@ -336,6 +336,10 @@ export class Store {
       await schedulerState(client, workspaceId, limits, now);
       await settingsConsumed(client,workspaceId,'dispatcher',config.version);
       if (!limits.enabled) return [];
+      // Plans are created only for free Worker slots, so frozen inputs and deadlines start close to execution.
+      const capacity = await workerCapacity(client, workspaceId);
+      const importsWaiting = !!(await client.query(`SELECT 1 FROM control.channel_imports WHERE workspace_id=$1 AND ${IMPORT_WAITING} LIMIT 1`, [workspaceId, now])).rowCount;
+      let free = capacity.slots - capacity.active_plans, updateRoom = Math.min(free, updateSlots(capacity.slots, importsWaiting) - capacity.active_updates);
       // Only clocks in auto_domains are scheduled; the others stay due until updated manually.
       const candidates = await client.query(`SELECT c.channel_id,min(k.due_at) AS due FROM control.channel_overview c JOIN control.channel_clocks k USING(workspace_id,channel_id)
         WHERE c.workspace_id=$1 AND c.management_state='managed' AND k.due_at<=$2 AND k.clock=ANY($3::text[])
@@ -345,11 +349,12 @@ export class Store {
         GROUP BY c.channel_id ORDER BY due,c.channel_id LIMIT 25`, [workspaceId, now, limits.auto_domains]);
       const plans: Plan[] = [];
       for (const candidate of candidates.rows) {
+        if (updateRoom <= 0) break;
         const plan = await this.insertUpdate(client, workspaceId, candidate.channel_id, now,undefined,limits);
-        if (plan) plans.push(plan);
+        if (plan) { plans.push(plan); updateRoom--; free--; }
       }
-      // Updates have priority, then due retries, then new imports oldest first.
-      plans.push(...await this.admitImports(client, workspaceId, now,limits));
+      // Updates take their share first, then due retries, then new imports oldest first.
+      if (free > 0) plans.push(...await this.admitImports(client, workspaceId, now,limits,free));
       return plans;
     });
   }
@@ -391,12 +396,6 @@ export class Store {
     const domains = manual?.domains ?? CLOCK_NAMES.filter(d => due.some(k => k.clock === d && (manual || (limits.auto_domains.includes(d) &&
       (!k.last_scheduled_at || new Date(k.last_scheduled_at).getTime() < utcStart) && (!k.last_attempt_at || new Date(k.last_attempt_at).getTime() < utcStart)))));
     if (!domains.length) { if (manual) throw new StoreError('CONFLICT', 'No channel domain is due; choose a domain explicitly'); return null; }
-    const counts = (await client.query(`SELECT count(*) FILTER(WHERE status IN ('QUEUED','RUNNING','WAITING'))::int AS active,
-      count(*) FILTER(WHERE status IN ('QUEUED','RUNNING','WAITING') AND 'AGENT'=ANY(required_domains))::int AS agent,
-      count(*) FILTER(WHERE plan_kind='UPDATE' AND created_at>=date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
-        AND created_at<((date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC')+interval '1 day') AT TIME ZONE 'UTC'))::int AS daily
-      FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube'`, [workspace, now])).rows[0]!;
-    if (counts.active >= limits.max_active_plans || counts.daily >= limits.daily_plan_limit || (domains.includes('AGENT') && counts.agent >= limits.max_agent_plans)) return null;
     const previous = (await client.query('SELECT frozen_input FROM control.plans WHERE plan_id=$1', [channel.latest_plan_id])).rows[0]!.frozen_input as FrozenInput;
     if (previous.source_mode !== 'youtube') throw new StoreError('INVALID_REQUEST', 'Only real channels can be updated', 400);
     const units = estimateApiUnits(domains, previous.scope.video_limit), budget = await apiBudget(client, workspace, now, true);

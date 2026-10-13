@@ -13,7 +13,7 @@ import './discover.css';
 import './update.css';
 
 const states = { scheduled: '未到期', due: '待安排', queued: '已排队', running: '执行中', completed: '已完成', failed: '需要恢复' };
-const reasons = { scheduler_disabled: '自动调度已暂停', manual_only: '暂未开启自动更新，可手动更新', active_plan: '本频道已有采集计划', concurrency: '等待执行名额', agent_capacity: '等待画像执行名额', daily_plans: '今日计划预算已用完', api_quota: '等待 Data API 配额', attempted_today: '今天已尝试，下一天再安排' };
+const reasons = { scheduler_disabled: '自动调度已暂停', manual_only: '暂未开启自动更新，可手动更新', active_plan: '本频道已有采集计划', no_worker: '没有可接单的 Worker', concurrency: '等待 Worker 空位', api_quota: '等待 Data API 配额', attempted_today: '今天已尝试，下一天再安排' };
 const tones = { scheduled: 'slate', due: 'blue', queued: 'amber', running: 'blue', completed: 'green', failed: 'red' };
 const fmt = (value?: number) => value === undefined ? '—' : value.toLocaleString('zh-CN');
 function Card({ title, subtitle, extra, className = '', children }: { title: string; subtitle?: ReactNode; extra?: ReactNode; className?: string; children: ReactNode }) {
@@ -65,11 +65,11 @@ export default function Update() {
       </div></Card>
       <Card title="执行预算" className="notes-card"><ul className="schedule-notes">
         <li>自动更新：{data ? data.limits.enabled && data.limits.auto_domains.length ? data.limits.auto_domains.map(d => clockLabels[d]).join('、') : '已暂停' : '—'}；其余到期内容需手动更新</li>
-        <li>活动计划上限：{fmt(data?.limits.max_active_plans)}；画像计划上限：{fmt(data?.limits.max_agent_plans)}</li>
-        <li>今日更新计划：{fmt(data?.daily_plans)} / {fmt(data?.limits.daily_plan_limit)}（UTC）</li>
+        <li>Worker 空位：{data ? `${fmt(data.capacity.active_plans)} / ${fmt(data.capacity.slots)} 在用` : '—'}；更新可用 {fmt(data?.capacity.update_slots)} 个</li>
+        <li>今日已建更新计划：{fmt(data?.daily_plans)}（UTC）</li>
         <li>Data API 已使用：{fmt(data?.api_used_units)} / {fmt(data?.limits.api_daily_limit)} 单位</li>
         <li>为活动计划预留：{fmt(data?.api_reserved_units)} 单位</li>
-      </ul><p className="schedule-hint">API 配额按太平洋时间午夜重置：{data ? time(data.api_reset_at) : '—'}。代理请求受节点租约与并发限制。</p></Card>
+      </ul><p className="schedule-hint">API 配额按太平洋时间午夜重置：{data ? time(data.api_reset_at) : '—'}。首次采集排队时，更新最多占一半空位（向上取整）。</p></Card>
     </div>
     <div className="discover-row row-tasks">
       <Card title="更新任务列表" className="task-list" extra={<div className="list-tools">

@@ -25,7 +25,7 @@ try{
     ORDER BY c.created_at,c.candidate_id LIMIT 1`,[workspace])).rows[0];assert.ok(binding);assert.equal(binding.priority,-10);
   const sources=QuerySourcesSchema.parse(await get(`/v1/queries/${binding.binding_id}/sources`));assert.ok(sources.items.length>=2);assert.ok(sources.items.every(s=>s.channel_id));
   const distinct=new Set(sources.items.map(s=>s.channel_id));assert.equal(distinct.size,sources.items.length);
-  const config=ConfigSnapshotSchema.parse(await get('/v1/config'));assert.equal(config.settings.discovery.daily_run_limit,300);assert.equal(config.settings.discovery.max_active_runs,2);assert.equal(config.settings.discovery.backlog_limit,2000);assert.equal(config.settings.update.daily_plan_limit,100);
+  const config=ConfigSnapshotSchema.parse(await get('/v1/config'));assert.equal(config.settings.discovery.daily_run_limit,300);assert.equal(config.settings.discovery.max_active_runs,2);assert.equal(config.settings.discovery.backlog_limit,2000);
   evidence.initial=initial;evidence.current=current;evidence.binding=binding;evidence.sources=sources;evidence.integrity=integrity;evidence.search_limits_preserved=true;
   phase='permissions';
   for(const role of ['reader','node','worker'] as const){

@@ -39,9 +39,10 @@ export function updateChannelFixture(): UpdateChannel {
 }
 /** Scheduler figures for the given rows (only due rows exist in these fixtures). */
 export function updateSummaryFixture(rows: UpdateChannel[]) {
-  return UpdateSummarySchema.parse({ observed_at: timestamp, limits: { enabled: true, max_active_plans: 2, max_agent_plans: 1, daily_plan_limit: 100, api_daily_limit: 10000 },
+  return UpdateSummarySchema.parse({ observed_at: timestamp, limits: { enabled: true, api_daily_limit: 10000 },
     last_scan_at: timestamp, managed: rows.length, due: rows.length, overdue: rows.length, queued: 0, running: 0, completed_24h: 0, failed_24h: 0, daily_plans: 0,
     api_quota_day: '2026-09-23', api_used_units: 9998, api_reserved_units: 0, api_reset_at: '2026-09-24T07:00:00.000Z',
+    capacity: { slots: 3, active_plans: 0, active_updates: 0, update_slots: 3 },
     waiting: rows.length ? [{ reason: 'api_quota', channels: rows.length }] : [] });
 }
 /** One Agent task per state; the completed one belongs to a managed channel. */

@@ -91,9 +91,6 @@ spec:
             - { name: QUERY_IMPORT_BUFFER, value: "50" }
             - { name: UPDATE_SCHEDULER_ENABLED, value: "true" }
             - { name: UPDATE_AUTO_DOMAINS, value: "ABOUT,VIDEO,AGENT" }
-            - { name: UPDATE_MAX_ACTIVE_PLANS, value: "2" }
-            - { name: UPDATE_MAX_AGENT_PLANS, value: "1" }
-            - { name: UPDATE_DAILY_PLAN_LIMIT, value: "100" }
             - { name: UPDATE_API_DAILY_LIMIT, value: "10000" }
             - { name: PIPELINE_ENABLED, value: "true" }
             - name: PIPELINE_SERVICE_ACCOUNTS

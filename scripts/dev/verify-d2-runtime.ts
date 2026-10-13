@@ -17,7 +17,7 @@ try{
  const token=await issueToken({subject:'d2-runtime',workspace_id:workspace,role:'operator'},loadSigningKey(),300);
  const get=async(path:string)=>{const r=await fetch('http://127.0.0.1:18103/api'+path,{headers:{authorization:`Bearer ${token}`},signal:AbortSignal.timeout(15000)});assert.equal(r.status,200,path);return r.json();};
  const [queries,updates,delivery]=await Promise.all([get('/v1/queries/summary'),get('/v1/updates/summary'),get('/v1/deliveries/summary')]);
- assert.equal(queries.runs.enabled,true);assert.equal(updates.limits.enabled,true);assert.equal(updates.limits.daily_plan_limit,100);assert.equal(delivery.enabled,true);
+ assert.equal(queries.runs.enabled,true);assert.equal(updates.limits.enabled,true);assert.equal(delivery.enabled,true);
  const services=workloads.map(([namespace,kind,name])=>{const o=kube(['-n',namespace,'get',kind,name,'-o','json']);return {namespace,name,ready:o.status.readyReplicas??0,desired:o.spec.replicas,images:o.spec.template.spec.containers.map((c:any)=>({name:c.name,image:c.image})),automatic:Object.fromEntries(o.spec.template.spec.containers.flatMap((c:any)=>(c.env??[]).filter((e:any)=>['QUERY_RUNS_ENABLED','QUERY_AUTO_ADMIT','UPDATE_SCHEDULER_ENABLED'].includes(e.name)).map((e:any)=>[e.name,e.value])))};});
  assert.ok(services.every(s=>s.ready===s.desired&&s.desired>0));
  for(const service of services.filter(s=>['control-api-preview','intent-dispatcher'].includes(s.name)))assert.equal(service.automatic.QUERY_AUTO_ADMIT,'true');
@@ -37,7 +37,7 @@ try{
   for(const pod of pods.filter((p:any)=>![...changed,'proxy-manager'].some(name=>p.name.startsWith(name+'-')))){const prior=before.pods.find((p:any)=>p.uid===pod.uid);assert.ok(prior,'Existing collection and delivery pods must remain in place');assert.deepEqual(pod.containers,prior.containers);}
   assert.ok(source.videos>=before.source.videos);assert.ok(delivery.delivered>=before.delivery.delivered);
  }
- const result={result:'PASSED',at:new Date().toISOString(),mode,automatic:{search:queries.runs.enabled,admission:true,updates:updates.limits.enabled,daily_update_limit:updates.limits.daily_plan_limit},delivery,services,pods,source,plans,slot,business,connector:{state:connector.connector.state,tasks:connector.tasks.map((t:any)=>t.state)}};
+ const result={result:'PASSED',at:new Date().toISOString(),mode,automatic:{search:queries.runs.enabled,admission:true,updates:updates.limits.enabled,worker_slots:updates.capacity.slots},delivery,services,pods,source,plans,slot,business,connector:{state:connector.connector.state,tasks:connector.tasks.map((t:any)=>t.state)}};
  writeFileSync(`${dir}/runtime-${mode}.json`,JSON.stringify(result,null,2)+'\n',{mode:0o600});console.log(JSON.stringify(result));
 }catch(error){console.error('D2 runtime verification failed:',error instanceof Error?error.name:'UnknownError');process.exitCode=1;}
 finally{await pool.end();await biz.end();}

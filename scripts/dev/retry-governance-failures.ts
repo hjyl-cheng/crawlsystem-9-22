@@ -3,6 +3,7 @@ import {readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createPool} from '@crawlsystem/store/config';
+import {workerCapacity} from '../../packages/store/src/workers.ts';
 import {client,workspace} from './finish-common.ts';
 
 // Explicit operator retries, one replacement per channel. Persist command IDs
@@ -42,9 +43,8 @@ try {
    if(!current.retryable)continue;
    const latest=(await pool.query('SELECT plan_id FROM control.plans WHERE workspace_id=$1 AND channel_id=$2 ORDER BY created_at DESC LIMIT 1',[workspace,item.channel_id])).rows[0];
    if(latest.plan_id!==item.plan_id){item.settled='SUPERSEDED';save();continue;}
-   const limits=(await pool.query('SELECT settings FROM control.runtime_settings WHERE workspace_id=$1',[workspace])).rows[0].settings.update;
-   const active=(await pool.query("SELECT count(*)::int n,count(*) FILTER(WHERE 'AGENT'=ANY(required_domains))::int agent FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube' AND status IN ('QUEUED','RUNNING','WAITING')",[workspace])).rows[0];
-   if(active.n>=limits.max_active_plans||item.plan_kind==='FULL'&&active.agent>=limits.max_agent_plans)break;
+   const capacity=await workerCapacity(pool,workspace);
+   if(capacity.active_plans>=capacity.slots)break;
    // Refresh the version after admission checks. All writes go through the
    // existing API's workspace, version, channel and quota protections.
    const refreshed=await api('/v1/failures/'+item.failure_id);

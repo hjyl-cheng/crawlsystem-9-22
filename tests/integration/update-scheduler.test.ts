@@ -13,17 +13,22 @@ const pool = createPool();
 before(async () => { await prepareDatabase(pool); });
 after(async () => { await pool.end(); });
 const model = JSON.parse(readFileSync(new URL('../../apps/profile-agent/tests/expected-profile.json', import.meta.url), 'utf8'));
-function setup(overrides = {}) {
+/** A workspace whose one Worker reports `slots` free plan slots; plans are admitted only into them. */
+async function setup(overrides = {}, slots = 25) {
   const workspace_id = `test-updates-${randomUUID()}`;
   const who = (role: Principal['role']): Principal => ({ workspace_id, subject: role, role });
-  return { store: new Store(pool, UpdateLimitsSchema.parse(overrides)), op: who('operator'), reader: who('reader'), worker: who('worker') };
+  const t = { store: new Store(pool, UpdateLimitsSchema.parse(overrides)), op: who('operator'), reader: who('reader'), worker: who('worker') };
+  await online(t, slots);
+  return t;
 }
+const online = (t: { store: Store; worker: Principal }, capacity: number, accepting_work = true) => t.store.heartbeat(t.worker,
+  { worker_id: t.worker.subject, server_id: 'test-node', build_version: 'test', accepting_work, capacity, running_plan_ids: [] });
 function submission(plan: Plan, domain: Domain, payload: unknown, key = domain.toLowerCase()): Submission {
   const body = { schema_version: CONTRACT_VERSION, submission_id: stableSubmissionId(plan.plan_id, plan.execution_epoch, domain, key), plan_id: plan.plan_id,
     execution_epoch: plan.execution_epoch, input_hash: plan.input_hash, logical_batch_key: key, domain, payload, domain_complete: true };
   return { ...body, payload_hash: submissionHash(body as never) } as Submission;
 }
-async function seed(t: ReturnType<typeof setup>, due: Domain[], now = new Date()) {
+async function seed(t: Awaited<ReturnType<typeof setup>>, due: Domain[], now = new Date()) {
   const channel = 'UC' + randomUUID().replaceAll('-', '').slice(0, 22), video_id = randomUUID().replaceAll('-', '').slice(0, 11);
   const plan = await t.store.createPlan(t.op, { request_id: randomUUID(), source_mode: 'youtube', channel_id: channel, required_domains: ['ABOUT', 'VIDEO'] } as never);
   const context = await t.store.getInput(t.worker, plan.plan_id);
@@ -48,7 +53,7 @@ async function seed(t: ReturnType<typeof setup>, due: Domain[], now = new Date()
 const reject = (run: () => Promise<unknown>, code: string) => assert.rejects(run, (e: unknown) => e instanceof StoreError && e.code === code);
 
 test('concurrent scanners create exactly one frozen update per channel for all seven domain combinations', async () => {
-  const t = setup({ max_active_plans: 25, max_agent_plans: 25, auto_domains: [...CLOCK_NAMES] }), now = new Date();
+  const t = await setup({ auto_domains: [...CLOCK_NAMES] }), now = new Date();
   const combinations: Domain[][] = [['ABOUT'], ['VIDEO'], ['AGENT'], ['ABOUT', 'VIDEO'], ['ABOUT', 'AGENT'], ['VIDEO', 'AGENT'], [...CLOCK_NAMES]];
   const seeded = [];
   for (const domains of combinations) seeded.push(await seed(t, domains, now));
@@ -77,7 +82,7 @@ test('concurrent scanners create exactly one frozen update per channel for all s
 });
 
 test('failed attempts remain due, do not repeat today, and may run again on the next UTC day', async () => {
-  const t = setup(), now = new Date(), item = await seed(t, ['ABOUT'], now);
+  const t = await setup(), now = new Date(), item = await seed(t, ['ABOUT'], now);
   const [plan] = await t.store.scheduleUpdates(t.op.workspace_id, now); assert.ok(plan);
   const due = (await t.store.getChannel(t.reader, item.channel)).management.clocks.find(c => c.clock === 'ABOUT')!.due_at;
   await t.store.cancel(t.op, plan.plan_id, { command_id: randomUUID(), expected_version: plan.version });
@@ -89,11 +94,11 @@ test('failed attempts remain due, do not repeat today, and may run again on the 
 });
 
 test('admission keeps work due at capacity or quota limits, then resumes; paused channels are excluded', async () => {
-  const t = setup({ max_active_plans: 1, api_daily_limit: 4 }), now = new Date();
+  const t = await setup({ api_daily_limit: 4 }, 1), now = new Date();
   const first = await seed(t, ['ABOUT'], now), second = await seed(t, ['ABOUT'], now);
   assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id, now), []);
   assert.equal((await t.store.updates(t.reader)).summary.waiting.find(r => r.reason === 'api_quota')!.channels, 2);
-  const resumed = new Store(pool, UpdateLimitsSchema.parse({ max_active_plans: 1 }));
+  const resumed = new Store(pool, UpdateLimitsSchema.parse({}));
   const [plan] = await resumed.scheduleUpdates(t.op.workspace_id, now); assert.ok(plan);
   const other = [first, second].find(c => c.channel !== plan.channel_id)!;
   assert.equal((await resumed.updates(t.reader)).page.items.find(c => c.channel_id === other.channel)!.waiting_reason, 'concurrency');
@@ -105,8 +110,26 @@ test('admission keeps work due at capacity or quota limits, then resumes; paused
   assert.equal((await resumed.updates(t.reader)).summary.managed, 1);
 });
 
+test('without a Worker slot nothing is admitted; slots, not a daily count, bound the admitted updates', async () => {
+  const t = await setup({}, 0), now = new Date();
+  const items = [await seed(t, ['ABOUT'], now), await seed(t, ['ABOUT'], now), await seed(t, ['ABOUT'], now)];
+  assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id, now), []);
+  assert.equal((await t.store.updates(t.reader)).summary.waiting.find(r => r.reason === 'no_worker')!.channels, 3);
+  await online(t, 2, false);
+  assert.deepEqual(await t.store.scheduleUpdates(t.op.workspace_id, now), [], 'a Worker that does not accept work has no slots');
+  await online(t, 2);
+  const plans = await t.store.scheduleUpdates(t.op.workspace_id, now);
+  assert.equal(plans.length, 2);
+  const summary = (await t.store.updates(t.reader)).summary;
+  assert.deepEqual(summary.capacity, { slots: 2, active_plans: 2, active_updates: 2, update_slots: 2 });
+  assert.equal(summary.waiting.find(r => r.reason === 'concurrency')!.channels, 1);
+  await t.store.cancel(t.op, plans[0]!.plan_id, { command_id: randomUUID(), expected_version: plans[0]!.version });
+  const next = await t.store.scheduleUpdates(t.op.workspace_id, now);
+  assert.deepEqual(next.map(p => p.channel_id), items.map(i => i.channel).filter(c => !plans.some(p => p.channel_id === c)));
+});
+
 test('request permits are shared, idempotent, bounded, and unused reservations are released on settlement', async () => {
-  const t = setup({ api_daily_limit: 5 }), now = new Date(); await seed(t, ['ABOUT'], now);
+  const t = await setup({ api_daily_limit: 5 }), now = new Date(); await seed(t, ['ABOUT'], now);
   const [plan] = await t.store.scheduleUpdates(t.op.workspace_id, now); assert.ok(plan);
   const body = { request_id: randomUUID(), plan_id: plan.plan_id, execution_epoch: plan.execution_epoch, input_hash: plan.input_hash };
   const permits = await Promise.all([t.store.dataApiPermit(t.worker, body), t.store.dataApiPermit(t.worker, body)]);
@@ -121,7 +144,7 @@ test('request permits are shared, idempotent, bounded, and unused reservations a
 });
 
 test('manual updates require operator/version checks and replay one identity without admitting duplicate work', async () => {
-  const t = setup(), item = await seed(t, ['ABOUT']);
+  const t = await setup(), item = await seed(t, ['ABOUT']);
   const command = { request_id: randomUUID(), expected_version: 1, domains: ['ABOUT'] as Domain[] };
   await reject(() => t.store.updateChannel(t.reader, item.channel, command), 'FORBIDDEN');
   await reject(() => t.store.updateChannel(t.op, item.channel, { ...command, expected_version: 0 }), 'CONFLICT');
@@ -132,7 +155,7 @@ test('manual updates require operator/version checks and replay one identity wit
 });
 
 test('re-profiling unchanged facts is a new Agent observation, compared with the last profile', async () => {
-  const t = setup(), item = await seed(t, []);
+  const t = await setup(), item = await seed(t, []);
   const { diagnostics: _diagnostics, ...profile } = model;
   const profileOnce = async () => {
     const version = (await t.store.getChannel(t.reader, item.channel)).management.version;
@@ -149,7 +172,7 @@ test('re-profiling unchanged facts is a new Agent observation, compared with the
 
 test('domains left out of auto_domains stay due for a manual update; by default all three are automatic', async () => {
   assert.deepEqual(UpdateLimitsSchema.parse({}).auto_domains, ['ABOUT', 'VIDEO', 'AGENT']);
-  const t = setup({ auto_domains: ['ABOUT', 'VIDEO'] }), now = new Date();
+  const t = await setup({ auto_domains: ['ABOUT', 'VIDEO'] }), now = new Date();
   const all = await seed(t, ['ABOUT', 'VIDEO', 'AGENT'], now), agentOnly = await seed(t, ['AGENT'], now);
   const plans = await t.store.scheduleUpdates(t.op.workspace_id, now);
   assert.deepEqual(plans.map(p => [p.channel_id, p.required_domains]), [[all.channel, ['ABOUT', 'VIDEO']]], 'never the Agent');
@@ -159,12 +182,12 @@ test('domains left out of auto_domains stay due for a manual update; by default 
   const version = (await t.store.getChannel(t.reader, agentOnly.channel)).management.version;
   const manual = await t.store.updateChannel(t.op, agentOnly.channel, { request_id: randomUUID(), expected_version: version });
   assert.deepEqual(manual.required_domains, ['AGENT'], 'a manual update takes what is due');
-  const off = setup({ enabled: false, auto_domains: ['ABOUT', 'VIDEO'] });
+  const off = await setup({ enabled: false, auto_domains: ['ABOUT', 'VIDEO'] });
   assert.deepEqual((await off.store.getChannel(t.reader, all.channel)).management.auto_domains, [], 'nothing is automatic while the scheduler is off');
 });
 
 test('updates freeze partial and missing video observations for recovery without using them as anchors or samples', async () => {
-  const t = setup(), item = await seed(t, []), partial = 'partial0001', missing = 'missing0001';
+  const t = await setup(), item = await seed(t, []), partial = 'partial0001', missing = 'missing0001';
   const update = () => t.store.updateChannel(t.op, item.channel, { request_id: randomUUID(), expected_version: 1, domains: ['VIDEO'] });
   const failed = await update();
   const apply = async (plan: Plan, payload: unknown, key: string, complete: boolean) => {

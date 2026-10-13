@@ -3,6 +3,7 @@ import {existsSync,readFileSync,writeFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createPool} from '@crawlsystem/store/config';
+import {workerCapacity} from '../../packages/store/src/workers.ts';
 import {workspace,client} from './finish-common.ts';
 
 // One audited VIDEO replacement per already reviewed channel, through the public
@@ -42,9 +43,8 @@ try {
       WHERE v.workspace_id=$1 AND v.channel_id=$2 AND p.status IS DISTINCT FROM 'COMPLETED'`,[workspace,item.channel_id])).rows[0].n;
     if(!left){item.settled='FINALIZED_BY_ANOTHER_PLAN';save();continue;}
     if((await pool.query("SELECT 1 FROM control.plans WHERE workspace_id=$1 AND channel_id=$2 AND status IN ('QUEUED','RUNNING','WAITING')",[workspace,item.channel_id])).rowCount)continue;
-    const settings=(await pool.query('SELECT settings FROM control.runtime_settings WHERE workspace_id=$1',[workspace])).rows[0].settings.update;
-    const active=(await pool.query("SELECT count(*)::int n FROM control.plans WHERE workspace_id=$1 AND source_mode='youtube' AND status IN ('QUEUED','RUNNING','WAITING')",[workspace])).rows[0].n;
-    if(active>=settings.max_active_plans)break;
+    const capacity=await workerCapacity(pool,workspace);
+    if(capacity.active_plans>=capacity.slots)break;
     const channel=await api('/v1/channels/'+item.channel_id);
     if(mode==='apply-full') {
      assert.ok(['managed','paused'].includes(channel.management.state));
