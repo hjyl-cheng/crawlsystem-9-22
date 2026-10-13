@@ -138,7 +138,8 @@ export async function channelFacts(yt: Innertube, channelId: string, observedAt 
 }
 /** Latest uploads, or incremental discovery until any of the 20 frozen anchors. Never skip private IDs. */
 export async function uploads(yt: Innertube, channelId: string, limit: number, anchors?: string[]): Promise<UploadDiscovery & { exhausted: boolean }> {
-  const ids: string[] = [], known = new Set(anchors ?? []); let scanned = 0, pages = 0;
+  // Legacy youtubeJs.js:419-427: an entry without a usable ID is a parse gap, skipped; a scan with gaps is not exhaustive.
+  const ids: string[] = [], known = new Set(anchors ?? []); let scanned = 0, pages = 0, gaps = 0;
   try {
     let page = await yt.getPlaylist(`UU${channelId.slice(2)}`);
     for (;;) {
@@ -149,14 +150,14 @@ export async function uploads(yt: Innertube, channelId: string, limit: number, a
         const id = node.video_id ?? node.id ?? node.content_id ?? node.endpoint?.payload?.videoId
           ?? node.on_tap_endpoint?.payload?.videoId ?? node.on_tap_endpoint?.payload?.reelWatchEndpoint?.videoId
           ?? (typeof node.entity_id === 'string' ? node.entity_id.replace(/^shorts-shelf-item-/, '') : undefined);
-        if (typeof id !== 'string' || !/^[\w-]{11}$/.test(id)) throw new ScrapeError('parse', 'Upload identity missing');
+        if (typeof id !== 'string' || !/^[\w-]{11}$/.test(id)) { gaps++; continue; }
         scanned++;
         if (known.has(id)) return { ids, pages, scanned, matched_anchor_id: id, stop_reason: 'anchor_matched', exhausted: false };
         if (!ids.includes(id)) ids.push(id);
-        if (!anchors && ids.length >= limit) return { ids, pages, scanned, matched_anchor_id: null, stop_reason: 'list_end', exhausted: !page.has_continuation && scanned === page.videos.length };
+        if (!anchors && ids.length >= limit) return { ids, pages, scanned, matched_anchor_id: null, stop_reason: 'list_end', exhausted: !gaps && !page.has_continuation && scanned === page.videos.length };
         if (anchors && scanned >= 100) return { ids: ids.slice(0, 30), pages, scanned, matched_anchor_id: null, stop_reason: 'gap_abandoned_latest_30', exhausted: false };
       }
-      if (!page.has_continuation) return { ids, pages, scanned, matched_anchor_id: null, stop_reason: 'list_end', exhausted: true };
+      if (!page.has_continuation) return { ids, pages, scanned, matched_anchor_id: null, stop_reason: 'list_end', exhausted: !gaps };
       if (pages >= 20) throw new ScrapeError('parse', 'Upload pagination made insufficient progress');
       page = await page.getContinuation();
     }

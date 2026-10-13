@@ -196,3 +196,8 @@ test('transient comments failure retries only comments and preserves video metri
   const kept = await videoDetail(odd as never, channel, id, 20);
   assert.ok(!('unavailable' in kept)); assert.equal(kept.comment_count.status, 'unresolved', 'an unexpected comment page shape keeps the video');
 });
+test('Uploads parse gaps are skipped and keep the scan from being exhaustive instead of failing the step', async () => {
+  const yt = { async getPlaylist() { return { videos: [{ video_id: 'aaaaaaaaaaa' }, { title: 'no id' }, { video_id: 'bbbbbbbbbbb' }], has_continuation: false }; } };
+  const scan = await uploads(yt as never, channel, 30);
+  assert.deepEqual([scan.ids, scan.exhausted], [['aaaaaaaaaaa', 'bbbbbbbbbbb'], false]);
+});
