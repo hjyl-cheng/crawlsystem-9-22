@@ -138,8 +138,8 @@ test('incremental sampling compares the frozen baseline after the sink has alrea
     parsed:{...old.parsed,key:`v1/${t.worker.workspace_id}/${update.plan_id}/1/${step}/${id}.youtube-raw-1.${old.raw.sha256}.json.gz`}});
   const df=ref(t.tf,'TARGETS','TARGETS','uploads',discovery),v=(t.vf.payload as VideoFacts);
   const sample=ref(t.vf,'SAMPLING','SAMPLING',t.videoId,{kind:'samples',observed_at:at,source:'youtubei:video_or_api_fallback',items:[{video_id:t.videoId,
-    view_count:v.view_count.value!+500,like_count:v.like_count.value,comment_count:v.comment_count.value,
-    metrics:{view_count:{...v.view_count,value:v.view_count.value!+500,status:'estimated',observed_at:at},like_count:v.like_count,comment_count:v.comment_count}}],missing_video_ids:[]});
+    view_count:v.view_count.value!+500,like_count:null,comment_count:v.comment_count.value,
+    metrics:{view_count:{...v.view_count,value:v.view_count.value!+500,status:'estimated',observed_at:at},like_count:{...v.like_count,value:null,status:'unresolved',observed_at:at},comment_count:v.comment_count}}],missing_video_ids:[]});
   for(const fact of [df,sample]) {
     const owner={...t.owner,plan_id:update.plan_id,input_hash:update.input_hash,workflow_id:update.workflow_id};
     await store.pipelineManifest(t.receiver,{...t.manifest(fact.raw.step,[fact.raw]),owner,key:`v1/${t.worker.workspace_id}/${update.plan_id}/1/${fact.raw.step}/_manifest.json.gz`});
@@ -149,6 +149,7 @@ test('incremental sampling compares the frozen baseline after the sink has alrea
   const results=(await pool.query('SELECT facts FROM control.plan_video_samples WHERE plan_id=$1',[update.plan_id])).rows[0].facts;
   assert.equal(results.view_delta_total,500);assert.equal(results.view_changed_count,1);
   const current=(await store.getChannel(t.reader,t.channel)).videos[0] as VideoFacts;assert.equal(current.view_count.status,'estimated');
+  assert.deepEqual(current.like_count,v.like_count,'a sample that did not read likes keeps the stored count');
   assert.equal('unavailable' in (await store.getChannel(t.reader,t.channel)).videos[0]!,false);
 });
 test('an Agent result is rejected if collected facts change after its input was hydrated',async()=>{

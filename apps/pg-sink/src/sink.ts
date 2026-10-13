@@ -89,8 +89,10 @@ export class PgSink {
           if (row && !row.data.unavailable && (!row.stats_observed_at || new Date(row.stats_observed_at) <= new Date(fact.payload.observed_at))) {
             const video = row.data as VideoFacts;
             const metric = (n: number | null,m: VideoFacts['view_count'])=>n === null ? m : { value:n,status:'exact',source:fact.payload.source,observed_at:fact.payload.observed_at };
-            const data = { ...video,view_count:item.metrics?.view_count??metric(item.view_count,video.view_count),like_count:item.metrics?.like_count??metric(item.like_count,video.like_count),
-              comment_count:video.comments_disabled ? video.comment_count : item.metrics?.comment_count??metric(item.comment_count,video.comment_count) };
+            // As in the legacy metrics mode, a sample that did not read a count keeps the stored one instead of overwriting it with unresolved.
+            const sampled = (observed: VideoFacts['view_count'] | undefined, n: number | null, m: VideoFacts['view_count']) => observed && observed.value !== null ? observed : metric(n, m);
+            const data = { ...video,view_count:sampled(item.metrics?.view_count,item.view_count,video.view_count),like_count:sampled(item.metrics?.like_count,item.like_count,video.like_count),
+              comment_count:video.comments_disabled ? video.comment_count : sampled(item.metrics?.comment_count,item.comment_count,video.comment_count) };
             await client.query('UPDATE crawl_data.videos SET data=$4,stats_observed_at=$5,updated_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2 AND video_id=$3',
               [r.workspace_id,r.channel_id,r.unit_id,data,fact.payload.observed_at]);
           }
