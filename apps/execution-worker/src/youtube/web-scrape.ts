@@ -170,6 +170,32 @@ function errorNeedsAlternateClient(error: unknown, surface: Node | undefined, p:
   const message = String((error as Error)?.message ?? '').trim();
   return /^(?:this )?video is unavailable[.!]?$/i.test(message) || /login_required|please sign in|sign in to continue|not available on this app/i.test(message);
 }
+const canonicalKind = (value: unknown, videoId: string): 'short' | 'video' | null => {
+  try {
+    const url = new URL(String(value ?? ''), 'https://www.youtube.com'), shorts = /^\/shorts\/([^/?#]+)/i.exec(url.pathname);
+    if (shorts && decodeURIComponent(shorts[1]!) === videoId) return 'short';
+    return url.pathname === '/watch' && url.searchParams.get('v') === videoId ? 'video' : null;
+  } catch { return null; }
+};
+/**
+ * Legacy extractYoutubePlayerContentTypeSignals + resolveFromDetail (youtubeContentType.js:47-136): watch-page player
+ * flags decide the type and nothing is guessed. A premiere is live only while it is upcoming; liveBroadcastDetails alone
+ * is not a live signal.
+ */
+export function playerContentType(player: Node | undefined, videoId: string): { type: 'video' | 'short' | 'live'; source: string } | null {
+  if (!player || typeof player !== 'object') return null;
+  const details = player.videoDetails ?? {}, micro = player.microformat?.playerMicroformatRenderer ?? {};
+  const flag = (...values: unknown[]) => values.find(v => typeof v === 'boolean') as boolean | undefined;
+  const shorts = flag(micro.isShortsEligible, details.isShortsEligible), liveContent = flag(details.isLiveContent), isLive = flag(details.isLive),
+    upcoming = flag(details.isUpcoming), liveNow = flag(micro.liveBroadcastDetails?.isLiveNow), canonical = canonicalKind(micro.canonicalUrl ?? player.canonicalUrl, videoId);
+  if (liveContent === true) return { type: 'live', source: 'youtubei:player_live_content' };
+  if (isLive === true || upcoming === true || liveNow === true) return { type: 'live', source: 'youtubei:player_live_flag' };
+  if (shorts === true) return { type: 'short', source: 'youtubei:player_shorts_eligible' };
+  if (canonical === 'short') return { type: 'short', source: 'youtubei:player_shorts_canonical' };
+  if (canonical === 'video') return { type: 'video', source: 'youtubei:player_canonical' };
+  if (shorts === false && (liveContent === false || isLive === false && upcoming === false && liveNow === false)) return { type: 'video', source: 'youtubei:player_type_flags' };
+  return null;
+}
 export function mapWebVideo(info: Node, channelId: string, videoId: string, comments: CommentsResult, commentLimit: number, observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE, metricsOnly = false): VideoFacts {
   const basic = info.basic_info ?? {}, micro = info.page?.[0]?.microformat ?? {}, primary = info.primary_info ?? {}, observed = observedAt;
   const publication = absoluteDate(micro.publish_date ?? micro.upload_date, locale);
@@ -185,10 +211,12 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
     tags: basic.keywords ?? [], thumbnails: { default: { url: thumb(basic.thumbnail ?? micro.thumbnails) ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` } } },
     contentDetails: duration ? { duration: `PT${duration}S` } : {}, statistics: {} }, null, comments, commentLimit, observed);
   const metric = (value: number | null) => ({ value, status: value === null ? 'unresolved' as const : 'exact' as const, source: 'youtubei:video', observed_at: observed });
-  const player = info._raw_player ?? {}, rawMicro = player.microformat?.playerMicroformatRenderer ?? {};
-  const live = basic.is_live === true || basic.is_live_content === true || basic.is_upcoming === true || !!rawMicro.liveBroadcastDetails;
-  const canonical = text(rawMicro.canonicalUrl ?? micro.url_canonical) ?? '';
-  const short = rawMicro.isShortsEligible === true || player.videoDetails?.isShortsEligible === true || basic.is_short === true || canonical.includes('/shorts/');
+  // The first player with authoritative type evidence wins, so IOS without a microformat cannot erase WEB's (legacy V-90).
+  const players: Node[] = info._raw_players ?? (info._raw_player ? [info._raw_player] : []);
+  const type = players.map(p => playerContentType(p, videoId)).find(Boolean) ?? null;
+  const live = type?.type === 'live', short = type?.type === 'short';
+  const upcoming = basic.is_upcoming === true || players.some(p => p?.videoDetails?.isUpcoming === true);
+  const start = basic.start_timestamp ?? micro.start_timestamp, end = basic.end_timestamp ?? micro.end_timestamp;
   const like = likeCount(info, locale), facts = access(info);
   // Legacy missingLikeIsZero (detailPolicy.js:93-102): a full detail of an accessible video without a like count is a
   // policy zero. A metrics refresh reads no like button, so its missing count stays unresolved and keeps the stored one.
@@ -197,14 +225,16 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
     : metric(null);
   const viewDetail = countDetail(basic.view_count ?? micro.view_count ?? primary.view_count, locale);
   const commentCount = comments.kind === 'page' ? parseCount(comments.total_text, locale)?.value ?? null : count(info.comments_entry_point_header?.comment_count, locale);
-  return VideoFactsSchema.parse({ ...mapped, content_type: live ? 'live' : short ? 'short' : 'video', content_type_source: live || short || rawMicro.isShortsEligible === false ? 'youtubei:player' : 'default:shorts_unknown',
+  return VideoFactsSchema.parse({ ...mapped, content_type: type?.type ?? 'video', content_type_source: type?.source ?? 'default:shorts_unknown',
     url: short && !live ? `https://www.youtube.com/shorts/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`,
     published_at: published.value, published_at_precision: published.precision, published_at_source: publication.value ? 'youtubei:player_microformat' : 'youtubei:next_date',
     published_text_raw: publication.value ? text(micro.publish_date ?? micro.upload_date) : text(primary.published?.text ?? primary.published),
     duration_seconds: metric(duration || null), view_count: viewDetail && !viewDetail.exact ? { ...metric(view), status: 'estimated' } : metric(view), like_count: likeMetric,
     comment_count: comments.kind === 'disabled' ? { ...metric(0), status: 'disabled' } : { ...metric(commentCount), status: comments.kind === 'page' && commentCount !== null && !parseCount(comments.total_text, locale)?.exact ? 'estimated' : commentCount === null ? 'unresolved' : 'exact' },
     ...facts, 
-    live_started_at: micro.start_timestamp ? new Date(micro.start_timestamp).toISOString() : null, live_ended_at: micro.end_timestamp ? new Date(micro.end_timestamp).toISOString() : null,
+    // Legacy youtubeJs.js:1534-1535: a scheduled broadcast's start is its schedule, not a start.
+    live_scheduled_at: upcoming && start ? new Date(start).toISOString() : null, live_started_at: !upcoming && start ? new Date(start).toISOString() : null,
+    live_ended_at: end ? new Date(end).toISOString() : null,
     extractor_version: 'yt-collector/2 (youtubei.js 18.1.0 web)', ...(actualChannel && actualChannel !== channelId ? { owner_channel_id: actualChannel } : {}) });
 }
 /**
@@ -231,8 +261,7 @@ export async function videoDetail(yt: Innertube, channelId: string, videoId: str
       continue;
     }
     const decision = playability(info.playability_status);
-    const playerBody = responses.slice().reverse().find(r => r.endpoint.endsWith('/player'))?.body;
-    if (playerBody) { try { info._raw_player = JSON.parse(playerBody); } catch { /* Parser owns malformed response handling. */ } }
+    info._raw_players = responses.filter(r => r.endpoint.endsWith('/player')).flatMap(r => { try { return [JSON.parse(r.body)]; } catch { return []; } });
     if (decision.kind === 'bot') throw new ScrapeError('blocked', 'YouTube challenged this identity');
     if (explicitTerminal(decision)) return terminalVideo(channelId, videoId, decision.kind === 'content' && decision.reason_code === 'private' ? 'private' : 'removed', observedAt);
     if (needsAlternateClient(info, decision, metricsOnly, locale)) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { absoluteDate, channelFacts, mapWebVideo, playability, uploads, videoDetail } from '../src/youtube/web-scrape.ts';
+import { absoluteDate, channelFacts, mapWebVideo, playability, playerContentType, uploads, videoDetail } from '../src/youtube/web-scrape.ts';
 import { topComments, ScrapeError } from '../src/youtube/scrape.ts';
 import { parseCount } from '../src/youtube/map.ts';
 const channel = 'UC_x5XG1OV2P6uZZ5FSM9Ttw', id = 'abcdefghijk';
@@ -141,4 +141,26 @@ test('field status projects numeric and textual view evidence consistently', () 
   const viewed = mapWebVideo(text, channel, id, { kind: 'skipped' }, 0, undefined, 'en');
   assert.deepEqual([viewed.view_count.value, viewed.view_count.status], [1_200_000, 'estimated']);
   assert.equal(mapWebVideo(info(), channel, id, { kind: 'skipped' }, 0).view_count.status, 'exact');
+});
+
+// Batch 2c: legacy content type rules (youtubeContentType.js) and live timestamps (youtubeJs.js:1534-1535).
+const player = (details: Record<string, unknown>, micro: Record<string, unknown> = {}) => ({ videoDetails: details, microformat: { playerMicroformatRenderer: micro } });
+test('structured player evidence decides the type; a finished premiere is a video, nothing is guessed', () => {
+  assert.deepEqual(playerContentType(player({ isLiveContent: true }), id), { type: 'live', source: 'youtubei:player_live_content' });
+  assert.deepEqual(playerContentType(player({ isLiveContent: false, isUpcoming: true }), id)?.type, 'live', 'a premiere is live while upcoming');
+  assert.deepEqual(playerContentType(player({ isLiveContent: false }, { isShortsEligible: false, liveBroadcastDetails: { isLiveNow: false }, canonicalUrl: `https://www.youtube.com/watch?v=${id}` }), id),
+    { type: 'video', source: 'youtubei:player_canonical' }, 'liveBroadcastDetails alone is not live');
+  assert.deepEqual(playerContentType(player({}, { isShortsEligible: true }), id), { type: 'short', source: 'youtubei:player_shorts_eligible' });
+  assert.deepEqual(playerContentType(player({}, { canonicalUrl: `https://www.youtube.com/shorts/${id}` }), id)?.type, 'short');
+  assert.equal(playerContentType(player({}, { canonicalUrl: 'https://www.youtube.com/shorts/otherVideo1' }), id), null, 'another video canonical is no evidence');
+  assert.equal(playerContentType(player({}), id), null);
+});
+test('IOS without a microformat cannot erase WEB Shorts evidence; a scheduled start is not a start', () => {
+  const web = player({ isLiveContent: false }, { isShortsEligible: true }), ios = player({ isLiveContent: false });
+  const facts = mapWebVideo({ ...info(), _raw_players: [web, ios] }, channel, id, { kind: 'skipped' }, 0);
+  assert.deepEqual([facts.content_type, facts.url], ['short', `https://www.youtube.com/shorts/${id}`]);
+  const upcoming = mapWebVideo({ ...info(), basic_info: { ...info().basic_info, is_upcoming: true, start_timestamp: new Date('2026-07-12T23:00:00Z') }, _raw_players: [player({ isLiveContent: true, isUpcoming: true })] }, channel, id, { kind: 'skipped' }, 0);
+  assert.deepEqual([upcoming.content_type, upcoming.live_scheduled_at, upcoming.live_started_at], ['live', '2026-07-12T23:00:00.000Z', null]);
+  const unknown = mapWebVideo(info(), channel, id, { kind: 'skipped' }, 0);
+  assert.deepEqual([unknown.content_type, unknown.content_type_source], ['video', 'default:shorts_unknown']);
 });
