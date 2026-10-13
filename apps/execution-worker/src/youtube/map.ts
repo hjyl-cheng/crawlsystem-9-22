@@ -31,7 +31,26 @@ export function parseKeywords(text: string | undefined): string[] {
   if (!text) return [];
   return [...text.matchAll(/"([^"]+)"|(\S+)/g)].map(m => (m[1] ?? m[2])!.trim()).filter(Boolean).slice(0, 100).map(k => k.slice(0, 200));
 }
-const hashtags = (...texts: (string | undefined)[]) => [...new Set(texts.flatMap(t => [...(t ?? '').matchAll(/(^|\s)(#[\p{L}\p{N}_]{1,100})/gu)].map(m => m[2]!)))].slice(0, 100);
+const textKey = (value: string) => value.normalize('NFKC').toLocaleLowerCase();
+/** Legacy normalizeVideoKeywords (videoMetadata.js:22-32): trimmed, first spelling kept, NFKC case-insensitive duplicates dropped. */
+export function normalizeKeywords(...lists: (readonly unknown[] | undefined)[]): string[] {
+  const seen = new Set<string>(), output: string[] = [];
+  for (const value of lists.flatMap(list => list ?? [])) {
+    if (typeof value !== 'string' || !value.trim() || seen.has(textKey(value.trim()))) continue;
+    seen.add(textKey(value.trim())); output.push(value.trim().slice(0, 200));
+  }
+  return output.slice(0, 100);
+}
+/** Legacy extractVideoHashtags (videoMetadata.js:34-48): any non-word boundary, Unicode letters, marks and join controls. */
+export function hashtags(...texts: (string | null | undefined)[]): string[] {
+  const seen = new Set<string>(), output: string[] = [];
+  for (const value of texts) for (const match of (value ?? '').matchAll(/(^|[^\p{L}\p{N}\p{M}\p{Join_Control}_])#([\p{L}\p{N}\p{M}\p{Join_Control}_]+)/gu)) {
+    const tag = `#${match[2]}`;
+    if (seen.has(textKey(tag))) continue;
+    seen.add(textKey(tag)); output.push(tag.slice(0, 200));
+  }
+  return output.slice(0, 100);
+}
 const bestThumb = (thumbs: Record<string, { url: string }> | undefined) => thumbs ? (thumbs.maxres ?? thumbs.standard ?? thumbs.high ?? thumbs.medium ?? thumbs.default)?.url ?? null : null;
 const absolute = (link: string) => /^https?:\/\//i.test(link) ? link : `https://${link}`;
 
@@ -107,8 +126,9 @@ export function toVideoFacts(api: ApiVideo, isShort: boolean | null, comments: C
     channel_id: s.channelId, source_content_id: api.id, content_type,
     content_type_source: live ? 'data_api:liveStreamingDetails' : isShort === null ? 'default:shorts_unknown' : 'youtubei:shorts_tab',
     url: content_type === 'short' ? `https://www.youtube.com/shorts/${api.id}` : `https://www.youtube.com/watch?v=${api.id}`,
-    title: s.title || '(untitled)', description: s.description || null, thumbnail_url: bestThumb(s.thumbnails),
-    keywords: (s.tags ?? []).slice(0, 100).map(t => t.slice(0, 200)), hashtags: hashtags(s.title, s.description),
+    // Legacy descriptionState: an observed empty description stays '' (delivered as empty), only an unobserved one is null.
+    title: s.title || '(untitled)', description: typeof s.description === 'string' ? (s.description.trim() ? s.description.slice(0, 20_000) : '') : null, thumbnail_url: bestThumb(s.thumbnails),
+    keywords: normalizeKeywords(s.tags), hashtags: hashtags(s.title, s.description),
     published_at: s.publishedAt, published_text_raw: s.publishedAt, published_at_status: 'exact', published_at_precision: 'second', published_at_source: src,
     duration_seconds: duration !== null ? metric(duration, 'exact', src, observed_at) : metric(null, s.liveBroadcastContent === 'upcoming' || s.liveBroadcastContent === 'live' ? 'unavailable' : 'unresolved', src, observed_at),
     view_count: count(stats.viewCount, 'unavailable'),

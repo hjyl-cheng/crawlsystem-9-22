@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { estimateRelative, parseCount, parseIsoDuration, parseKeywords, toChannelFacts, toVideoFacts, unavailableVideo, type AboutPage, type ApiChannel, type ApiVideo, type CommentsResult } from '../src/youtube/map.ts';
+import { estimateRelative, hashtags, normalizeKeywords, parseCount, parseIsoDuration, parseKeywords, toChannelFacts, toVideoFacts, unavailableVideo, type AboutPage, type ApiChannel, type ApiVideo, type CommentsResult } from '../src/youtube/map.ts';
 import { DataApi, DataApiError } from '../src/youtube/data-api.ts';
 import { ScrapeError, topComments } from '../src/youtube/scrape.ts';
 import type { Innertube } from 'youtubei.js';
@@ -115,4 +115,17 @@ test('Data API: a public video without likeCount is a policy zero; without comme
   assert.equal(read.comments_disabled, false, 'a comment page read on the web wins over the missing API count');
   const unknown = toVideoFacts(video({ statistics: { viewCount: '10' }, status: undefined } as never), false, { kind: 'skipped' }, 20, now);
   assert.deepEqual([unknown.like_count.status, unknown.comments_disabled], ['unavailable', null], 'without a privacy status nothing is inferred');
+});
+// Ported from oldsystem qybullmq/test/videoMetadata.test.js (batch 2e).
+test('extractVideoHashtags reads title and description with Unicode support and join controls', () => {
+  assert.deepEqual(hashtags('Short #Roblox #话题', 'More #roblox #maquillaje_2026 #한글'), ['#Roblox', '#话题', '#maquillaje_2026', '#한글']);
+  assert.deepEqual(hashtags('#می‌خواهم #क्‍षेत्र'), ['#می‌خواهم', '#क्‍षेत्र']);
+  assert.deepEqual(hashtags('end.#tag (#two)'), ['#tag', '#two'], 'any non-word character is a boundary');
+});
+test('normalizeVideoKeywords preserves source order and removes case duplicates', () => {
+  assert.deepEqual(normalizeKeywords(['Roblox', 'Brookhaven'], ['roblox', 'Shorts']), ['Roblox', 'Brookhaven', 'Shorts']);
+});
+test('descriptionState distinguishes a legitimate empty description from an unobserved one', () => {
+  assert.equal(toVideoFacts(video({ snippet: { ...video().snippet, description: '' } }), false, { kind: 'skipped' }, 20, now).description, '');
+  assert.equal(toVideoFacts(video({ snippet: { ...video().snippet, description: undefined } }), false, { kind: 'skipped' }, 20, now).description, null);
 });

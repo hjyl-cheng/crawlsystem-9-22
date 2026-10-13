@@ -1,7 +1,7 @@
 import { Innertube } from 'youtubei.js';
 import { ChannelFactsSchema, VideoFactsSchema, VideoUnavailableSchema, type ChannelFacts, type VideoFacts, type VideoItem } from '@crawlsystem/contracts';
 import { ScrapeError, topComments, classify } from './scrape.ts';
-import { parseCount, parseKeywords, toVideoFacts, type CommentsResult } from './map.ts';
+import { normalizeKeywords, parseCount, parseKeywords, toVideoFacts, type CommentsResult } from './map.ts';
 import { findSubscriberCountText, localizedAbsoluteUtcDay } from './localized.ts';
 import type { BrowserIdentity } from './identity.ts';
 import { IDENTITY_POLICY } from './identity.ts';
@@ -32,6 +32,20 @@ function likeCount(info: Node, locale: string): { value: number | null; status?:
   return { value: null, source: 'youtubei:video' };
 }
 const thumb = (values: Node[] | undefined) => values?.slice().sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0]?.url ?? null;
+/** Legacy bestThumbnail (youtubeJs.js:205-227): the largest area across every source, as an absolute URL; none is null. */
+function largestThumbnail(...values: unknown[]): string | null {
+  const found: { url: string; area: number }[] = [];
+  const visit = (value: unknown, depth = 0): void => {
+    if (!value || depth > 4) return;
+    if (Array.isArray(value)) { for (const item of value) visit(item, depth + 1); return; }
+    if (typeof value !== 'object') return;
+    const node = value as Node;
+    if (typeof node.url === 'string') found.push({ url: new URL(node.url, 'https://www.youtube.com').toString(), area: Number(node.width || 0) * Number(node.height || 0) });
+    for (const key of ['thumbnails', 'thumbnail', 'image', 'sources', 'content_image', 'contentImage']) if (node[key] && node[key] !== node) visit(node[key], depth + 1);
+  };
+  for (const value of values) visit(value);
+  return found.sort((a, b) => b.area - a.area)[0]?.url ?? null;
+}
 function strings(value: unknown, depth = 0): string[] {
   if (!value || depth > 9) return [];
   if (typeof value === 'string') return [value];
@@ -207,8 +221,11 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
   // Uploads may list a collaboration or the artist's VEVO release; keep it with this channel and record its owner.
   const actualChannel = basic.channel_id ?? micro.channel?.id ?? info.secondary_info?.owner?.author?.id;
   // Use the existing comment mapping; replace API provenance with the actually observed web facts.
-  const mapped = toVideoFacts({ id: videoId, snippet: { channelId, title, description: text(basic.short_description ?? info.secondary_info?.description) ?? '', publishedAt: published.value,
-    tags: basic.keywords ?? [], thumbnails: { default: { url: thumb(basic.thumbnail ?? micro.thumbnails) ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` } } },
+  // Legacy description order (youtubeJs.js:1594-1600): the player's short description, else the watch page description.
+  const description = typeof basic.short_description === 'string' ? basic.short_description : text(info.secondary_info?.description) ?? undefined;
+  const thumbnail = largestThumbnail(basic.thumbnail, micro.thumbnails);
+  const mapped = toVideoFacts({ id: videoId, snippet: { channelId, title, description, publishedAt: published.value,
+    tags: normalizeKeywords(basic.keywords, basic.tags, micro.keywords), thumbnails: thumbnail ? { default: { url: thumbnail } } : undefined },
     contentDetails: duration ? { duration: `PT${duration}S` } : {}, statistics: {} }, null, comments, commentLimit, observed);
   const metric = (value: number | null) => ({ value, status: value === null ? 'unresolved' as const : 'exact' as const, source: 'youtubei:video', observed_at: observed });
   // The first player with authoritative type evidence wins, so IOS without a microformat cannot erase WEB's (legacy V-90).

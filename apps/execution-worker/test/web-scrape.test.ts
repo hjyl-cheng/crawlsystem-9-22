@@ -174,3 +174,9 @@ test('metrics refresh does not require a content type probe and refreshes likes 
   const old = await videoDetail(yt as never, channel, id, 20, true, [], undefined, 'pt-BR', 'basic');
   assert.ok(!('unavailable' in old)); assert.equal(old.like_count.status, 'unresolved'); assert.deepEqual(calls, ['info', 'basic']);
 });
+test('the largest thumbnail by area is kept as an absolute URL and none is never invented', () => {
+  const facts = mapWebVideo({ ...info(), basic_info: { ...info().basic_info, thumbnail: [{ url: '//i.ytimg.com/a.jpg', width: 120, height: 90 }, { url: 'https://i.ytimg.com/b.jpg', width: 1280, height: 720 }] } }, channel, id, { kind: 'skipped' }, 0);
+  assert.equal(facts.thumbnail_url, 'https://i.ytimg.com/b.jpg');
+  assert.equal(mapWebVideo(info(), channel, id, { kind: 'skipped' }, 0).thumbnail_url, null);
+  assert.equal(mapWebVideo({ ...info(), basic_info: { ...info().basic_info, short_description: '' } }, channel, id, { kind: 'skipped' }, 0).description, '');
+});

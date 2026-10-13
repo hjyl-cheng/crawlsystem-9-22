@@ -22,7 +22,7 @@ function videoItem(v:VideoFacts,position:number):LegacyValue {
   view_count:resolved(v.view_count),view_count_status:v.view_count.status,view_count_source:v.view_count.source,view_count_observed_at:v.view_count.observed_at,
   like_count:resolved(v.like_count),like_count_status:v.like_count.status,like_count_source:v.like_count.source,like_count_observed_at:v.like_count.observed_at,
   comment_count:resolved(v.comment_count),comment_count_status:v.comment_count.status,comment_count_source:v.comment_count.source,comment_count_observed_at:v.comment_count.observed_at,
-  comments_disabled:v.comments_disabled,description:v.description,description_status:v.description===null?'unavailable':'exact',description_source:v.extractor_version,hashtags:v.hashtags,keywords:v.keywords,
+  comments_disabled:v.comments_disabled,description:v.description===null?null:v.description.trim()?v.description:'',description_status:v.description===null?'unavailable':v.description.trim()?'exact':'empty',description_source:v.extractor_version,hashtags:v.hashtags,keywords:v.keywords,
   access_status:v.access_status,access_status_source:v.access_status_source,is_members_only:v.is_members_only,live_scheduled_at:v.live_scheduled_at,live_started_at:v.live_started_at,live_ended_at:v.live_ended_at,extractor_version:v.extractor_version};
  item.item_hash=hash(Object.fromEntries(Object.entries(item).filter(([k])=>k!=='position'&&!k.endsWith('_observed_at')&&!k.endsWith('_source')&&k!=='extractor_version')));
  return item;
