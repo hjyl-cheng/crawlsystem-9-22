@@ -22,7 +22,8 @@ export class BusinessReceiver {
   const {m,shard}=validateDelivery(value);
   const result=await this.ingress.acceptShard(shard),failed=result.receipts.find((r:LegacyValue)=>['rejected','conflict'].includes(r.status));
   const metadata={delivery_id:m.delivery_id,stream_id:m.stream_id,channel_id:m.channel_id,manifest_hash:shard.manifest_hash,version_vector:m.version_vector,status:failed?'FAILED':'PENDING',code:failed?.error_code??null};
-  const saved=await this.pool.query('INSERT INTO delivery_transport.messages(delivery_id,channel_id,stream_id,manifest_hash,metadata,revision_ids) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(delivery_id) DO UPDATE SET receipt_sent=false,last_received_at=now() WHERE delivery_transport.messages.manifest_hash=EXCLUDED.manifest_hash AND delivery_transport.messages.stream_id=EXCLUDED.stream_id AND delivery_transport.messages.channel_id=EXCLUDED.channel_id RETURNING delivery_id',[m.delivery_id,m.channel_id,m.stream_id,shard.manifest_hash,metadata,shard.items.map((i:LegacyValue)=>i.revision_id)]);
+  // A redelivery after a rejection carries this attempt's outcome; the first attempt's FAILED must not stick (R5).
+  const saved=await this.pool.query('INSERT INTO delivery_transport.messages(delivery_id,channel_id,stream_id,manifest_hash,metadata,revision_ids) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(delivery_id) DO UPDATE SET receipt_sent=false,last_received_at=now(),metadata=EXCLUDED.metadata WHERE delivery_transport.messages.manifest_hash=EXCLUDED.manifest_hash AND delivery_transport.messages.stream_id=EXCLUDED.stream_id AND delivery_transport.messages.channel_id=EXCLUDED.channel_id RETURNING delivery_id',[m.delivery_id,m.channel_id,m.stream_id,shard.manifest_hash,metadata,shard.items.map((i:LegacyValue)=>i.revision_id)]);
   if(!saved.rowCount)throw new Error('DELIVERY_IDENTITY_MISMATCH');
   if(!failed){
    await this.activator.activateReady(m.channel_id);

@@ -169,3 +169,12 @@ test('cleanup removes only old acknowledged outbox rows',async()=>{
  await pool.query('SELECT delivery.cleanup_outbox(200)');assert.equal((await pool.query('SELECT count(*)::int n FROM delivery.outbox WHERE delivery_id=$1',[r.delivery_id])).rows[0].n,1);
  await pool.query("UPDATE delivery.records SET status='DELIVERED' WHERE delivery_id=$1",[r.delivery_id]);await pool.query('SELECT delivery.cleanup_outbox(200)');assert.equal((await pool.query('SELECT count(*)::int n FROM delivery.outbox WHERE delivery_id=$1',[r.delivery_id])).rows[0].n,0);
 });
+test('a delivery accepted after an earlier rejection reports DELIVERED, not the first FAILED (R5)',async()=>{
+ const s=snapshot(),id=await stream(),p=mapPublication(s,undefined,id,randomUUID()),m=message(p,id);
+ // The first attempt was rejected: its transport row says FAILED.
+ await biz.query(`INSERT INTO delivery_transport.messages(delivery_id,channel_id,stream_id,manifest_hash,metadata,revision_ids) VALUES($1,$2,$3,$4,$5,$6)`,
+  [m.delivery_id,m.channel_id,m.stream_id,p.shard!.manifest_hash,{delivery_id:m.delivery_id,stream_id:m.stream_id,channel_id:m.channel_id,manifest_hash:p.shard!.manifest_hash,version_vector:m.version_vector,status:'FAILED',code:'TRANSIENT_REJECTION'},
+   p.envelopes.map(e=>e.revision_id)]);
+ await receiver.accept(m);
+ assert.equal((await receipts()).find(r=>r.delivery_id===m.delivery_id)?.status,'DELIVERED');
+});
