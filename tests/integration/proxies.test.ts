@@ -221,14 +221,14 @@ test('imported proxies get their exit country checked: pending first, failures b
   assert.deepEqual([item('198.51.100.22').exit_check, item('198.51.100.22').exit_check_error], ['failed', 'timeout']);
   assert.deepEqual(view.exit_countries, [{ country: 'BR', count: 2 }, { country: null, count: 1 }]);
   assert.deepEqual(await store.claimExitChecks(p.operator.workspace_id, 10), [], 'nothing due right after the checks');
-  // The failed one returns after its backoff; the successful ones after a week.
+  // The failed one returns after its backoff; the successful ones after a day (free proxies' exits drift).
   await pool.query(`UPDATE control.proxies SET exit_checked_at=exit_checked_at-interval '31 minutes' WHERE workspace_id=$1`, [p.operator.workspace_id]);
   assert.deepEqual((await store.claimExitChecks(p.operator.workspace_id, 10)).map(c => c.host), ['198.51.100.22']);
   await store.recordExitCheck(p.operator.workspace_id, byHost('198.51.100.22'), { ok: false, error: 'network' });
   await pool.query(`UPDATE control.proxies SET exit_checked_at=exit_checked_at-interval '45 minutes' WHERE workspace_id=$1`, [p.operator.workspace_id]);
   assert.deepEqual(await store.claimExitChecks(p.operator.workspace_id, 10), [], 'the second failure waits an hour');
-  await pool.query(`UPDATE control.proxies SET exit_checked_at=exit_checked_at-interval '7 days' WHERE workspace_id=$1`, [p.operator.workspace_id]);
-  assert.equal((await store.claimExitChecks(p.operator.workspace_id, 10)).length, 3, 'a week later everything is rechecked');
+  await pool.query(`UPDATE control.proxies SET exit_checked_at=exit_checked_at-interval '24 hours' WHERE workspace_id=$1`, [p.operator.workspace_id]);
+  assert.equal((await store.claimExitChecks(p.operator.workspace_id, 10)).length, 3, 'a day later everything is rechecked')
   await store.recordExitCheck(p.operator.workspace_id, byHost('198.51.100.20'), { ok: false, error: 'timeout' });
   view = await store.overview(p.reader);
   assert.deepEqual([view.items.find(i => i.host === '198.51.100.20')!.exit_check, view.items.find(i => i.host === '198.51.100.20')!.exit_country], ['ok', 'BR'], 'a failed recheck keeps the last country');

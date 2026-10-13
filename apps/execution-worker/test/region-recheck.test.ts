@@ -12,15 +12,17 @@ import { fixtureContext } from './support.ts';
 // A fake YouTube session that remembers its location and records one browse request through the captured fetch.
 type Session = { region: string; fetcher: typeof fetch };
 const unavailable = JSON.stringify({ alerts: [{ alertRenderer: { text: { simpleText: 'Este canal não está disponível.' } } }] });
-function harness(apiCountry: string, { reserve = true } = {}) {
+function harness(apiCountry: string, { reserve = true, exit }: { reserve?: boolean; exit?: string } = {}) {
   const { ref, value } = fixtureContext(), objects = new Map<string, Uint8Array>(), notes: string[] = [], acquired: (string | undefined)[] = [];
   const channel = value.input.channel_id, sample = value.input.source_mode === 'fixture' ? value.input.sample : null;
   const archive = new RawArchive({ async get(key) { return objects.get(key) ?? null; }, async put(key, data) { objects.set(key, data); } }, { async send() {} });
   let apiCalls = 0;
   const api = new DataApi('k'.repeat(30), async () => { apiCalls++; return Response.json({ items: [{ id: channel, snippet: { title: 'Pfizer', country: apiCountry, publishedAt: '2009-07-15T18:41:35Z' },
     statistics: { subscriberCount: '89500', viewCount: '48863112', videoCount: '1150' } }] }); });
-  const gateway = { async withProfile(_lease: unknown, _signal: AbortSignal, work: (t: unknown) => unknown) {
-    return work({ identity: { profile_id: 'p' }, fetch: async () => new Response(unavailable, { status: 200 }) }); } };
+  // YouTube's exit check answers with the lease's country unless the test pins another exit.
+  const swJsData = (country: string) => `)]}'\n${JSON.stringify([[null, null, [[[null, country, null, '192.0.2.1']]]]])}`;
+  const gateway = { async withProfile(lease: { egress_country: string }, _signal: AbortSignal, work: (t: unknown) => unknown) {
+    return work({ identity: { profile_id: 'p' }, fetch: async (url: string) => new Response(String(url).endsWith('/sw.js_data') ? swJsData(exit ?? lease.egress_country) : unavailable, { status: 200 }) }); } };
   const proxies = { async acquire(_ttl: number, country?: string) {
     acquired.push(country);
     if (country && !reserve) throw new ProxyUnavailable('no_country_proxies', 60_000);
@@ -77,4 +79,13 @@ test('without a proxy of that country a region-blocked video keeps its default r
   const t = harness('US', { reserve: false }), [item] = await t.collector.videos(t.ctx, ['aaaaaaaaaaa'], 0, 'VIDEO-0');
   assert.ok(item && 'unavailable' in item); assert.equal(item.access_status, 'region_blocked');
   assert.ok(t.notes.some(n => n.includes('no US proxy reserve')));
+});
+
+test('a proxy whose YouTube exit is not the channel country is skipped, and the About falls back after three', async () => {
+  const t = harness('US', { exit: 'RO' }), facts = await t.collector.about(t.ctx);
+  assert.ok('title' in facts); assert.equal(facts.source, 'data_api:channels_fallback');
+  assert.deepEqual(t.acquired, [undefined, 'US', 'US', 'US']);
+  assert.equal(t.notes.filter(n => n.includes('YouTube sees exit RO, not US')).length, 3);
+  assert.ok(t.notes.some(n => n.includes('no US proxy reserve')));
+  assert.deepEqual(t.units().find(u => u.step === 'ABOUT')!.responses.map(r => r.region ?? null), [null, null], 'the exit check is not a captured response');
 });

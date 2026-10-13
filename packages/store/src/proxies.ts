@@ -125,7 +125,7 @@ export class ProxyStore {
       const rows = (await client.query(`UPDATE control.proxies SET exit_checked_at=clock_timestamp(),exit_check_error='checking'
         WHERE (workspace_id,proxy_id) IN (SELECT workspace_id,proxy_id FROM control.proxies
           WHERE workspace_id=$1 AND (exit_checked_at IS NULL OR retired_at IS NULL AND (
-            (exit_country IS NOT NULL AND exit_checked_at < clock_timestamp()-interval '7 days')
+            (exit_country IS NOT NULL AND exit_checked_at < clock_timestamp()-interval '24 hours')
             OR (exit_country IS NULL AND exit_checked_at < clock_timestamp()-least(interval '24 hours', interval '30 minutes'*power(2,greatest(exit_check_failures-1,0))))))
           ORDER BY exit_checked_at NULLS FIRST,created_at,proxy_id LIMIT $2 FOR UPDATE SKIP LOCKED)
         RETURNING proxy_id,protocol,host,port,username,credential,tls_insecure`, [workspaceId, limit])).rows;

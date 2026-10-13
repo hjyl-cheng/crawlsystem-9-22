@@ -10,18 +10,20 @@ import { apiChannelFacts, collectedFor, toVideoFacts, unavailableVideo } from '.
 import { browserSession, channelFacts, uploads, videoDetail } from './web-scrape.ts';
 import {channelUnavailablePage,confirmedChannelRemoval} from './channel-removal.ts';
 import { DEFAULT_REGION, RegionUnavailable, regionCode, regionalFacts } from './region.ts';
+import { EXIT_CHECK_URL, parseSwJsData } from '@crawlsystem/execution-client/proxy-exit';
 import type {ChannelRemoval} from '@crawlsystem/contracts/pipeline';
 
 export interface CollectionContext { owner: WorkflowInput; channelId: string; signal: AbortSignal; deadline: number; note: (message: string) => Promise<void>; guard: RequestGuard; }
 export const webOperations = { browserSession, channelFacts, uploads, videoDetail };
-/** A country recheck waits this long at most for a busy or cooling proxy of that country. */
-const REGION_WAIT_MS = 120_000;
+/** A country recheck waits this long at most for a busy or cooling proxy of that country, and tries this many whose YouTube exit differs. */
+const REGION_WAIT_MS = 120_000, REGION_PROXY_TRIES = 3;
+class RegionMismatch extends Error { constructor(readonly seen: string | null) { super('Proxy exit country differs'); } }
 export class WebCollector {
   private regions = new WeakMap<CollectionContext, Promise<string | null>>();
   constructor(private gateway: FingerprintClient, private proxies: LeaseClient, private archive: RawArchive, private dataApi: DataApi, readonly enforceBrazil = false, private operations = webOperations) {}
   /** One proxied session; `region` is the legacy country recheck, with that country's egress and YouTube location. */
   private async web<T>(ctx: CollectionContext, responses: RawResponse[], work: (yt: Awaited<ReturnType<typeof browserSession>>) => Promise<T>, region?: string): Promise<T> {
-    const regionDeadline = Date.now() + REGION_WAIT_MS;
+    const regionDeadline = Date.now() + REGION_WAIT_MS; let mismatched = 0;
     for (;;) {
       ctx.signal.throwIfAborted();
       if (Date.now() >= ctx.deadline) throw new ScrapeError('upstream', 'Collection deadline elapsed');
@@ -38,6 +40,11 @@ export class WebCollector {
       const start = Date.now(), first = responses.length; let outcome: Outcome = 'success', errorClass: string | undefined;
       try {
         return await this.gateway.withProfile(lease, ctx.signal, async transport => {
+          // Free proxies' exits drift between exit checks; a recheck first asks YouTube which country it sees.
+          if (region) {
+            const seen = parseSwJsData(await (await transport.fetch(EXIT_CHECK_URL, { signal: ctx.signal })).text())?.country ?? null;
+            if (seen !== region) throw new RegionMismatch(seen);
+          }
           await ctx.note(`identity=${transport.identity.profile_id}; pt-BR / ${region ?? DEFAULT_REGION} / America/Sao_Paulo; proxy=${lease.proxy_id ?? 'unknown'}; egress=${lease.egress_country ?? 'unknown'}; clients=WEB,IOS`);
           try { return await work(await this.operations.browserSession(captureFetch(transport.fetch, responses), transport.identity, region)); }
           finally {
@@ -48,6 +55,11 @@ export class WebCollector {
           }
         });
       } catch (error) {
+        if (error instanceof RegionMismatch) {
+          await ctx.note(`proxy=${lease.proxy_id ?? 'unknown'}; YouTube sees exit ${error.seen ?? 'unknown'}, not ${region}`);
+          if (++mismatched >= REGION_PROXY_TRIES) throw new RegionUnavailable(region!);
+          continue;
+        }
         if (!ctx.signal.aborted && (error instanceof ScrapeError && ['blocked', 'network'].includes(error.kind) || error instanceof FingerprintError && error.penalizeProxy)) {
           outcome = error instanceof ScrapeError && error.kind === 'blocked' ? 'blocked' : 'failure'; errorClass = `web_${outcome}`;
           await ctx.note(`proxy=${lease.proxy_id ?? 'unknown'}; failure=${outcome === 'blocked' ? 'bot_challenge_or_rate_limit' : 'transport'}`).catch(() => {});
