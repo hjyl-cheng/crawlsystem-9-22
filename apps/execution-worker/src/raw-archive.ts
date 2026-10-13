@@ -4,7 +4,8 @@ import { AwsClient } from 'aws4fetch';
 import { Kafka, logLevel, type Producer } from 'kafkajs';
 import type { WorkflowInput } from '@crawlsystem/contracts';
 
-export interface RawResponse { endpoint: string; method: string; status: number; captured_at: string; body: string; client?: string; }
+/** `region`: captured with that country's egress and YouTube location instead of the default identity. */
+export interface RawResponse { endpoint: string; method: string; status: number; captured_at: string; body: string; client?: string; region?: string; }
 export interface RawUnit<T = unknown> {
   schema_version: 'crawl.unit.v1'; owner: WorkflowInput; channel_id: string; step: string; unit_id: string; captured_at: string;
   responses: RawResponse[];

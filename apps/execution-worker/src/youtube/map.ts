@@ -76,6 +76,16 @@ export function toChannelFacts(api: ApiChannel, about: AboutPage, observed_at: s
   });
 }
 
+/** Legacy channel API fallback: About facts from the Data API alone when the web page is unavailable but the channel exists. */
+export function apiChannelFacts(api: ApiChannel, observed_at: string): ChannelFacts {
+  const none: AboutPage = { country: null, joined_text: null, view_count_text: null, subscriber_text: null, video_count_text: null, description: null,
+    links: [], business_email: false, tabs: [], is_family_safe: null, is_verified: null };
+  return ChannelFactsSchema.parse({ ...toChannelFacts(api, none, observed_at), youtube_business_email_available: null, source: 'data_api:channels_fallback' });
+}
+/** Listed uploads stay with the collected channel; another owner (collaboration, the artist's VEVO channel) is recorded, not rejected. */
+export function collectedFor(facts: VideoFacts, channelId: string): VideoFacts {
+  return facts.channel_id === channelId ? facts : VideoFactsSchema.parse({ ...facts, channel_id: channelId, owner_channel_id: facts.channel_id });
+}
 export interface ApiVideo { id: string; snippet: { channelId: string; title: string; description?: string; publishedAt: string; tags?: string[]; thumbnails?: Record<string, { url: string }>; liveBroadcastContent?: string };
   contentDetails?: { duration?: string }; statistics?: { viewCount?: string; likeCount?: string; commentCount?: string }; status?: { privacyStatus?: string };
   liveStreamingDetails?: { scheduledStartTime?: string; actualStartTime?: string; actualEndTime?: string } }

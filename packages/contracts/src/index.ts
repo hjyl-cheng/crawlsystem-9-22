@@ -87,6 +87,8 @@ export const VideoFactsSchema = z.strictObject({
   access_status_source: z.string().min(1).max(120), is_members_only: z.boolean(),
   live_scheduled_at: Timestamp.nullable(), live_started_at: Timestamp.nullable(), live_ended_at: Timestamp.nullable(),
   observed_at: Timestamp, extractor_version: z.string().min(1).max(120),
+  /** Set only when the listed upload is owned by another channel (a collaboration or the artist's VEVO channel). */
+  owner_channel_id: IdSchema.optional(),
 }).refine(v => v.comments_disabled !== true || (v.comment_count.value === 0 && v.comment_count.status === 'disabled' && (v.comments_first_page?.returned_count ?? 0) === 0), 'disabled comments require zero/disabled and no comments');
 export type VideoFacts = z.infer<typeof VideoFactsSchema>;
 /** A frozen target that exists in the listing but whose details cannot be collected.

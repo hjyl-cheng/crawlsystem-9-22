@@ -47,15 +47,18 @@ export class ProxyPool {
     if (!h) { h = { inflight: 0, consecutiveFailures: 0, cooldownUntil: 0, cooldowns: 0, lastSuccess: null, lastFailure: null, lastError: null, requests: 0, failures: 0, latencyMs: null, probedAt: null, qualified: false, trialPasses: 0 }; this.health.set(id, h); }
     return h;
   }
-  acquire(ttlMs = 120_000, requiredCountry?: string): Lease | { wait_ms: number; reason: 'unauthorized' | 'no_proxies' | 'in_trial' | 'all_busy_or_cooling' } {
+  acquire(ttlMs = 120_000, requiredCountry?: string): Lease | { wait_ms: number; reason: 'unauthorized' | 'no_proxies' | 'no_country_proxies' | 'in_trial' | 'all_busy_or_cooling' } {
     this.expire();
     const now = this.now();
     if (!this.authorized) return { wait_ms: 30_000, reason: 'unauthorized' };
     if (!this.assignments.size) return { wait_ms: 60_000, reason: 'no_proxies' };
-    const ready = [...this.assignments.values()].filter(a => { const h = this.state(a.proxy_id); return (!requiredCountry || a.egress_country === requiredCountry) && h.qualified && h.cooldownUntil <= now && h.inflight < a.max_concurrency; });
+    const candidates = [...this.assignments.values()].filter(a => !requiredCountry || a.egress_country === requiredCountry);
+    // Legacy NO_COUNTRY_RESERVE: the caller decides at once instead of waiting for a country this node never has.
+    if (!candidates.length) return { wait_ms: 60_000, reason: 'no_country_proxies' };
+    const ready = candidates.filter(a => { const h = this.state(a.proxy_id); return h.qualified && h.cooldownUntil <= now && h.inflight < a.max_concurrency; });
     if (!ready.length) {
-      if (![...this.assignments.keys()].some(id => this.state(id).qualified)) return { wait_ms: 30_000, reason: 'in_trial' };
-      const soonest = Math.min(...[...this.assignments.keys()].map(id => this.state(id).cooldownUntil).filter(t => t > now), now + 5_000);
+      if (!candidates.some(a => this.state(a.proxy_id).qualified)) return { wait_ms: 30_000, reason: 'in_trial' };
+      const soonest = Math.min(...candidates.map(a => this.state(a.proxy_id).cooldownUntil).filter(t => t > now), now + 5_000);
       return { wait_ms: Math.max(1_000, soonest - now), reason: 'all_busy_or_cooling' };
     }
     // Prefer proxies with fewer failures and fewer in-flight leases; randomise among equals.

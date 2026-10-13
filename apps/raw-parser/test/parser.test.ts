@@ -117,8 +117,8 @@ for (const scenario of ['lost-next','http-403','next-before-player','late-player
   await parser.parse(ref,new AbortController().signal);assert.equal(published,1);
 });
 
-test('an API fallback cannot publish a playlist-associated video owned by another channel', async () => {
-  const raw=memory(),parsed=memory(),plan=input(),channel='UC'+'a'.repeat(22),video='foreign0001',at=plan.plan.created_at;
+test('an API fallback keeps a listed upload owned by another channel and records that owner', async () => {
+  const raw=memory(),parsed=memory(),plan=input(),channel='UC'+'a'.repeat(22),owner='UC'+'b'.repeat(22),video='foreign0001',at=plan.plan.created_at;
   const frozen=FrozenInputSchema.parse({schema_version:CONTRACT_VERSION,source_mode:'youtube',channel_id:channel,required_domains:['VIDEO'],
     scope:{video_limit:30,max_age_days:90,comments_per_video:0,comment_sort:'TOP_COMMENTS'},reference_time:at,deadline_at:plan.plan.deadline_at,max_attempts:3,pipeline_version:'r3.v1'});
   plan.input=frozen;Object.assign(plan.plan,{source_mode:'youtube',fixture_id:null,channel_id:channel,input_hash:contentHash(frozen),required_domains:['VIDEO']});
@@ -126,8 +126,47 @@ test('an API fallback cannot publish a playlist-associated video owned by anothe
     owner:{schema_version:CONTRACT_VERSION,workspace_id:plan.plan.workspace_id,plan_id:plan.plan.plan_id,execution_epoch:1,input_hash:plan.plan.input_hash,workflow_id:plan.plan.workflow_id},
     channel_id:channel,step:'VIDEO-0',unit_id:video,captured_at:at,result:{channel_id:channel},
     responses:[{endpoint:'https://www.googleapis.com/youtube/v3/videos',method:'GET',status:200,captured_at:at,
-      body:JSON.stringify({items:[{id:video,snippet:{channelId:'UC'+'b'.repeat(22)}}]})}]},new AbortController().signal);
-  const parser=new RawParser({raw:raw.store,parsed:parsed.store,loadPlan:async()=>plan,publish:async()=>assert.fail('Foreign owner must not be published')});
-  await assert.rejects(parser.parse(ref,new AbortController().signal),error=>error instanceof ParseFailure&&error.code==='INVALID_FACT');
-  assert.equal(parsed.objects.size,0);
+      body:JSON.stringify({items:[{id:video,snippet:{channelId:owner,title:'gio., Dell Mac - ABBA HOLD',publishedAt:at},statistics:{viewCount:'10'},status:{privacyStatus:'public'}}]})}]},new AbortController().signal);
+  let published=0;const parser=new RawParser({raw:raw.store,parsed:parsed.store,loadPlan:async()=>plan,publish:async(_topic,_channel,fact)=>{
+    if(fact.kind!=='VIDEO'||'unavailable' in fact.payload)return assert.fail('The collaboration is collected');
+    assert.equal(fact.payload.channel_id,channel);assert.equal(fact.payload.owner_channel_id,owner);published++;
+  }});
+  await parser.parse(ref,new AbortController().signal);assert.equal(published,1);
+});
+
+test('a regional capture is parsed before the default region block, and the default stands without one', async () => {
+  const plan=input(),channel='UC'+'a'.repeat(22),video='abcdefghijk',at=plan.plan.created_at;
+  const frozen=FrozenInputSchema.parse({schema_version:CONTRACT_VERSION,source_mode:'youtube',channel_id:channel,required_domains:['ABOUT','VIDEO'],scope:{video_limit:30,max_age_days:365,comments_per_video:0,comment_sort:'TOP_COMMENTS'},reference_time:at,deadline_at:plan.plan.deadline_at,max_attempts:3,pipeline_version:'r3.v1'});
+  plan.input=frozen;Object.assign(plan.plan,{source_mode:'youtube',fixture_id:null,channel_id:channel,input_hash:contentHash(frozen)});
+  const player={playabilityStatus:{status:'OK'},videoDetails:{videoId:video,channelId:channel,title:'Only for US residents',shortDescription:'',lengthSeconds:'12',viewCount:'100',isLiveContent:false},
+    microformat:{playerMicroformatRenderer:{publishDate:'2026-10-10T12:00:00Z',uploadDate:'2026-10-10T12:00:00Z',isShortsEligible:false,externalChannelId:channel,title:{simpleText:'Only for US residents'},description:{simpleText:''},lengthSeconds:'12',viewCount:'100'}}};
+  const response=(path:string,body:unknown,region?:string)=>({endpoint:'https://www.youtube.com/youtubei/v1/'+path,method:'POST',status:200,client:'WEB',captured_at:at,body:JSON.stringify(body),...(region?{region}:{})});
+  const blocked={playabilityStatus:{status:'UNPLAYABLE',reason:'The uploader has not made this video available in your country'}};
+  const parse=async(responses:ReturnType<typeof response>[])=>{
+    const raw=memory();let payload:unknown;
+    const ref=await new RawArchive(raw.store,{async send(){}}).save({schema_version:'crawl.unit.v1',owner:{schema_version:CONTRACT_VERSION,workspace_id:plan.plan.workspace_id,plan_id:plan.plan.plan_id,execution_epoch:1,input_hash:plan.plan.input_hash,workflow_id:plan.plan.workflow_id},
+      channel_id:channel,step:'VIDEO-0',unit_id:video,captured_at:at,responses,result:{}},new AbortController().signal);
+    await new RawParser({raw:raw.store,parsed:memory().store,loadPlan:async()=>plan,publish:async(_t,_c,fact)=>{payload=fact.payload;}}).parse(ref,new AbortController().signal);
+    return payload as {title?:string;access_status?:string};
+  };
+  assert.equal((await parse([response('player',blocked),response('next',{}),response('player',player,'US'),response('next',{},'US')])).title,'Only for US residents');
+  assert.equal((await parse([response('player',blocked),response('next',{})])).access_status,'region_blocked');
+});
+
+test('an About page unavailable to the identity falls back to the captured Data API channel record', async () => {
+  const raw=memory(),parsed=memory(),plan=input(),channel='UC'+'c'.repeat(22),at=plan.plan.created_at;
+  const frozen=FrozenInputSchema.parse({schema_version:CONTRACT_VERSION,source_mode:'youtube',pipeline_version:'r3.v1',channel_id:channel,required_domains:['ABOUT'],scope:{video_limit:30,max_age_days:90,comments_per_video:0,comment_sort:'TOP_COMMENTS'},reference_time:at,deadline_at:plan.plan.deadline_at,max_attempts:3});
+  plan.input=frozen;Object.assign(plan.plan,{source_mode:'youtube',fixture_id:null,channel_id:channel,required_domains:['ABOUT'],input_hash:contentHash(frozen)});
+  const ref=await new RawArchive(raw.store,{async send(){}}).save({schema_version:'crawl.unit.v1',
+    owner:{schema_version:CONTRACT_VERSION,workspace_id:plan.plan.workspace_id,plan_id:plan.plan.plan_id,execution_epoch:1,input_hash:plan.plan.input_hash,workflow_id:plan.plan.workflow_id},
+    channel_id:channel,step:'ABOUT',unit_id:'channel',captured_at:at,result:{},responses:[
+      {endpoint:'https://www.youtube.com/youtubei/v1/browse',method:'POST',status:200,captured_at:at,body:JSON.stringify({alerts:[{alertRenderer:{text:{simpleText:'Este canal não está disponível.'}}}]})},
+      {endpoint:'https://www.googleapis.com/youtube/v3/channels',method:'GET',status:200,captured_at:at,
+        body:JSON.stringify({items:[{id:channel,snippet:{title:'Taspio',customUrl:'@taspio',country:'BR',publishedAt:'2016-08-29T20:09:20Z'},statistics:{subscriberCount:'8410000',viewCount:'2161743930',videoCount:'1498'}}]})}]},new AbortController().signal);
+  let published=0;const parser=new RawParser({raw:raw.store,parsed:parsed.store,loadPlan:async()=>plan,publish:async(topic,_channel,fact)=>{
+    assert.equal(topic,'facts.channel');if(fact.kind!=='ABOUT')return assert.fail('An existing channel is not removed');
+    assert.equal(fact.payload.title,'Taspio');assert.equal(fact.payload.country_code,'BR');assert.equal(fact.payload.subscriber_count.value,8410000);
+    assert.equal(fact.payload.source,'data_api:channels_fallback');published++;
+  }});
+  await parser.parse(ref,new AbortController().signal);assert.equal(published,1);
 });

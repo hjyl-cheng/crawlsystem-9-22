@@ -32,9 +32,10 @@ export function absoluteDate(value: unknown): { value: string | null; precision:
   const parsed = new Date(date);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date ? { value: parsed.toISOString(), precision: 'date_only' } : { value: null, precision: 'unknown' };
 }
-export async function browserSession(fetcher: typeof fetch, identity: BrowserIdentity): Promise<Innertube> {
+/** `region` overrides the identity's YouTube location for the legacy country recheck; the language stays pt-BR for parsing. */
+export async function browserSession(fetcher: typeof fetch, identity: BrowserIdentity, region: string = IDENTITY_POLICY.country): Promise<Innertube> {
   try {
-    return await Innertube.create({ fetch: fetcher, lang: IDENTITY_POLICY.language, location: IDENTITY_POLICY.country, timezone: IDENTITY_POLICY.timezone,
+    return await Innertube.create({ fetch: fetcher, lang: IDENTITY_POLICY.language, location: region, timezone: IDENTITY_POLICY.timezone,
       user_agent: identity.user_agent, visitor_data: identity.visitor_data, retrieve_player: false, generate_session_locally: true,
       retrieve_innertube_config: false, enable_session_cache: false });
   } catch (error) { throw classify(error); }
@@ -98,7 +99,8 @@ export function playability(value: Node | undefined): { kind: 'ok' | 'blocked' |
   if (/member|subscriber.only|join this channel|membro/.test(reason)) return { kind: 'terminal', status: 'members_only' };
   if (/removed|removido|copyright|direitos autorais|account.*terminated|conta.*encerrad|video.*not found/.test(reason)) return { kind: 'terminal', status: 'removed' };
   if (/confirm your age|age.restricted|confirme sua idade/.test(reason)) return { kind: 'terminal', status: 'age_restricted' };
-  if (/not available in your country|nao esta disponivel no seu pais/.test(reason)) return { kind: 'terminal', status: 'region_blocked' };
+  // Legacy region_restricted wording, plus the pt-BR player text this identity receives.
+  if (/not (?:made )?(?:this )?video available in your country|not available in your country|country where you are located|region restricted|nao (?:o )?disponibilizou no seu pais|nao esta disponivel (?:no|em) seu pais|bloqueado en tu pais/.test(reason)) return { kind: 'terminal', status: 'region_blocked' };
   if (status === 'LOGIN_REQUIRED' && /^please\s+sign\s+in[.!]?$/.test(reason.trim())) return { kind: 'login' };
   return { kind: status === 'OK' ? 'ok' : 'ambiguous' };
 }
@@ -110,8 +112,8 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
   const view = count(basic.view_count ?? micro.view_count ?? primary.view_count);
   const duration = count(basic.duration ?? micro.length_seconds);
   if (!title || !published.value || view === null || (!duration && basic.is_live !== true && basic.is_upcoming !== true)) throw new ScrapeError('parse', 'Video detail incomplete');
+  // Uploads may list a collaboration or the artist's VEVO release; keep it with this channel and record its owner.
   const actualChannel = basic.channel_id ?? micro.channel?.id ?? info.secondary_info?.owner?.author?.id;
-  if (actualChannel && actualChannel !== channelId) throw new ScrapeError('parse', 'Video belongs to another channel');
   // Use the existing comment mapping; replace API provenance with the actually observed web facts.
   const mapped = toVideoFacts({ id: videoId, snippet: { channelId, title, description: text(basic.short_description ?? info.secondary_info?.description) ?? '', publishedAt: published.value,
     tags: basic.keywords ?? [], thumbnails: { default: { url: thumb(basic.thumbnail ?? micro.thumbnails) ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` } } },
@@ -132,7 +134,7 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
     comment_count: comments.kind === 'disabled' ? { ...metric(0), status: 'disabled' } : { ...metric(commentCount), status: comments.kind === 'page' && commentCount !== null && !parseCount(comments.total_text, 'pt-BR')?.exact ? 'estimated' : commentCount === null ? 'unresolved' : 'exact' },
     access_status: micro.is_unlisted === true ? 'unlisted' : playability(info.playability_status).kind === 'ok' ? 'public' : 'unknown', access_status_source: 'youtubei:player',
     live_started_at: micro.start_timestamp ? new Date(micro.start_timestamp).toISOString() : null, live_ended_at: micro.end_timestamp ? new Date(micro.end_timestamp).toISOString() : null,
-    extractor_version: 'yt-collector/2 (youtubei.js 18.1.0 web)' });
+    extractor_version: 'yt-collector/2 (youtubei.js 18.1.0 web)', ...(actualChannel && actualChannel !== channelId ? { owner_channel_id: actualChannel } : {}) });
 }
 export async function videoDetail(yt: Innertube, channelId: string, videoId: string, commentLimit: number, metricsOnly = false, responses: RawResponse[] = [], observedAt = new Date().toISOString()): Promise<VideoItem> {
   const logins: boolean[] = [];

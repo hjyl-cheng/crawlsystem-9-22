@@ -139,3 +139,11 @@ test('a proxy one pass away from qualifying is checked before never-checked ones
   advance(60_001);
   assert.deepEqual(pool.probeCandidates(300_000, 2, 60_000).map(a => a.proxy_id), [P3, P1]);
 });
+
+test('a country this node has no proxy for is refused at once; a busy proxy of that country is waited for', () => {
+  const { pool } = setup([assignment(P1, { egress_country: 'US', max_concurrency: 1 }), assignment(P2, { egress_country: 'RO' })]);
+  assert.deepEqual(pool.acquire(60_000, 'JP'), { wait_ms: 60_000, reason: 'no_country_proxies' });
+  const us = lease(pool.acquire(60_000, 'US')); assert.equal(us.egress_country, 'US');
+  assert.equal((pool.acquire(60_000, 'US') as { reason: string }).reason, 'all_busy_or_cooling', 'the only US proxy is busy, not missing');
+  assert.equal(lease(pool.acquire(60_000)).egress_country, 'RO', 'without a country any free proxy serves');
+});

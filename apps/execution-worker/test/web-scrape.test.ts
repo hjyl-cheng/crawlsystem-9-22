@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { absoluteDate, channelFacts, mapWebVideo, uploads, videoDetail } from '../src/youtube/web-scrape.ts';
+import { absoluteDate, channelFacts, mapWebVideo, playability, uploads, videoDetail } from '../src/youtube/web-scrape.ts';
 import { topComments, ScrapeError } from '../src/youtube/scrape.ts';
 import { parseCount } from '../src/youtube/map.ts';
 const channel = 'UC_x5XG1OV2P6uZZ5FSM9Ttw', id = 'abcdefghijk';
@@ -53,8 +53,14 @@ test('real LockupView and ShortsLockupView uploads freeze valid IDs and match an
   assert.deepEqual(incremental.ids, ['abcdefghijk']); assert.equal(incremental.matched_anchor_id, '12345678901');
 });
 
-test('playlist association cannot override a video owner reported by the player', () => {
-  const foreign = info(); foreign.basic_info.channel_id = 'UC' + 'b'.repeat(22);
-  assert.throws(() => mapWebVideo(foreign, channel, id, { kind: 'skipped' }, 0),
-    (error: unknown) => error instanceof ScrapeError && error.kind === 'parse' && error.message === 'Video belongs to another channel');
+test('a listed upload owned by another channel stays with this channel and records the player owner', () => {
+  const owner = 'UC' + 'b'.repeat(22), foreign = info(); foreign.basic_info.channel_id = owner;
+  const facts = mapWebVideo(foreign, channel, id, { kind: 'skipped' }, 0);
+  assert.equal(facts.channel_id, channel); assert.equal(facts.owner_channel_id, owner);
+  assert.equal(mapWebVideo(info(), channel, id, { kind: 'skipped' }, 0).owner_channel_id, undefined, 'own uploads carry no owner field');
+});
+
+test('region blocks are recognised in the legacy English wording and the pt-BR player text', () => {
+  for (const reason of ['The uploader has not made this video available in your country', 'O usuário que enviou o vídeo não o disponibilizou no seu país.', 'Este vídeo não está disponível em seu país'])
+    assert.deepEqual(playability({ status: 'UNPLAYABLE', reason }), { kind: 'terminal', status: 'region_blocked' }, reason);
 });

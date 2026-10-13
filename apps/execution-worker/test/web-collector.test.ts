@@ -6,7 +6,6 @@ import { DataApi } from '../src/youtube/data-api.ts';
 import { ScrapeError } from '../src/youtube/scrape.ts';
 import { fixtureContext } from './support.ts';
 import { mergeRecoveryVideoTargets } from '@crawlsystem/contracts';
-import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 test('successful units are saved immediately; fallback occurs after three attempts and retries reuse durable results', async () => {
   const { ref, value } = fixtureContext(), objects = new Map<string, Uint8Array>(), events: string[] = [];
@@ -53,32 +52,24 @@ test('recovery takes priority within the 100-target limit including discovery ga
   assert.deepEqual(mergeRecoveryVideoTargets(discovered), discovered);
 });
 
-test('a fallback ownership conflict retains captured evidence without publishing a foreign video or fetching its comments', async () => {
+test('a listed upload owned by another channel is kept with the collected channel and its owner recorded', async () => {
   const { ref, value } = fixtureContext(), objects = new Map<string, Uint8Array>(), events: string[] = [];
   const archive = new RawArchive({ async get(key) { return objects.get(key) ?? null; }, async put(key, data) { objects.set(key, data); } },
     { async send(topic) { events.push(topic); } });
   const videoId = 'foreign0001', owner = 'UC' + 'b'.repeat(22), at = new Date().toISOString();
-  const apiBody = { items: [{ id: videoId, snippet: { channelId: owner } }] }; let permits = 0, attempts = 0;
+  const apiBody = { items: [{ id: videoId, snippet: { channelId: owner, title: 'gio., Dell Mac - ABBA HOLD', publishedAt: at }, statistics: { viewCount: '10' }, status: { privacyStatus: 'public' } }] };
+  let permits = 0, attempts = 0;
   const api = new DataApi('k'.repeat(30), async () => Response.json(apiBody));
   const gateway = { async withProfile(_lease: unknown, _signal: AbortSignal, work: (t: unknown) => unknown) { return work({ fetch, identity: { profile_id: 'p' } }); } };
   const proxies = { async acquire() { return {}; }, async release() {} };
-  const ops = { ...webOperations, async browserSession() { return {} as never; }, async videoDetail(
-    _yt: unknown, _channel: string, _id: string, _comments: number, _metrics = false, responses: import('../src/raw-archive.ts').RawResponse[] = []) {
-    attempts++; responses.push({ endpoint: 'https://www.youtube.com/youtubei/v1/player', method: 'POST', status: 200,
-      captured_at: at, body: JSON.stringify({ videoDetails: { videoId, channelId: owner } }) });
-    throw new ScrapeError('parse', 'Video belongs to another channel');
-  } };
+  const ops = { ...webOperations, async browserSession() { return {} as never; }, async videoDetail() { attempts++; throw new ScrapeError('parse', 'WEB and IOS video details exhausted'); } };
   const collector = new WebCollector(gateway as never, proxies as never, archive, api, false, ops);
   const ctx: CollectionContext = { owner: ref, channelId: value.input.channel_id, deadline: Date.now() + 60_000,
     signal: new AbortController().signal, note: async () => {}, guard: { async permit() { permits++; return 'permit'; } } };
-  let failure: Error & { raw_evidence?: { key: string; sha256: string; bytes: number } };
-  try { await collector.videos(ctx, [videoId], 20, 'VIDEO-0'); assert.fail('Ownership conflict must fail collection'); }
-  catch (error) { assert.ok(error instanceof ScrapeError); failure = error; }
-  assert.equal(failure!.message, 'API fallback channel mismatch'); assert.equal(attempts, 3); assert.equal(permits, 1);
-  const evidence = failure!.raw_evidence; assert.ok(evidence); const bytes = objects.get(evidence.key); assert.ok(bytes);
-  assert.equal(evidence.bytes, bytes.length); assert.equal(evidence.sha256, createHash('sha256').update(bytes).digest('hex'));
-  const captured = JSON.parse(gunzipSync(bytes).toString());
-  assert.equal(captured.unit_id, videoId); assert.equal(captured.step, 'VIDEO-0'); assert.equal(captured.responses.length, 4);
-  assert.deepEqual(JSON.parse(captured.responses[3].body), apiBody); assert.deepEqual(events, []);
-  assert.equal(objects.size, 1, 'Only the failure evidence is archived');
+  const [item] = await collector.videos(ctx, [videoId], 0, 'VIDEO-0');
+  assert.ok(item && !('unavailable' in item)); assert.equal(item.channel_id, value.input.channel_id); assert.equal(item.owner_channel_id, owner);
+  assert.equal(attempts, 3); assert.equal(permits, 1);
+  const saved = [...objects.values()].map(bytes => JSON.parse(gunzipSync(bytes).toString())).find(u => u.unit_id === videoId);
+  assert.ok(saved, 'the collaboration is archived as a collected unit'); assert.deepEqual(JSON.parse(saved.responses.at(-1).body), apiBody);
+  assert.equal(events.filter(e => e === 'crawl.step').length, 1);
 });

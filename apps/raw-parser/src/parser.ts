@@ -7,10 +7,11 @@ import { PipelineFactSchema, RawReferenceSchema, type PipelineFact, type RawRefe
 import type { ObjectStore, RawResponse, RawUnit } from '../../execution-worker/src/raw-archive.ts';
 import { channelFacts, uploads, videoDetail } from '../../execution-worker/src/youtube/web-scrape.ts';
 import { topComments } from '../../execution-worker/src/youtube/scrape.ts';
-import { toVideoFacts, unavailableVideo } from '../../execution-worker/src/youtube/map.ts';
+import { apiChannelFacts, collectedFor, toVideoFacts, unavailableVideo } from '../../execution-worker/src/youtube/map.ts';
 import { ScrapeError } from '../../execution-worker/src/youtube/scrape.ts';
 import type { ApiVideo } from '../../execution-worker/src/youtube/map.ts';
 import {confirmedChannelRemoval} from '../../execution-worker/src/youtube/channel-removal.ts';
+import { capturedApiChannel, defaultResponses, regionalFacts, regionalResponses } from '../../execution-worker/src/youtube/region.ts';
 
 Log.setLevel(Log.Level.NONE);
 export class ParseFailure extends Error {
@@ -88,12 +89,19 @@ export class RawParser {
       if (!fixture) throw new ParseFailure('REPLAY_INCOMPLETE');
       return { kind: unit.step === 'ABOUT' ? 'ABOUT' : 'VIDEO', payload: unit.step === 'ABOUT' ? input.sample.about : await this.comments(input.sample.videos.find(v => v.source_content_id === unit.unit_id)!, raw, signal) };
     }
+    // The collector's order: a regional recheck only follows a default attempt that could not be used.
+    const regional = regionalResponses(unit.responses), plain = defaultResponses(unit.responses);
     if (unit.step === 'ABOUT') {
       if(confirmedChannelRemoval(unit.responses,raw.channel_id))return {kind:'CHANNEL_REMOVED',payload:{channel_id:raw.channel_id,observed_at:observed,reason:'source_removed',source:'youtubei:unavailable+data_api:absent'}};
-      return { kind: 'ABOUT', payload: await channelFacts(await replay.client(), raw.channel_id, observed) };
+      const api = capturedApiChannel(plain, raw.channel_id);
+      if (regional.length) try { return { kind: 'ABOUT', payload: regionalFacts(await channelFacts(await new ResponseReplay(regional).client(), raw.channel_id, observed), api) }; } catch { /* The default page or the API record follows. */ }
+      try { return { kind: 'ABOUT', payload: await channelFacts(await new ResponseReplay(plain).client(), raw.channel_id, observed) }; }
+      catch (error) { if (!api) throw error; }
+      return { kind: 'ABOUT', payload: apiChannelFacts(api, observed) };
     }
     if (unit.step === 'TARGETS') {
-      const listed = await uploads(await replay.client(), raw.channel_id, input.plan_kind === 'UPDATE' ? 100 : input.scope.video_limit, input.plan_kind === 'UPDATE' ? input.discovery_anchor_ids ?? [] : undefined);
+      const scan = async (responses: RawResponse[]) => uploads(await new ResponseReplay(responses).client(), raw.channel_id, input.plan_kind === 'UPDATE' ? 100 : input.scope.video_limit, input.plan_kind === 'UPDATE' ? input.discovery_anchor_ids ?? [] : undefined);
+      const listed = regional.length ? await scan(regional).catch(() => scan(plain)) : await scan(plain);
       return { kind: 'TARGETS', payload: input.plan_kind === 'UPDATE' ? { kind: 'discovery', channel_id: raw.channel_id, video_ids: mergeRecoveryVideoTargets(listed.ids, input.recovery_video_ids),
         listed_at: observed, scanned_count: listed.scanned, pages: listed.pages, matched_anchor_id: listed.matched_anchor_id, stop_reason: listed.stop_reason, source: 'youtubei:uploads' }
         : { kind: 'targets', channel_id: raw.channel_id, video_ids: mergeRecoveryVideoTargets(listed.ids, input.recovery_video_ids), listed_at: observed, window_start: new Date(0).toISOString(), exhausted: listed.exhausted, source: 'youtubei:uploads' } };
@@ -116,13 +124,19 @@ export class RawParser {
     return { ...video, comments_first_page: null, comments_ref: ref, comments_summary: summary };
   }
   private async video(replay: ResponseReplay, input: YoutubeFrozenInput, raw: RawReference): Promise<VideoItem> {
+    const regional = regionalResponses(replay.responses);
+    if (regional.length) { const found = await this.webVideo(regional, input, raw); if (found) return found; }
+    return await this.webVideo(defaultResponses(replay.responses), input, raw) ?? this.apiVideo(replay, input, raw);
+  }
+  /** The latest captured web attempt that decodes, or null. */
+  private async webVideo(responses: RawResponse[], input: YoutubeFrozenInput, raw: RawReference): Promise<VideoItem | null> {
     // A failed collector attempt may have captured /player but lost /next. Reusing
     // one replay consumes the later successful attempt's /next and then cannot
     // decode its player. Prefer the latest captures, with older HTTP failures
     // excluded. Concurrent /next may finish immediately before its /player.
     // Every fact still comes exclusively from this unit's recorded responses.
-    const response = replay.responses.find(r => r.endpoint === 'https://www.googleapis.com/youtube/v3/videos' && r.status === 200);
-    const webResponses=response?replay.responses.slice(0,replay.responses.indexOf(response)):replay.responses;
+    const response = responses.find(r => r.endpoint === 'https://www.googleapis.com/youtube/v3/videos' && r.status === 200);
+    const webResponses=response?responses.slice(0,responses.indexOf(response)):responses;
     const players=webResponses.flatMap((r,index)=>r.endpoint.endsWith('/player')?[index]:[]);
     const videoNext=(r:RawResponse)=>{
       if(!r.endpoint.endsWith('/next')||r.status!==200)return false;
@@ -143,14 +157,18 @@ export class RawParser {
         /* The same captured attempts precede the recorded, quota-controlled API fallback. */
       }
     }
+    return null;
+  }
+  private async apiVideo(replay: ResponseReplay, input: YoutubeFrozenInput, raw: RawReference): Promise<VideoItem> {
     // Fallback must be evidenced by an actual captured Data API response, never the R2 projection.
+    const response = replay.responses.find(r => r.endpoint === 'https://www.googleapis.com/youtube/v3/videos' && r.status === 200);
     if (!response) throw new ParseFailure('REPLAY_INCOMPLETE');
     const api = (JSON.parse(response.body).items as ApiVideo[]).find(v => v.id === raw.unit_id);
     if (!api) return unavailableVideo(raw.channel_id, raw.unit_id, raw.captured_at);
-    if (api.snippet.channelId !== raw.channel_id) throw new ParseFailure('INVALID_FACT');
     const commentsReplay=new ResponseReplay(replay.responses.slice(replay.responses.indexOf(response)+1));
     const comments = raw.step === 'SAMPLING' || !input.scope.comments_per_video ? { kind: 'skipped' as const }
       : await topComments(await commentsReplay.client(), raw.unit_id, api.statistics?.commentCount, 'pt-BR', raw.captured_at).catch(() => ({ kind: 'unavailable' as const, collected_at: raw.captured_at }));
-    return toVideoFacts(api, null, comments, input.scope.comments_per_video, raw.captured_at);
+    // A listed upload owned by another channel stays with this channel, as the collector keeps it.
+    return collectedFor(toVideoFacts(api, null, comments, input.scope.comments_per_video, raw.captured_at), raw.channel_id);
   }
 }
