@@ -40,7 +40,8 @@ export async function queuePublication(client:PoolClient,workspace:string,channe
  }
  const data=(await client.query("SELECT data-'comments_first_page'-'comments_ref'-'comments_summary' AS data FROM crawl_data.videos WHERE workspace_id=$1 AND channel_id=$2 ORDER BY video_id",[workspace,channelId])).rows;
  const videos=data.map(r=>VideoItemSchema.parse(r.data.unavailable?r.data:{...r.data,comments_first_page:null}));
- const snapshot:PublicationSnapshot={channel_id:channelId,about:ChannelFactsSchema.parse(channel.about),agent:AgentResultSchema.parse(channel.agent),videos,observed_at:iso(time),removed,source:{plan_id:planId,source_deployment:'crawlsystem-new',bootstrap}};
+ const lifecycle=(await client.query('SELECT lifecycle_status FROM control.channel_lifecycle WHERE workspace_id=$1 AND channel_id=$2',[workspace,channelId])).rows[0]?.lifecycle_status??'active';
+ const snapshot:PublicationSnapshot={channel_id:channelId,about:ChannelFactsSchema.parse(channel.about),agent:AgentResultSchema.parse(channel.agent),videos,lifecycle_status:lifecycle,observed_at:iso(time),removed,source:{plan_id:planId,source_deployment:'crawlsystem-new',bootstrap}};
  const mapped=mapPublication(snapshot,old,target.stream_id,deliveryId),status=mapped.shard?'PENDING':'UNCHANGED';
  await client.query('INSERT INTO delivery.records(delivery_id,workspace_id,channel_id,title,plan_id,revision,status,domains,shard,version_vector) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[deliveryId,workspace,channelId,snapshot.about.title,planId,mapped.shard?mapped.state.revision:old?.revision??0,status,mapped.envelopes.map(e=>e.domain),mapped.shard,mapped.state.vector]);
  if(mapped.shard) {

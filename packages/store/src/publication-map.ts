@@ -5,7 +5,9 @@ import {observationFactsHash as hash,publicationResultHash,normalizePublicationE
 
 export type PublicationDomain='channel'|'video'|'agent';
 export interface PublicationState {revision:number;payloads:Partial<Record<PublicationDomain,LegacyValue>>;vector:Record<string,LegacyValue>;removed?:boolean;}
-export interface PublicationSnapshot {channel_id:string;about:ChannelFacts;agent:AgentResult;videos:VideoItem[];observed_at:string;source:LegacyValue;removed?:boolean;}
+export interface PublicationSnapshot {channel_id:string;about:ChannelFacts;agent:AgentResult;videos:VideoItem[];observed_at:string;source:LegacyValue;removed?:boolean;
+  /** The legacy channel lifecycle (control.channel_lifecycle); absent is active. */
+  lifecycle_status?:'active'|'dormant';}
 /** Legacy normalizePublicationLinks: normalized targets typed by host, purpose by wording. Every observed link is
  * delivered as evidence; the business projection keeps one public link per target. */
 const publicLinks=(links:ChannelFacts['external_links'])=>links.flatMap((l,position)=>{
@@ -16,14 +18,14 @@ const publicLinks=(links:ChannelFacts['external_links'])=>links.flatMap((l,posit
 });
 const tabs=(a:ChannelFacts,pattern:RegExp)=>a.source.startsWith('data_api')&&!a.available_tabs.length?null:a.available_tabs.some(t=>pattern.test(t));
 const resolved=(m:VideoFacts['view_count'])=>['exact','estimated','disabled','zero_from_empty','zero_from_upcoming','zero_from_surface'].includes(m.status)?m.value:null;
-function channelPayload(a:ChannelFacts):LegacyValue {
+function channelPayload(a:ChannelFacts,lifecycle:'active'|'dormant'='active'):LegacyValue {
  return {channel_id:a.channel_id,title:a.title,canonical_url:a.channel_url,vanity_channel_url:a.handle?`https://www.youtube.com/${a.handle.startsWith('@')?a.handle:'@'+a.handle}`:null,handle:a.handle,
   avatar:a.avatar_url?[{url:a.avatar_url,position:0}]:[],rss_url:`https://www.youtube.com/feeds/videos.xml?channel_id=${a.channel_id}`,keywords:a.keywords,is_family_safe:a.is_family_safe,is_verified:a.is_verified,is_verified_status:a.is_verified===null?'unknown':a.is_verified?'verified':'not_verified',
   // The web channel page observes its tabs (an absent tab is false); a Data API fallback never saw them.
   has_videos:tabs(a,/video/i),has_shorts:tabs(a,/short/i),has_live_streams:tabs(a,/live|stream/i),description:a.about_description??a.summary,
   subscriber_count:resolved(a.subscriber_count),subscriber_count_status:a.subscriber_count.status,total_video_count:resolved(a.total_video_count),total_video_count_status:a.total_video_count.status,total_view_count:resolved(a.total_view_count),total_view_count_status:a.total_view_count.status,
   joined_date:a.joined_at,joined_date_status:a.joined_at?'exact':'unavailable',joined_date_raw:a.joined_date_text,country_code:a.country_code,country_name:a.country,
-  links:publicLinks(a.external_links),lifecycle_status:'active',youtube_business_email_available:a.youtube_business_email_available,youtube_business_email_observed_at:a.youtube_business_email_available===null?null:a.observed_at};
+  links:publicLinks(a.external_links),lifecycle_status:lifecycle,youtube_business_email_available:a.youtube_business_email_available,youtube_business_email_observed_at:a.youtube_business_email_available===null?null:a.observed_at};
 }
 function videoItem(v:VideoFacts,position:number):LegacyValue {
  const exact=v.published_at_status==='exact'&&v.published_at_precision==='second';
@@ -52,7 +54,7 @@ export function mapPublication(snapshot:PublicationSnapshot,previous:Publication
  const items=snapshot.removed?[]:eligible.slice(0,30).map((v,i)=>videoItem(v,i+1));
  const video:LegacyValue={channel_id:a.channel_id,window_policy:{policy_version:'video-window-v1',as_of:asOf,cutoff_at:cutoff,cutoff_date:cutoff.slice(0,10),max_age_days:90,max_items:30},window_proof:{complete:true,terminal_condition:'durable_finalized_window',catalog_candidate_count:candidates.length,qualified_count:eligible.length,selected_count:items.length,excluded_count:candidates.length-items.length,latest_scan_items:null,latest_scan_pages:null,latest_scan_stop_reason:null,latest_scan_detail_failure_count:0},items};
  video.result_hash=publicationResultHash('video',video);
- const payloads:Record<PublicationDomain,LegacyValue>={channel:snapshot.removed?{channel_id:a.channel_id,retraction:{reason:'policy_removed',removed_at:asOf}}:channelPayload(a),video,agent:snapshot.removed?{channel_id:a.channel_id,retraction:{reason:'policy_removed',removed_at:asOf}}:agentPayload(agent,a)};
+ const payloads:Record<PublicationDomain,LegacyValue>={channel:snapshot.removed?{channel_id:a.channel_id,retraction:{reason:'policy_removed',removed_at:asOf}}:channelPayload(a,snapshot.lifecycle_status),video,agent:snapshot.removed?{channel_id:a.channel_id,retraction:{reason:'policy_removed',removed_at:asOf}}:agentPayload(agent,a)};
  const priorChannel=previous?.payloads.channel;
  if(!snapshot.removed&&priorChannel&&priorChannel.youtube_business_email_available===payloads.channel.youtube_business_email_available)
   payloads.channel.youtube_business_email_observed_at=priorChannel.youtube_business_email_observed_at;

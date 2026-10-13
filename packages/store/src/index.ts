@@ -29,6 +29,7 @@ import {outbox,acknowledge,claimReplays,finishReplay,storage,maintain} from './t
 import {claimRawCleanup,finishRawCleanup,rawRetentionStatus,populateRawCleanup} from './raw-retention.ts';
 import type {RawCleanupResult} from '../../contracts/src/raw-retention.ts';
 import type {FailureCommand} from '@crawlsystem/contracts/analytics';
+import {loadLifecycle,settleLifecycle} from './lifecycle.ts';
 import {queuePublication,readDeliveries,deliverySummary,getDelivery,retryDelivery} from './publication.ts';
 import {DeliveryRetrySchema} from '../../contracts/src/delivery.ts';
 import {defaultSettings,type RuntimeSettings} from '../../contracts/src/configuration.ts';
@@ -393,7 +394,9 @@ export class Store {
     const utcStart = Date.parse(now.toISOString().slice(0, 10));
     const due = clocks.filter(k => new Date(k.due_at).getTime() <= now.getTime());
     const limits = scanLimits ?? (await this.settings(client,workspace)).settings.update;
-    const domains = manual?.domains ?? CLOCK_NAMES.filter(d => due.some(k => k.clock === d && (manual || (limits.auto_domains.includes(d) &&
+    // A sleeping channel gets only the legacy dormant probe: Video alone, on its recheck day.
+    const dormant = !manual && (await loadLifecycle(client, workspace, channelId))?.lifecycle_status === 'dormant';
+    const domains = manual?.domains ?? CLOCK_NAMES.filter(d => (!dormant || d === 'VIDEO') && due.some(k => k.clock === d && (manual || (limits.auto_domains.includes(d) &&
       (!k.last_scheduled_at || new Date(k.last_scheduled_at).getTime() < utcStart) && (!k.last_attempt_at || new Date(k.last_attempt_at).getTime() < utcStart)))));
     if (!domains.length) { if (manual) throw new StoreError('CONFLICT', 'No channel domain is due; choose a domain explicitly'); return null; }
     const previous = (await client.query('SELECT frozen_input FROM control.plans WHERE plan_id=$1', [channel.latest_plan_id])).rows[0]!.frozen_input as FrozenInput;
@@ -1079,7 +1082,8 @@ export class Store {
       for (const o of observations) activity.succeeded[o.kind] = new Date(Math.floor(o.observed_at / 1000));
       stored = await applyObservations(client,workspaceId,channelId,stored,observations);
     }
-    await writeClocks(client,workspaceId,channelId,stored,activity,now);
+    const lifecycle = await loadLifecycle(client,workspaceId,channelId);
+    await writeClocks(client,workspaceId,channelId,stored,activity,now,lifecycle?.lifecycle_status === 'dormant' ? lifecycle.dormant_recheck_day : null);
   }
   /**
    * A real plan ended (inside its transaction). Its required domains are applied to the channel's
@@ -1120,7 +1124,8 @@ export class Store {
       await client.query("UPDATE control.channels SET management_state='managed',management_version=management_version+1,management_changed_at=$3 WHERE workspace_id=$1 AND channel_id=$2",[plan.workspace_id,plan.channel_id,now]);
     }
     const stored = await applyObservations(client,plan.workspace_id,plan.channel_id,await loadClocks(client,plan.workspace_id,plan.channel_id),observations);
-    await writeClocks(client,plan.workspace_id,plan.channel_id,stored,activity,now);
+    const lifecycle = status === 'COMPLETED' && completed.has('VIDEO') ? await settleLifecycle(client,plan,completed.get('VIDEO')!) : await loadLifecycle(client,plan.workspace_id,plan.channel_id);
+    await writeClocks(client,plan.workspace_id,plan.channel_id,stored,activity,now,lifecycle?.lifecycle_status === 'dormant' ? lifecycle.dormant_recheck_day : null);
   }
   /** Frozen VIDEO targets: fixed at creation for fixtures, the first accepted manifest for YouTube. */
   private async videoTargets(client: PoolClient | Pool, row: QueryResultRow): Promise<string[] | null> {

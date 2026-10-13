@@ -177,3 +177,27 @@ test('a re-collected video without a comment page keeps the stored non-empty fir
   assert.equal(stored.observed_at,at,'the newer observation was applied');
   assert.deepEqual([stored.comments_ref?.sha256,stored.comments_summary?.returned_count],['c'.repeat(64),1],'legacy videoContentMutationPolicy keeps the first page');
 });
+test('a complete update scan without content in 90 days puts the channel to sleep; only a Video probe runs on the recheck day',async()=>{
+  const t=await setup();await finishData(t);
+  const old=new Date(Date.now()-200*86_400_000).toISOString();
+  await pool.query(`UPDATE crawl_data.videos SET data=jsonb_set(data,'{published_at}',to_jsonb($3::text)) WHERE workspace_id=$1 AND channel_id=$2`,[t.worker.workspace_id,t.channel,old]);
+  const version=(await store.getChannel(t.reader,t.channel)).management.version;
+  const update=await store.updateChannel(t.op,t.channel,{request_id:randomUUID(),expected_version:version,domains:['VIDEO']});
+  const at=new Date().toISOString(),discovery={kind:'discovery',channel_id:t.channel,video_ids:[],listed_at:at,scanned_count:1,pages:1,matched_anchor_id:t.videoId,stop_reason:'anchor_matched',source:'youtubei:uploads'};
+  await store.apply(t.worker,submission(update,'video:discovery',discovery));
+  const df=PipelineFactSchema.parse({...t.tf,kind:'TARGETS',payload:discovery,source_revision:update.source_revision,
+    raw:{...t.tf.raw,plan_id:update.plan_id,input_hash:update.input_hash,captured_at:at,key:`v1/${t.worker.workspace_id}/${update.plan_id}/1/TARGETS/uploads.json.gz`},
+    parsed:{...t.tf.parsed,key:`v1/${t.worker.workspace_id}/${update.plan_id}/1/TARGETS/uploads.youtube-raw-1.${t.tf.raw.sha256}.json.gz`}});
+  const owner={...t.owner,plan_id:update.plan_id,input_hash:update.input_hash,workflow_id:update.workflow_id};
+  await store.pipelineManifest(t.receiver,{...t.manifest('TARGETS',[df.raw]),owner,key:`v1/${t.worker.workspace_id}/${update.plan_id}/1/TARGETS/_manifest.json.gz`});
+  await sink.apply(df);
+  assert.equal((await store.confirmPipeline(t.receiver,update.plan_id)).status,'COMPLETED');
+  const life=(await pool.query('SELECT * FROM control.channel_lifecycle WHERE workspace_id=$1 AND channel_id=$2',[t.worker.workspace_id,t.channel])).rows[0];
+  assert.deepEqual([life.lifecycle_status,life.dormant_reason,life.dormant_cycle,life.decision],['dormant','no_published_content_within_90_days',1,'dormant']);
+  const recheck=new Date(life.dormant_recheck_day).toISOString().slice(0,10);
+  const clocks=(await pool.query('SELECT clock,due_at,reason FROM control.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 ORDER BY clock',[t.worker.workspace_id,t.channel])).rows;
+  assert.deepEqual(clocks.map(k=>[k.clock,new Date(k.due_at).toISOString().slice(0,10),k.reason]),['ABOUT','AGENT','VIDEO'].map(c=>[c,recheck,'channel_dormant']),'every clock waits for the recheck day');
+  const store_=store as unknown as {tx:<T>(f:(c:import('pg').PoolClient)=>Promise<T>)=>Promise<T>;insertUpdate:Function};
+  const probe=await store_.tx(c=>store_.insertUpdate(c,t.worker.workspace_id,t.channel,new Date(`${recheck}T01:00:00.000Z`))) as Plan;
+  assert.deepEqual(probe.required_domains,['VIDEO'],'a sleeping channel gets only the Video probe');
+});

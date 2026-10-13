@@ -21,6 +21,7 @@ import {
 if (ACTIVE_POLICY.policy_version !== CLOCK_POLICY_VERSION) throw new Error('contracts and feature-clock disagree on the clock policy');
 
 const NAME: Record<ClockKind, ClockName> = { about: 'ABOUT', video: 'VIDEO', agent: 'AGENT' };
+export const CHANNEL_DORMANT_REASON = 'channel_dormant';
 const sha256 = (text: string) => `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
 
 // ---- what was collected, as legacy observations -------------------------------------------
@@ -151,7 +152,8 @@ export interface ClockActivity { planId: string | null; succeeded: Partial<Recor
  * Write the effective clocks: the engine's day, interval and reasons, or for a pinned clock the
  * pinned interval counted from its last success (or today). Due days start at 00:00 UTC.
  */
-export async function writeClocks(client: PoolClient, workspaceId: string, channelId: string, stored: StoredClocks, activity: ClockActivity, now: Date): Promise<void> {
+export async function writeClocks(client: PoolClient, workspaceId: string, channelId: string, stored: StoredClocks, activity: ClockActivity, now: Date,
+  dormantRecheckDay: Day | null = null): Promise<void> {
   const clock = stored.snapshot.clock;
   if (clock === null) return;
   const existing = new Map((await client.query('SELECT clock,override_days,last_success_at FROM control.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 FOR UPDATE', [workspaceId, channelId]))
@@ -161,6 +163,9 @@ export async function writeClocks(client: PoolClient, workspaceId: string, chann
     const lastSuccess = activity.succeeded[kind] ?? existing.get(name)?.last_success_at ?? null;
     let dueDay = clock[`${kind}_due_day`], interval = clock[`${kind}_tier`], reasons = stored.reasons[kind] ?? [BOOTSTRAP_BASELINE_REASON];
     if (pinned !== null) [dueDay, interval, reasons] = [addDays(utcDay(instantFromDate(lastSuccess ?? now)), pinned), pinned, [MANUAL_OVERRIDE_REASON]];
+    // A sleeping channel is due only on its recheck day, when a Video-only probe runs (legacy scheduler.py:153-175).
+    if (dormantRecheckDay !== null) [dueDay, interval, reasons] = [dormantRecheckDay,
+      Math.min(365, Math.max(1, Math.round((dayStart(dormantRecheckDay).getTime() - dayStart(utcDay(instantFromDate(now))).getTime()) / 86_400_000))), [CHANNEL_DORMANT_REASON]];
     await client.query(`INSERT INTO control.channel_clocks(workspace_id,channel_id,clock,due_at,retry_at,interval_days,reason,reasons,policy_version,last_success_at,last_attempt_at,last_plan_id)
       VALUES($1,$2,$3,$4,NULL,$5,$6,$7,$8,$9,$10,$11)
       ON CONFLICT(workspace_id,channel_id,clock) DO UPDATE SET due_at=EXCLUDED.due_at,retry_at=NULL,interval_days=EXCLUDED.interval_days,reason=EXCLUDED.reason,reasons=EXCLUDED.reasons,
