@@ -72,10 +72,9 @@ export async function shortsIds(yt: Innertube, channelId: string): Promise<Set<s
 /** youtubei.js's error for a comments request that came back without a comment section. */
 const EMPTY_COMMENTS = /comments page did not have any content/i;
 /**
- * First page of Top comments. The Data API comment count says what a refused or empty comment section
- * means: no count → comments are turned off; "0" → no comments yet; more → YouTube did not serve them
- * (restricted or held), recorded as unavailable instead of failing the video batch. Other parse
- * failures still fail, so a YouTube change is not silently absorbed.
+ * First page of Top comments. A comment request YouTube answers with a bare continuation (no section) is an absent
+ * surface, not evidence that comments are off (legacy youtubeCommentContinuationIsBare); classifyComments decides it
+ * with the count hint and the watch page. A positive hint retries NEWEST once. Other parse failures still fail.
  */
 export async function topComments(yt: Innertube, videoId: string, apiCommentCount: string | undefined, locale = 'en', collected_at = new Date().toISOString()): Promise<CommentsResult> {
   try {
@@ -98,12 +97,11 @@ export async function topComments(yt: Innertube, videoId: string, apiCommentCoun
         is_pinned: typeof c.is_pinned === 'boolean' ? c.is_pinned : null, is_channel_owner: typeof c.author_is_channel_owner === 'boolean' ? c.author_is_channel_owner : null,
         is_verified: typeof author.is_verified === 'boolean' ? author.is_verified : null, is_hearted: typeof c.is_hearted === 'boolean' ? c.is_hearted : null };
     });
-    return { kind: 'page', total_text: text(page.header?.comments_count) ?? (total === null ? null : String(total)), comments, collected_at, sort, locale };
+    return { kind: 'page', total_text: text(page.header?.comments_count) ?? (total === null ? null : String(total)), comments, collected_at, sort, locale, surface: 'available' };
   } catch (error) {
     const classified = classify(error);
     if (classified.kind !== 'parse') throw classified;
-    if (apiCommentCount === undefined) return { kind: 'unavailable', collected_at };
-    if (error instanceof Error && EMPTY_COMMENTS.test(error.message)) return apiCommentCount === '0' ? { kind: 'page', total_text: null, comments: [], collected_at } : { kind: 'unavailable', collected_at };
+    if (error instanceof Error && EMPTY_COMMENTS.test(error.message)) return { kind: 'page', total_text: null, comments: [], collected_at, locale, surface: 'absent' };
     throw classified;
   }
 }

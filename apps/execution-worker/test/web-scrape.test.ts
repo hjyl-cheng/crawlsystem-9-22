@@ -38,7 +38,7 @@ test('empty TOP with a positive count retries NEWEST once; absent comments never
   assert.deepEqual(calls, ['TOP_COMMENTS', 'NEWEST_FIRST']); assert.equal(result.kind, 'page');
   if (result.kind === 'page') { assert.equal(result.sort, 'NEWEST_FIRST'); assert.equal(result.comments.length, 1); }
   const absent = await topComments({ async getComments() { throw new Error('Comments page did not have any content'); } } as never, id, undefined);
-  assert.equal(absent.kind, 'unavailable');
+  assert.ok(absent.kind === 'page' && absent.surface === 'absent' && absent.comments.length === 0, 'a bare continuation is an absent surface, not an error');
 });
 test('uploads freeze latest IDs and incremental discovery stops at any frozen anchor', async () => {
   const videos = Array.from({ length: 50 }, (_, i) => ({ id: String(i).padStart(11, '0') }));

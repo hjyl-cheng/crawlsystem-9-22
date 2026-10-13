@@ -100,22 +100,69 @@ export interface ApiVideo { id: string; snippet: { channelId: string; title: str
 export interface ScrapedComment { comment_id: string; text: string; author_name: string | null; author_channel_id: string | null; author_url: string | null; author_avatar_url: string | null;
   published_text: string | null; like_text: string | null; reply_text: string | null; is_pinned: boolean | null; is_channel_owner: boolean | null; is_verified: boolean | null; is_hearted: boolean | null }
 /** `unavailable`: the section exists (the API counts comments) but YouTube served none; facts keep the API count and no page. */
-export type CommentsResult = { kind: 'page'; total_text: string | null; comments: ScrapedComment[]; collected_at: string; sort?: 'TOP_COMMENTS' | 'NEWEST_FIRST'; locale?: string } | { kind: 'disabled'; collected_at: string }
-  | { kind: 'unavailable'; collected_at: string } | { kind: 'skipped' };
+/** `surface: 'absent'` is a bare comment continuation: no comment section was served, which is not evidence of anything. */
+export type CommentsResult = { kind: 'page'; total_text: string | null; comments: ScrapedComment[]; collected_at: string; sort?: 'TOP_COMMENTS' | 'NEWEST_FIRST'; locale?: string; surface?: 'available' | 'absent' }
+  | { kind: 'disabled'; collected_at: string } | { kind: 'unavailable'; collected_at: string } | { kind: 'skipped' };
+/** Evidence about the comment section observed outside the comment page itself. */
+export interface CommentSignals {
+  /** The count hint: the watch page's comment entry point, or the Data API statistics. */
+  hint?: { value: number; source: string } | null;
+  /** An explicit "comments are turned off" text on the watch page (legacy youtubeJs.js:1500-1504). */
+  disabledMessage?: boolean;
+  /** An empty comment response of an age-gated video (legacy isEmptyAgeGateCommentsResponse). */
+  ageGate?: boolean;
+  upcoming?: boolean; live?: boolean;
+  /** Public or unlisted, as the web player decided; the Data API path reads its privacy status instead. */
+  accessible?: boolean;
+}
+/** Legacy explicitDisabledSignal (youtubeCommentPage.js:95-110): disabled wording anywhere except the comment composer. */
+export function disabledCommentsText(value: unknown): boolean {
+  if (typeof value === 'string') return /comments? (?:are |have been )?(?:turned off|disabled)/i.test(value)
+    || /coment[aá]rios? (?:foram |est[aã]o )?(?:desativad|desabilitad)/i.test(value) || /commentaires? (?:sont |ont [eé]t[eé] )?(?:d[eé]sactiv)/i.test(value);
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some(disabledCommentsText);
+  return Object.entries(value).some(([key, child]) => key !== 'commentSimpleboxRenderer' && disabledCommentsText(child));
+}
+/**
+ * Legacy classifyYoutubeCommentPage plus the video-level rules around it (youtubeCommentPage.js:519-567,
+ * youtubeJs.js:1499-1576): disabled only without any returned comment; a read page counts exactly (an abbreviated
+ * total is still exact; returned comments are a lower bound); an available but empty section is a policy zero; then the
+ * hint; an age-gated empty response is disabled; an upcoming or live video without a section is a policy zero.
+ */
+export function classifyComments(comments: CommentsResult, total: number | null, signals: CommentSignals, accessible: boolean, observed_at: string): { comments_disabled: boolean | null; comment_count: Metric } {
+  const read = comments.kind === 'page' ? comments.comments.length : 0;
+  if (comments.kind === 'disabled' || read === 0 && signals.disabledMessage) return { comments_disabled: true, comment_count: metric(0, 'disabled', 'youtubei:comments', observed_at) };
+  if (comments.kind === 'page') {
+    if (read > 0 || total !== null && total > 0) return { comments_disabled: false, comment_count: metric(total ?? read, 'exact', 'youtubei:comments', observed_at) };
+    if (total === 0 || comments.surface !== 'absent') return { comments_disabled: false, comment_count: metric(0, 'zero_from_surface', 'youtubei:comments', observed_at) };
+  }
+  if (signals.ageGate) return { comments_disabled: true, comment_count: metric(0, 'disabled', 'youtubei:comments_age_gate_empty', observed_at) };
+  if (signals.hint) return { comments_disabled: false, comment_count: metric(signals.hint.value, 'exact', signals.hint.source, observed_at) };
+  if (comments.kind === 'page' && accessible && (signals.upcoming || signals.live))
+    return { comments_disabled: null, comment_count: signals.upcoming ? metric(0, 'zero_from_upcoming', 'youtubei:upcoming_comments_not_public', observed_at) : metric(0, 'zero_from_empty', 'youtubei:live_comments_not_public', observed_at) };
+  return { comments_disabled: null, comment_count: metric(null, 'unresolved', 'youtubei:video', observed_at) };
+}
 
-export function toVideoFacts(api: ApiVideo, isShort: boolean | null, comments: CommentsResult, commentLimit: number, observed_at: string): VideoFacts {
+export function toVideoFacts(api: ApiVideo, isShort: boolean | null, comments: CommentsResult, commentLimit: number, observed_at: string, signals: CommentSignals = {}): VideoFacts {
   const s = api.snippet, stats = api.statistics ?? {}, src = 'data_api:videos';
   const live = !!api.liveStreamingDetails;
   const content_type = live ? 'live' : isShort ? 'short' : 'video';
   const duration = parseIsoDuration(api.contentDetails?.duration);
   const count = (raw: string | undefined, missing: Metric['status']) => raw !== undefined ? metric(Number(raw), 'exact', src, observed_at) : metric(null, missing, src, observed_at);
   // Legacy Data API mapping (youtube.js:2135-2143): a public video without commentCount has its comments turned off,
-  // unless the web comment page was actually read.
-  const isPublic = api.status?.privacyStatus === 'public', apiDisabled = isPublic && stats.commentCount === undefined && comments.kind !== 'page';
-  const disabled = comments.kind === 'disabled' || apiDisabled;
+  // unless the web comment page returned comments.
+  const isPublic = api.status?.privacyStatus === 'public', returned = comments.kind === 'page' && comments.comments.length > 0;
+  const apiDisabled = isPublic && stats.commentCount === undefined && !returned;
+  const hint = signals.hint !== undefined ? signals.hint : stats.commentCount !== undefined ? { value: Number(stats.commentCount), source: 'data_api:statistics' } : null;
+  // Legacy normalizeYoutubeCommentPage dedupes by comment id and renumbers (youtubeCommentPage.js:424-427).
+  const unique = comments.kind === 'page' ? comments.comments.filter((c, i, all) => all.findIndex(o => o.comment_id === c.comment_id) === i) : [];
+  const total = comments.kind === 'page' ? parseCount(comments.total_text, comments.locale)?.value ?? null : null;
+  const classified = apiDisabled ? { comments_disabled: true, comment_count: metric(0, 'disabled', 'data_api:statistics', observed_at) }
+    : classifyComments(comments.kind === 'page' ? { ...comments, comments: unique } : comments, total, { ...signals, hint }, signals.accessible ?? ['public', 'unlisted'].includes(api.status?.privacyStatus ?? ''), observed_at);
+  const disabled = classified.comments_disabled === true;
   const page = comments.kind === 'page' ? CommentPageSchema.parse({ version: 1, collected_at: comments.collected_at, sort: comments.sort ?? 'TOP_COMMENTS',
-    total_count: parseCount(comments.total_text, comments.locale)?.value ?? (stats.commentCount !== undefined ? Number(stats.commentCount) : null),
-    returned_count: Math.min(comments.comments.length, commentLimit), comments: comments.comments.slice(0, commentLimit).map((c, i) => {
+    total_count: total ?? hint?.value ?? null,
+    returned_count: Math.min(unique.length, commentLimit), comments: unique.slice(0, commentLimit).map((c, i) => {
       const estimated = c.published_text ? estimateRelative(c.published_text, comments.collected_at, comments.locale) : null;
       return { comment_id: c.comment_id, position: i + 1, text: c.text.slice(0, 20_000), author_name: c.author_name, author_channel_id: c.author_channel_id, author_url: c.author_url, author_avatar_url: c.author_avatar_url,
         published_at_utc: estimated, published_text_raw: c.published_text, published_at_status: estimated ? 'estimated_relative' : 'unresolved',
@@ -134,8 +181,7 @@ export function toVideoFacts(api: ApiVideo, isShort: boolean | null, comments: C
     view_count: count(stats.viewCount, 'unavailable'),
     // Legacy detailPolicy.js:93-102: a public video without a like count has hidden likes, a policy zero.
     like_count: stats.likeCount === undefined && isPublic ? metric(0, 'zero_from_empty', 'public_empty_is_zero', observed_at) : count(stats.likeCount, 'unavailable'),
-    comment_count: disabled ? metric(0, 'disabled', apiDisabled && comments.kind !== 'disabled' ? 'data_api:statistics' : 'youtubei:comments', observed_at) : count(stats.commentCount, 'unavailable'),
-    comments_disabled: disabled ? true : comments.kind === 'page' ? false : null,
+    comment_count: classified.comment_count, comments_disabled: classified.comments_disabled,
     comments_first_page: disabled ? { version: 1, collected_at: 'collected_at' in comments ? comments.collected_at : observed_at, sort: 'TOP_COMMENTS', total_count: 0, returned_count: 0, comments: [] } : page,
     access_status: api.status?.privacyStatus === 'unlisted' ? 'unlisted' : api.status?.privacyStatus === 'private' ? 'private' : api.status?.privacyStatus === 'public' ? 'public' : 'unknown',
     access_status_source: 'data_api:status.privacyStatus', is_members_only: false,

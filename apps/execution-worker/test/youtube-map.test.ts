@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { estimateRelative, hashtags, normalizeKeywords, parseCount, parseIsoDuration, parseKeywords, toChannelFacts, toVideoFacts, unavailableVideo, type AboutPage, type ApiChannel, type ApiVideo, type CommentsResult } from '../src/youtube/map.ts';
+import { classifyComments, disabledCommentsText, estimateRelative, hashtags, normalizeKeywords, parseCount, parseIsoDuration, parseKeywords, toChannelFacts, toVideoFacts, unavailableVideo, type AboutPage, type ApiChannel, type ApiVideo, type CommentsResult } from '../src/youtube/map.ts';
 import { DataApi, DataApiError } from '../src/youtube/data-api.ts';
 import { ScrapeError, topComments } from '../src/youtube/scrape.ts';
 import type { Innertube } from 'youtubei.js';
@@ -44,7 +44,8 @@ test('video facts classify type, respect the comment limit and record hidden pub
   assert.equal(toVideoFacts(video(), true, page, 20, now).url, 'https://www.youtube.com/shorts/YDCB8Bk1OBE');
   assert.equal(toVideoFacts(video(), null, page, 20, now).content_type_source, 'default:shorts_unknown');
   const live = toVideoFacts(video({ liveStreamingDetails: { actualStartTime: '2026-09-22T23:00:00Z' }, contentDetails: { duration: 'P0D' }, snippet: { ...video().snippet, liveBroadcastContent: 'live' } }), false, { kind: 'skipped' }, 20, now);
-  assert.deepEqual([live.content_type, live.duration_seconds.status, live.comments_first_page, live.comments_disabled], ['live', 'unavailable', null, null]);
+  // Legacy youtubeJs.js:1524-1527: a known comment count means comments are not turned off.
+  assert.deepEqual([live.content_type, live.duration_seconds.status, live.comments_first_page, live.comments_disabled], ['live', 'unavailable', null, false]);
   const hidden = toVideoFacts(video({ statistics: { viewCount: '5' } }), false, { kind: 'disabled', collected_at: now }, 20, now);
   // Legacy missingLikeIsZero: a public video without likeCount has hidden likes.
   assert.deepEqual([hidden.like_count.status, hidden.comment_count.status, hidden.comment_count.value, hidden.comments_disabled], ['zero_from_empty', 'disabled', 0, true]);
@@ -53,12 +54,15 @@ test('video facts classify type, respect the comment limit and record hidden pub
 test('an empty comment section keeps unknown counts unknown and preserves observed API counts', async () => {
   const yt = (message: string) => ({ getComments: async () => { throw new Error(message); } }) as unknown as Innertube;
   const empty = yt('The comments page did not have any content');
-  assert.equal((await topComments(empty, 'YDCB8Bk1OBE', undefined)).kind, 'unavailable', 'an absent count is not evidence that comments are disabled');
-  assert.deepEqual(await topComments(empty, 'YDCB8Bk1OBE', '0').then(r => r.kind === 'page' ? r.comments.length : r.kind), 0);
-  const unavailable = await topComments(empty, 'YDCB8Bk1OBE', '15');
-  assert.equal(unavailable.kind, 'unavailable', 'counted comments YouTube did not serve do not fail the batch');
-  const facts = toVideoFacts(video(), false, unavailable, 20, now);
-  assert.deepEqual([facts.comments_disabled, facts.comments_first_page, facts.comment_count.value, facts.comment_count.status], [null, null, 15, 'exact']);
+  const absent = await topComments(empty, 'YDCB8Bk1OBE', undefined);
+  assert.ok(absent.kind === 'page' && absent.surface === 'absent', 'a bare continuation is an absent surface');
+  const unknown = toVideoFacts(video({ statistics: { viewCount: '1', likeCount: '1' }, status: undefined } as never), false, absent, 20, now);
+  assert.deepEqual([unknown.comments_disabled, unknown.comment_count.value, unknown.comment_count.status], [null, null, 'unresolved'], 'an absent section with no count is not evidence that comments are disabled');
+  // Legacy M-30: a zero hint with an empty response is a zero count, not a lost one.
+  const zero = toVideoFacts(video({ statistics: { viewCount: '1', likeCount: '1', commentCount: '0' } }), false, await topComments(empty, 'YDCB8Bk1OBE', '0'), 20, now);
+  assert.deepEqual([zero.comments_disabled, zero.comment_count.value, zero.comment_count.status], [false, 0, 'exact']);
+  const counted = toVideoFacts(video(), false, await topComments(empty, 'YDCB8Bk1OBE', '15'), 20, now);
+  assert.deepEqual([counted.comments_disabled, counted.comments_first_page?.returned_count, counted.comment_count.value, counted.comment_count.status], [false, 0, 15, 'exact'], 'counted comments YouTube did not serve keep the observed count');
   await assert.rejects(() => topComments(yt('Cannot read properties of undefined'), 'YDCB8Bk1OBE', '15'), (e: unknown) => e instanceof ScrapeError && e.kind === 'parse', 'other parse failures still fail');
   await assert.rejects(() => topComments(yt('Sign in to confirm you\u2019re not a bot'), 'YDCB8Bk1OBE', undefined), (e: unknown) => e instanceof ScrapeError && e.kind === 'blocked');
 });
@@ -128,4 +132,37 @@ test('normalizeVideoKeywords preserves source order and removes case duplicates'
 test('descriptionState distinguishes a legitimate empty description from an unobserved one', () => {
   assert.equal(toVideoFacts(video({ snippet: { ...video().snippet, description: '' } }), false, { kind: 'skipped' }, 20, now).description, '');
   assert.equal(toVideoFacts(video({ snippet: { ...video().snippet, description: undefined } }), false, { kind: 'skipped' }, 20, now).description, null);
+});
+// Ported from oldsystem qybullmq/test/youtubeCommentPage.test.js and youtubeJs.test.js (batch 3a).
+const cpage = (comments: number, total: string | null, surface: 'available' | 'absent' = 'available'): CommentsResult => ({ kind: 'page', total_text: total, collected_at: now, locale: 'en', surface,
+  comments: Array.from({ length: comments }, (_, i) => ({ comment_id: `Ugz${i}xyz`, text: 't', author_name: null, author_channel_id: null, author_url: null, author_avatar_url: null, published_text: null, like_text: null, reply_text: null, is_pinned: null, is_channel_owner: null, is_verified: null, is_hearted: null })) });
+test('youtubeCommentsDisabled recognizes an explicit disabled surface but never over returned comments or the composer', () => {
+  assert.equal(disabledCommentsText(['Comments are turned off. Learn more']), true);
+  assert.equal(disabledCommentsText(['Os comentários estão desativados.']), true);
+  assert.equal(disabledCommentsText({ commentSimpleboxRenderer: { disabledText: 'Comments are disabled for this video' } }), false, 'an inactive composer is not a disabled surface');
+  const off = classifyComments(cpage(0, null, 'absent'), null, { disabledMessage: true }, true, now);
+  assert.deepEqual([off.comments_disabled, off.comment_count.value, off.comment_count.status], [true, 0, 'disabled']);
+  assert.equal(classifyComments(cpage(2, '2'), 2, { disabledMessage: true }, true, now).comments_disabled, false, 'returned comments win over disabled wording');
+});
+test('classifyYoutubeCommentPage keeps closed, zero and positive totals distinct; abbreviated totals stay exact', () => {
+  const first = classifyComments(cpage(3, null), null, {}, true, now);
+  assert.deepEqual([first.comment_count.value, first.comment_count.status, first.comments_disabled], [3, 'exact', false], 'returned comments are a lower bound');
+  assert.deepEqual(classifyComments(cpage(20, '1.2K'), 1_200, {}, true, now).comment_count.status, 'exact', 'legacy has no estimated comment count');
+  const zero = classifyComments(cpage(0, null), null, {}, true, now);
+  assert.deepEqual([zero.comment_count.value, zero.comment_count.status, zero.comments_disabled], [0, 'zero_from_surface', false]);
+  const bare = classifyComments(cpage(0, null, 'absent'), null, {}, true, now);
+  assert.deepEqual([bare.comment_count.status, bare.comments_disabled], ['unresolved', null], 'a successful bare continuation stays unresolved');
+});
+test('an empty comments endpoint resolves an age-gated video as disabled; live comment surfaces are policy zeros', () => {
+  const age = classifyComments(cpage(0, null, 'absent'), null, { ageGate: true }, true, now);
+  assert.deepEqual([age.comments_disabled, age.comment_count.status, age.comment_count.source], [true, 'disabled', 'youtubei:comments_age_gate_empty']);
+  const upcoming = classifyComments(cpage(0, null, 'absent'), null, { upcoming: true }, true, now);
+  assert.deepEqual([upcoming.comment_count.value, upcoming.comment_count.status, upcoming.comments_disabled], [0, 'zero_from_upcoming', null], 'absent live comments are not disabled comments');
+  assert.equal(classifyComments(cpage(0, null, 'absent'), null, { live: true }, true, now).comment_count.status, 'zero_from_empty');
+  assert.equal(classifyComments(cpage(0, null, 'absent'), null, { live: true }, false, now).comment_count.status, 'unresolved', 'restricted videos get no policy zero');
+});
+test('duplicate comment ids are dropped and positions renumbered instead of failing the video', () => {
+  const dup = cpage(2, '5'); if (dup.kind === 'page') dup.comments.push({ ...dup.comments[0]! });
+  const v = toVideoFacts(video(), false, dup, 20, now);
+  assert.deepEqual(v.comments_first_page!.comments.map(c => [c.comment_id, c.position]), [['Ugz0xyz', 1], ['Ugz1xyz', 2]]);
 });

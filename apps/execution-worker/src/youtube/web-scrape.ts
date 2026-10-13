@@ -1,7 +1,7 @@
-import { Innertube } from 'youtubei.js';
+import { Innertube, YTNodes } from 'youtubei.js';
 import { ChannelFactsSchema, VideoFactsSchema, VideoUnavailableSchema, type ChannelFacts, type VideoFacts, type VideoItem } from '@crawlsystem/contracts';
 import { ScrapeError, topComments, classify } from './scrape.ts';
-import { normalizeKeywords, parseCount, parseKeywords, toVideoFacts, type CommentsResult } from './map.ts';
+import { disabledCommentsText, normalizeKeywords, parseCount, parseKeywords, toVideoFacts, type CommentsResult } from './map.ts';
 import { findSubscriberCountText, localizedAbsoluteUtcDay } from './localized.ts';
 import type { BrowserIdentity } from './identity.ts';
 import { IDENTITY_POLICY } from './identity.ts';
@@ -224,9 +224,18 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
   // Legacy description order (youtubeJs.js:1594-1600): the player's short description, else the watch page description.
   const description = typeof basic.short_description === 'string' ? basic.short_description : text(info.secondary_info?.description) ?? undefined;
   const thumbnail = largestThumbnail(basic.thumbnail, micro.thumbnails);
+  const facts = access(info), hint = count(info.comments_entry_point_header?.comment_count, locale);
+  // Legacy youtubeJs.js:1499-1504: Message nodes of the watch page say when comments are turned off.
+  const messages = Array.from((info.page?.[1]?.contents_memo?.getType?.(YTNodes.Message) ?? []) as Node[]).map(m => text(m.text));
+  // Legacy isEmptyAgeGateCommentsResponse (youtubeJs.js:1425-1440): age-gated videos answer comments with nothing.
+  const reason = text(info.playability_status?.reason) ?? '';
+  const ageGate = comments.kind === 'page' && comments.surface === 'absent' && comments.comments.length === 0 && !comments.total_text
+    && String(info.playability_status?.status ?? '').toUpperCase() === 'LOGIN_REQUIRED' && basic.is_family_safe === false && /confirm your age|age[- ]restricted|verify your age/i.test(reason);
   const mapped = toVideoFacts({ id: videoId, snippet: { channelId, title, description, publishedAt: published.value,
     tags: normalizeKeywords(basic.keywords, basic.tags, micro.keywords), thumbnails: thumbnail ? { default: { url: thumbnail } } : undefined },
-    contentDetails: duration ? { duration: `PT${duration}S` } : {}, statistics: {} }, null, comments, commentLimit, observed);
+    contentDetails: duration ? { duration: `PT${duration}S` } : {}, statistics: {} }, null, comments, commentLimit, observed,
+    { hint: hint === null ? null : { value: hint, source: 'youtubei:next' }, disabledMessage: disabledCommentsText(messages), ageGate,
+      upcoming: basic.is_upcoming === true, live: basic.is_live === true, accessible: ['public', 'unlisted'].includes(facts.access_status) });
   const metric = (value: number | null) => ({ value, status: value === null ? 'unresolved' as const : 'exact' as const, source: 'youtubei:video', observed_at: observed });
   // The first player with authoritative type evidence wins, so IOS without a microformat cannot erase WEB's (legacy V-90).
   const players: Node[] = info._raw_players ?? (info._raw_player ? [info._raw_player] : []);
@@ -234,20 +243,18 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
   const live = type?.type === 'live', short = type?.type === 'short';
   const upcoming = basic.is_upcoming === true || players.some(p => p?.videoDetails?.isUpcoming === true);
   const start = basic.start_timestamp ?? micro.start_timestamp, end = basic.end_timestamp ?? micro.end_timestamp;
-  const like = likeCount(info, locale), facts = access(info);
+  const like = likeCount(info, locale);
   // Legacy missingLikeIsZero (detailPolicy.js:93-102): a full detail of an accessible video without a like count is a
   // policy zero. A metrics refresh reads no like button, so its missing count stays unresolved and keeps the stored one.
   const likeMetric = like.value !== null ? { value: like.value, status: like.status ?? 'exact' as const, source: like.source, observed_at: observed }
     : !metricsOnly && !['members_only', 'private', 'unavailable', 'login_required'].includes(facts.access_status) ? { value: 0, status: 'zero_from_empty' as const, source: 'public_empty_is_zero', observed_at: observed }
     : metric(null);
   const viewDetail = countDetail(basic.view_count ?? micro.view_count ?? primary.view_count, locale);
-  const commentCount = comments.kind === 'page' ? parseCount(comments.total_text, locale)?.value ?? null : count(info.comments_entry_point_header?.comment_count, locale);
   return VideoFactsSchema.parse({ ...mapped, content_type: type?.type ?? 'video', content_type_source: type?.source ?? 'default:shorts_unknown',
     url: short && !live ? `https://www.youtube.com/shorts/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`,
     published_at: published.value, published_at_precision: published.precision, published_at_source: publication.value ? 'youtubei:player_microformat' : 'youtubei:next_date',
     published_text_raw: publication.value ? text(micro.publish_date ?? micro.upload_date) : text(primary.published?.text ?? primary.published),
     duration_seconds: metric(duration || null), view_count: viewDetail && !viewDetail.exact ? { ...metric(view), status: 'estimated' } : metric(view), like_count: likeMetric,
-    comment_count: comments.kind === 'disabled' ? { ...metric(0), status: 'disabled' } : { ...metric(commentCount), status: comments.kind === 'page' && commentCount !== null && !parseCount(comments.total_text, locale)?.exact ? 'estimated' : commentCount === null ? 'unresolved' : 'exact' },
     ...facts, 
     // Legacy youtubeJs.js:1534-1535: a scheduled broadcast's start is its schedule, not a start.
     live_scheduled_at: upcoming && start ? new Date(start).toISOString() : null, live_started_at: !upcoming && start ? new Date(start).toISOString() : null,
