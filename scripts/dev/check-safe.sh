@@ -101,6 +101,8 @@ case "${1:-}" in
   import-retry-bootstrap) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-name-pattern='historical bootstrap' tests/integration/failure-analytics.test.ts) ;;
   import-retry-parser) command=(node --import tsx --test apps/raw-parser/test/parser.test.ts) ;;
   import-retry-replay) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-e2-replay.ts) ;;
+  failure-governance-replay) command=(node --import tsx scripts/dev/verify-failure-replay.ts) ;;
+  failure-governance-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --failure-governance-control-only) ;;
   import-retry-prepare) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-e2.ts) ;;
   import-retry-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --e2-control-only) ;;
   import-retry-deploy) command=(node --import tsx scripts/dev/deploy-e2.ts) ;;

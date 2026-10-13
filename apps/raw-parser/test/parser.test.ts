@@ -76,15 +76,18 @@ test('offline replay rejects uncaptured endpoints instead of making a network re
   await assert.rejects(replay.fetch('https://www.youtube.com/youtubei/v1/player',{method:'POST'}),e=>e instanceof ParseFailure&&e.code==='REPLAY_INCOMPLETE');
 });
 
-test('a captured player whose next request was lost cannot consume the successful retry next response',async()=>{
+for (const scenario of ['lost-next','http-403','next-before-player','late-player'] as const) test(`offline video replay selects the successful capture after ${scenario}`,async()=>{
   const raw=memory(),parsed=memory(),plan=input(),channel='UC'+'a'.repeat(22),video='abcdefghijk',at=plan.plan.created_at;
   const frozen=FrozenInputSchema.parse({schema_version:CONTRACT_VERSION,source_mode:'youtube',channel_id:channel,required_domains:['ABOUT','VIDEO'],scope:{video_limit:30,max_age_days:365,comments_per_video:0,comment_sort:'TOP_COMMENTS'},reference_time:at,deadline_at:plan.plan.deadline_at,max_attempts:3,pipeline_version:'r3.v1'});
   plan.input=frozen;Object.assign(plan.plan,{source_mode:'youtube',fixture_id:null,channel_id:channel,input_hash:contentHash(frozen)});
   const player={playabilityStatus:{status:'UNPLAYABLE'},videoDetails:{videoId:video,channelId:channel,title:'Transport retry fixture',shortDescription:'',lengthSeconds:'12',viewCount:'100',isLiveContent:false},
     microformat:{playerMicroformatRenderer:{publishDate:'2026-10-10T12:00:00Z',uploadDate:'2026-10-10T12:00:00Z',isShortsEligible:true,externalChannelId:channel,title:{simpleText:'Transport retry fixture'},description:{simpleText:''},lengthSeconds:'12',viewCount:'100'}}};
-  const response=(path:string,body:unknown)=>({endpoint:'https://www.youtube.com/youtubei/v1/'+path,method:'POST',status:200,client:'WEB',captured_at:at,body:JSON.stringify(body)});
+  const response=(path:string,body:unknown,status=200)=>({endpoint:'https://www.youtube.com/youtubei/v1/'+path,method:'POST',status,client:'WEB',captured_at:at,body:JSON.stringify(body)});
   const ref=await new RawArchive(raw.store,{async send(){}}).save({schema_version:'crawl.unit.v1',owner:{schema_version:CONTRACT_VERSION,workspace_id:plan.plan.workspace_id,plan_id:plan.plan.plan_id,execution_epoch:1,input_hash:plan.plan.input_hash,workflow_id:plan.plan.workflow_id},channel_id:channel,step:'VIDEO-0',unit_id:video,captured_at:at,
-    responses:[response('player',{playabilityStatus:{status:'LOGIN_REQUIRED',reason:'Please sign in.'}}),response('player',player),response('next',{})],result:{title:'Do not trust this projection'}},new AbortController().signal);
+    responses:[response('player',{playabilityStatus:{status:'LOGIN_REQUIRED',reason:'Please sign in.'}}),...(scenario==='http-403'?[response('next',{},403)]:[]),
+      ...(scenario==='late-player'?[response('player',{...player,videoDetails:{...player.videoDetails,viewCount:'99'}})]:[]),
+      ...(scenario==='next-before-player'?[response('next',{}),response('player',player)]:[response('player',player),response('next',{})])],
+    result:{title:'Do not trust this projection'}},new AbortController().signal);
   let published=0;const parser=new RawParser({raw:raw.store,parsed:parsed.store,loadPlan:async()=>plan,publish:async(_topic,_channel,fact)=>{
     assert.equal(fact.kind,'VIDEO');if(fact.kind!=='VIDEO'||'unavailable' in fact.payload)return assert.fail('Captured metadata remains usable');
     assert.equal(fact.payload.title,'Transport retry fixture');assert.equal(fact.payload.view_count.value,100);assert.equal(fact.payload.source_content_id,video);published++;
