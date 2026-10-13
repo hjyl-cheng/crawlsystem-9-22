@@ -8,6 +8,8 @@ import type { WorkflowInput } from '@crawlsystem/contracts';
 export interface RawResponse { endpoint: string; method: string; status: number; captured_at: string; body: string; client?: string; region?: string; }
 export interface RawUnit<T = unknown> {
   schema_version: 'crawl.unit.v1'; owner: WorkflowInput; channel_id: string; step: string; unit_id: string; captured_at: string;
+  /** YouTube display language of the capturing session; absent on units captured before 10-13 (pt-BR). */
+  locale?: string;
   responses: RawResponse[];
   /** R2 compatibility projection; R3 will parse the original responses independently. */
   result: T;

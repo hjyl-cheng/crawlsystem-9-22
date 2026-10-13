@@ -22,6 +22,9 @@ test('counts, durations, relative times and keywords parse without inventing pre
   assert.equal(parseCount(''), null); assert.equal(parseCount(null), null);
   assert.equal(parseIsoDuration('PT1H2M3S'), 3723); assert.equal(parseIsoDuration('P1DT2S'), 86402); assert.equal(parseIsoDuration('P0D'), null); assert.equal(parseIsoDuration('bogus'), null);
   assert.equal(estimateRelative('2 weeks ago', now), '2026-09-10T12:00:00.000Z'); assert.equal(estimateRelative('Streamed live', now), null);
+  // Units captured before 10-13 hold pt-BR text and are read in pt-BR (legacy localizedTime.js); English rules do not guess it.
+  assert.equal(estimateRelative('há 2 semanas', now, 'pt-BR'), '2026-09-10T12:00:00.000Z'); assert.equal(estimateRelative('há 2 semanas', now, 'en'), null);
+  assert.deepEqual(parseCount('1,2 mil', 'pt-BR'), { value: 1_200, exact: false });
   assert.deepEqual(parseKeywords('"google developers" android "machine learning"'), ['google developers', 'android', 'machine learning']);
 });
 test('channel facts carry sources and statuses; subscriber counts are estimates and hidden ones unavailable', () => {

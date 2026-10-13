@@ -51,6 +51,7 @@ test('an About page unavailable to the default identity is collected again in th
   const responses: RawResponse[] = t.units().find(u => u.step === 'ABOUT')!.responses;
   assert.deepEqual(responses.map(r => r.region ?? null), [null, null, 'US'], 'default page, Data API record, then the regional page');
   assert.ok(t.notes.includes('About: rechecked in US'));
+  assert.ok(t.units().every(u => u.locale === 'en'), 'units record the English session language they were captured in');
 });
 
 test('without a proxy of that country the About falls back to the Data API record at once', async () => {

@@ -1,3 +1,4 @@
+import { localizedEstimatedUtcTimestamp, parseLocalizedCountDetails } from './localized.ts';
 import { ChannelFactsSchema, CommentPageSchema, VideoFactsSchema, VideoUnavailableSchema, type ChannelFacts, type VideoFacts, type VideoUnavailable } from '@crawlsystem/contracts';
 
 // Pure mapping from upstream shapes (Data API v3 JSON, youtubei.js parsed nodes reduced
@@ -6,22 +7,13 @@ import { ChannelFactsSchema, CommentPageSchema, VideoFactsSchema, VideoUnavailab
 export const EXTRACTOR_VERSION = 'yt-collector/1 (youtubei.js 18.1.0 + data-api v3)';
 type Metric = VideoFacts['view_count'];
 const metric = (value: number | null, status: Metric['status'], source: string, observed_at: string): Metric => ({ value, status, source, observed_at });
-/** "2.67M subscribers" / "359,612,169 views" / "1.2K" → number; K/M/B abbreviations are estimates. */
+/** A localized display count (legacy localizedCount.js rules); abbreviated values ("1.2K", "1,2 mil") are not exact. */
 export function parseCount(text: string | null | undefined, locale = 'en'): { value: number; exact: boolean } | null {
   if (!text) return null;
-  if (locale.startsWith('pt')) {
-    const match = /([\d.,]+)\s*(milh(?:ão|ões)|bilh(?:ão|ões)|mil|mi|bi|[KMB])?\b/i.exec(text.replace(/ /g, ' '));
-    if (!match) return null;
-    const unit = match[2]?.toLowerCase();
-    const multiplier = !unit ? 1 : /^(milh|mi$|m$)/.test(unit) ? 1e6 : /^(bilh|bi$|b$)/.test(unit) ? 1e9 : 1e3;
-    const value = Number(multiplier === 1 ? match[1]!.replace(/[.,]/g, '') : match[1]!.includes(',') ? match[1]!.replace(/\./g, '').replace(',', '.') : match[1]) * multiplier;
-    return Number.isSafeInteger(Math.round(value)) && value >= 0 ? { value: Math.round(value), exact: multiplier === 1 } : null;
-  }
-  const m = /([\d.,]+)\s*([KMB])?/i.exec(text.replace(/ /g, ' '));
-  if (!m) return /\bno\b/i.test(text) ? { value: 0, exact: true } : null;
-  const unit = m[2]?.toUpperCase(), number = Number(m[1]!.replace(/,/g, ''));
-  if (!Number.isFinite(number)) return null;
-  return unit ? { value: Math.round(number * { K: 1e3, M: 1e6, B: 1e9 }[unit as 'K']), exact: false } : { value: Math.round(number), exact: true };
+  const parsed = parseLocalizedCountDetails(text, locale);
+  if (parsed) return { value: parsed.value, exact: parsed.multiplier === 1 };
+  // "No comments" / "No likes" in English carry no digits; kept from the previous English parser until the batch-3 comment rules.
+  return locale.startsWith('en') && /\bno\b/i.test(text) ? { value: 0, exact: true } : null;
 }
 /** ISO 8601 duration (PT1H2M3S, P1DT2S) → seconds; P0D (upcoming live) → null. */
 export function parseIsoDuration(text: string | undefined): number | null {
@@ -30,12 +22,9 @@ export function parseIsoDuration(text: string | undefined): number | null {
   const seconds = Number(m[1] ?? 0) * 86400 + Number(m[2] ?? 0) * 3600 + Number(m[3] ?? 0) * 60 + Number(m[4] ?? 0);
   return seconds > 0 ? seconds : null;
 }
-/** "3 days ago" relative to the observation time → estimated UTC timestamp. */
-export function estimateRelative(text: string, observedAt: string): string | null {
-  const m = /(\d+)\s*(second|minute|hour|day|week|month|year)s?\s+ago/i.exec(text);
-  if (!m) return null;
-  const unitMs = { second: 1e3, minute: 6e4, hour: 36e5, day: 864e5, week: 6048e5, month: 2592e6, year: 31536e6 }[m[2]!.toLowerCase() as 'day'];
-  return new Date(Date.parse(observedAt) - Number(m[1]) * unitMs).toISOString();
+/** "3 days ago" / "há 3 dias" relative to the observation time → estimated UTC timestamp (legacy localizedTime.js). */
+export function estimateRelative(text: string, observedAt: string, locale = 'en'): string | null {
+  return localizedEstimatedUtcTimestamp(text, locale, Date.parse(observedAt));
 }
 /** YouTube keyword strings quote multi-word terms: `"google developers" android`. */
 export function parseKeywords(text: string | undefined): string[] {
@@ -105,7 +94,7 @@ export function toVideoFacts(api: ApiVideo, isShort: boolean | null, comments: C
   const page = comments.kind === 'page' ? CommentPageSchema.parse({ version: 1, collected_at: comments.collected_at, sort: comments.sort ?? 'TOP_COMMENTS',
     total_count: parseCount(comments.total_text, comments.locale)?.value ?? (stats.commentCount !== undefined ? Number(stats.commentCount) : null),
     returned_count: Math.min(comments.comments.length, commentLimit), comments: comments.comments.slice(0, commentLimit).map((c, i) => {
-      const estimated = c.published_text ? estimateRelative(c.published_text, comments.collected_at) : null;
+      const estimated = c.published_text ? estimateRelative(c.published_text, comments.collected_at, comments.locale) : null;
       return { comment_id: c.comment_id, position: i + 1, text: c.text.slice(0, 20_000), author_name: c.author_name, author_channel_id: c.author_channel_id, author_url: c.author_url, author_avatar_url: c.author_avatar_url,
         published_at_utc: estimated, published_text_raw: c.published_text, published_at_status: estimated ? 'estimated_relative' : 'unresolved',
         is_edited: c.published_text ? /edited|editado/i.test(c.published_text) : null, like_count: parseCount(c.like_text, comments.locale)?.value ?? null, reply_count: parseCount(c.reply_text, comments.locale)?.value ?? null,

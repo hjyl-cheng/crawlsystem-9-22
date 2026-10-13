@@ -7,7 +7,7 @@ import { LeaseClient, ProxyUnavailable, type Outcome } from './transport.ts';
 import { DataApi, type RequestGuard } from './data-api.ts';
 import { ScrapeError } from './scrape.ts';
 import { apiChannelFacts, collectedFor, toVideoFacts, unavailableVideo } from './map.ts';
-import { browserSession, channelFacts, uploads, videoDetail } from './web-scrape.ts';
+import { SESSION_LOCALE, browserSession, channelFacts, uploads, videoDetail } from './web-scrape.ts';
 import {channelUnavailablePage,confirmedChannelRemoval} from './channel-removal.ts';
 import { DEFAULT_REGION, RegionUnavailable, regionCode, regionalFacts } from './region.ts';
 import { EXIT_CHECK_URL, parseSwJsData } from '@crawlsystem/execution-client/proxy-exit';
@@ -45,7 +45,7 @@ export class WebCollector {
             const seen = parseSwJsData(await (await transport.fetch(EXIT_CHECK_URL, { signal: ctx.signal })).text())?.country ?? null;
             if (seen !== region) throw new RegionMismatch(seen);
           }
-          await ctx.note(`identity=${transport.identity.profile_id}; pt-BR / ${region ?? DEFAULT_REGION} / America/Sao_Paulo; proxy=${lease.proxy_id ?? 'unknown'}; egress=${lease.egress_country ?? 'unknown'}; clients=WEB,IOS`);
+          await ctx.note(`identity=${transport.identity.profile_id}; ${SESSION_LOCALE} / ${region ?? DEFAULT_REGION} / America/Sao_Paulo; proxy=${lease.proxy_id ?? 'unknown'}; egress=${lease.egress_country ?? 'unknown'}; clients=WEB,IOS`);
           try { return await work(await this.operations.browserSession(captureFetch(transport.fetch, responses), transport.identity, region)); }
           finally {
             const failure = transport.failureKind?.();
@@ -100,7 +100,7 @@ export class WebCollector {
     if (reused) return reused;
     const responses: RawResponse[] = [];let result:T;
     try{result=await work(responses);}catch(error){await this.preserveFailure(ctx,step,unitId,responses,error);throw error;}
-    const reference = await this.archive.save({ schema_version: 'crawl.unit.v1', owner: ctx.owner, channel_id: ctx.channelId, step, unit_id: unitId,
+    const reference = await this.archive.save({ schema_version: 'crawl.unit.v1', locale: SESSION_LOCALE, owner: ctx.owner, channel_id: ctx.channelId, step, unit_id: unitId,
       captured_at: new Date().toISOString(), responses, result }, ctx.signal);
     return { result, reference };
   }
@@ -170,7 +170,7 @@ export class WebCollector {
       // Legacy alternate_region: a video blocked for the default identity is read again in the channel's country.
       if (result && 'unavailable' in result && result.access_status === 'region_blocked') result = await this.inRegion(ctx, await this.channelRegion(ctx, responses), `video=${id}`, detail) ?? result;
       if (!result) { fallback.set(id, responses); continue; }
-      const reference = await this.archive.save({ schema_version: 'crawl.unit.v1', owner: ctx.owner, channel_id: ctx.channelId, step, unit_id: id,
+      const reference = await this.archive.save({ schema_version: 'crawl.unit.v1', locale: SESSION_LOCALE, owner: ctx.owner, channel_id: ctx.channelId, step, unit_id: id,
         captured_at: new Date().toISOString(), responses, result }, ctx.signal);
       results.set(id, result); references.set(id, reference);
     }
@@ -187,12 +187,12 @@ export class WebCollector {
         let comments: import('./map.ts').CommentsResult = { kind: 'skipped' };
         if (api && commentLimit && !metricsOnly) {
           const { topComments } = await import('./scrape.ts');
-          comments = await this.web(ctx, responses, yt => topComments(yt, id, api.statistics?.commentCount, 'pt-BR')).catch(() => ({ kind: 'unavailable' as const, collected_at: new Date().toISOString() }));
+          comments = await this.web(ctx, responses, yt => topComments(yt, id, api.statistics?.commentCount, SESSION_LOCALE)).catch(() => ({ kind: 'unavailable' as const, collected_at: new Date().toISOString() }));
           ctx.signal.throwIfAborted();
         }
         // An artist's uploads can list releases owned by another channel; they stay with this channel, owner recorded.
         const result = api ? collectedFor(toVideoFacts(api, null, comments, commentLimit, new Date().toISOString()), ctx.channelId) : unavailableVideo(ctx.channelId, id, new Date().toISOString());
-        const reference = await this.archive.save({ schema_version: 'crawl.unit.v1', owner: ctx.owner, channel_id: ctx.channelId, step, unit_id: id,
+        const reference = await this.archive.save({ schema_version: 'crawl.unit.v1', locale: SESSION_LOCALE, owner: ctx.owner, channel_id: ctx.channelId, step, unit_id: id,
           captured_at: new Date().toISOString(), responses, result }, ctx.signal);
         results.set(id, result); references.set(id, reference);
       }

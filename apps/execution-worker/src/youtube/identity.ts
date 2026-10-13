@@ -2,7 +2,9 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, randomInt, r
 import { mkdir, open, readFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export const IDENTITY_POLICY = { id: 'qy-br-channel-anonymous-v1', language: 'pt-BR', country: 'BR', timezone: 'America/Sao_Paulo', browser: 'chrome136' } as const;
+// Legacy qy-br-channel-anonymous-v1: YouTube sessions use the control language en with location BR
+// (oldsystem youtubeJs.js:48 DEFAULT_LANGUAGE = YOUTUBE_CONTROL_LANGUAGE, deploy/compose.yml:55 default en).
+export const IDENTITY_POLICY = { id: 'qy-br-channel-anonymous-v1', language: 'en', country: 'BR', timezone: 'America/Sao_Paulo', browser: 'chrome136' } as const;
 export interface BrowserIdentity {
   profile_id: string; user_agent: string; visitor_data: string; created_at: string; saved_at: string;
   cookie_state: { cookies: Record<string, unknown>[] };

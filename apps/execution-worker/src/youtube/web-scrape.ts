@@ -2,6 +2,7 @@ import { Innertube } from 'youtubei.js';
 import { ChannelFactsSchema, VideoFactsSchema, VideoUnavailableSchema, type ChannelFacts, type VideoFacts, type VideoItem } from '@crawlsystem/contracts';
 import { ScrapeError, topComments, classify } from './scrape.ts';
 import { parseCount, parseKeywords, toVideoFacts, type CommentsResult } from './map.ts';
+import { findSubscriberCountText, localizedAbsoluteUtcDay } from './localized.ts';
 import type { BrowserIdentity } from './identity.ts';
 import { IDENTITY_POLICY } from './identity.ts';
 import type { UploadDiscovery } from './data-api.ts';
@@ -10,7 +11,9 @@ import type { RawResponse } from '../raw-archive.ts';
 // Parsed YouTube.js nodes change between versions. Keep their dynamic shapes inside this adapter.
 type Node = Record<string, any>;
 const text = (value: unknown): string | null => { const s = value?.toString(); return s && !['[object Object]', 'N/A'].includes(s) ? s : null; };
-const count = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : parseCount(text(value), 'pt-BR')?.value ?? null;
+/** Texts are parsed in the language of the capturing session (legacy: every count and date in DEFAULT_LANGUAGE). */
+export const SESSION_LOCALE: string = IDENTITY_POLICY.language;
+const count = (value: unknown, locale: string) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : parseCount(text(value), locale)?.value ?? null;
 const thumb = (values: Node[] | undefined) => values?.slice().sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0]?.url ?? null;
 function strings(value: unknown, depth = 0): string[] {
   if (!value || depth > 9) return [];
@@ -20,19 +23,15 @@ function strings(value: unknown, depth = 0): string[] {
   if (rendered && !rendered.includes('[object Object]') && !Array.isArray(value)) return [rendered];
   return Object.values(value).slice(0, 60).flatMap(v => strings(v, depth + 1));
 }
-export function absoluteDate(value: unknown): { value: string | null; precision: 'second' | 'date_only' | 'unknown' } {
+/** ISO timestamps keep second precision; localized display dates ("Aug 18, 2026", "18 de ago. de 2026") resolve to a UTC day (legacy localizedTime.js). */
+export function absoluteDate(value: unknown, locale: string = SESSION_LOCALE): { value: string | null; precision: 'second' | 'date_only' | 'unknown' } {
   const raw = text(value) ?? '';
   const iso = /^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(raw) ? Date.parse(raw) : NaN;
   if (Number.isFinite(iso)) return { value: new Date(iso).toISOString(), precision: raw.includes('T') ? 'second' : 'date_only' };
-  const match = /(\d{1,2})\s+de\s+(jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)\.?\s+de\s+(\d{4})/i.exec(raw);
-  if (!match) return { value: null, precision: 'unknown' };
-  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-  const month = months.indexOf(match[2]!.slice(0, 3).toLowerCase()) + 1;
-  const date = `${match[3]}-${String(month).padStart(2, '0')}-${match[1]!.padStart(2, '0')}`;
-  const parsed = new Date(date);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date ? { value: parsed.toISOString(), precision: 'date_only' } : { value: null, precision: 'unknown' };
+  const day = localizedAbsoluteUtcDay(raw, locale);
+  return day ? { value: `${day}T00:00:00.000Z`, precision: 'date_only' } : { value: null, precision: 'unknown' };
 }
-/** `region` overrides the identity's YouTube location for the legacy country recheck; the language stays pt-BR for parsing. */
+/** `region` overrides the identity's YouTube location for the legacy country recheck; the language stays the session language. */
 export async function browserSession(fetcher: typeof fetch, identity: BrowserIdentity, region: string = IDENTITY_POLICY.country): Promise<Innertube> {
   try {
     return await Innertube.create({ fetch: fetcher, lang: IDENTITY_POLICY.language, location: region, timezone: IDENTITY_POLICY.timezone,
@@ -40,18 +39,19 @@ export async function browserSession(fetcher: typeof fetch, identity: BrowserIde
       retrieve_innertube_config: false, enable_session_cache: false });
   } catch (error) { throw classify(error); }
 }
-export async function channelFacts(yt: Innertube, channelId: string, observedAt = new Date().toISOString()): Promise<ChannelFacts> {
+export async function channelFacts(yt: Innertube, channelId: string, observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE): Promise<ChannelFacts> {
   try {
     const channel = await yt.getChannel(channelId), aboutNode = await channel.getAbout() as unknown as Node;
     const about: Node = aboutNode.metadata ?? aboutNode;
     const meta = channel.metadata, now = observedAt;
     const header = strings(channel.header);
-    const subscribers = text(about.subscriber_count) ?? header.find(s => /inscrit|subscri/i.test(s)) ?? null;
+    // Legacy findSubscriberCountText: a labelled row, never a handle; an unlabelled row only when it is the one compact number.
+    const subscribers = text(about.subscriber_count) ?? findSubscriberCountText(header, locale);
     const observed = (raw: unknown) => {
-      const parsed = parseCount(text(raw), 'pt-BR');
+      const parsed = parseCount(text(raw), locale);
       return { value: parsed?.value ?? null, status: parsed ? parsed.exact ? 'exact' : 'estimated' : 'unresolved', source: 'youtubei:channel_about', observed_at: now };
     };
-    const joined = absoluteDate(about.joined_date);
+    const joined = absoluteDate(about.joined_date, locale);
     if (!meta.title) throw new ScrapeError('parse', 'Channel title missing');
     return ChannelFactsSchema.parse({ channel_id: channelId, channel_url: `https://www.youtube.com/channel/${channelId}`, title: meta.title,
       handle: meta.vanity_channel_url?.match(/@[^/]+/)?.[0] ?? header.find(s => /^@[\w.\-]+$/.test(s)) ?? null,
@@ -104,13 +104,13 @@ export function playability(value: Node | undefined): { kind: 'ok' | 'blocked' |
   if (status === 'LOGIN_REQUIRED' && /^please\s+sign\s+in[.!]?$/.test(reason.trim())) return { kind: 'login' };
   return { kind: status === 'OK' ? 'ok' : 'ambiguous' };
 }
-export function mapWebVideo(info: Node, channelId: string, videoId: string, comments: CommentsResult, commentLimit: number, observedAt = new Date().toISOString()): VideoFacts {
+export function mapWebVideo(info: Node, channelId: string, videoId: string, comments: CommentsResult, commentLimit: number, observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE): VideoFacts {
   const basic = info.basic_info ?? {}, micro = info.page?.[0]?.microformat ?? {}, primary = info.primary_info ?? {}, observed = observedAt;
-  const publication = absoluteDate(micro.publish_date ?? micro.upload_date);
-  const published = publication.value ? publication : absoluteDate(primary.published?.text ?? primary.published);
+  const publication = absoluteDate(micro.publish_date ?? micro.upload_date, locale);
+  const published = publication.value ? publication : absoluteDate(primary.published?.text ?? primary.published, locale);
   const title = text(basic.title ?? micro.title ?? primary.title);
-  const view = count(basic.view_count ?? micro.view_count ?? primary.view_count);
-  const duration = count(basic.duration ?? micro.length_seconds);
+  const view = count(basic.view_count ?? micro.view_count ?? primary.view_count, locale);
+  const duration = count(basic.duration ?? micro.length_seconds, locale);
   if (!title || !published.value || view === null || (!duration && basic.is_live !== true && basic.is_upcoming !== true)) throw new ScrapeError('parse', 'Video detail incomplete');
   // Uploads may list a collaboration or the artist's VEVO release; keep it with this channel and record its owner.
   const actualChannel = basic.channel_id ?? micro.channel?.id ?? info.secondary_info?.owner?.author?.id;
@@ -124,19 +124,19 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
   const canonical = text(rawMicro.canonicalUrl ?? micro.url_canonical) ?? '';
   const short = rawMicro.isShortsEligible === true || player.videoDetails?.isShortsEligible === true || basic.is_short === true || canonical.includes('/shorts/');
   const likeButtons = strings(primary.menu?.top_level_buttons);
-  const like = count(basic.like_count) ?? count(likeButtons.find(s => /curtid|likes?/i.test(s) && /\d/.test(s)));
-  const commentCount = comments.kind === 'page' ? parseCount(comments.total_text, 'pt-BR')?.value ?? null : count(info.comments_entry_point_header?.comment_count);
+  const like = count(basic.like_count, locale) ?? count(likeButtons.find(s => /curtid|likes?/i.test(s) && /\d/.test(s)), locale);
+  const commentCount = comments.kind === 'page' ? parseCount(comments.total_text, locale)?.value ?? null : count(info.comments_entry_point_header?.comment_count, locale);
   return VideoFactsSchema.parse({ ...mapped, content_type: live ? 'live' : short ? 'short' : 'video', content_type_source: live || short || rawMicro.isShortsEligible === false ? 'youtubei:player' : 'default:shorts_unknown',
     url: short && !live ? `https://www.youtube.com/shorts/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`,
     published_at: published.value, published_at_precision: published.precision, published_at_source: publication.value ? 'youtubei:player_microformat' : 'youtubei:next_date',
     published_text_raw: publication.value ? text(micro.publish_date ?? micro.upload_date) : text(primary.published?.text ?? primary.published),
     duration_seconds: metric(duration || null), view_count: metric(view), like_count: metric(like),
-    comment_count: comments.kind === 'disabled' ? { ...metric(0), status: 'disabled' } : { ...metric(commentCount), status: comments.kind === 'page' && commentCount !== null && !parseCount(comments.total_text, 'pt-BR')?.exact ? 'estimated' : commentCount === null ? 'unresolved' : 'exact' },
+    comment_count: comments.kind === 'disabled' ? { ...metric(0), status: 'disabled' } : { ...metric(commentCount), status: comments.kind === 'page' && commentCount !== null && !parseCount(comments.total_text, locale)?.exact ? 'estimated' : commentCount === null ? 'unresolved' : 'exact' },
     access_status: micro.is_unlisted === true ? 'unlisted' : playability(info.playability_status).kind === 'ok' ? 'public' : 'unknown', access_status_source: 'youtubei:player',
     live_started_at: micro.start_timestamp ? new Date(micro.start_timestamp).toISOString() : null, live_ended_at: micro.end_timestamp ? new Date(micro.end_timestamp).toISOString() : null,
     extractor_version: 'yt-collector/2 (youtubei.js 18.1.0 web)', ...(actualChannel && actualChannel !== channelId ? { owner_channel_id: actualChannel } : {}) });
 }
-export async function videoDetail(yt: Innertube, channelId: string, videoId: string, commentLimit: number, metricsOnly = false, responses: RawResponse[] = [], observedAt = new Date().toISOString()): Promise<VideoItem> {
+export async function videoDetail(yt: Innertube, channelId: string, videoId: string, commentLimit: number, metricsOnly = false, responses: RawResponse[] = [], observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE): Promise<VideoItem> {
   const logins: boolean[] = [];
   for (const client of ['WEB', 'IOS'] as const) {
     let info: Node;
@@ -156,13 +156,13 @@ export async function videoDetail(yt: Innertube, channelId: string, videoId: str
     if (decision.kind === 'blocked') throw new ScrapeError('blocked', 'YouTube challenged this identity');
     if (decision.kind === 'terminal') return terminalVideo(channelId, videoId, decision.status!, observedAt);
     logins.push(decision.kind === 'login');
-    try { mapWebVideo(info, channelId, videoId, { kind: 'skipped' }, 0, observedAt); }
+    try { mapWebVideo(info, channelId, videoId, { kind: 'skipped' }, 0, observedAt, locale); }
     catch { continue; }
     // Plain sign-in responses are terminal only after both clients confirmed them.
     if (decision.kind === 'login') continue;
-    const total = count(info.comments_entry_point_header?.comment_count);
-    const comments: CommentsResult = metricsOnly || !commentLimit ? { kind: 'skipped' } : await topComments(yt, videoId, total === null ? undefined : String(total), 'pt-BR', observedAt).catch(() => ({ kind: 'unavailable' as const, collected_at: observedAt }));
-    return mapWebVideo(info, channelId, videoId, comments, commentLimit, observedAt);
+    const total = count(info.comments_entry_point_header?.comment_count, locale);
+    const comments: CommentsResult = metricsOnly || !commentLimit ? { kind: 'skipped' } : await topComments(yt, videoId, total === null ? undefined : String(total), locale, observedAt).catch(() => ({ kind: 'unavailable' as const, collected_at: observedAt }));
+    return mapWebVideo(info, channelId, videoId, comments, commentLimit, observedAt, locale);
   }
   if (logins.length === 2 && logins.every(Boolean)) return terminalVideo(channelId, videoId, 'login_required', observedAt);
   throw new ScrapeError('parse', 'WEB and IOS video details exhausted');

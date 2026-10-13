@@ -15,7 +15,10 @@ test('Portuguese counts and dates retain estimates, day precision and missing co
   assert.deepEqual(parseCount('1,23 mi de inscritos', 'pt-BR'), { value: 1_230_000, exact: false });
   assert.deepEqual(parseCount('1.234.567 visualizações', 'pt-BR'), { value: 1_234_567, exact: true });
   assert.equal(parseCount('inscritos indisponíveis', 'pt-BR'), null);
-  assert.equal(absoluteDate('Estreou em 3 de out. de 2026').value, '2026-10-03T00:00:00.000Z');
+  assert.equal(absoluteDate('Estreou em 3 de out. de 2026', 'pt-BR').value, '2026-10-03T00:00:00.000Z');
+  // English sessions (legacy control language) read the English display date; text in another language is not guessed.
+  assert.equal(absoluteDate('Premiered Oct 3, 2026', 'en').value, '2026-10-03T00:00:00.000Z');
+  assert.equal(absoluteDate('Estreou em 3 de out. de 2026', 'en').value, null);
   const mapped = mapWebVideo(info(), channel, id, { kind: 'unavailable', collected_at: new Date().toISOString() }, 20);
   assert.equal(mapped.published_at_precision, 'date_only'); assert.equal(mapped.view_count.value, 432);
   assert.equal(mapped.comment_count.value, null); assert.equal(mapped.comments_disabled, null);
