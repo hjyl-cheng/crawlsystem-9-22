@@ -82,8 +82,8 @@ if(!existsSync(join(releases,'x86_64-unknown-linux-gnu')))throw new Error('Tempo
 writeFileSync(app+'/package.json',JSON.stringify({name:'crawlsystem-execution-worker',private:true,type:'module'})+'\n');
 const lock=createHash('sha256').update(readFileSync('package-lock.json')).update(copied.join('\n')).digest('hex');
 const worker=image('worker',workerRoot,createHash('sha256').update(sha(app+'/src/main.mjs',app+'/src/query-once.mjs',app+'/dist/workflow-bundle.cjs')).update(lock).digest('hex'));
-if(process.argv.includes('--d2-images')||process.argv.includes('--completion-images')){
- const metadataDir=process.argv.includes('--completion-images')?'.runtime/finish':'.runtime/d2';
+if(process.argv.includes('--d2-images')||process.argv.includes('--completion-images')||process.argv.includes('--failure-governance-images')){
+ const metadataDir=process.argv.includes('--failure-governance-images')?'.runtime/failure-governance':process.argv.includes('--completion-images')?'.runtime/finish':'.runtime/d2';
  mkdirSync(metadataDir,{recursive:true,mode:0o700});
  const metadata={revision,built_at:new Date().toISOString(),scope:'control-worker',control,worker};
  writeFileSync(metadataDir+'/latest-images.json',JSON.stringify(metadata,null,2)+'\n',{mode:0o600});console.log(JSON.stringify(metadata));process.exit(0);

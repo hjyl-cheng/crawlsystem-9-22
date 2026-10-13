@@ -76,6 +76,28 @@ test('offline replay rejects uncaptured endpoints instead of making a network re
   await assert.rejects(replay.fetch('https://www.youtube.com/youtubei/v1/player',{method:'POST'}),e=>e instanceof ParseFailure&&e.code==='REPLAY_INCOMPLETE');
 });
 
+test('offline target replay merges frozen recovery with captured discovery, ignoring the Worker projection', async () => {
+  const raw = memory(), parsed = memory(), plan = input(), channel = 'UC' + 'a'.repeat(22), at = plan.plan.created_at;
+  const frozen = FrozenInputSchema.parse({ schema_version: CONTRACT_VERSION, source_mode: 'youtube', pipeline_version: 'r3.v1',
+    channel_id: channel, plan_kind: 'UPDATE', required_domains: ['VIDEO'], discovery_anchor_ids: ['anchor00001'], recovery_video_ids: ['missing0001', 'newvideo001'],
+    scope: { video_limit: 30, max_age_days: 90, comments_per_video: 0, comment_sort: 'TOP_COMMENTS' }, reference_time: at, deadline_at: plan.plan.deadline_at, max_attempts: 3 });
+  plan.input = frozen; Object.assign(plan.plan, { source_mode: 'youtube', fixture_id: null, channel_id: channel, input_hash: contentHash(frozen), required_domains: ['VIDEO'] });
+  const contents = ['newvideo001', 'anchor00001', 'ignored0001'].map(videoId => ({ playlistVideoRenderer: { videoId, title: { simpleText: videoId,
+    accessibility: { accessibilityData: { label: videoId } } }, thumbnail: { thumbnails: [] }, navigationEndpoint: { watchEndpoint: { videoId } }, isPlayable: true } }));
+  const captured = { contents: { singleColumnBrowseResultsRenderer: { tabs: [{ tabRenderer: { selected: true, content: {
+    sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: [{ playlistVideoListRenderer: { contents } }] } }] }
+  } } }] } } };
+  const unit: RawUnit = { schema_version: 'crawl.unit.v1', owner: { schema_version: CONTRACT_VERSION, workspace_id: plan.plan.workspace_id,
+    plan_id: plan.plan.plan_id, execution_epoch: 1, input_hash: plan.plan.input_hash, workflow_id: plan.plan.workflow_id }, channel_id: channel,
+    step: 'TARGETS', unit_id: 'uploads', captured_at: at, result: { ids: ['untrusted01'] }, responses: [{ endpoint: 'https://www.youtube.com/youtubei/v1/browse',
+      method: 'POST', status: 200, captured_at: at, body: JSON.stringify(captured) }] };
+  const ref = await new RawArchive(raw.store, { async send() {} }).save(unit, new AbortController().signal);
+  const fact = await new RawParser({ raw: raw.store, parsed: parsed.store, loadPlan: async () => plan, publish: async () => {} }).parse(ref, new AbortController().signal);
+  assert.equal(fact!.kind, 'TARGETS'); if (fact!.kind !== 'TARGETS') return;
+  assert.deepEqual(fact!.payload.video_ids, ['missing0001', 'newvideo001']);
+  assert.equal(fact!.payload.kind, 'discovery'); if (fact!.payload.kind === 'discovery') assert.equal(fact!.payload.matched_anchor_id, 'anchor00001');
+});
+
 for (const scenario of ['lost-next','http-403','next-before-player','late-player'] as const) test(`offline video replay selects the successful capture after ${scenario}`,async()=>{
   const raw=memory(),parsed=memory(),plan=input(),channel='UC'+'a'.repeat(22),video='abcdefghijk',at=plan.plan.created_at;
   const frozen=FrozenInputSchema.parse({schema_version:CONTRACT_VERSION,source_mode:'youtube',channel_id:channel,required_domains:['ABOUT','VIDEO'],scope:{video_limit:30,max_age_days:365,comments_per_video:0,comment_sort:'TOP_COMMENTS'},reference_time:at,deadline_at:plan.plan.deadline_at,max_attempts:3,pipeline_version:'r3.v1'});

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { Innertube, Log } from 'youtubei.js';
-import { AgentResultSchema, CommentPageSchema, type PlanInput, type VideoItem, type YoutubeFrozenInput } from '@crawlsystem/contracts';
+import { AgentResultSchema, CommentPageSchema, mergeRecoveryVideoTargets, type PlanInput, type VideoItem, type YoutubeFrozenInput } from '@crawlsystem/contracts';
 import { contentHash } from '@crawlsystem/contracts/hash';
 import { PipelineFactSchema, RawReferenceSchema, type PipelineFact, type RawReference, type ObjectReference } from '@crawlsystem/contracts/pipeline';
 import type { ObjectStore, RawResponse, RawUnit } from '../../execution-worker/src/raw-archive.ts';
@@ -94,7 +94,7 @@ export class RawParser {
     }
     if (unit.step === 'TARGETS') {
       const listed = await uploads(await replay.client(), raw.channel_id, input.plan_kind === 'UPDATE' ? 100 : input.scope.video_limit, input.plan_kind === 'UPDATE' ? input.discovery_anchor_ids ?? [] : undefined);
-      return { kind: 'TARGETS', payload: input.plan_kind === 'UPDATE' ? { kind: 'discovery', channel_id: raw.channel_id, video_ids: listed.ids,
+      return { kind: 'TARGETS', payload: input.plan_kind === 'UPDATE' ? { kind: 'discovery', channel_id: raw.channel_id, video_ids: mergeRecoveryVideoTargets(listed.ids, input.recovery_video_ids),
         listed_at: observed, scanned_count: listed.scanned, pages: listed.pages, matched_anchor_id: listed.matched_anchor_id, stop_reason: listed.stop_reason, source: 'youtubei:uploads' }
         : { kind: 'targets', channel_id: raw.channel_id, video_ids: listed.ids, listed_at: observed, window_start: new Date(0).toISOString(), exhausted: listed.exhausted, source: 'youtubei:uploads' } };
     }

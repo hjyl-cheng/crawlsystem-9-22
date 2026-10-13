@@ -479,16 +479,31 @@ export class Store {
   }
   /**
    * What an incremental Video update freezes (legacy loadDiscoveryAnchors and Recent Sampling): the 20 newest
-   * known videos as discovery anchors, and the recent known videos the legacy planner picks for a re-read.
+   * completed videos as discovery anchors, unfinished observations as recovery targets,
+   * and the recent known videos the legacy planner picks for a re-read.
    */
   private async incrementalVideoInput(client: PoolClient, workspace: string, channelId: string, now: Date) {
     const known = `FROM control.videos WHERE workspace_id=$1 AND channel_id=$2 AND NOT coalesce((data->>'unavailable')::boolean,false) AND data->>'published_at' IS NOT NULL`;
-    const anchors = (await client.query(`SELECT video_id ${known} ORDER BY (data->>'published_at')::timestamptz DESC,video_id LIMIT 20`, [workspace, channelId])).rows.map(r => r.video_id as string);
+    const recovery=(await client.query(`SELECT video_id FROM (
+      SELECT f.unit_id video_id,0 priority FROM control.failures f JOIN control.plans failed USING(plan_id)
+        LEFT JOIN crawl_data.videos v ON v.workspace_id=f.workspace_id AND v.channel_id=f.channel_id AND v.video_id=f.unit_id
+        LEFT JOIN control.plans observed ON observed.workspace_id=v.workspace_id AND observed.channel_id=v.channel_id AND observed.source_revision=v.source_revision
+        WHERE f.workspace_id=$1 AND f.channel_id=$2 AND f.state IN ('OPEN','RETRYING') AND f.stage='PARSER' AND f.code='REPLAY_INCOMPLETE'
+          AND failed.status IN ('FAILED','CANCELLED') AND f.step ~ '^VIDEO-[0-9]+$' AND f.raw IS NOT NULL AND f.unit_id ~ '^[A-Za-z0-9_-]{11}$'
+          AND (observed.status IS DISTINCT FROM 'COMPLETED' OR v.observed_at<(f.raw->>'captured_at')::timestamptz)
+      UNION ALL
+      SELECT v.video_id,1 priority FROM crawl_data.videos v LEFT JOIN control.plans p
+        ON p.workspace_id=v.workspace_id AND p.channel_id=v.channel_id AND p.source_revision=v.source_revision
+        WHERE v.workspace_id=$1 AND v.channel_id=$2 AND p.status IS DISTINCT FROM 'COMPLETED'
+    ) candidates GROUP BY video_id ORDER BY min(priority),video_id LIMIT 100`,[workspace,channelId])).rows.map(r=>r.video_id as string);
+    const anchors = (await client.query(`SELECT video_id ${known}
+      AND EXISTS(SELECT 1 FROM control.plans p WHERE p.workspace_id=$1 AND p.channel_id=$2 AND p.source_revision=control.videos.source_revision AND p.status='COMPLETED')
+      ORDER BY (data->>'published_at')::timestamptz DESC,video_id LIMIT 20`, [workspace, channelId])).rows.map(r => r.video_id as string);
     const recent = (await client.query(`SELECT video_id,(data->>'published_at')::timestamptz AS published_at,coalesce(stats_observed_at,(data->>'observed_at')::timestamptz) AS stats_observed_at,change_probability
-      ${known} AND (data->>'published_at')::timestamptz >= ($3::date - $4::int)::timestamp AT TIME ZONE 'UTC'`, [workspace, channelId, now.toISOString().slice(0, 10), RECENT_SAMPLING.recentWindowDays])).rows;
+      ${known} AND NOT(video_id=ANY($5::text[])) AND (data->>'published_at')::timestamptz >= ($3::date - $4::int)::timestamp AT TIME ZONE 'UTC'`, [workspace, channelId, now.toISOString().slice(0, 10), RECENT_SAMPLING.recentWindowDays,recovery])).rows;
     const plan = planRecentSampling(recent.map(r => ({ video_id: r.video_id, published_at: new Date(r.published_at).getTime(),
       stats_observed_at: r.stats_observed_at ? new Date(r.stats_observed_at).getTime() : null, change_probability: r.change_probability })), now.getTime());
-    return { discovery_anchor_ids: anchors, recent_sampling: { video_ids: plan.video_ids, stale_ratio: plan.stale_ratio, candidate_count: plan.candidate_count } };
+    return { discovery_anchor_ids: anchors,...(recovery.length?{recovery_video_ids:recovery}:{}),recent_sampling: { video_ids: plan.video_ids, stale_ratio: plan.stale_ratio, candidate_count: plan.candidate_count } };
   }
   /** One idempotent permit per actual external API request, shared by all Worker replicas. */
   async dataApiPermit(principal: Principal, raw: unknown, now = new Date()): Promise<DataApiPermit> {

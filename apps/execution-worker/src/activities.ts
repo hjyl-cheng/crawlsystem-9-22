@@ -3,7 +3,7 @@ import { Context, heartbeat, CancelledFailure, ApplicationFailure } from '@tempo
 import { contentHash, fixtureSubmission, stableSubmissionId, submissionHash } from '@crawlsystem/contracts/hash';
 import { ExecutionApi, ExecutionApiError, checkReceipt } from '@crawlsystem/execution-client/http';
 import type { RequestTracing } from '@crawlsystem/http/tracing';
-import { CONTRACT_VERSION, type AgentResult, type Domain, type ErrorCode, type ExecutionEvent, type PlanWorkflowResult, type PlanInput, type PlanStatus, type Submission, type VideoItem, type WorkflowInput, type YoutubeFrozenInput } from '@crawlsystem/contracts';
+import { CONTRACT_VERSION, mergeRecoveryVideoTargets, type AgentResult, type Domain, type ErrorCode, type ExecutionEvent, type PlanWorkflowResult, type PlanInput, type PlanStatus, type Submission, type VideoItem, type WorkflowInput, type YoutubeFrozenInput } from '@crawlsystem/contracts';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { DataApi, DataApiError, type RequestGuard } from './youtube/data-api.ts';
 import { aboutPage, ScrapeError, session, shortsIds, topComments } from './youtube/scrape.ts';
@@ -199,14 +199,16 @@ export function createActivities(options: ActivityOptions) {
         const input = youtubeInput(value);
         if (!input.required_domains.includes('VIDEO') || terminal(value.plan.status)) return { batches: 0, status: value.plan.status };
         if (!value.video_targets && input.plan_kind === 'UPDATE') {
-          // Incremental update: only uploads above the newest known videos (legacy discovery anchors).
-          const found = youtube().web ? await youtube().web!.targets(collection(ref, input, scope, descriptor.deadlineAt), 100, input.discovery_anchor_ids ?? [])
+          // Discovery stops at a completed observation. Previously unfinished videos
+          // are separately frozen so they survive both anchors and scan limits.
+          const found = youtube().web ? await youtube().web!.targets(collection(ref, input, scope, descriptor.deadlineAt), 100, input.discovery_anchor_ids ?? [], input.recovery_video_ids)
             : await youtube().dataApi.uploadsUntilAnchor(`UU${input.channel_id.slice(2)}`, input.discovery_anchor_ids ?? [], permit(ref, scope, descriptor.deadlineAt));
-          const manifest = { kind: 'discovery', channel_id: input.channel_id, video_ids: found.ids, listed_at: new Date().toISOString(), scanned_count: found.scanned,
+          const targets = mergeRecoveryVideoTargets(found.ids, input.recovery_video_ids);
+          const manifest = { kind: 'discovery', channel_id: input.channel_id, video_ids: targets, listed_at: new Date().toISOString(), scanned_count: found.scanned,
             pages: found.pages, matched_anchor_id: found.matched_anchor_id, stop_reason: found.stop_reason, source: youtube().web ? 'youtubei:uploads' : 'data_api:playlistItems' };
-          await submitOnce(ref, value, submissionOf(ref, 'VIDEO', 'video:discovery', manifest, found.ids.length === 0 && !resamples(input)), descriptor.deadlineAt);
+          await submitOnce(ref, value, submissionOf(ref, 'VIDEO', 'video:discovery', manifest, targets.length === 0 && !resamples(input)), descriptor.deadlineAt);
           const how = { anchor_matched: 'reached the newest known video', list_end: 'reached the end of the uploads', gap_abandoned_latest_30: 'too many new uploads; kept the newest 30' }[found.stop_reason];
-          await event(ref, scope, 'PROGRESS', 'DISCOVERY', `Found ${found.ids.length} new videos (${how})`, 'VIDEO');
+          await event(ref, scope, 'PROGRESS', 'DISCOVERY', `Frozen ${targets.length} video targets (${how}; ${input.recovery_video_ids?.length ?? 0} recovery targets)`, 'VIDEO');
           value = await read(ref, scope, descriptor.deadlineAt);
         }
         if (!value.video_targets) {

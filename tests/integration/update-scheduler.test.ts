@@ -162,3 +162,40 @@ test('domains left out of auto_domains stay due for a manual update; by default 
   const off = setup({ enabled: false, auto_domains: ['ABOUT', 'VIDEO'] });
   assert.deepEqual((await off.store.getChannel(t.reader, all.channel)).management.auto_domains, [], 'nothing is automatic while the scheduler is off');
 });
+
+test('updates freeze partial and missing video observations for recovery without using them as anchors or samples', async () => {
+  const t = setup(), item = await seed(t, []), partial = 'partial0001', missing = 'missing0001';
+  const update = () => t.store.updateChannel(t.op, item.channel, { request_id: randomUUID(), expected_version: 1, domains: ['VIDEO'] });
+  const failed = await update();
+  const apply = async (plan: Plan, payload: unknown, key: string, complete: boolean) => {
+    const s = submission(plan, 'VIDEO', payload, key); s.domain_complete = complete; s.payload_hash = submissionHash(s);
+    await t.store.apply(t.worker, s);
+  };
+  const manifest = (ids: string[]) => ({ kind: 'discovery', channel_id: item.channel, video_ids: ids, listed_at: new Date().toISOString(),
+    scanned_count: ids.length + 1, pages: 1, matched_anchor_id: item.video_id, stop_reason: 'anchor_matched', source: 'test' });
+  const video = (id: string) => ({ ...structuredClone(fixtureVideo), channel_id: item.channel, source_content_id: id,
+    url: `https://www.youtube.com/watch?v=${id}`, observed_at: new Date().toISOString() });
+  await apply(failed, manifest([partial, missing]), 'discovery', false);
+  await apply(failed, { kind: 'videos', items: [video(partial)] }, 'partial', false);
+  const raw = { schema_version: 'crawl.raw.v1', workspace_id: t.op.workspace_id, plan_id: failed.plan_id, execution_epoch: 1,
+    input_hash: failed.input_hash, channel_id: item.channel, step: 'VIDEO-0', unit_id: missing, bucket: 'crawl-raw',
+    key: `v1/${t.op.workspace_id}/${failed.plan_id}/1/VIDEO-0/${missing}.json.gz`, sha256: 'a'.repeat(64), bytes: 20, captured_at: new Date().toISOString() };
+  await t.store.reportFailure({ ...t.op, role: 'analytics' }, { report_id: randomUUID(), stage: 'PARSER', code: 'REPLAY_INCOMPLETE',
+    plan_id: failed.plan_id, execution_epoch: 1, step: 'VIDEO-0', unit_id: missing, raw, attempts: 3 });
+  await t.store.event(t.worker, failed.plan_id, { event_id: randomUUID(), execution_epoch: 1, worker_id: t.worker.subject,
+    kind: 'FAILED', phase: 'VIDEO', domain: 'VIDEO', message: 'Partial collection failed', error_code: 'UNAVAILABLE' });
+  const command = { request_id: randomUUID(), expected_version: 1, domains: ['VIDEO'] as Domain[] };
+  const recovery = await t.store.updateChannel(t.op, item.channel, command), context = await t.store.getInput(t.worker, recovery.plan_id);
+  assert.equal(context.input.source_mode, 'youtube'); if (context.input.source_mode !== 'youtube') return;
+  assert.deepEqual(context.input.recovery_video_ids, [missing, partial]);
+  assert.deepEqual(context.input.discovery_anchor_ids, [item.video_id]);
+  assert.ok(context.input.recent_sampling!.video_ids.every(id => ![partial, missing].includes(id)));
+  assert.equal((await t.store.updateChannel(t.op, item.channel, command)).input_hash, recovery.input_hash, 'retry preserves frozen inputs');
+  await reject(() => t.store.getInput({ ...t.worker, workspace_id: 'another-workspace' }, recovery.plan_id), 'NOT_FOUND');
+  await apply(recovery, manifest([missing, partial]), 'discovery', false);
+  await apply(recovery, { kind: 'videos', items: [video(missing), video(partial)] }, 'recovered', true);
+  // A finalized replacement supersedes the failed origin; the old failure remains historical.
+  await pool.query('UPDATE crawl_data.videos SET observed_at=clock_timestamp() WHERE workspace_id=$1 AND channel_id=$2', [t.op.workspace_id, item.channel]);
+  const next = (await t.store.getInput(t.worker, (await update()).plan_id)).input;
+  assert.equal(next.source_mode, 'youtube'); if (next.source_mode === 'youtube') assert.equal(next.recovery_video_ids, undefined);
+});

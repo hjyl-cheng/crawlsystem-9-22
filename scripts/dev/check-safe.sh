@@ -103,6 +103,13 @@ case "${1:-}" in
   import-retry-replay) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/verify-e2-replay.ts) ;;
   failure-governance-replay) command=(node --import tsx scripts/dev/verify-failure-replay.ts) ;;
   failure-governance-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --failure-governance-control-only) ;;
+  failure-governance-retry) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/retry-governance-failures.ts "${@:2}") ;;
+  failure-governance-unit) command=(node --import tsx --test --test-concurrency=1 apps/raw-parser/test/parser.test.ts apps/execution-worker/test/web-collector.test.ts apps/execution-worker/test/web-scrape.test.ts) ;;
+  failure-governance-integration) command=(node --env-file=.runtime/r3-test.env --import tsx --test --test-concurrency=1 tests/integration/update-scheduler.test.ts tests/integration/failure-analytics.test.ts) ;;
+  failure-governance-images) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --failure-governance-images) ;;
+  failure-governance-deploy) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/deploy-failure-governance.ts "${@:2}") ;;
+  failure-governance-inspect) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/inspect-failure-governance.ts) ;;
+  failure-governance-videos) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/recover-governance-videos.ts "${@:2}") ;;
   import-retry-prepare) command=(node --env-file=.runtime/main.env --import tsx scripts/dev/prepare-e2.ts) ;;
   import-retry-image) heap_mib=640; command=(node --import tsx scripts/dev/build-images.ts --e2-control-only) ;;
   import-retry-deploy) command=(node --import tsx scripts/dev/deploy-e2.ts) ;;

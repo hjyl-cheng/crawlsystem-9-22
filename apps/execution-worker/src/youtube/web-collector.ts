@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { ChannelFacts, VideoItem, WorkflowInput } from '@crawlsystem/contracts';
+import { mergeRecoveryVideoTargets } from '@crawlsystem/contracts';
 import { RawArchive, captureFetch, type RawReference, type RawResponse } from '../raw-archive.ts';
 import { FingerprintClient, FingerprintError } from './fingerprint.ts';
 import { LeaseClient, ProxyUnavailable, type Outcome } from './transport.ts';
@@ -72,8 +73,11 @@ export class WebCollector {
     await this.archive.finish(ctx.owner, ctx.channelId, 'ABOUT', [unit.reference], ctx.signal);
     return unit.result;
   }
-  async targets(ctx: CollectionContext, limit: number, anchors?: string[]) {
-    const unit = await this.unit(ctx, 'TARGETS', 'uploads', responses => this.web(ctx, responses, yt => this.operations.uploads(yt, ctx.channelId, Math.min(limit, 100), anchors)));
+  async targets(ctx: CollectionContext, limit: number, anchors?: string[], recoveryIds: string[] = []) {
+    const unit = await this.unit(ctx, 'TARGETS', 'uploads', async responses => {
+      const listed = await this.web(ctx, responses, yt => this.operations.uploads(yt, ctx.channelId, Math.min(limit, 100), anchors));
+      return { ...listed, ids: mergeRecoveryVideoTargets(listed.ids, recoveryIds) };
+    });
     await this.archive.finish(ctx.owner, ctx.channelId, 'TARGETS', [unit.reference], ctx.signal);
     return unit.result;
   }

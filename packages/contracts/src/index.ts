@@ -152,6 +152,8 @@ const YoutubeFrozenSchema = z.strictObject({
   agent_video_ids: z.array(YoutubeVideoIdSchema).max(100).optional(),
   /** Incremental Video (UPDATE): the newest known videos, newest first; the upload scan stops at the first one it meets. */
   discovery_anchor_ids: z.array(YoutubeVideoIdSchema).max(20).optional(),
+  /** Previously unfinished video observations to collect again, frozen by Control. */
+  recovery_video_ids: z.array(YoutubeVideoIdSchema).max(100).refine(ids=>new Set(ids).size===ids.length,'duplicate recovery video identities').optional(),
   /** Incremental Video (UPDATE): recent known videos whose counts are re-read, chosen at creation as the legacy planner does. */
   recent_sampling: z.strictObject({ video_ids: z.array(YoutubeVideoIdSchema).max(50), stale_ratio: z.number().min(0).max(1), candidate_count: z.number().int().nonnegative() }).optional(),
   required_domains: UniqueDomains, scope: z.strictObject({ video_limit: z.number().int().min(1).max(100), max_age_days: z.number().int().min(1).max(3650),
@@ -179,6 +181,10 @@ export const VideoDiscoveryManifestSchema = z.strictObject({
 }).refine(m => new Set(m.video_ids).size === m.video_ids.length, 'duplicate video targets')
   .refine(m => (m.stop_reason === 'anchor_matched') === (m.matched_anchor_id !== null), 'anchor match disagrees with stop reason');
 export type VideoDiscoveryManifest = z.infer<typeof VideoDiscoveryManifestSchema>;
+/** Recovery takes priority within the existing 100-video execution bound. */
+export function mergeRecoveryVideoTargets(discovered:string[],recovery:string[]=[]):string[] {
+  return [...new Set([...recovery,...discovered])].slice(0,100);
+}
 const SampleCount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable();
 /** Incremental Video (UPDATE): current counts of the frozen recent videos; ones the API no longer returns are missing. */
 export const VideoSamplesSchema = z.strictObject({
