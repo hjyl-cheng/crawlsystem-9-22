@@ -5,7 +5,7 @@ import {observationFactsHash as hash,publicationResultHash,normalizePublicationE
 export type PublicationDomain='channel'|'video'|'agent';
 export interface PublicationState {revision:number;payloads:Partial<Record<PublicationDomain,LegacyValue>>;vector:Record<string,LegacyValue>;removed?:boolean;}
 export interface PublicationSnapshot {channel_id:string;about:ChannelFacts;agent:AgentResult;videos:VideoItem[];observed_at:string;source:LegacyValue;removed?:boolean;}
-const resolved=(m:VideoFacts['view_count'])=>['exact','estimated','disabled'].includes(m.status)?m.value:null;
+const resolved=(m:VideoFacts['view_count'])=>['exact','estimated','disabled','zero_from_empty','zero_from_upcoming','zero_from_surface'].includes(m.status)?m.value:null;
 function channelPayload(a:ChannelFacts):LegacyValue {
  return {channel_id:a.channel_id,title:a.title,canonical_url:a.channel_url,vanity_channel_url:a.handle?`https://www.youtube.com/${a.handle.startsWith('@')?a.handle:'@'+a.handle}`:null,handle:a.handle,
   avatar:a.avatar_url?[{url:a.avatar_url,position:0}]:[],rss_url:`https://www.youtube.com/feeds/videos.xml?channel_id=${a.channel_id}`,keywords:a.keywords,is_family_safe:a.is_family_safe,is_verified:a.is_verified,is_verified_status:a.is_verified===null?'unknown':a.is_verified?'verified':'not_verified',

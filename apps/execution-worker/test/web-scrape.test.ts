@@ -117,3 +117,28 @@ test('legacy classification order: members before private, age before removal wo
   assert.deepEqual(playability({ status: 'OK' }), { kind: 'content', access: 'public', availability: 'public', reason_code: 'playable' });
   assert.deepEqual(playability(undefined), { kind: 'inconclusive', reason_code: 'playability_unresolved' });
 });
+
+// Batch 2b: legacy like and view statuses (youtubeJs.js youtubeJsLikeCount, detailPolicy.js missingLikeIsZero, videoDetailEvidence.js).
+const withButtons = (button: Record<string, unknown>) => ({ ...info(), primary_info: { menu: { top_level_buttons: [{ type: 'SegmentedLikeDislikeButtonView', ...button }] } } });
+test('normalizeYoutubeJsVideoInfo records non-public likes as a policy zero', () => {
+  const hidden = mapWebVideo(withButtons({ like_button: { toggle_button: { default_button: { title: 'Like', accessibility_text: 'Like' } } } }), channel, id, { kind: 'skipped' }, 0);
+  assert.deepEqual([hidden.like_count.value, hidden.like_count.status, hidden.like_count.source], [0, 'zero_from_empty', 'youtubei:like_count_not_public']);
+  const shown = mapWebVideo(withButtons({ short_like_count: '1.2K', like_button: { toggle_button: { default_button: { title: '1.2K', accessibility_text: 'like this video along with 1,234 other people' } } } }), channel, id, { kind: 'skipped' }, 0, undefined, 'en');
+  assert.deepEqual([shown.like_count.value, shown.like_count.status], [1_200, 'exact'], 'legacy keeps a button count exact');
+  const exact = mapWebVideo({ ...info(), basic_info: { ...info().basic_info, like_count: 1_234 } }, channel, id, { kind: 'skipped' }, 0);
+  assert.deepEqual([exact.like_count.value, exact.like_count.source], [1_234, 'youtubei:next']);
+});
+test('missing public likes are normalized to zero in full detail but never by a metrics refresh', () => {
+  const full = mapWebVideo(info(), channel, id, { kind: 'skipped' }, 0);
+  assert.deepEqual([full.like_count.value, full.like_count.status, full.like_count.source], [0, 'zero_from_empty', 'public_empty_is_zero']);
+  const refresh = mapWebVideo(info(), channel, id, { kind: 'skipped' }, 0, undefined, 'en', true);
+  assert.deepEqual([refresh.like_count.value, refresh.like_count.status], [null, 'unresolved'], 'the stored like count is kept');
+  const members = mapWebVideo(withPlayability({ status: 'LOGIN_REQUIRED', reason: 'Members-only content' }), channel, id, { kind: 'skipped' }, 0);
+  assert.equal(members.like_count.status, 'unresolved', 'restricted content gets no policy zero');
+});
+test('field status projects numeric and textual view evidence consistently', () => {
+  const text = { ...info(), basic_info: { ...info().basic_info, view_count: undefined }, primary_info: { view_count: '1.2M views' } };
+  const viewed = mapWebVideo(text, channel, id, { kind: 'skipped' }, 0, undefined, 'en');
+  assert.deepEqual([viewed.view_count.value, viewed.view_count.status], [1_200_000, 'estimated']);
+  assert.equal(mapWebVideo(info(), channel, id, { kind: 'skipped' }, 0).view_count.status, 'exact');
+});

@@ -35,7 +35,7 @@ test('channel facts carry sources and statuses; subscriber counts are estimates 
   const hidden = toChannelFacts({ ...channel, statistics: { ...channel.statistics, hiddenSubscriberCount: true, subscriberCount: undefined } }, about, now);
   assert.deepEqual([hidden.subscriber_count.value, hidden.subscriber_count.status], [null, 'unavailable']);
 });
-test('video facts classify type, respect the comment limit and keep missing counts unavailable', () => {
+test('video facts classify type, respect the comment limit and record hidden public likes as a policy zero', () => {
   const v = toVideoFacts(video(), false, page, 2, now);
   assert.equal(v.content_type, 'video'); assert.equal(v.duration_seconds.value, 147); assert.deepEqual(v.hashtags, ['#AI', '#MachineLearning']);
   assert.equal(v.comments_first_page!.returned_count, 2); assert.equal(v.comments_first_page!.total_count, 15);
@@ -46,7 +46,8 @@ test('video facts classify type, respect the comment limit and keep missing coun
   const live = toVideoFacts(video({ liveStreamingDetails: { actualStartTime: '2026-09-22T23:00:00Z' }, contentDetails: { duration: 'P0D' }, snippet: { ...video().snippet, liveBroadcastContent: 'live' } }), false, { kind: 'skipped' }, 20, now);
   assert.deepEqual([live.content_type, live.duration_seconds.status, live.comments_first_page, live.comments_disabled], ['live', 'unavailable', null, null]);
   const hidden = toVideoFacts(video({ statistics: { viewCount: '5' } }), false, { kind: 'disabled', collected_at: now }, 20, now);
-  assert.deepEqual([hidden.like_count.status, hidden.comment_count.status, hidden.comment_count.value, hidden.comments_disabled], ['unavailable', 'disabled', 0, true]);
+  // Legacy missingLikeIsZero: a public video without likeCount has hidden likes.
+  assert.deepEqual([hidden.like_count.status, hidden.comment_count.status, hidden.comment_count.value, hidden.comments_disabled], ['zero_from_empty', 'disabled', 0, true]);
   assert.equal(unavailableVideo(channel.id, 'abcdefghijk', now).unavailable, true);
 });
 test('an empty comment section keeps unknown counts unknown and preserves observed API counts', async () => {
@@ -104,4 +105,14 @@ test('a failed Data API request is reported with its permit and reason', async (
   const api = new DataApi('AIzaTEST_key_0123456789abcdef', (async () => Response.json({ error: { errors: [{ reason: 'quotaExceeded' }] } }, { status: 403 })) as unknown as typeof fetch);
   await assert.rejects(api.channel('UCx', guard), (e: unknown) => e instanceof DataApiError && e.kind === 'quota');
   assert.deepEqual(failures, [['permit-1', 'channels', 'quota']]);
+});
+test('Data API: a public video without likeCount is a policy zero; without commentCount its comments are off unless the web page was read', () => {
+  const bare = video({ statistics: { viewCount: '10' }, status: { privacyStatus: 'public' } } as never);
+  const v = toVideoFacts(bare, false, { kind: 'skipped' }, 20, now);
+  assert.deepEqual([v.like_count.value, v.like_count.status, v.like_count.source], [0, 'zero_from_empty', 'public_empty_is_zero']);
+  assert.deepEqual([v.comment_count.value, v.comment_count.status, v.comment_count.source, v.comments_disabled], [0, 'disabled', 'data_api:statistics', true]);
+  const read = toVideoFacts(bare, false, page, 20, now);
+  assert.equal(read.comments_disabled, false, 'a comment page read on the web wins over the missing API count');
+  const unknown = toVideoFacts(video({ statistics: { viewCount: '10' }, status: undefined } as never), false, { kind: 'skipped' }, 20, now);
+  assert.deepEqual([unknown.like_count.status, unknown.comments_disabled], ['unavailable', null], 'without a privacy status nothing is inferred');
 });

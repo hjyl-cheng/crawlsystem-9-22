@@ -28,6 +28,8 @@ const sha256 = (text: string) => `sha256:${createHash('sha256').update(text, 'ut
 /** Metric statuses the legacy events know: anything not resolved is unavailable or unresolved. */
 const METRIC: Record<ChannelFacts['subscriber_count']['status'], MetricStatus> = {
   exact: 'exact', estimated: 'estimated', unresolved: 'unresolved', empty: 'unavailable', unavailable: 'unavailable', disabled: 'unavailable',
+  // Legacy policy zeros reach the business schema as an exact 0 (businessPublicationProjectionAdapter.js countValue).
+  zero_from_empty: 'exact', zero_from_upcoming: 'exact', zero_from_surface: 'exact',
 };
 
 /** About facts; complete only when all three counts are resolved (the legacy rule). */

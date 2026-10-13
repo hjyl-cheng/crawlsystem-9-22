@@ -7,7 +7,8 @@ import { useResource } from '../resource.js';
 import { Badge, Empty, Fields, PageHeading, Panel, PlanBadge, ResourceView, SafeLink, SampleBadge } from '../ui.js';
 import { number, planPath, time,publicationLabels } from '../presentation.js';
 
-const metricLabels: Record<ChannelFacts['subscriber_count']['status'], string> = { exact: '精确值', estimated: '估算值', empty: '合法空值', unavailable: '不可获得', unresolved: '尚未解析', disabled: '已关闭' };
+const metricLabels: Record<ChannelFacts['subscriber_count']['status'], string> = { exact: '精确值', estimated: '估算值', empty: '合法空值', unavailable: '不可获得', unresolved: '尚未解析', disabled: '已关闭',
+  zero_from_empty: '规则零（未公开）', zero_from_upcoming: '规则零（预告）', zero_from_surface: '规则零（无评论区）' };
 function Metric({ label, metric }: { label: string; metric: ChannelFacts['subscriber_count'] }) {
   return <div className="metric"><span>{label}</span><strong>{number(metric.value)}</strong><Badge>{metricLabels[metric.status]}</Badge><small title={`${metric.source} · ${time(metric.observed_at)}`}>{metric.source} · {time(metric.observed_at)}</small></div>;
 }

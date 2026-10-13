@@ -38,7 +38,9 @@ const UniqueDomains = z.array(DomainSchema).min(1).max(3).refine(a => new Set(a)
 
 export const MetricSchema = z.strictObject({
   value: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
-  status: z.enum(['exact', 'estimated', 'empty', 'unavailable', 'unresolved', 'disabled']),
+  /** zero_from_* are legacy policy zeros (oldsystem videoDetailEvidence.js): a hidden like count, an upcoming or absent
+   * comment surface. They carry 0 but are never a counted zero. */
+  status: z.enum(['exact', 'estimated', 'empty', 'unavailable', 'unresolved', 'disabled', 'zero_from_empty', 'zero_from_upcoming', 'zero_from_surface']),
   source: z.string().min(1).max(120), observed_at: Timestamp,
 }).refine(m => !['exact', 'estimated'].includes(m.status) || m.value !== null, 'resolved metric requires value');
 export const ChannelFactsSchema = z.strictObject({

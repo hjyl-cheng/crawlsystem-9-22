@@ -90,7 +90,10 @@ export function toVideoFacts(api: ApiVideo, isShort: boolean | null, comments: C
   const content_type = live ? 'live' : isShort ? 'short' : 'video';
   const duration = parseIsoDuration(api.contentDetails?.duration);
   const count = (raw: string | undefined, missing: Metric['status']) => raw !== undefined ? metric(Number(raw), 'exact', src, observed_at) : metric(null, missing, src, observed_at);
-  const disabled = comments.kind === 'disabled';
+  // Legacy Data API mapping (youtube.js:2135-2143): a public video without commentCount has its comments turned off,
+  // unless the web comment page was actually read.
+  const isPublic = api.status?.privacyStatus === 'public', apiDisabled = isPublic && stats.commentCount === undefined && comments.kind !== 'page';
+  const disabled = comments.kind === 'disabled' || apiDisabled;
   const page = comments.kind === 'page' ? CommentPageSchema.parse({ version: 1, collected_at: comments.collected_at, sort: comments.sort ?? 'TOP_COMMENTS',
     total_count: parseCount(comments.total_text, comments.locale)?.value ?? (stats.commentCount !== undefined ? Number(stats.commentCount) : null),
     returned_count: Math.min(comments.comments.length, commentLimit), comments: comments.comments.slice(0, commentLimit).map((c, i) => {
@@ -108,9 +111,12 @@ export function toVideoFacts(api: ApiVideo, isShort: boolean | null, comments: C
     keywords: (s.tags ?? []).slice(0, 100).map(t => t.slice(0, 200)), hashtags: hashtags(s.title, s.description),
     published_at: s.publishedAt, published_text_raw: s.publishedAt, published_at_status: 'exact', published_at_precision: 'second', published_at_source: src,
     duration_seconds: duration !== null ? metric(duration, 'exact', src, observed_at) : metric(null, s.liveBroadcastContent === 'upcoming' || s.liveBroadcastContent === 'live' ? 'unavailable' : 'unresolved', src, observed_at),
-    view_count: count(stats.viewCount, 'unavailable'), like_count: count(stats.likeCount, 'unavailable'),
-    comment_count: disabled ? metric(0, 'disabled', 'youtubei:comments', observed_at) : count(stats.commentCount, 'unavailable'),
-    comments_disabled: disabled ? true : comments.kind === 'page' ? false : null, comments_first_page: disabled ? { version: 1, collected_at: comments.collected_at, sort: 'TOP_COMMENTS', total_count: 0, returned_count: 0, comments: [] } : page,
+    view_count: count(stats.viewCount, 'unavailable'),
+    // Legacy detailPolicy.js:93-102: a public video without a like count has hidden likes, a policy zero.
+    like_count: stats.likeCount === undefined && isPublic ? metric(0, 'zero_from_empty', 'public_empty_is_zero', observed_at) : count(stats.likeCount, 'unavailable'),
+    comment_count: disabled ? metric(0, 'disabled', apiDisabled && comments.kind !== 'disabled' ? 'data_api:statistics' : 'youtubei:comments', observed_at) : count(stats.commentCount, 'unavailable'),
+    comments_disabled: disabled ? true : comments.kind === 'page' ? false : null,
+    comments_first_page: disabled ? { version: 1, collected_at: 'collected_at' in comments ? comments.collected_at : observed_at, sort: 'TOP_COMMENTS', total_count: 0, returned_count: 0, comments: [] } : page,
     access_status: api.status?.privacyStatus === 'unlisted' ? 'unlisted' : api.status?.privacyStatus === 'private' ? 'private' : api.status?.privacyStatus === 'public' ? 'public' : 'unknown',
     access_status_source: 'data_api:status.privacyStatus', is_members_only: false,
     live_scheduled_at: api.liveStreamingDetails?.scheduledStartTime ?? null, live_started_at: api.liveStreamingDetails?.actualStartTime ?? null, live_ended_at: api.liveStreamingDetails?.actualEndTime ?? null,

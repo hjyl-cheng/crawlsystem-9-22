@@ -13,7 +13,24 @@ type Node = Record<string, any>;
 const text = (value: unknown): string | null => { const s = value?.toString(); return s && !['[object Object]', 'N/A'].includes(s) ? s : null; };
 /** Texts are parsed in the language of the capturing session (legacy: every count and date in DEFAULT_LANGUAGE). */
 export const SESSION_LOCALE: string = IDENTITY_POLICY.language;
-const count = (value: unknown, locale: string) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : parseCount(text(value), locale)?.value ?? null;
+/** An integer is exact; display text is parsed in the session language, and an abbreviation ("1.2M") is not exact. */
+const countDetail = (value: unknown, locale: string): { value: number; exact: boolean } | null =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? { value, exact: true } : parseCount(text(value), locale);
+const count = (value: unknown, locale: string) => countDetail(value, locale)?.value ?? null;
+/** Legacy youtubeJsLikeCount (youtubeJs.js:1446-1466): the exact count YouTube.js read from the button, then the button
+ * text; a button whose title and accessibility text are both just "Like" hides its count, a policy zero. */
+function likeCount(info: Node, locale: string): { value: number | null; status?: 'zero_from_empty'; source: string } {
+  const basic = info.basic_info?.like_count;
+  if (typeof basic === 'number' && Number.isSafeInteger(basic) && basic >= 0) return { value: basic, source: 'youtubei:next' };
+  const segmented = (info.primary_info?.menu?.top_level_buttons ?? []).find((b: Node) => b?.like_button || /LikeDislike/i.test(String(b?.type ?? '')));
+  const button = segmented?.like_button?.toggle_button?.default_button;
+  for (const candidate of [segmented?.like_count, segmented?.short_like_count, button?.title]) {
+    const value = count(candidate, locale);
+    if (value !== null) return { value, source: 'youtubei:next_button' };
+  }
+  if (text(button?.title) === 'Like' && text(button?.accessibility_text) === 'Like') return { value: 0, status: 'zero_from_empty', source: 'youtubei:like_count_not_public' };
+  return { value: null, source: 'youtubei:video' };
+}
 const thumb = (values: Node[] | undefined) => values?.slice().sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0]?.url ?? null;
 function strings(value: unknown, depth = 0): string[] {
   if (!value || depth > 9) return [];
@@ -153,7 +170,7 @@ function errorNeedsAlternateClient(error: unknown, surface: Node | undefined, p:
   const message = String((error as Error)?.message ?? '').trim();
   return /^(?:this )?video is unavailable[.!]?$/i.test(message) || /login_required|please sign in|sign in to continue|not available on this app/i.test(message);
 }
-export function mapWebVideo(info: Node, channelId: string, videoId: string, comments: CommentsResult, commentLimit: number, observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE): VideoFacts {
+export function mapWebVideo(info: Node, channelId: string, videoId: string, comments: CommentsResult, commentLimit: number, observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE, metricsOnly = false): VideoFacts {
   const basic = info.basic_info ?? {}, micro = info.page?.[0]?.microformat ?? {}, primary = info.primary_info ?? {}, observed = observedAt;
   const publication = absoluteDate(micro.publish_date ?? micro.upload_date, locale);
   const published = publication.value ? publication : absoluteDate(primary.published?.text ?? primary.published, locale);
@@ -172,16 +189,21 @@ export function mapWebVideo(info: Node, channelId: string, videoId: string, comm
   const live = basic.is_live === true || basic.is_live_content === true || basic.is_upcoming === true || !!rawMicro.liveBroadcastDetails;
   const canonical = text(rawMicro.canonicalUrl ?? micro.url_canonical) ?? '';
   const short = rawMicro.isShortsEligible === true || player.videoDetails?.isShortsEligible === true || basic.is_short === true || canonical.includes('/shorts/');
-  const likeButtons = strings(primary.menu?.top_level_buttons);
-  const like = count(basic.like_count, locale) ?? count(likeButtons.find(s => /curtid|likes?/i.test(s) && /\d/.test(s)), locale);
+  const like = likeCount(info, locale), facts = access(info);
+  // Legacy missingLikeIsZero (detailPolicy.js:93-102): a full detail of an accessible video without a like count is a
+  // policy zero. A metrics refresh reads no like button, so its missing count stays unresolved and keeps the stored one.
+  const likeMetric = like.value !== null ? { value: like.value, status: like.status ?? 'exact' as const, source: like.source, observed_at: observed }
+    : !metricsOnly && !['members_only', 'private', 'unavailable', 'login_required'].includes(facts.access_status) ? { value: 0, status: 'zero_from_empty' as const, source: 'public_empty_is_zero', observed_at: observed }
+    : metric(null);
+  const viewDetail = countDetail(basic.view_count ?? micro.view_count ?? primary.view_count, locale);
   const commentCount = comments.kind === 'page' ? parseCount(comments.total_text, locale)?.value ?? null : count(info.comments_entry_point_header?.comment_count, locale);
   return VideoFactsSchema.parse({ ...mapped, content_type: live ? 'live' : short ? 'short' : 'video', content_type_source: live || short || rawMicro.isShortsEligible === false ? 'youtubei:player' : 'default:shorts_unknown',
     url: short && !live ? `https://www.youtube.com/shorts/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`,
     published_at: published.value, published_at_precision: published.precision, published_at_source: publication.value ? 'youtubei:player_microformat' : 'youtubei:next_date',
     published_text_raw: publication.value ? text(micro.publish_date ?? micro.upload_date) : text(primary.published?.text ?? primary.published),
-    duration_seconds: metric(duration || null), view_count: metric(view), like_count: metric(like),
+    duration_seconds: metric(duration || null), view_count: viewDetail && !viewDetail.exact ? { ...metric(view), status: 'estimated' } : metric(view), like_count: likeMetric,
     comment_count: comments.kind === 'disabled' ? { ...metric(0), status: 'disabled' } : { ...metric(commentCount), status: comments.kind === 'page' && commentCount !== null && !parseCount(comments.total_text, locale)?.exact ? 'estimated' : commentCount === null ? 'unresolved' : 'exact' },
-    ...access(info), 
+    ...facts, 
     live_started_at: micro.start_timestamp ? new Date(micro.start_timestamp).toISOString() : null, live_ended_at: micro.end_timestamp ? new Date(micro.end_timestamp).toISOString() : null,
     extractor_version: 'yt-collector/2 (youtubei.js 18.1.0 web)', ...(actualChannel && actualChannel !== channelId ? { owner_channel_id: actualChannel } : {}) });
 }
@@ -219,14 +241,14 @@ export async function videoDetail(yt: Innertube, channelId: string, videoId: str
     }
     if (decision.kind === 'content' && decision.access === 'unavailable') return terminalVideo(channelId, videoId, 'removed', observedAt);
     // The fact contract needs title, publication, views and duration; a surface without them is handed to the next client.
-    try { mapWebVideo(info, channelId, videoId, { kind: 'skipped' }, 0, observedAt, locale); }
+    try { mapWebVideo(info, channelId, videoId, { kind: 'skipped' }, 0, observedAt, locale, metricsOnly); }
     catch {
       if (decision.kind === 'content' && decision.access === 'members_only') return terminalVideo(channelId, videoId, 'members_only', observedAt);
       surfaces.push(info.playability_status); continue;
     }
     const total = count(info.comments_entry_point_header?.comment_count, locale);
     const comments: CommentsResult = metricsOnly || !commentLimit ? { kind: 'skipped' } : await topComments(yt, videoId, total === null ? undefined : String(total), locale, observedAt).catch(() => ({ kind: 'unavailable' as const, collected_at: observedAt }));
-    return mapWebVideo(info, channelId, videoId, comments, commentLimit, observedAt, locale);
+    return mapWebVideo(info, channelId, videoId, comments, commentLimit, observedAt, locale, metricsOnly);
   }
   if (surfaces.length === 2 && surfaces.every(pleaseSignIn)) return terminalVideo(channelId, videoId, 'login_required', observedAt);
   throw new ScrapeError('parse', 'WEB and IOS video details exhausted');

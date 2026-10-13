@@ -65,8 +65,8 @@ async function discovery<T>(run: () => Promise<T>): Promise<T> {
 }
 /** Imports that can start a first collection now ($2 is the scan time). */
 const IMPORT_WAITING = `(state='queued' OR state='failed' AND retry_at<=$2 AND retry_blocked_reason IS NULL AND auto_retry_count<3)`;
-/** A count the source resolved (exact or estimated), else null. */
-const resolvedCount = (metric: { value: number | null; status: string }) => ['exact', 'estimated'].includes(metric.status) ? metric.value : null;
+/** A count the source resolved (exact, estimated or a legacy policy zero), else null. */
+const resolvedCount = (metric: { value: number | null; status: string }) => ['exact', 'estimated', 'zero_from_empty', 'zero_from_upcoming', 'zero_from_surface'].includes(metric.status) ? metric.value : null;
 export interface Intent { intent_id: string; plan_id: string; kind: 'START' | 'CANCEL'; lease_token: string; attempts: number; input: WorkflowInput; plan_status: string; deadline_at: string; start_never_dispatched: boolean; trace_context?: string; worker_id?:string; }
 
 export class Store {
