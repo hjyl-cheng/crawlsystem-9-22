@@ -123,7 +123,7 @@ test('Data API: a public video without likeCount is a policy zero; without comme
 // Ported from oldsystem qybullmq/test/videoMetadata.test.js (batch 2e).
 test('extractVideoHashtags reads title and description with Unicode support and join controls', () => {
   assert.deepEqual(hashtags('Short #Roblox #话题', 'More #roblox #maquillaje_2026 #한글'), ['#Roblox', '#话题', '#maquillaje_2026', '#한글']);
-  assert.deepEqual(hashtags('#می‌خواهم #क्‍षेत्र'), ['#می‌خواهم', '#क्‍षेत्र']);
+  assert.deepEqual(hashtags('#می\u200cخواهم #क्\u200dषेत्र'), ['#می\u200cخواهم', '#क्\u200dषेत्र']);
   assert.deepEqual(hashtags('end.#tag (#two)'), ['#tag', '#two'], 'any non-word character is a boundary');
 });
 test('normalizeVideoKeywords preserves source order and removes case duplicates', () => {

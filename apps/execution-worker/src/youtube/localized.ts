@@ -70,7 +70,7 @@ function normalizeDigits(value: string, digits = new Map<string, string>()): str
   }
   return out;
 }
-const unitText = (value: string) => String(value ?? '').normalize('NFKC').replace(/[​-‍⁠﻿]/g, '').replace(/[  ]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+const unitText = (value: string) => String(value ?? '').normalize('NFKC').replace(/[\u200b-\u200d\u2060\ufeff]/g, '').replace(/[  ]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 function addUnit(units: Map<string, number>, token: string, multiplier: number, overwrite = false) {
   const normalized = unitText(token);
   if (!normalized) return;
@@ -175,7 +175,7 @@ const DATE_PART = '[\\p{Decimal_Number}]';
 type Unit = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
 const UNIT_DAYS: Record<Unit, number> = { second: 0, minute: 0, hour: 0, day: 1, week: 7, month: 30, year: 365 };
 const UNIT_MS: Record<Unit, number> = { second: 1e3, minute: 6e4, hour: 36e5, day: DAY_MS, week: 7 * DAY_MS, month: 30 * DAY_MS, year: 365 * DAY_MS };
-const timeText = (value: unknown, locale: string) => String(value ?? '').normalize('NFKC').replace(/[​-‏‪-‮⁠-⁯﻿]/g, '')
+const timeText = (value: unknown, locale: string) => String(value ?? '').normalize('NFKC').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, '')
   .replace(/[  ]/g, ' ').replace(/\s+/g, ' ').trim().toLocaleLowerCase(locale);
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const literal = (value: string, locale: string) => { const n = timeText(value, locale); return n ? n.split(' ').map(escape).join('\\s*') : ''; };

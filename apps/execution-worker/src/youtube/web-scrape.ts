@@ -3,6 +3,7 @@ import { ChannelFactsSchema, VideoFactsSchema, VideoUnavailableSchema, type Chan
 import { ScrapeError, topComments, classify } from './scrape.ts';
 import { disabledCommentsText, normalizeKeywords, parseCount, parseKeywords, toVideoFacts, type CommentsResult } from './map.ts';
 import { findSubscriberCountText, localizedAbsoluteUtcDay } from './localized.ts';
+import { canonicalCountry } from './country.ts';
 import type { BrowserIdentity } from './identity.ts';
 import { IDENTITY_POLICY } from './identity.ts';
 import type { UploadDiscovery } from './data-api.ts';
@@ -70,6 +71,18 @@ export async function browserSession(fetcher: typeof fetch, identity: BrowserIde
       retrieve_innertube_config: false, enable_session_cache: false });
   } catch (error) { throw classify(error); }
 }
+/** Legacy verifiedBadge (youtubeJs.js:729-738). */
+const verifiedBadge = (badge: Node) => ['BADGE_STYLE_TYPE_VERIFIED', 'BADGE_STYLE_TYPE_VERIFIED_ARTIST'].includes(String(badge?.style ?? badge?.badge_style ?? '').toUpperCase())
+  || /(^|\W)verified(\W|$)/i.test([badge?.label, badge?.tooltip, badge?.accessibility_label].map(text).filter(Boolean).join(' '));
+/** Legacy youtubeJsChannelVerification (youtubeJs.js:740-763): the author flag, then badges, then title run attachments; else unknown. */
+export function channelVerified(header: Node | undefined): boolean | null {
+  if (!header || typeof header !== 'object') return null;
+  if (typeof header.author?.is_verified === 'boolean') return header.author.is_verified;
+  const badges = [header.badges, header.author?.badges, ...(header.content?.metadata?.metadata_rows ?? []).map((row: Node) => row?.badges)].filter(Array.isArray) as Node[][];
+  if (badges.length) return badges.some(list => list.some(verifiedBadge));
+  const runs = header.content?.title?.text?.runs;
+  return Array.isArray(runs) ? runs.some((run: Node) => Boolean(run?.attachment) || verifiedBadge(run)) : null;
+}
 export async function channelFacts(yt: Innertube, channelId: string, observedAt = new Date().toISOString(), locale: string = SESSION_LOCALE): Promise<ChannelFacts> {
   try {
     const channel = await yt.getChannel(channelId), aboutNode = await channel.getAbout() as unknown as Node;
@@ -84,16 +97,21 @@ export async function channelFacts(yt: Innertube, channelId: string, observedAt 
     };
     const joined = absoluteDate(about.joined_date, locale);
     if (!meta.title) throw new ScrapeError('parse', 'Channel title missing');
+    // Legacy parseYoutubeAboutCountry: an observed About country resolves to its ISO code; an unknown one fails loudly
+    // rather than silently leaving the Agent to guess the country.
+    const country = canonicalCountry(text(about.country));
+    if (country.raw && !country.code) throw new ScrapeError('parse', `Unsupported localized About country: ${country.raw}`);
     return ChannelFactsSchema.parse({ channel_id: channelId, channel_url: `https://www.youtube.com/channel/${channelId}`, title: meta.title,
       handle: meta.vanity_channel_url?.match(/@[^/]+/)?.[0] ?? header.find(s => /^@[\w.\-]+$/.test(s)) ?? null,
       avatar_url: thumb(meta.avatar ?? meta.thumbnail), summary: null, about_description: text(about.description) ?? meta.description ?? null,
-      country: text(about.country), country_code: null, country_source: about.country ? 'youtubei:about' : null,
+      country: country.raw, country_code: country.code, country_source: country.raw ? 'youtubei:about' : null,
       joined_at: joined.value?.slice(0, 10) ?? null, joined_date_text: text(about.joined_date), joined_at_precision: joined.value ? 'date_only' : 'unknown',
       // The channel declaration says string[], but YouTube still returns a quoted keyword string.
-      keywords: (Array.isArray(meta.keywords) ? meta.keywords : typeof meta.keywords === 'string' ? parseKeywords(meta.keywords) : meta.tags ?? []).slice(0, 100).map(s => s.slice(0, 200)), available_tabs: channel.tabs.slice(0, 20),
+      keywords: (Array.isArray(meta.keywords) ? meta.keywords : typeof meta.keywords === 'string' ? parseKeywords(meta.keywords) : meta.tags ?? []).slice(0, 100).map(s => s.slice(0, 200)), // Legacy youtubeJs.js:832-836: canonical content tabs from YouTube.js, which matches tab URLs, not their display text.
+      available_tabs: [channel.has_live_streams && 'live', channel.has_shorts && 'shorts', channel.has_videos && 'videos'].filter((t): t is string => typeof t === 'string'),
       external_links: (about.links ?? []).slice(0, 100).map((l: Node) => ({ title: (text(l.title) ?? '').slice(0, 500), url: /^https?:/.test(text(l.link) ?? '') ? text(l.link) : `https://${text(l.link)}` })).filter((l: Node) => l.url !== 'https://null'),
       subscriber_count: observed(subscribers), total_view_count: observed(about.view_count), total_video_count: observed(about.video_count),
-      is_verified: null, is_family_safe: meta.is_family_safe ?? null, youtube_business_email_available: about.sign_in_for_business_email != null,
+      is_verified: channelVerified(channel.header), is_family_safe: meta.is_family_safe ?? null, youtube_business_email_available: about.sign_in_for_business_email != null,
       observed_at: now, source: 'youtubei:channel_about' });
   } catch (error) { throw classify(error); }
 }

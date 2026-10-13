@@ -5,11 +5,13 @@ import {observationFactsHash as hash,publicationResultHash,normalizePublicationE
 export type PublicationDomain='channel'|'video'|'agent';
 export interface PublicationState {revision:number;payloads:Partial<Record<PublicationDomain,LegacyValue>>;vector:Record<string,LegacyValue>;removed?:boolean;}
 export interface PublicationSnapshot {channel_id:string;about:ChannelFacts;agent:AgentResult;videos:VideoItem[];observed_at:string;source:LegacyValue;removed?:boolean;}
+const tabs=(a:ChannelFacts,pattern:RegExp)=>a.source.startsWith('data_api')&&!a.available_tabs.length?null:a.available_tabs.some(t=>pattern.test(t));
 const resolved=(m:VideoFacts['view_count'])=>['exact','estimated','disabled','zero_from_empty','zero_from_upcoming','zero_from_surface'].includes(m.status)?m.value:null;
 function channelPayload(a:ChannelFacts):LegacyValue {
  return {channel_id:a.channel_id,title:a.title,canonical_url:a.channel_url,vanity_channel_url:a.handle?`https://www.youtube.com/${a.handle.startsWith('@')?a.handle:'@'+a.handle}`:null,handle:a.handle,
   avatar:a.avatar_url?[{url:a.avatar_url,position:0}]:[],rss_url:`https://www.youtube.com/feeds/videos.xml?channel_id=${a.channel_id}`,keywords:a.keywords,is_family_safe:a.is_family_safe,is_verified:a.is_verified,is_verified_status:a.is_verified===null?'unknown':a.is_verified?'verified':'not_verified',
-  has_videos:a.available_tabs.length?a.available_tabs.some(t=>/video/i.test(t)):null,has_shorts:a.available_tabs.length?a.available_tabs.some(t=>/short/i.test(t)):null,has_live_streams:a.available_tabs.length?a.available_tabs.some(t=>/live|stream/i.test(t)):null,description:a.about_description??a.summary,
+  // The web channel page observes its tabs (an absent tab is false); a Data API fallback never saw them.
+  has_videos:tabs(a,/video/i),has_shorts:tabs(a,/short/i),has_live_streams:tabs(a,/live|stream/i),description:a.about_description??a.summary,
   subscriber_count:resolved(a.subscriber_count),subscriber_count_status:a.subscriber_count.status,total_video_count:resolved(a.total_video_count),total_video_count_status:a.total_video_count.status,total_view_count:resolved(a.total_view_count),total_view_count_status:a.total_view_count.status,
   joined_date:a.joined_at,joined_date_status:a.joined_at?'exact':'unavailable',joined_date_raw:a.joined_date_text,country_code:a.country_code,country_name:a.country,
   links:a.external_links.map((l,i)=>({link_type:'external',target_url:l.url,title:l.title,position:i})),lifecycle_status:'active',youtube_business_email_available:a.youtube_business_email_available,youtube_business_email_observed_at:a.youtube_business_email_available===null?null:a.observed_at};
