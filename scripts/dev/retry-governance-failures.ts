@@ -59,7 +59,7 @@ try {
    item.result={state:result.state,retry_plan_id:result.retry_plan_id};save();
    console.log(JSON.stringify({retried:item.failure_id,kind:item.plan_kind,replacement_plan_id:result.retry_plan_id}));
   }
-  if(audit.items.every(i=>i.result||i.settled))break;
+  if(audit.items.every(i=>i.result||i.settled)||process.argv[3]==='once')break;
   await delay(3_000);
  }
  audit.last_run_at=new Date().toISOString();save();

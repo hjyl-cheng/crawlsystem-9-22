@@ -52,3 +52,9 @@ test('real LockupView and ShortsLockupView uploads freeze valid IDs and match an
   const incremental = await uploads(yt as never, channel, 100, ['12345678901']);
   assert.deepEqual(incremental.ids, ['abcdefghijk']); assert.equal(incremental.matched_anchor_id, '12345678901');
 });
+
+test('playlist association cannot override a video owner reported by the player', () => {
+  const foreign = info(); foreign.basic_info.channel_id = 'UC' + 'b'.repeat(22);
+  assert.throws(() => mapWebVideo(foreign, channel, id, { kind: 'skipped' }, 0),
+    (error: unknown) => error instanceof ScrapeError && error.kind === 'parse' && error.message === 'Video belongs to another channel');
+});

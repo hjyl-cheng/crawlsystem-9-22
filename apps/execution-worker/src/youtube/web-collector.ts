@@ -116,6 +116,13 @@ export class WebCollector {
       await ctx.note(`Data API fallback: ${batch.length} videos after ${metricsOnly ? 'lightweight web detail failure' : '3 web attempts'}`);
       for (const id of batch) {
         const api = apiVideos.get(id), responses = [...fallback.get(id)!, ...apiResponses];
+        // An artist's uploads playlist can include releases owned by a different
+        // music channel. Preserve both sources before rejecting that ownership.
+        if (api && api.snippet.channelId !== ctx.channelId) {
+          const error = new ScrapeError('parse', 'API fallback channel mismatch');
+          await this.preserveFailure(ctx, step, id, responses, error);
+          throw error;
+        }
         // Comments always use the web, including when the video's details came from the API.
         let comments: import('./map.ts').CommentsResult = { kind: 'skipped' };
         if (api && commentLimit && !metricsOnly) {
@@ -123,7 +130,6 @@ export class WebCollector {
           comments = await this.web(ctx, responses, yt => topComments(yt, id, api.statistics?.commentCount, 'pt-BR')).catch(() => ({ kind: 'unavailable' as const, collected_at: new Date().toISOString() }));
           ctx.signal.throwIfAborted();
         }
-        if (api && api.snippet.channelId !== ctx.channelId) throw new ScrapeError('parse', 'API fallback channel mismatch');
         const result = api ? toVideoFacts(api, null, comments, commentLimit, new Date().toISOString()) : unavailableVideo(ctx.channelId, id, new Date().toISOString());
         const reference = await this.archive.save({ schema_version: 'crawl.unit.v1', owner: ctx.owner, channel_id: ctx.channelId, step, unit_id: id,
           captured_at: new Date().toISOString(), responses, result }, ctx.signal);

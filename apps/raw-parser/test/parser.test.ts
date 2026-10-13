@@ -116,3 +116,18 @@ for (const scenario of ['lost-next','http-403','next-before-player','late-player
   }});
   await parser.parse(ref,new AbortController().signal);assert.equal(published,1);
 });
+
+test('an API fallback cannot publish a playlist-associated video owned by another channel', async () => {
+  const raw=memory(),parsed=memory(),plan=input(),channel='UC'+'a'.repeat(22),video='foreign0001',at=plan.plan.created_at;
+  const frozen=FrozenInputSchema.parse({schema_version:CONTRACT_VERSION,source_mode:'youtube',channel_id:channel,required_domains:['VIDEO'],
+    scope:{video_limit:30,max_age_days:90,comments_per_video:0,comment_sort:'TOP_COMMENTS'},reference_time:at,deadline_at:plan.plan.deadline_at,max_attempts:3,pipeline_version:'r3.v1'});
+  plan.input=frozen;Object.assign(plan.plan,{source_mode:'youtube',fixture_id:null,channel_id:channel,input_hash:contentHash(frozen),required_domains:['VIDEO']});
+  const ref=await new RawArchive(raw.store,{async send(){}}).save({schema_version:'crawl.unit.v1',
+    owner:{schema_version:CONTRACT_VERSION,workspace_id:plan.plan.workspace_id,plan_id:plan.plan.plan_id,execution_epoch:1,input_hash:plan.plan.input_hash,workflow_id:plan.plan.workflow_id},
+    channel_id:channel,step:'VIDEO-0',unit_id:video,captured_at:at,result:{channel_id:channel},
+    responses:[{endpoint:'https://www.googleapis.com/youtube/v3/videos',method:'GET',status:200,captured_at:at,
+      body:JSON.stringify({items:[{id:video,snippet:{channelId:'UC'+'b'.repeat(22)}}]})}]},new AbortController().signal);
+  const parser=new RawParser({raw:raw.store,parsed:parsed.store,loadPlan:async()=>plan,publish:async()=>assert.fail('Foreign owner must not be published')});
+  await assert.rejects(parser.parse(ref,new AbortController().signal),error=>error instanceof ParseFailure&&error.code==='INVALID_FACT');
+  assert.equal(parsed.objects.size,0);
+});

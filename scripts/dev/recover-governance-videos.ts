@@ -63,7 +63,7 @@ try {
     item.recovery_ids=frozen.recovery_video_ids;save();
     console.log(JSON.stringify({channel_id:item.channel_id,plan_id:item.plan_id,recovery_videos:item.recovery_ids!.length}));
    }
-   if(audit.items.every(i=>i.plan_id||i.settled))break;await delay(3_000);
+   if(audit.items.every(i=>i.plan_id||i.settled)||process.argv[3]==='once')break;await delay(3_000);
   }
   audit.last_run_at=new Date().toISOString();save();
   console.log(JSON.stringify({result:'PASSED',reviewed:audit.items.length,admitted:audit.items.filter(i=>i.plan_id).length,finalized_elsewhere:audit.items.filter(i=>i.settled).length,waiting:audit.items.filter(i=>!i.plan_id&&!i.settled).length}));
