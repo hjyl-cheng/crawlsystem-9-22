@@ -4,6 +4,7 @@ import { ScrapeError, topComments, classify } from './scrape.ts';
 import { disabledCommentsText, normalizeKeywords, parseCount, parseKeywords, toVideoFacts, type CommentsResult } from './map.ts';
 import { findSubscriberCountText, localizedAbsoluteUtcDay } from './localized.ts';
 import { canonicalCountry } from './country.ts';
+import { linkTarget, normalizeUrl } from '@crawlsystem/contracts/links';
 import type { BrowserIdentity } from './identity.ts';
 import { IDENTITY_POLICY } from './identity.ts';
 import type { UploadDiscovery } from './data-api.ts';
@@ -114,7 +115,8 @@ export async function channelFacts(yt: Innertube, channelId: string, observedAt 
       // The channel declaration says string[], but YouTube still returns a quoted keyword string.
       keywords: (Array.isArray(meta.keywords) ? meta.keywords : typeof meta.keywords === 'string' ? parseKeywords(meta.keywords) : meta.tags ?? []).slice(0, 100).map(s => s.slice(0, 200)), // Legacy youtubeJs.js:832-836: canonical content tabs from YouTube.js, which matches tab URLs, not their display text.
       available_tabs: [channel.has_live_streams && 'live', channel.has_shorts && 'shorts', channel.has_videos && 'videos'].filter((t): t is string => typeof t === 'string'),
-      external_links: (about.links ?? []).slice(0, 100).map((l: Node) => ({ title: (text(l.title) ?? '').slice(0, 500), url: /^https?:/.test(text(l.link) ?? '') ? text(l.link) : `https://${text(l.link)}` })).filter((l: Node) => l.url !== 'https://null'),
+      // Legacy youtubeJsAboutLinks: the link's tap target, not its possibly truncated display text, normalized like publication.
+      external_links: (about.links ?? []).slice(0, 100).flatMap((l: Node) => { const url = normalizeUrl(linkTarget(l), { contacts: true }); return url ? [{ title: (text(l.title) ?? '').slice(0, 500), url }] : []; }),
       subscriber_count: observed(subscribers), total_view_count: observed(about.view_count), total_video_count: observed(about.video_count),
       is_verified: channelVerified(channel.header), is_family_safe: meta.is_family_safe ?? null, youtube_business_email_available: about.sign_in_for_business_email != null,
       observed_at: now, source: 'youtubei:channel_about' });

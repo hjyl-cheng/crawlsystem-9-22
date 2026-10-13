@@ -30,3 +30,15 @@ test('channel verification reads the author flag, then badges, then title attach
   assert.equal(channelVerified({ content: { title: { text: { runs: [{ text: 'Name' }, { attachment: { icon: 'CHECK_CIRCLE' } }] } } } }), true);
   assert.equal(channelVerified({ content: {} }), null);
 });
+// Ported from oldsystem qybullmq/test/publicationUrl.test.js and publicationLinks.test.js (batch 4d).
+import { linkPurpose, linkTarget, linkType, normalizeUrl } from '@crawlsystem/contracts/links';
+test('channel links resolve their tap target, unwrap redirects, drop tracking and classify type and purpose', () => {
+  const link = { title: 'Instagram', link: { text: 'instagram.com/abc…', command_runs: [{ on_tap: { payload: { url: 'https://www.youtube.com/redirect?q=https%3A%2F%2Finstagram.com%2Fabc%3Futm_source%3Dyt%26igsh%3D1%26x%3D2' } } }] } };
+  assert.equal(normalizeUrl(linkTarget(link)), 'https://instagram.com/abc?x=2');
+  assert.equal(normalizeUrl('mailto:Biz@Example.COM', { contacts: true }), 'mailto:biz@example.com');
+  assert.equal(normalizeUrl('https://user:pw@example.com'), null, 'credentials are rejected');
+  assert.deepEqual(['https://wa.me/1', 'https://x.com/a', 'mailto:a@b.co', 'https://shop.example.com'].map(linkType), ['whatsapp', 'x_twitter', 'email', 'website']);
+  assert.equal(linkPurpose('website', 'Loja oficial'), 'public_reference');
+  assert.equal(linkPurpose('website', 'Business inquiries'), 'contact');
+  assert.equal(linkPurpose('instagram', 'Instagram'), 'contact');
+});

@@ -1,10 +1,21 @@
 import {randomUUID} from 'node:crypto';
+import {linkPurpose,linkType,normalizeUrl} from '@crawlsystem/contracts/links';
 import {ChannelFactsSchema,VideoItemSchema,isVideoUnavailable,AgentResultSchema,type ChannelFacts,type VideoFacts,type VideoItem,type AgentResult} from '@crawlsystem/contracts';
 import {observationFactsHash as hash,publicationResultHash,normalizePublicationEnvelope,validateBusinessPublicationEnvelope,buildPublicationShard,type LegacyValue} from '../../legacy-publication/src/index.js';
 
 export type PublicationDomain='channel'|'video'|'agent';
 export interface PublicationState {revision:number;payloads:Partial<Record<PublicationDomain,LegacyValue>>;vector:Record<string,LegacyValue>;removed?:boolean;}
 export interface PublicationSnapshot {channel_id:string;about:ChannelFacts;agent:AgentResult;videos:VideoItem[];observed_at:string;source:LegacyValue;removed?:boolean;}
+/** Legacy normalizePublicationLinks: normalized targets, first label per target, typed by host, purpose by wording. */
+const publicLinks=(links:ChannelFacts['external_links'])=>{
+  const seen=new Set<string>();
+  return links.flatMap((l,position)=>{
+    const target=normalizeUrl(l.url,{contacts:true});
+    if(!target||seen.has(target))return [];
+    seen.add(target);const type=linkType(target);
+    return [{link_type:type,target_url:target,title:l.title||null,position,purpose:linkPurpose(type,l.title||null)}];
+  });
+};
 const tabs=(a:ChannelFacts,pattern:RegExp)=>a.source.startsWith('data_api')&&!a.available_tabs.length?null:a.available_tabs.some(t=>pattern.test(t));
 const resolved=(m:VideoFacts['view_count'])=>['exact','estimated','disabled','zero_from_empty','zero_from_upcoming','zero_from_surface'].includes(m.status)?m.value:null;
 function channelPayload(a:ChannelFacts):LegacyValue {
@@ -14,7 +25,7 @@ function channelPayload(a:ChannelFacts):LegacyValue {
   has_videos:tabs(a,/video/i),has_shorts:tabs(a,/short/i),has_live_streams:tabs(a,/live|stream/i),description:a.about_description??a.summary,
   subscriber_count:resolved(a.subscriber_count),subscriber_count_status:a.subscriber_count.status,total_video_count:resolved(a.total_video_count),total_video_count_status:a.total_video_count.status,total_view_count:resolved(a.total_view_count),total_view_count_status:a.total_view_count.status,
   joined_date:a.joined_at,joined_date_status:a.joined_at?'exact':'unavailable',joined_date_raw:a.joined_date_text,country_code:a.country_code,country_name:a.country,
-  links:a.external_links.map((l,i)=>({link_type:'external',target_url:l.url,title:l.title,position:i})),lifecycle_status:'active',youtube_business_email_available:a.youtube_business_email_available,youtube_business_email_observed_at:a.youtube_business_email_available===null?null:a.observed_at};
+  links:publicLinks(a.external_links),lifecycle_status:'active',youtube_business_email_available:a.youtube_business_email_available,youtube_business_email_observed_at:a.youtube_business_email_available===null?null:a.observed_at};
 }
 function videoItem(v:VideoFacts,position:number):LegacyValue {
  const exact=v.published_at_status==='exact'&&v.published_at_precision==='second';
