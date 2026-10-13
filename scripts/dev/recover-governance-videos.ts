@@ -14,8 +14,8 @@ let audit:Audit;
 const save=()=>writeFileSync(file,JSON.stringify(audit,null,2)+'\n',{mode:0o600});
 assert.equal(new URL(process.env.DATABASE_URL!).pathname,'/crawlsystem_m1_main_test');
 try {
- if(mode==='prepare') {
-  assert.ok(!existsSync(file),'Use the persisted recovery review');
+ if(mode==='prepare'||mode==='refresh') {
+  if(mode==='prepare')assert.ok(!existsSync(file),'Use the persisted recovery review');
   const reviewed=JSON.parse(readFileSync(dir+'/retry-actions.json','utf8')).items.map((i:any)=>i.channel_id);
   reviewed.push('UCIR4dFmFWfflh0Kb-LZfNrw');
   const rows=(await pool.query(`SELECT v.channel_id,array_agg(v.video_id ORDER BY v.video_id) incomplete_ids
@@ -25,8 +25,10 @@ try {
         AND EXISTS(SELECT 1 FROM control.plans about WHERE about.workspace_id=c.workspace_id AND about.channel_id=c.channel_id AND about.source_revision=c.about_revision AND about.status='COMPLETED')
         AND EXISTS(SELECT 1 FROM control.plans agent WHERE agent.workspace_id=c.workspace_id AND agent.channel_id=c.channel_id AND agent.source_revision=c.agent_revision AND agent.status='COMPLETED'))
     GROUP BY v.channel_id ORDER BY count(*),v.channel_id`,[workspace,reviewed])).rows;
-  assert.ok(rows.length>0&&rows.length<=15);audit={started_at:new Date().toISOString(),items:rows};save();
-  console.log(JSON.stringify({reviewed_channels:rows.length,unfinished_video_observations:rows.reduce((n,r)=>n+r.incomplete_ids.length,0)}));
+  assert.ok(rows.length<=15);
+  audit=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):{started_at:new Date().toISOString(),items:[]};
+  const added=rows.filter(r=>!audit.items.some(i=>i.channel_id===r.channel_id));audit.items.push(...added);save();
+  console.log(JSON.stringify({reviewed_channels:audit.items.length,new_candidates:added.length,unfinished_video_observations:added.reduce((n,r)=>n+r.incomplete_ids.length,0)}));
  }else if(mode==='apply') {
   audit=JSON.parse(readFileSync(file,'utf8'));const {api,headers}=await client(),end=Date.now()+210_000;
   while(Date.now()<end&&audit.items.some(i=>!i.plan_id&&!i.settled)) {
@@ -58,7 +60,7 @@ try {
   }
   audit.last_run_at=new Date().toISOString();save();
   console.log(JSON.stringify({result:'PASSED',reviewed:audit.items.length,admitted:audit.items.filter(i=>i.plan_id).length,finalized_elsewhere:audit.items.filter(i=>i.settled).length,waiting:audit.items.filter(i=>!i.plan_id&&!i.settled).length}));
- }else throw new Error('Usage: recover-governance-videos prepare|apply');
+ }else throw new Error('Usage: recover-governance-videos prepare|refresh|apply');
 }catch(error) {
  writeFileSync(dir+'/video-recovery-error.json',JSON.stringify({at:new Date().toISOString(),name:error instanceof Error?error.name:'UnknownError',message:error instanceof Error?error.message:undefined},null,2)+'\n',{mode:0o600});
  console.error(JSON.stringify({result:'FAILED',error:error instanceof Error?error.name:'UnknownError'}));process.exitCode=1;
