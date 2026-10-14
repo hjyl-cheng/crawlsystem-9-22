@@ -118,7 +118,7 @@ async function mock(page: Page, detail?: PlanDetail, role: Role = 'operator') {
       const applied = state.detail ? state.detail.domains.filter(d => required.includes(d.domain) && d.state === 'APPLIED').map(d => d.domain) : [];
       const total = state.detail ? 1 : 0, lacks = (domain: string) => required.includes(domain as never) && !applied.includes(domain as never) ? 1 : 0;
       return json({ basis: 'latest_plan_required_domains', observed_at: '2026-09-23T08:00:00.000Z', total_channels: total,
-        complete: total && applied.length === required.length ? 1 : 0, partial: total && applied.length > 0 && applied.length < required.length ? 1 : 0, missing: total && applied.length === 0 ? 1 : 0,
+        complete: total && applied.length === required.length ? 1 : 0, partial: total && applied.length > 0 && applied.length < required.length ? 1 : 0, missing: total && applied.length === 0 ? 1 : 0, not_admitted: 0,
         missing_by_domain: { ABOUT: lacks('ABOUT'), VIDEO: lacks('VIDEO'), AGENT: lacks('AGENT') }, latest_channel_update_at: state.detail?.plan.updated_at ?? null, freshness: 'NOT_IMPLEMENTED', management: { managed: 0, paused: 0, overdue: 0 } });
     }
     if (path === '/v1/proxy-sources' && method === 'POST') {
@@ -257,7 +257,7 @@ test('network failure marks old results stale and manual refresh recovers', asyn
 });
 test('malformed response does not become an empty successful page', async ({ page }) => {
   const state = await mock(page); state.malformed = true; await login(page, '/channels');
-  await expect(page.getByRole('alert')).toContainText('公共契约不兼容'); await expect(page.getByText('尚无频道记录', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('alert').filter({ hasText: '公共契约不兼容' }).first()).toBeVisible(); await expect(page.getByText('尚无频道记录', { exact: true })).toHaveCount(0);
 });
 test('pagination and filtering issue bounded requests with no invented totals', async ({ page }) => {
   const state = await mock(page, detailFixture()); state.pageTwo = true; await login(page, '/plans');
@@ -553,7 +553,7 @@ test('operators import channels in bulk; the queue and each line\'s outcome are 
   await expect(page.getByText('2 行', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '加入队列' }).click();
   await expect(page.getByText('已加入队列 1 个；1 行未加入：', { exact: false })).toBeVisible();
-  await expect(page.getByRole('cell', { name: '@handle 暂不支持，请改用频道 ID' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '频道名称解析暂不可用', exact: false })).toBeVisible();
   expect(state.channelImports).toEqual([expect.objectContaining({ lines: ['UCimportfixture000000001', '@somecreator'] })]);
   await page.getByRole('button', { name: '完成' }).click();
   await expect(page.locator('.import-queue')).toContainText('排队 1');

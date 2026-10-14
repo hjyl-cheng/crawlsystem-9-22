@@ -44,8 +44,8 @@ function CompletenessCard({ data }: NodeProps<CompletenessNode>) {
   const resource = data.resource, c = resource?.data,u=data.updates.data;
   const value = (n?: number) => c ? n!.toLocaleString('zh-CN') : resource?.error ? '—' : '…';
   const cells: [string, number | undefined, string][] = [['完整可用', c?.complete, 'green'], ['部分可用', c?.partial, 'blue'], ['待补全', c?.missing, 'amber']];
-  const reasons: [string, number | undefined][] = [['基础资料未入库', c?.missing_by_domain.ABOUT], ['视频 / 评论未入库', c?.missing_by_domain.VIDEO], ['Agent 结果待返回', c?.missing_by_domain.AGENT]];
-  const reasonTotal = c ? c.missing_by_domain.ABOUT + c.missing_by_domain.VIDEO + c.missing_by_domain.AGENT : 0;
+  const reasons: [string, number | undefined][] = [['基础资料未入库', c?.missing_by_domain.ABOUT], ['视频 / 评论未入库', c?.missing_by_domain.VIDEO], ['Agent 结果待返回', c?.missing_by_domain.AGENT], ['门槛未通过（不采视频与 Agent）', c?.not_admitted]];
+  const reasonTotal = c ? c.missing_by_domain.ABOUT + c.missing_by_domain.VIDEO + c.missing_by_domain.AGENT + c.not_admitted : 0;
   return <div className="completeness-card">
     <header><strong>数据完整性与新鲜度</strong><Link className="nodrag dashboard-more" to="/channels">查看频道<ArrowRight size={12}/></Link></header>
     <div className="completeness-body">

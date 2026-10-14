@@ -1,11 +1,11 @@
 import {useState} from 'react';
 import {Link} from 'react-router';
-import type {Analytics} from '@crawlsystem/contracts/analytics';
+import type {Analytics,FieldStatus} from '@crawlsystem/contracts/analytics';
 import type {StorageCapacity} from '../../../../packages/contracts/src/storage-capacity.ts';
 import {useAuth} from '../auth.js';
 import {useResource} from '../resource.js';
 import {Badge,Empty,Fields,PageHeading,Panel,ResourceView} from '../ui.js';
-import {number,time} from '../presentation.js';
+import {number,time,failureCodeLabels} from '../presentation.js';
 import './analytics.css';
 const domainLabels:Record<string,string>={ABOUT:'频道资料',VIDEO:'视频',AGENT:'画像',SAMPLING:'统计重采样',TARGETS:'视频目录'};
 const statusLabels:Record<string,string>={APPLIED:'已入库',PARTIAL:'部分字段待解析',UNAVAILABLE:'视频不可访问'};
@@ -32,14 +32,32 @@ export function OverviewTrends({days=7}:{days?:number}) {
   const {api}=useAuth(),r=useResource(`overview-analytics:${days}`,signal=>api.analytics(days,signal),true,30000);
   return <Panel title={`采集趋势 · ${days===1?'今天（UTC）':`近${days}天`}`} className="trend-panel" extra={<Link to="/analytics">查看统计 →</Link>}><ResourceView resource={r} showMeta={false}>{d=><TrendChart data={d}/>}</ResourceView></Panel>;
 }
+const fieldLabels:Record<FieldStatus['fields'][number]['field'],string>={view_count:'播放数',like_count:'点赞数',comment_count:'评论数',duration_seconds:'时长',content_type:'内容类型'};
+// Column order: resolved outcomes first, then what is still missing.
+const fieldColumns:[string,string,(s:string)=>boolean][]=[['准确',"已从页面读到准确值",s=>s==='exact'],['估算','页面只给出缩写值（如 1.2K）',s=>s==='estimated'],
+  ['按规则为零','空列表、预告或页面无计数时按旧规则记为 0',s=>s.startsWith('zero_from_')],['已关闭','频道关闭了点赞或评论',s=>s==='disabled'],
+  ['不公开','页面不提供该值（如直播中）',s=>s==='unavailable'],['未解析','尚未拿到，等待重采或回填',s=>s==='unresolved']];
+function FieldStatusPanel(){
+  const {api}=useAuth(),r=useResource('field-status',signal=>api.fieldStatus(signal),true,600000);
+  return <Panel title="视频字段解析状态（当前库）"><ResourceView resource={r}>{d=>{
+    const fields=Object.keys(fieldLabels) as (keyof typeof fieldLabels)[];
+    const cell=(f:string,match:(s:string)=>boolean)=>d.fields.filter(x=>x.field===f&&match(x.status)).reduce((n,x)=>n+x.count,0);
+    return <><div className="table-scroll"><table><thead><tr><th>字段</th>{fieldColumns.map(([label,hint])=><th key={label} className="num" title={hint}>{label}</th>)}<th className="num">已解析比例</th></tr></thead>
+      <tbody>{fields.map(f=>{const missing=cell(f,s=>s==='unresolved'),all=cell(f,()=>true);return <tr key={f}><td>{fieldLabels[f]}</td>
+        {fieldColumns.map(([label,,match])=>{const n=cell(f,match);return <td key={label} className="num" style={label==='未解析'&&n?{color:'var(--warning, #b45309)',fontWeight:600}:undefined}>{n?number(n):'—'}</td>;})}
+        <td className="num">{all?`${((all-missing)/all*100).toFixed(1)}%`:'—'}</td></tr>;})}</tbody></table></div>
+      <p className="fine-print inset">可访问视频 {number(d.videos)} 个，不可访问 {number(d.unavailable_videos)} 个另计。评论数未解析的视频（90 天内）会在频道下次更新时补采首页评论，每次每频道最多 10 个。每 10 分钟统计一次，更新于 {time(d.observed_at)}。</p></>;
+  }}</ResourceView></Panel>;
+}
 export default function AnalyticsPage({quality=false}:{quality?:boolean}) {
   const {api}=useAuth(),[days,setDays]=useState(7),resource=useResource(`analytics:${days}`,signal=>api.analytics(days,signal));
   return <><PageHeading title={quality?'质量分析':'采集统计'} description={quality?'跟踪可访问性和字段完整度，未知字段保留其真实状态。':'查看已入库采集量、计划结果和每日趋势。'}/>
     <div className="analytics-filters"><label>统计时间<select aria-label="统计时间" value={days} onChange={e=>setDays(Number(e.target.value))}><option value="1">今天</option><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="180">最近 180 天</option></select></label><Link to={quality?'/analytics':'/quality'}>{quality?'采集统计':'质量分析'} →</Link></div>
-    <ResourceView resource={resource}>{d=><><div className="analytics-kpis">{[['视频入库',d.totals.videos],['资料入库',d.totals.about],['画像入库',d.totals.agent],['完成 / 失败计划',`${d.totals.completed} / ${d.totals.failed}`]].map(([label,value])=><section className="panel" key={label}><small>{label}</small><strong>{typeof value==='number'?number(value):value}</strong></section>)}</div>
+    {quality && <FieldStatusPanel/>}
+    <ResourceView resource={resource}>{d=><>{!quality && <div className="analytics-kpis">{[['视频入库',d.totals.videos],['资料入库',d.totals.about],['画像入库',d.totals.agent],['完成 / 失败计划',`${d.totals.completed} / ${d.totals.failed}`]].map(([label,value])=><section className="panel" key={label}><small>{label}</small><strong>{typeof value==='number'?number(value):value}</strong></section>)}</div>}
       {!quality && <Panel title="每日采集趋势"><TrendChart data={d}/><p className="fine-print inset">蓝色：视频 · 绿色：频道资料 · 紫色：画像</p></Panel>}
-      <Panel title="字段完整度与采集结果">{d.quality.length?<div className="table-scroll"><table><thead><tr><th>领域</th><th>结果</th><th>观察数</th><th>未解析字段 / 指标总数</th><th>字段完整率</th></tr></thead><tbody>{d.quality.map(row=><tr key={row.domain+row.status}><td>{domainLabels[row.domain]??row.domain}</td><td>{statusLabels[row.status]??row.status}</td><td>{number(row.count)}</td><td>{number(row.missing)} / {number(row.total)}</td><td>{row.total?`${((row.total-row.missing)/row.total*100).toFixed(1)}%`:'—'}</td></tr>)}</tbody></table></div>:<Empty title="尚无质量观察"/>}<p className="fine-print inset">质量观察包含上线时的存量快照；存量视频 {number(d.baseline)} 条单独记录，不计入新采集量。无法访问的视频单独列出。</p></Panel>
-      <Panel title="失败原因">{d.failures.length?<div className="table-scroll"><table><thead><tr><th>原因</th><th>记录数</th></tr></thead><tbody>{d.failures.map(f=><tr key={f.code}><td>{f.code}</td><td>{number(f.count)}</td></tr>)}</tbody></table></div>:<Empty title="统计范围内没有失败"/>}<p className="inset"><Link to="/failures">进入失败处理 →</Link></p></Panel>
+      {quality && <Panel title="近期采集结果（按事件）">{d.quality.length?<div className="table-scroll"><table><thead><tr><th>领域</th><th>结果</th><th>观察数</th><th>未解析字段 / 指标总数</th><th>字段完整率</th></tr></thead><tbody>{d.quality.map(row=><tr key={row.domain+row.status}><td>{domainLabels[row.domain]??row.domain}</td><td>{statusLabels[row.status]??row.status}</td><td>{number(row.count)}</td><td>{number(row.missing)} / {number(row.total)}</td><td>{row.total?`${((row.total-row.missing)/row.total*100).toFixed(1)}%`:'—'}</td></tr>)}</tbody></table></div>:<Empty title="尚无质量观察"/>}<p className="fine-print inset">质量观察包含上线时的存量快照；存量视频 {number(d.baseline)} 条单独记录，不计入新采集量。无法访问的视频单独列出。</p></Panel>}
+      {!quality && <Panel title="失败原因">{d.failures.length?<div className="table-scroll"><table><thead><tr><th>原因</th><th>记录数</th></tr></thead><tbody>{d.failures.map(f=><tr key={f.code}><td><span title={f.code}>{failureCodeLabels[f.code]??f.code}</span></td><td>{number(f.count)}</td></tr>)}</tbody></table></div>:<Empty title="统计范围内没有失败"/>}<p className="inset"><Link to="/failures">进入失败处理 →</Link></p></Panel>}
       <p className="fine-print">统计来源：ClickHouse · 更新于 {time(d.observed_at)} · 原始采集 {bytes(d.totals.raw_bytes)}</p></>}</ResourceView></>;
 }
 export function StoragePage() {

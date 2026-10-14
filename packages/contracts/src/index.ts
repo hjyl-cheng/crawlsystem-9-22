@@ -271,12 +271,14 @@ export interface PlansSummary {
   waiting_reasons: { reason: string; plans: number }[];
 }
 /** Channel completeness for a workspace. Basis: whether every required domain of
- * each channel's latest plan is APPLIED. complete + partial + missing = total_channels.
+ * each channel's latest plan is APPLIED. complete + partial + missing + not_admitted = total_channels.
+ * not_admitted: imported channels the admission gate turned away (not managed, latest plan cancelled); like
+ * legacy they never get videos or an Agent profile, so they are not counted as waiting for one.
  * missing_by_domain counts channels lacking that required domain (a channel may count
  * under several). Freshness buckets need an update policy, which M1 does not have. */
 export interface Completeness {
   basis: 'latest_plan_required_domains'; observed_at: string; total_channels: number;
-  complete: number; partial: number; missing: number;
+  complete: number; partial: number; missing: number; not_admitted: number;
   missing_by_domain: Record<Domain, number>; latest_channel_update_at: string | null;
   freshness: 'NOT_IMPLEMENTED';
   /** Managed (updating), paused, and managed channels with a clock past due. */
@@ -326,11 +328,11 @@ export const WorkflowInputSchema: z.ZodType<WorkflowInput> = z.strictObject({ sc
 const Count = z.number().int().nonnegative();
 export const CompletenessSchema: z.ZodType<Completeness> = z.strictObject({
   basis: z.literal('latest_plan_required_domains'), observed_at: Timestamp, total_channels: Count,
-  complete: Count, partial: Count, missing: Count,
+  complete: Count, partial: Count, missing: Count, not_admitted: Count,
   missing_by_domain: z.strictObject({ ABOUT: Count, VIDEO: Count, AGENT: Count }), latest_channel_update_at: Timestamp.nullable(),
   freshness: z.literal('NOT_IMPLEMENTED'),
   management: z.strictObject({ managed: Count, paused: Count, overdue: Count }),
-}).refine(c => c.complete + c.partial + c.missing === c.total_channels, 'completeness buckets must sum to total');
+}).refine(c => c.complete + c.partial + c.missing + c.not_admitted === c.total_channels, 'completeness buckets must sum to total');
 export const PlansSummarySchema: z.ZodType<PlansSummary> = z.strictObject({
   observed_at: Timestamp, total: Count,
   by_status: z.strictObject({ QUEUED: Count, RUNNING: Count, WAITING: Count, COMPLETED: Count, CANCELLED: Count, FAILED: Count }),

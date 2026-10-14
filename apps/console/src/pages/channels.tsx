@@ -107,7 +107,7 @@ export default function Channels() {
 
     <div className="discover-kpis">
       <Kpi label="频道记录" tone="blue" icon={<Tv size={22}/>} value={c && fmt(c.total_channels)} foot={c?.latest_channel_update_at ? `最近入库 ${short(c.latest_channel_update_at)}` : '—'}/>
-      <Kpi label="数据完整" tone="green" icon={<CircleCheck size={22}/>} value={c && fmt(c.complete)} foot={c ? `部分可用 ${c.partial} · 待补全 ${c.missing}` : '—'}/>
+      <Kpi label="数据完整" tone="green" icon={<CircleCheck size={22}/>} value={c && fmt(c.complete)} foot={c ? `部分可用 ${c.partial} · 待补全 ${c.missing} · 未准入 ${c.not_admitted}` : '—'}/>
       <Kpi label="到期待更新" tone="amber" icon={<TriangleAlert size={22}/>} value={c && fmt(c.management.overdue)} foot={c ? `持续更新中 ${fmt(c.management.managed)} 个 · 到期当天 00:30 起依次更新` : '—'}/>
       <Kpi label="已暂停" tone="amber" icon={<CirclePause size={22}/>} value={c && fmt(c.management.paused)} foot="暂停期间到期不会自动更新"/>
     </div>

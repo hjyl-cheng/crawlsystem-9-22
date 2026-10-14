@@ -202,6 +202,22 @@ test('a complete update scan without content in 90 days puts the channel to slee
   const probe=await store_.tx(c=>store_.insertUpdate(c,t.worker.workspace_id,t.channel,new Date(`${recheck}T01:00:00.000Z`))) as Plan;
   assert.deepEqual(probe.required_domains,['VIDEO'],'a sleeping channel gets only the Video probe');
 });
+test('an unresolved comment count is backfilled after a day inside the 90-day window; disabled comments are not (M-71)',async()=>{
+  const t=await setup();await finishData(t);
+  const due=async(count:object,published:string)=>{
+    await pool.query(`UPDATE crawl_data.videos SET data=data||$4::jsonb,observed_at=now()-interval '2 days' WHERE workspace_id=$1 AND channel_id=$2 AND video_id=$3`,
+      [t.worker.workspace_id,t.channel,t.videoId,JSON.stringify({comment_count:{value:null,source:'youtubei:video',observed_at:new Date().toISOString(),...count},published_at:published,published_at_status:'exact'})]);
+    const version=(await store.getChannel(t.reader,t.channel)).management.version;
+    const update=await store.updateChannel(t.op,t.channel,{request_id:randomUUID(),expected_version:version,domains:['VIDEO']});
+    const input=(await store.getInput(t.worker,update.plan_id)).input;
+    await pool.query("UPDATE control.plans SET status='CANCELLED' WHERE plan_id=$1",[update.plan_id]);
+    return input.source_mode==='youtube'&&!!input.recovery_video_ids?.includes(t.videoId);
+  };
+  const recent=new Date(Date.now()-10*86400000).toISOString(),old=new Date(Date.now()-200*86400000).toISOString();
+  assert.equal(await due({status:'unresolved'},recent),true,'the empty first page is collected again');
+  assert.equal(await due({status:'disabled',value:0},recent),false,'disabled comments need no backfill');
+  assert.equal(await due({status:'unresolved'},old),false,'outside the 90-day window');
+});
 test('an unfinished live stream is rechecked after a day; login_required is never rechecked',async()=>{
   const t=await setup();await finishData(t);
   const unfinished={live_ended_at:null,content_type:'live',duration_seconds:{value:null,status:'unavailable',source:'youtubei:video',observed_at:new Date().toISOString()}};

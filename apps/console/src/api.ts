@@ -9,7 +9,7 @@ import {WorkerMetricsSchema,WorkerCommandSchema,type WorkerCommand} from '../../
 import {ConfigSnapshotSchema,ConfigHistorySchema,ConfigCommandSchema,type ConfigCommand} from '../../../packages/contracts/src/configuration.ts';
 import {DeliveryRecordSchema,DeliverySummarySchema,DeliveryRetrySchema} from '../../../packages/contracts/src/delivery.ts';
 import { PipelineProgressSchema } from '@crawlsystem/contracts/pipeline';
-import {FailureSchema,FailureCommandSchema,AnalyticsSchema,StorageSchema,EvidencePreviewSchema,ChannelHistorySchema,type FailureCommand} from '@crawlsystem/contracts/analytics';
+import {FailureSchema,FailureCommandSchema,AnalyticsSchema,StorageSchema,EvidencePreviewSchema,ChannelHistorySchema,FieldStatusSchema,type FailureCommand} from '@crawlsystem/contracts/analytics';
 import { CommentPageSchema } from '@crawlsystem/contracts';
 import { UpdateSummarySchema, UpdateChannelSchema, ChannelUpdateSchema, AgentSummarySchema, AgentTaskSchema, DataApiSummarySchema, ChannelImportSchema, ChannelImportResultSchema, ChannelImportsSchema, QuerySummarySchema, QueryBindingSchema, CreateQuerySchema, QueryCommandSchema, CandidateSchema, CandidateSummarySchema, CandidateCommandSchema, type CandidateCommand, type AgentTask, type ChannelImport, type ChannelUpdate, type CreateQuery, type QueryCommand } from '@crawlsystem/contracts';
 import {
@@ -110,6 +110,7 @@ export class ControlApi {
   failureCommand = (id:string,body:FailureCommand,signal?:AbortSignal)=>this.request(`/v1/failures/${encodeURIComponent(id)}/commands`,FailureSchema,signal,FailureCommandSchema.parse(body));
   failureEvidence = (id:string,signal?:AbortSignal)=>this.request(`/v1/failures/${encodeURIComponent(id)}/evidence`,EvidencePreviewSchema,signal);
   analytics = (days=7,signal?:AbortSignal)=>this.request(`/v1/analytics?days=${days}`,AnalyticsSchema,signal);
+  fieldStatus = (signal?:AbortSignal)=>this.request('/v1/analytics/field-status',FieldStatusSchema,signal);
   storage = (signal?:AbortSignal)=>this.request('/v1/storage',StorageSchema,signal);
   channelHistory = (id:string,days=30,signal?:AbortSignal)=>this.request(`/v1/channels/${encodeURIComponent(id)}/history?days=${days}`,ChannelHistorySchema,signal);
   updatesSummary = (signal?: AbortSignal) => this.request(ApiRoutes.updatesSummary, UpdateSummarySchema, signal);

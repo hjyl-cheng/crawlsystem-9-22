@@ -491,6 +491,9 @@ export class Store {
    * Recovery targets: failed parses, unfinished observations, then at most 10 stored videos due for the legacy
    * disposition rechecks (videoDisposition.js): unavailable or restricted after 7 days (login_required never), a live
    * stream that has not ended after 1 day (its details complete once it ends), an unresolved type after 6 hours.
+   * Legacy commentFirstPageBackfill.js / commentFirstPageNeedsResolution (rule register M-71/M-72): a video inside
+   * the 90-day window whose comment count is still unresolved (its first page failed or came back empty) after 1 day;
+   * disabled and confirmed-zero comments never need it.
    */
   private async recoveryVideoIds(client: PoolClient, workspace: string, channelId: string, now = new Date()): Promise<string[]> {
     return (await client.query(`SELECT video_id FROM (
@@ -508,7 +511,9 @@ export class Store {
       SELECT video_id,2 priority FROM (SELECT v.video_id FROM crawl_data.videos v WHERE v.workspace_id=$1 AND v.channel_id=$2 AND (
           coalesce((v.data->>'unavailable')::boolean,false) AND v.data->>'access_status'<>'login_required' AND v.observed_at<$3::timestamptz-interval '7 days'
           OR v.data->>'content_type'='live' AND v.data->>'live_ended_at' IS NULL AND v.data#>>'{duration_seconds,value}' IS NULL AND v.observed_at<$3::timestamptz-interval '1 day'
-          OR v.data->>'content_type_source'='default:shorts_unknown' AND v.observed_at<$3::timestamptz-interval '6 hours')
+          OR v.data->>'content_type_source'='default:shorts_unknown' AND v.observed_at<$3::timestamptz-interval '6 hours'
+          OR NOT coalesce((v.data->>'unavailable')::boolean,false) AND v.data#>>'{comment_count,status}'='unresolved'
+            AND (v.data->>'published_at')::timestamptz>$3::timestamptz-interval '90 days' AND v.observed_at<$3::timestamptz-interval '1 day')
         ORDER BY v.observed_at,v.video_id LIMIT 10) due
     ) candidates GROUP BY video_id ORDER BY min(priority),video_id LIMIT 100`,[workspace,channelId,now])).rows.map(r=>r.video_id as string);
   }
@@ -1003,6 +1008,21 @@ export class Store {
   async telemetryEvidenceDone(principal:Principal,id:string,evidence:unknown,state:'SAVED'|'MISSING') {
     requireRole(principal,'analytics');await this.pool.query("UPDATE control.failures SET evidence=$3,evidence_state=$4 WHERE workspace_id=$1 AND failure_id=$2 AND evidence_state='PENDING'",[principal.workspace_id,id,evidence,state]);return {accepted:true as const};
   }
+  /** Resolution of every stored video fact; a full scan of crawl_data.videos (seconds), so callers cache it. */
+  async fieldStatus(principal:Principal) {
+    requireRole(principal,'reader','operator');
+    return this.tx(async client=>{
+      await client.query('SET TRANSACTION READ ONLY');await client.query("SET LOCAL statement_timeout='30s'");
+      const rows=(await client.query(`SELECT x.f AS field,coalesce(x.s,'unresolved') AS status,count(*)::int AS count,clock_timestamp() AS observed
+        FROM crawl_data.videos v,LATERAL (VALUES ('view_count',v.data#>>'{view_count,status}'),('like_count',v.data#>>'{like_count,status}'),
+          ('comment_count',v.data#>>'{comment_count,status}'),('duration_seconds',v.data#>>'{duration_seconds,status}'),
+          ('content_type',CASE WHEN v.data->>'content_type_source' LIKE 'default:%' THEN 'unresolved' ELSE 'exact' END)) x(f,s)
+        WHERE v.workspace_id=$1 AND NOT coalesce((v.data->>'unavailable')::boolean,false) GROUP BY 1,2 ORDER BY 1,3 DESC`,[principal.workspace_id])).rows;
+      const totals=(await client.query(`SELECT count(*) FILTER (WHERE NOT coalesce((data->>'unavailable')::boolean,false))::int AS videos,
+        count(*) FILTER (WHERE coalesce((data->>'unavailable')::boolean,false))::int AS unavailable FROM crawl_data.videos WHERE workspace_id=$1`,[principal.workspace_id])).rows[0]!;
+      return {observed_at:new Date().toISOString(),videos:totals.videos,unavailable_videos:totals.unavailable,fields:rows.map(r=>({field:r.field,status:r.status,count:r.count}))};
+    });
+  }
   async storage(principal:Principal,ch:unknown) {requireRole(principal,'reader','operator');return storage(this.pool,principal.workspace_id,ch);}
   async maintain(principal:Principal,dryRun=true) {requireRole(principal,'analytics','operator');return this.tx(c=>maintain(c,principal.workspace_id,dryRun));}
   async rawCleanupClaim(principal:Principal,limit=100) {requireRole(principal,'analytics');return this.tx(c=>claimRawCleanup(c,principal.workspace_id,limit));}
@@ -1275,24 +1295,26 @@ export class Store {
     const row = (await this.pool.query(`
       WITH per AS (
         SELECT p.required_domains AS required, c.updated_at,
+               (coalesce(c.management_state,'') NOT IN ('managed','paused') AND p.status='CANCELLED') AS na,
                coalesce(array_agg(d.domain) FILTER (WHERE d.state='APPLIED' AND d.domain = ANY(p.required_domains)), '{}') AS applied
         FROM control.channel_overview c JOIN control.plans p ON p.plan_id = c.latest_plan_id
         LEFT JOIN control.domains d ON d.plan_id = p.plan_id
-        WHERE c.workspace_id = $1 AND p.source_mode = $2 GROUP BY c.channel_id, c.updated_at, p.required_domains)
+        WHERE c.workspace_id = $1 AND p.source_mode = $2 GROUP BY c.channel_id, c.updated_at, p.required_domains, c.management_state, p.status)
       SELECT count(*)::int AS total,
-        count(*) FILTER (WHERE cardinality(applied) = cardinality(required))::int AS complete,
-        count(*) FILTER (WHERE cardinality(applied) > 0 AND cardinality(applied) < cardinality(required))::int AS partial,
-        count(*) FILTER (WHERE cardinality(applied) = 0)::int AS missing,
-        count(*) FILTER (WHERE 'ABOUT' = ANY(required) AND NOT 'ABOUT' = ANY(applied))::int AS about,
-        count(*) FILTER (WHERE 'VIDEO' = ANY(required) AND NOT 'VIDEO' = ANY(applied))::int AS video,
-        count(*) FILTER (WHERE 'AGENT' = ANY(required) AND NOT 'AGENT' = ANY(applied))::int AS agent,
+        count(*) FILTER (WHERE na)::int AS not_admitted,
+        count(*) FILTER (WHERE NOT na AND cardinality(applied) = cardinality(required))::int AS complete,
+        count(*) FILTER (WHERE NOT na AND cardinality(applied) > 0 AND cardinality(applied) < cardinality(required))::int AS partial,
+        count(*) FILTER (WHERE NOT na AND cardinality(applied) = 0)::int AS missing,
+        count(*) FILTER (WHERE NOT na AND 'ABOUT' = ANY(required) AND NOT 'ABOUT' = ANY(applied))::int AS about,
+        count(*) FILTER (WHERE NOT na AND 'VIDEO' = ANY(required) AND NOT 'VIDEO' = ANY(applied))::int AS video,
+        count(*) FILTER (WHERE NOT na AND 'AGENT' = ANY(required) AND NOT 'AGENT' = ANY(applied))::int AS agent,
         max(updated_at) AS latest, clock_timestamp() AS observed
       FROM per`,[principal.workspace_id,mode])).rows[0]!;
     const m = (await this.pool.query(`SELECT count(*) FILTER (WHERE c.management_state='managed')::int AS managed, count(*) FILTER (WHERE c.management_state='paused')::int AS paused,
         count(*) FILTER (WHERE c.management_state='managed' AND (SELECT min(coalesce(k.retry_at,k.due_at)) FROM control.channel_clocks k
           WHERE k.workspace_id=c.workspace_id AND k.channel_id=c.channel_id AND k.clock=ANY($2::text[])) < clock_timestamp())::int AS overdue
       FROM control.channel_overview c WHERE c.workspace_id=$1 AND c.management_state IN ('managed','paused')`,[principal.workspace_id,CLOCK_NAMES])).rows[0]!;
-    return { basis:'latest_plan_required_domains', observed_at:iso(row.observed), total_channels:row.total, complete:row.complete, partial:row.partial, missing:row.missing,
+    return { basis:'latest_plan_required_domains', observed_at:iso(row.observed), total_channels:row.total, complete:row.complete, partial:row.partial, missing:row.missing, not_admitted:row.not_admitted,
       missing_by_domain:{ ABOUT:row.about, VIDEO:row.video, AGENT:row.agent }, latest_channel_update_at:row.latest ? iso(row.latest) : null, freshness:'NOT_IMPLEMENTED',
       management:{ managed:m.managed, paused:m.paused, overdue:m.overdue } };
   }

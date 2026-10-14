@@ -43,3 +43,9 @@ export const StorageSchema=z.object({observed_at:Time,postgres_bytes:z.number(),
   clickhouse:z.object({available:z.boolean(),bytes:z.number().nullable(),events:z.number().nullable(),last_event_at:z.string().nullable()}),
   retention:z.object({pg_days:z.literal(30),events_days:z.literal(180),evidence_days:z.literal(90),loki_days:z.literal(7),summaries:z.literal('long_term')}),
   maintenance:z.object({last_at:Time.nullable(),result:z.record(z.string(),z.number()).nullable()})});
+/** Current resolution of each stored video fact (crawl_data, not events): how many are exact, estimated, zero by rule,
+ * disabled, unavailable or still unresolved. Unavailable videos are counted apart. */
+export const VIDEO_STATUS_FIELDS=['view_count','like_count','comment_count','duration_seconds','content_type'] as const;
+export const FieldStatusSchema=z.strictObject({observed_at:Time,videos:z.number().int().nonnegative(),unavailable_videos:z.number().int().nonnegative(),
+  fields:z.array(z.strictObject({field:z.enum(VIDEO_STATUS_FIELDS),status:z.string().max(40),count:z.number().int().nonnegative()}))});
+export type FieldStatus=z.infer<typeof FieldStatusSchema>;

@@ -8,7 +8,7 @@ import type { ProxyStore } from '@crawlsystem/store/proxies';
 import { ConsoleAuth } from './console-auth.ts';
 import { SubmissionSchema,AgentSummarySchema,DataApiSummarySchema,PlansSummarySchema,OverviewResourcesSchema } from '@crawlsystem/contracts';
 import {unknownNode,type Prometheus} from './monitoring.ts';
-import {FailureStateSchema,FailureCommandSchema,FailureSchema} from '@crawlsystem/contracts/analytics';
+import {FailureStateSchema,FailureCommandSchema,FailureSchema,FieldStatusSchema} from '@crawlsystem/contracts/analytics';
 import type {ClickHouse} from './analytics.ts';
 import type {Failure} from '@crawlsystem/contracts/analytics';
 import {WorkerMetricsSchema} from '../../../packages/contracts/src/workers.ts';
@@ -96,6 +96,15 @@ export function createControlApi(options:ServerOptions & { consoleAuth?:ConsoleA
     let nodes=ids.map(unknownNode),available=false;
     if(options.monitoring)try{nodes=await options.monitoring.nodes(ids);available=true;}catch{/* Inventory remains usable during monitoring outages. */}
     return OverviewResourcesSchema.parse({observed_at:new Date().toISOString(),proxies:ips,monitoring:{source:'prometheus',available,nodes}});
+  });
+  // A full scan of stored videos (seconds); the resolution moves slowly, so each replica computes it at most every 10 minutes.
+  const fieldStatusCache=new Map<string,{until:number;value:Promise<unknown>}>();
+  app.get('/v1/analytics/field-status',async request=>{
+    requireRole(request.principal,'reader','operator');z.strictObject({}).parse(request.query);
+    const key=request.principal.workspace_id,old=fieldStatusCache.get(key);if(old && old.until>Date.now())return old.value;
+    const value=store.fieldStatus(request.principal).then(v=>FieldStatusSchema.parse(v));
+    fieldStatusCache.set(key,{value,until:Date.now()+600_000});value.catch(()=>fieldStatusCache.delete(key));
+    return value;
   });
   app.get('/v1/analytics',async request=>{
     requireRole(request.principal,'reader','operator');const q=z.strictObject({days:z.coerce.number().int().min(1).max(365).default(7)}).parse(request.query);
