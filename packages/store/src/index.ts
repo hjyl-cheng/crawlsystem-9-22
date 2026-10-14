@@ -1013,14 +1013,15 @@ export class Store {
     requireRole(principal,'reader','operator');
     return this.tx(async client=>{
       await client.query('SET TRANSACTION READ ONLY');await client.query("SET LOCAL statement_timeout='30s'");
-      const rows=(await client.query(`SELECT x.f AS field,coalesce(x.s,'unresolved') AS status,count(*)::int AS count,clock_timestamp() AS observed
-        FROM crawl_data.videos v,LATERAL (VALUES ('view_count',v.data#>>'{view_count,status}'),('like_count',v.data#>>'{like_count,status}'),
-          ('comment_count',v.data#>>'{comment_count,status}'),('duration_seconds',v.data#>>'{duration_seconds,status}'),
-          ('content_type',CASE WHEN v.data->>'content_type_source' LIKE 'default:%' THEN 'unresolved' ELSE 'exact' END)) x(f,s)
-        WHERE v.workspace_id=$1 AND NOT coalesce((v.data->>'unavailable')::boolean,false) GROUP BY 1,2 ORDER BY 1,3 DESC`,[principal.workspace_id])).rows;
-      const totals=(await client.query(`SELECT count(*) FILTER (WHERE NOT coalesce((data->>'unavailable')::boolean,false))::int AS videos,
-        count(*) FILTER (WHERE coalesce((data->>'unavailable')::boolean,false))::int AS unavailable FROM crawl_data.videos WHERE workspace_id=$1`,[principal.workspace_id])).rows[0]!;
-      return {observed_at:new Date().toISOString(),videos:totals.videos,unavailable_videos:totals.unavailable,fields:rows.map(r=>({field:r.field,status:r.status,count:r.count}))};
+      // jsonb_to_record decompresses each stored fact once instead of once per field; the 5 s pool limit is lifted here only.
+      const rows=(await client.query({query_timeout:30_000,values:[principal.workspace_id],text:`SELECT coalesce(r.unavailable,false) AS unavailable,x.f AS field,coalesce(x.s,'unresolved') AS status,count(*)::int AS count
+        FROM crawl_data.videos v,jsonb_to_record(v.data) AS r(view_count jsonb,like_count jsonb,comment_count jsonb,duration_seconds jsonb,content_type_source text,unavailable boolean),
+        LATERAL (VALUES ('view_count',r.view_count->>'status'),('like_count',r.like_count->>'status'),('comment_count',r.comment_count->>'status'),
+          ('duration_seconds',r.duration_seconds->>'status'),('content_type',CASE WHEN r.content_type_source LIKE 'default:%' THEN 'unresolved' ELSE 'exact' END)) x(f,s)
+        WHERE v.workspace_id=$1 GROUP BY 1,2,3 ORDER BY 2,4 DESC`} as import('pg').QueryConfig)).rows as {unavailable:boolean;field:string;status:string;count:number}[];
+      const videos=(unavailable:boolean)=>rows.filter(r=>r.unavailable===unavailable&&r.field==='view_count').reduce((n,r)=>n+r.count,0);
+      return {observed_at:new Date().toISOString(),videos:videos(false),unavailable_videos:videos(true),
+        fields:rows.filter(r=>!r.unavailable).map(r=>({field:r.field,status:r.status,count:r.count}))};
     });
   }
   async storage(principal:Principal,ch:unknown) {requireRole(principal,'reader','operator');return storage(this.pool,principal.workspace_id,ch);}
