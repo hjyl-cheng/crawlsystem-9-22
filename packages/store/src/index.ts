@@ -492,7 +492,8 @@ export class Store {
    * disposition rechecks (videoDisposition.js): unavailable or restricted after 7 days (login_required never), a live
    * stream that has not ended after 1 day (its details complete once it ends), an unresolved type after 6 hours.
    * Legacy commentFirstPageBackfill.js / commentFirstPageNeedsResolution (rule register M-71/M-72): a video inside
-   * the 90-day window whose comment count is still unresolved (its first page failed or came back empty) after 1 day;
+   * the 90-day window whose comment count (its first page failed or came back empty) or like count is still unresolved
+   * after 1 day, as stored before batches 2b/3;
    * disabled and confirmed-zero comments never need it.
    */
   private async recoveryVideoIds(client: PoolClient, workspace: string, channelId: string, now = new Date()): Promise<string[]> {
@@ -512,7 +513,7 @@ export class Store {
           coalesce((v.data->>'unavailable')::boolean,false) AND v.data->>'access_status'<>'login_required' AND v.observed_at<$3::timestamptz-interval '7 days'
           OR v.data->>'content_type'='live' AND v.data->>'live_ended_at' IS NULL AND v.data#>>'{duration_seconds,value}' IS NULL AND v.observed_at<$3::timestamptz-interval '1 day'
           OR v.data->>'content_type_source'='default:shorts_unknown' AND v.observed_at<$3::timestamptz-interval '6 hours'
-          OR NOT coalesce((v.data->>'unavailable')::boolean,false) AND v.data#>>'{comment_count,status}'='unresolved'
+          OR NOT coalesce((v.data->>'unavailable')::boolean,false) AND 'unresolved' IN (v.data#>>'{comment_count,status}',v.data#>>'{like_count,status}')
             AND (v.data->>'published_at')::timestamptz>$3::timestamptz-interval '90 days' AND v.observed_at<$3::timestamptz-interval '1 day')
         ORDER BY v.observed_at,v.video_id LIMIT 10) due
     ) candidates GROUP BY video_id ORDER BY min(priority),video_id LIMIT 100`,[workspace,channelId,now])).rows.map(r=>r.video_id as string);
