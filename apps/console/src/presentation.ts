@@ -12,6 +12,14 @@ export const errorCodeLabels: Record<ErrorCode, string> = {
   DOMAIN_INCOMPLETE: '领域未完整', DOMAIN_NOT_REQUIRED: '非必需领域', DEPENDENCY_NOT_IMPLEMENTED: '能力未接入',
   BUDGET_EXHAUSTED: '预算耗尽', UNAVAILABLE: '依赖不可用', INTERNAL_ERROR: '内部错误',
 };
+/** Failure records: which part of the chain failed and why, in words (unknown codes show as they are). */
+export const failureStageLabels: Record<string, string> = { WORKER: '采集', PARSER: '解析', SINK: '入库', BUSINESS: '业务交付', DELIVERY: '交付', SEARCH: '搜索' };
+export const failureCodeLabels: Record<string, string> = {
+  ...errorCodeLabels, UNAVAILABLE: '网络、代理或上游暂时不可用', REPLAY_INCOMPLETE: '原件缺少回放所需的响应', INTEGRITY: '原件校验不一致',
+  INVALID_FACT: '解析结果不符合数据契约', INVALID_MESSAGE: '消息格式不合规', COLLECTION_FAILED: '采集失败', BLOCKED: '被 YouTube 风控拦截',
+};
+export const failureStage = (stage: string) => failureStageLabels[stage] ?? stage;
+export const failureCode = (code: string) => failureCodeLabels[code] ?? code;
 export const roleLabels: Record<Role, string> = { reader: '只读用户', operator: '操作员', worker: '执行身份', node: '节点代理身份', parser:'解析身份',sink:'入库身份',analytics:'统计身份' };
 export const isTerminal = (plan: Plan) => ['COMPLETED', 'CANCELLED', 'FAILED'].includes(plan.status);
 export const time = (value?: string | number | null): string => value == null ? '尚未提供' : new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium', hour12: false }).format(new Date(value));
@@ -24,6 +32,7 @@ export const clockLabels: Record<ClockName, string> = { ABOUT: '频道资料', V
 /** Plain words for the legacy policy's reason codes (packages/feature-clock); internal bookkeeping codes have none. */
 const reasonText: Record<string, string> = {
   manual_override: '人工指定的间隔', clock_bootstrap_baseline: '这部分还没采集过，先按默认周期',
+  channel_dormant: '频道休眠（90 天内没有新内容），到复查日只探测视频',
   // 频道资料
   about_baseline: '第一次采集资料', about_cold_start_cadence_fallback: '发布节奏还看不出来，先按 7 天',
   growth_percentile_critical: '订阅或播放增长排在前 10%，每天更新',

@@ -7,7 +7,8 @@
 .delivery-list td { vertical-align: middle; }
 .delivery-list tbody tr { cursor: pointer; }
 .delivery-list tbody tr.selected { background: #eef5ff; }
-.delivery-filters { justify-content: flex-start; padding: 8px 14px; }
+.delivery-filters { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px 20px; padding: 8px 14px; }
+.delivery-filters label { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-text); color: #52688c; }
 .week-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .week-stats>div { display: grid; justify-items: center; padding: 7px 4px; border-radius: 5px; background: #f5f8fc; }
 .week-stats b { font-size: var(--fs-card); color: #0c1e43; font-variant-numeric: tabular-nums; }

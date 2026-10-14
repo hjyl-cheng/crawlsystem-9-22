@@ -57,9 +57,10 @@ export function usePagination() {
   const cursor = /^\d+$/.test(raw) && Number(raw) <= 100000 ? raw : '0';
   return { cursor, params, setParams, go: (next: string) => { const copy = new URLSearchParams(params); copy.set('cursor', next); setParams(copy); } };
 }
-export function Pagination({ cursor, next, count, go }: { cursor: string; next: string | null; count: number; go: (next: string) => void }) {
-  return <footer className="pagination"><span>本页 {count} 条 · 每页最多 20 条</span><div>
-    <button className="button small" disabled={cursor === '0'} onClick={() => go(String(Math.max(0, Number(cursor) - 20)))}>上一页</button>
+/** Offset pagination; `pageSize` must match the endpoint's page (most are 20, deliveries 50). */
+export function Pagination({ cursor, next, count, go, pageSize = 20 }: { cursor: string; next: string | null; count: number; go: (next: string) => void; pageSize?: number }) {
+  return <footer className="pagination"><span>本页 {count} 条 · 每页最多 {pageSize} 条</span><div>
+    <button className="button small" disabled={cursor === '0'} onClick={() => go(String(Math.max(0, Number(cursor) - pageSize)))}>上一页</button>
     <button className="button small" disabled={!next} onClick={() => next && go(next)}>下一页</button>
   </div></footer>;
 }

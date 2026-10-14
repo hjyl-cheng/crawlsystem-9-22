@@ -114,7 +114,8 @@
 .rank.hot { background: #fff1d6; color: #b8740a; }
 
 @media (max-width: 1320px) {
-  .kpi-foot>span:last-child { display: none; }
+  /* Only a second foot note gives way; a single note stays. */
+  .kpi-foot>span:last-child:not(:first-child) { display: none; }
   .funnel { gap: 14px; }
   .funnel-note { display: none; }
 }
@@ -123,9 +124,15 @@
   .discover-row { flex: none; }
   .row-flow>.funnel-card, .row-state>:first-child, .row-list>.query-list, .row-list>:last-child { grid-column: 1 / -1; }
   .discover .panel { min-height: 190px; }
+  .discover .discover-kpi { min-height: 0; }
 }
 @media (max-width: 680px) {
-  .discover-kpis, .discover-row { grid-template-columns: minmax(0, 1fr); }
+  .discover-row { grid-template-columns: minmax(0, 1fr); }
+  /* Phones: two compact KPI cards per row instead of four screens of cards. */
+  .discover-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .discover-kpi { padding: 10px; gap: 8px; }
+  .discover-kpi .kpi-icon { display: none; }
+  .discover-kpi strong { font-size: var(--fs-card); }
   .funnel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .funnel-step::after { display: none; }
   .status-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
