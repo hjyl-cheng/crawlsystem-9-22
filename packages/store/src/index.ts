@@ -64,6 +64,8 @@ async function discovery<T>(run: () => Promise<T>): Promise<T> {
     throw error;
   }
 }
+/** Due clocks are dispatched from 00:30 UTC of their due day (legacy window start; the 21:30 close is dropped, 10-14). */
+export const DISPATCH_OFFSET_MINUTES = 30;
 /** Imports that can start a first collection now ($2 is the scan time). */
 const IMPORT_WAITING = `(state='queued' OR state='failed' AND retry_at<=$2 AND retry_blocked_reason IS NULL AND auto_retry_count<3)`;
 /** A count the source resolved (exact, estimated or a legacy policy zero), else null. */
@@ -343,11 +345,11 @@ export class Store {
       let free = capacity.slots - capacity.active_plans, updateRoom = Math.min(free, updateSlots(capacity.slots, importsWaiting) - capacity.active_updates);
       // Only clocks in auto_domains are scheduled; the others stay due until updated manually.
       const candidates = await client.query(`SELECT c.channel_id,min(k.due_at) AS due FROM control.channel_overview c JOIN control.channel_clocks k USING(workspace_id,channel_id)
-        WHERE c.workspace_id=$1 AND c.management_state='managed' AND k.due_at<=$2 AND k.clock=ANY($3::text[])
+        WHERE c.workspace_id=$1 AND c.management_state='managed' AND k.due_at+make_interval(mins=>$4)<=$2 AND k.clock=ANY($3::text[])
           AND (k.last_scheduled_at IS NULL OR k.last_scheduled_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
           AND (k.last_attempt_at IS NULL OR k.last_attempt_at<date_trunc('day',$2::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
           AND NOT EXISTS(SELECT 1 FROM control.plans p WHERE p.workspace_id=c.workspace_id AND p.channel_id=c.channel_id AND p.status IN ('QUEUED','RUNNING','WAITING'))
-        GROUP BY c.channel_id ORDER BY due,c.channel_id LIMIT 25`, [workspaceId, now, limits.auto_domains]);
+        GROUP BY c.channel_id ORDER BY due,c.channel_id LIMIT 25`, [workspaceId, now, limits.auto_domains, DISPATCH_OFFSET_MINUTES]);
       const plans: Plan[] = [];
       for (const candidate of candidates.rows) {
         if (updateRoom <= 0) break;
@@ -392,7 +394,8 @@ export class Store {
     if (active.rowCount) { if (manual) throw new StoreError('CONFLICT', 'This channel already has an active plan'); return null; }
     const clocks = (await client.query('SELECT * FROM control.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 ORDER BY clock', [workspace, channelId])).rows;
     const utcStart = Date.parse(now.toISOString().slice(0, 10));
-    const due = clocks.filter(k => new Date(k.due_at).getTime() <= now.getTime());
+    // Scheduled updates start at 00:30 UTC of the due day and run until done (user 10-14: no closing time).
+    const due = clocks.filter(k => new Date(k.due_at).getTime() + (manual ? 0 : DISPATCH_OFFSET_MINUTES * 60_000) <= now.getTime());
     const limits = scanLimits ?? (await this.settings(client,workspace)).settings.update;
     // A sleeping channel gets only the legacy dormant probe: Video alone, on its recheck day.
     const dormant = !manual && (await loadLifecycle(client, workspace, channelId))?.lifecycle_status === 'dormant';

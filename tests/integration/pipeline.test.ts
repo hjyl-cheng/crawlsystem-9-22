@@ -198,6 +198,7 @@ test('a complete update scan without content in 90 days puts the channel to slee
   const clocks=(await pool.query('SELECT clock,due_at,reason FROM control.channel_clocks WHERE workspace_id=$1 AND channel_id=$2 ORDER BY clock',[t.worker.workspace_id,t.channel])).rows;
   assert.deepEqual(clocks.map(k=>[k.clock,new Date(k.due_at).toISOString().slice(0,10),k.reason]),['ABOUT','AGENT','VIDEO'].map(c=>[c,recheck,'channel_dormant']),'every clock waits for the recheck day');
   const store_=store as unknown as {tx:<T>(f:(c:import('pg').PoolClient)=>Promise<T>)=>Promise<T>;insertUpdate:Function};
+  assert.equal(await store_.tx(c=>store_.insertUpdate(c,t.worker.workspace_id,t.channel,new Date(`${recheck}T00:10:00.000Z`))),null,'nothing is dispatched before 00:30 UTC');
   const probe=await store_.tx(c=>store_.insertUpdate(c,t.worker.workspace_id,t.channel,new Date(`${recheck}T01:00:00.000Z`))) as Plan;
   assert.deepEqual(probe.required_domains,['VIDEO'],'a sleeping channel gets only the Video probe');
 });
