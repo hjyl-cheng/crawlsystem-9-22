@@ -2,7 +2,7 @@ import { Innertube, YTNodes } from 'youtubei.js';
 import { ChannelFactsSchema, VideoFactsSchema, VideoUnavailableSchema, type ChannelFacts, type VideoFacts, type VideoItem } from '@crawlsystem/contracts';
 import { ScrapeError, topComments, classify } from './scrape.ts';
 import { disabledCommentsText, normalizeKeywords, parseCount, parseKeywords, toVideoFacts, type CommentsResult } from './map.ts';
-import { findSubscriberCountText, localizedAbsoluteUtcDay } from './localized.ts';
+import { findSubscriberCountText, localizedAbsoluteUtcDay, parseLocalizedAgeDays } from './localized.ts';
 import { canonicalCountry } from './country.ts';
 import { linkTarget, normalizeUrl } from '@crawlsystem/contracts/links';
 import type { BrowserIdentity } from './identity.ts';
@@ -137,7 +137,12 @@ export async function channelFacts(yt: Innertube, channelId: string, observedAt 
   } catch (error) { throw classify(error); }
 }
 /** Latest uploads, or incremental discovery until any of the 20 frozen anchors. Never skip private IDs. */
-export async function uploads(yt: Innertube, channelId: string, limit: number, anchors?: string[]): Promise<UploadDiscovery & { exhausted: boolean }> {
+/**
+ * `maxAgeDays` (first collections): the legacy content window. Uploads are newest first, so the scan stops at the first
+ * entry whose list age ("4 months ago") is past the window; an entry near the edge ("3 months ago") is still collected and
+ * publication keeps only exact dates inside it (legacy older_than_max_age / after_chronological_age_cutoff).
+ */
+export async function uploads(yt: Innertube, channelId: string, limit: number, anchors?: string[], maxAgeDays?: number, locale: string = SESSION_LOCALE): Promise<UploadDiscovery & { exhausted: boolean }> {
   // Legacy youtubeJs.js:419-427: an entry without a usable ID is a parse gap, skipped; a scan with gaps is not exhaustive.
   const ids: string[] = [], known = new Set(anchors ?? []); let scanned = 0, pages = 0, gaps = 0;
   try {
@@ -151,6 +156,10 @@ export async function uploads(yt: Innertube, channelId: string, limit: number, a
           ?? node.on_tap_endpoint?.payload?.videoId ?? node.on_tap_endpoint?.payload?.reelWatchEndpoint?.videoId
           ?? (typeof node.entity_id === 'string' ? node.entity_id.replace(/^shorts-shelf-item-/, '') : undefined);
         if (typeof id !== 'string' || !/^[\w-]{11}$/.test(id)) { gaps++; continue; }
+        if (!anchors && maxAgeDays) {
+          const age = [...strings(node.metadata), text(node.video_info), text(node.published)].map(t => t ? parseLocalizedAgeDays(t, locale) : null).find(a => a !== null);
+          if (age !== undefined && age !== null && age > maxAgeDays) return { ids, pages, scanned, matched_anchor_id: null, stop_reason: 'age_boundary', exhausted: false };
+        }
         scanned++;
         if (known.has(id)) return { ids, pages, scanned, matched_anchor_id: id, stop_reason: 'anchor_matched', exhausted: false };
         if (!ids.includes(id)) ids.push(id);

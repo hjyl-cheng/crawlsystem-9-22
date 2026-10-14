@@ -102,7 +102,9 @@ export class RawParser {
       return { kind: 'ABOUT', payload: apiChannelFacts(api, observed) };
     }
     if (unit.step === 'TARGETS') {
-      const scan = async (responses: RawResponse[]) => uploads(await new ResponseReplay(responses, locale).client(), raw.channel_id, input.plan_kind === 'UPDATE' ? 100 : input.scope.video_limit, input.plan_kind === 'UPDATE' ? input.discovery_anchor_ids ?? [] : undefined);
+      const scan = async (responses: RawResponse[]) => uploads(await new ResponseReplay(responses, locale).client(), raw.channel_id, input.plan_kind === 'UPDATE' ? 100 : input.scope.video_limit, input.plan_kind === 'UPDATE' ? input.discovery_anchor_ids ?? [] : undefined,
+        // The content window the collector applied; units captured before 10-14 scanned without it.
+        input.plan_kind === 'UPDATE' ? undefined : unit.max_age_days, locale);
       const listed = regional.length ? await scan(regional).catch(() => scan(plain)) : await scan(plain);
       return { kind: 'TARGETS', payload: input.plan_kind === 'UPDATE' ? { kind: 'discovery', channel_id: raw.channel_id, video_ids: mergeRecoveryVideoTargets(listed.ids, input.recovery_video_ids),
         listed_at: observed, scanned_count: listed.scanned, pages: listed.pages, matched_anchor_id: listed.matched_anchor_id, stop_reason: listed.stop_reason, source: 'youtubei:uploads' }

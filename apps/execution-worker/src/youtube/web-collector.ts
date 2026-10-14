@@ -95,13 +95,13 @@ export class WebCollector {
       return null;
     }
   }
-  private async unit<T>(ctx: CollectionContext, step: string, unitId: string, work: (responses: RawResponse[]) => Promise<T>) {
+  private async unit<T>(ctx: CollectionContext, step: string, unitId: string, work: (responses: RawResponse[]) => Promise<T>, extra: { max_age_days?: number } = {}) {
     const reused = await this.archive.reuse<T>(ctx.owner, ctx.channelId, step, unitId, ctx.signal);
     if (reused) return reused;
     const responses: RawResponse[] = [];let result:T;
     try{result=await work(responses);}catch(error){await this.preserveFailure(ctx,step,unitId,responses,error);throw error;}
     const reference = await this.archive.save({ schema_version: 'crawl.unit.v1', locale: SESSION_LOCALE, owner: ctx.owner, channel_id: ctx.channelId, step, unit_id: unitId,
-      captured_at: new Date().toISOString(), responses, result }, ctx.signal);
+      captured_at: new Date().toISOString(), responses, result, ...extra }, ctx.signal);
     return { result, reference };
   }
   private async preserveFailure(ctx:CollectionContext,step:string,unit:string,responses:RawResponse[],error:unknown) {
@@ -129,9 +129,10 @@ export class WebCollector {
     await this.archive.finish(ctx.owner, ctx.channelId, 'ABOUT', [unit.reference], ctx.signal);
     return unit.result;
   }
-  async targets(ctx: CollectionContext, limit: number, anchors?: string[], recoveryIds: string[] = []) {
+  async targets(ctx: CollectionContext, limit: number, anchors?: string[], recoveryIds: string[] = [], maxAgeDays?: number) {
+    const window = !anchors && maxAgeDays ? maxAgeDays : undefined;
     const unit = await this.unit(ctx, 'TARGETS', 'uploads', async responses => {
-      const scan = (region?: string) => this.web(ctx, responses, yt => this.operations.uploads(yt, ctx.channelId, Math.min(limit, 100), anchors), region);
+      const scan = (region?: string) => this.web(ctx, responses, yt => this.operations.uploads(yt, ctx.channelId, Math.min(limit, 100), anchors, window), region);
       const recheck = async () => this.inRegion(ctx, await this.channelRegion(ctx, responses), 'Uploads', scan);
       let listed: Awaited<ReturnType<typeof scan>>;
       // Legacy UploadsCountryRecheck: a missing or verified-empty uploads list is checked again in the channel's country.
@@ -142,7 +143,7 @@ export class WebCollector {
       }
       if (!anchors && !listed.ids.length && listed.exhausted) listed = await recheck() ?? listed;
       return { ...listed, ids: mergeRecoveryVideoTargets(listed.ids, recoveryIds) };
-    });
+    }, window ? { max_age_days: window } : {});
     await this.archive.finish(ctx.owner, ctx.channelId, 'TARGETS', [unit.reference], ctx.signal);
     return unit.result;
   }

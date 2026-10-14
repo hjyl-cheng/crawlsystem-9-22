@@ -10,6 +10,8 @@ export interface RawUnit<T = unknown> {
   schema_version: 'crawl.unit.v1'; owner: WorkflowInput; channel_id: string; step: string; unit_id: string; captured_at: string;
   /** YouTube display language of the capturing session; absent on units captured before 10-13 (pt-BR). */
   locale?: string;
+  /** TARGETS of a first collection: the content window the uploads scan stopped at (absent before 10-14). */
+  max_age_days?: number;
   responses: RawResponse[];
   /** R2 compatibility projection; R3 will parse the original responses independently. */
   result: T;

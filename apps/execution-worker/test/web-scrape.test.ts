@@ -201,3 +201,10 @@ test('Uploads parse gaps are skipped and keep the scan from being exhaustive ins
   const scan = await uploads(yt as never, channel, 30);
   assert.deepEqual([scan.ids, scan.exhausted], [['aaaaaaaaaaa', 'bbbbbbbbbbb'], false]);
 });
+test('a first collection stops at the first upload past the 90-day content window; an edge entry is still collected', async () => {
+  const entry = (video_id: string, age: string) => ({ video_id, metadata: { metadata: { metadata_rows: [{ metadata_parts: [{ text: '1K views' }, { text: age }] }] } } });
+  const yt = { async getPlaylist() { return { videos: [entry('aaaaaaaaaaa', '3 days ago'), entry('bbbbbbbbbbb', '3 months ago'), entry('ccccccccccc', '4 months ago'), entry('ddddddddddd', '1 year ago')], has_continuation: false }; } };
+  const scan = await uploads(yt as never, channel, 30, undefined, 90, 'en');
+  assert.deepEqual([scan.ids, scan.stop_reason, scan.exhausted], [['aaaaaaaaaaa', 'bbbbbbbbbbb'], 'age_boundary', false]);
+  assert.equal((await uploads(yt as never, channel, 30)).ids.length, 4, 'without a window (units before 10-14) nothing is cut');
+});

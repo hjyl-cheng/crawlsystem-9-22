@@ -9,7 +9,7 @@ export class DataApiError extends Error {
 }
 /** Legacy discovery bounds: a first page and a catch-up of 50 items; without an anchor, keep the newest 30. */
 const DISCOVERY_SCAN_LIMIT = 100, DISCOVERY_GAP_KEEP = 30;
-export interface UploadDiscovery { ids: string[]; pages: number; scanned: number; matched_anchor_id: string | null; stop_reason: 'anchor_matched' | 'list_end' | 'gap_abandoned_latest_30' }
+export interface UploadDiscovery { ids: string[]; pages: number; scanned: number; matched_anchor_id: string | null; stop_reason: 'anchor_matched' | 'list_end' | 'gap_abandoned_latest_30' | 'age_boundary' }
 export type DataApiEndpoint = 'channels' | 'playlistItems' | 'videos';
 /** Around each request: `permit` before sending (throws to refuse; may return the permit's id), `failed` when it fails. */
 export interface RequestGuard {

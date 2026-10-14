@@ -207,13 +207,13 @@ export function createActivities(options: ActivityOptions) {
           const manifest = { kind: 'discovery', channel_id: input.channel_id, video_ids: targets, listed_at: new Date().toISOString(), scanned_count: found.scanned,
             pages: found.pages, matched_anchor_id: found.matched_anchor_id, stop_reason: found.stop_reason, source: youtube().web ? 'youtubei:uploads' : 'data_api:playlistItems' };
           await submitOnce(ref, value, submissionOf(ref, 'VIDEO', 'video:discovery', manifest, targets.length === 0 && !resamples(input)), descriptor.deadlineAt);
-          const how = { anchor_matched: 'reached the newest known video', list_end: 'reached the end of the uploads', gap_abandoned_latest_30: 'too many new uploads; kept the newest 30' }[found.stop_reason];
+          const how = { anchor_matched: 'reached the newest known video', list_end: 'reached the end of the uploads', gap_abandoned_latest_30: 'too many new uploads; kept the newest 30', age_boundary: 'reached the content window' }[found.stop_reason];
           await event(ref, scope, 'PROGRESS', 'DISCOVERY', `Frozen ${targets.length} video targets (${how}; ${input.recovery_video_ids?.length ?? 0} recovery targets)`, 'VIDEO');
           value = await read(ref, scope, descriptor.deadlineAt);
         }
         if (!value.video_targets) {
           const windowStart = new Date(youtube().web ? 0 : Date.parse(input.reference_time) - input.scope.max_age_days * 86_400_000).toISOString();
-          const listed = youtube().web ? await youtube().web!.targets(collection(ref, input, scope, descriptor.deadlineAt), input.scope.video_limit, undefined, input.recovery_video_ids)
+          const listed = youtube().web ? await youtube().web!.targets(collection(ref, input, scope, descriptor.deadlineAt), input.scope.video_limit, undefined, input.recovery_video_ids, input.scope.max_age_days)
             : await youtube().dataApi.recentUploads(`UU${input.channel_id.slice(2)}`, windowStart, input.scope.video_limit, permit(ref, scope, descriptor.deadlineAt));
           const targets = mergeRecoveryVideoTargets(listed.ids, input.recovery_video_ids);
           const manifest = { kind: 'targets', channel_id: input.channel_id, video_ids: targets, listed_at: new Date().toISOString(), window_start: windowStart, exhausted: listed.exhausted, source: youtube().web ? 'youtubei:uploads' : 'data_api:playlistItems' };
