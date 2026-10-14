@@ -54,12 +54,12 @@ export function StoragePage() {
     <ResourceView resource={r}>{s=><>
     <Panel title="入库与恢复"><Fields rows={[
       ['PostgreSQL 数据库大小',bytes(s.postgres_bytes)],['等待发布的统计事件',number(s.outbox.pending)],['等待归档的统计事件',number(s.outbox.unarchived)],['最早待归档事件',s.outbox.oldest_pending_at?time(s.outbox.oldest_pending_at):'无'],
-      ['ClickHouse',s.clickhouse.available?'正常':'暂时不可用，事件仍保留'],['ClickHouse 存储',bytes(s.clickhouse.bytes)],['事件明细',number(s.clickhouse.events)],['最近统计事件',s.clickhouse.last_event_at??'—'],
+      ['ClickHouse',s.clickhouse.available?'正常':'暂时不可用，事件仍保留'],['ClickHouse 存储',bytes(s.clickhouse.bytes)],['事件明细',number(s.clickhouse.events)],['最近统计事件',s.clickhouse.last_event_at?time(/[zZ]|[+-]\d\d:?\d\d$/.test(s.clickhouse.last_event_at)?s.clickhouse.last_event_at:s.clickhouse.last_event_at.replace(' ','T')+'Z'):'—'],
       ['待处理 / 重试中失败',`${s.failures.open} / ${s.failures.retrying}`],['等待保留证据',number(s.failures.evidence_pending)],['等待 / 失败重放',`${s.replays.pending} / ${s.replays.failed}`],
     ]}/><p className="inset"><Link to="/failures">查看失败处理 →</Link></p></Panel>
     <Panel title="数据保留"><Fields rows={[
       ['PG 历史详情',`${s.retention.pg_days} 天；归档后压缩，保留恢复与幂等身份`],['ClickHouse 事件明细',`${s.retention.events_days} 天`],['小时 / 日汇总','长期保留'],['失败证据',`${s.retention.evidence_days} 天`],['运行日志',`${s.retention.loki_days} 天`],
-      ['最近清理',s.maintenance.last_at?time(s.maintenance.last_at):'尚未运行'],['最近清理数量',s.maintenance.result?Object.entries(s.maintenance.result).map(([k,v])=>`${k}: ${v}`).join(' · '):'—'],
+      ['最近清理',s.maintenance.last_at?time(s.maintenance.last_at):'尚未运行'],['最近清理数量',s.maintenance.result?Object.entries(s.maintenance.result).map(([k,v])=>`${({units:'原件',events:'事件',failures:'失败记录'} as Record<string,string>)[k]??k} ${v}`).join(' · '):'—'],
     ]}/></Panel><p className="fine-print">当前频道、视频和评论对象引用持续保留。只有已归档且不再影响执行、恢复的历史详情才参与清理。</p>
   </>}</ResourceView></>;
 }

@@ -491,13 +491,13 @@ test('delivery shows real receipts, filters status and retries the finalized ver
   const state=await mock(page);state.deliveries.push({delivery_id:'f708e423-b31a-45d9-a67b-f8f68a2f462b',channel_id:'UCfixture',title:'真实交付频道',plan_id:null,revision:1,status:'PENDING',target:'旧结构业务库',created_at:'2026-10-10T09:00:00.000Z',received_at:null,error_code:null,attempts:1,domains:['channel','video','agent'],receipt:null});await login(page, '/delivery');
   await expect(page.getByRole('heading', { name: '发布交付', exact: true })).toBeVisible();
   await expect(page.getByLabel('预览示例数据')).toHaveCount(0);
-  await expect(page.locator('tbody tr')).toContainText('待业务确认');await page.getByRole('button',{name:'查看',exact:true}).click();
+  await expect(page.locator('tbody tr')).toContainText('待业务确认');await page.locator('tbody tr').first().click();
   await page.getByLabel('重发原因').fill('接收端恢复后重发');await page.getByRole('button',{name:'重发原版本',exact:true}).click();await expect.poll(()=>state.deliveryRetries.length).toBe(1);expect(state.deliveryRetries[0]).toMatchObject({reason:'接收端恢复后重发'});
   await expect(page.locator('tbody tr')).toContainText('待业务确认');state.deliveries[0]!.status='DELIVERED';state.deliveries[0]!.received_at='2026-10-10T09:01:00.000Z';
   await page.getByLabel('交付状态').selectOption('DELIVERED');await expect(page.locator('tbody tr')).toContainText('已交付');await expect(page.locator('tbody tr')).toContainText('业务表入库完成');
 });
 test('reader cannot resend a pending delivery',async({page})=>{
- const state=await mock(page,undefined,'reader');state.deliveries.push({delivery_id:'f708e423-b31a-45d9-a67b-f8f68a2f462b',channel_id:'UCfixture',title:'待确认频道',plan_id:null,revision:1,status:'PENDING',target:'旧结构业务库',created_at:'2026-10-10T09:00:00.000Z',received_at:null,error_code:null,attempts:1,domains:['channel'],receipt:null});await login(page,'/delivery');await page.getByRole('button',{name:'查看',exact:true}).click();await expect(page.getByRole('heading',{name:'交付详情',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'重发原版本',exact:true})).toHaveCount(0);
+ const state=await mock(page,undefined,'reader');state.deliveries.push({delivery_id:'f708e423-b31a-45d9-a67b-f8f68a2f462b',channel_id:'UCfixture',title:'待确认频道',plan_id:null,revision:1,status:'PENDING',target:'旧结构业务库',created_at:'2026-10-10T09:00:00.000Z',received_at:null,error_code:null,attempts:1,domains:['channel'],receipt:null});await login(page,'/delivery');await page.locator('tbody tr').first().click();await expect(page.getByRole('heading',{name:'交付详情',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'重发原版本',exact:true})).toHaveCount(0);
 });
 test('channel management lists real channel facts and shows the selected channel beside the list', async ({ page }) => {
   await mock(page, detailFixture({ status: 'COMPLETED' }, ['ABOUT', 'VIDEO'])); await login(page, '/channels');

@@ -108,7 +108,7 @@ export default function Channels() {
     <div className="discover-kpis">
       <Kpi label="频道记录" tone="blue" icon={<Tv size={22}/>} value={c && fmt(c.total_channels)} foot={c?.latest_channel_update_at ? `最近入库 ${short(c.latest_channel_update_at)}` : '—'}/>
       <Kpi label="数据完整" tone="green" icon={<CircleCheck size={22}/>} value={c && fmt(c.complete)} foot={c ? `部分可用 ${c.partial} · 待补全 ${c.missing}` : '—'}/>
-      <Kpi label="逾期未更新" tone="red" icon={<TriangleAlert size={22}/>} value={c && fmt(c.management.overdue)} foot={c ? `持续更新中 ${fmt(c.management.managed)} 个` : '—'}/>
+      <Kpi label="到期待更新" tone="amber" icon={<TriangleAlert size={22}/>} value={c && fmt(c.management.overdue)} foot={c ? `持续更新中 ${fmt(c.management.managed)} 个 · 到期当天 00:30 起依次更新` : '—'}/>
       <Kpi label="已暂停" tone="amber" icon={<CirclePause size={22}/>} value={c && fmt(c.management.paused)} foot="暂停期间到期不会自动更新"/>
     </div>
     {q && q.queued + q.planned + q.failed + q.done + (q.rejected??0) > 0 && <div className="notice import-queue" role="status">导入队列：排队 <b>{q.queued}</b> · 首次采集中 <b>{q.planned}</b> · 已完成 <b>{q.done}</b> · 失败 <b>{q.failed}</b> · 门槛未通过 <b>{q.rejected??0}</b>
@@ -117,7 +117,7 @@ export default function Channels() {
 
     <div className="discover-row row-channels">
       <section className="panel channels-list">
-        <div className="status-tabs" role="tablist" aria-label="频道状态">{([['all', '全部'], ['ok', '正常'], ['overdue', '逾期'], ['paused', '已暂停']] as const).map(([key, label]) => <button key={key} role="tab" aria-selected={key === state} className={key === state ? 'on' : ''} onClick={()=>changeFilter('state',key==='all'?'':key)}>{label}<span>{options.data?.counts[key]??'—'}</span></button>)}</div>
+        <div className="status-tabs" role="tablist" aria-label="频道状态">{([['all', '全部'], ['ok', '正常'], ['overdue', '到期'], ['paused', '已暂停']] as const).map(([key, label]) => <button key={key} role="tab" aria-selected={key === state} className={key === state ? 'on' : ''} onClick={()=>changeFilter('state',key==='all'?'':key)}>{label}<span>{options.data?.counts[key]??'—'}</span></button>)}</div>
         <div className="list-tools channel-filters"><label className="list-search" htmlFor="channel-search"><Search size={13}/><input id="channel-search" aria-label="搜索频道" maxLength={160} placeholder="搜索名称 / @handle / 频道 ID" value={searchText} onChange={e=>setSearchText(e.target.value)}/></label>
           <select aria-label="国家 / 地区" value={filter.country??''} onChange={e=>changeFilter('country',e.target.value)}><option value="">全部国家 / 地区</option>{filter.country&&!options.data?.countries.some(v=>v.value===filter.country)&&<option value={filter.country}>{countryLabel(filter.country,filter.country)}</option>}{options.data?.countries.map(v=><option key={v.value} value={v.value}>{countryLabel(v.value,v.label)}（{fmt(v.count)}）</option>)}</select>
           <select aria-label="业务分类" value={filter.category??''} onChange={e=>changeFilter('category',e.target.value)}><option value="">全部业务分类</option>{BUSINESS_CATEGORIES.map(v=><option key={v} value={v}>{categoryLabels[v]}</option>)}<option value="__missing">尚未分类</option></select>

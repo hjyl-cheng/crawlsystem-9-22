@@ -18,8 +18,8 @@ export default function LineChart({ points, series, max, format = v => v.toLocal
   const top = max ?? (points ? Math.ceil(Math.max(1, ...points.flatMap(p => Object.values(p.values).filter((v):v is number=>v!==null))) / 1000) * 1000 : 1);
   const x = (i: number) => pad.l + (points && points.length > 1 ? i / (points.length - 1) * w : w / 2), y = (v: number) => pad.t + h - v / top * h;
   const path = (key: string) => {let open=false;return points?.map((p,i)=>{const v=p.values[key];if(v===null){open=false;return '';}const segment=`${open?'L':'M'}${x(i).toFixed(1)},${y(v??0).toFixed(1)}`;open=true;return segment;}).join('')??'';};
-  // Label roughly every 7th point, never the one just before the last.
-  const every = points && points.length > 10 ? 7 : 1;
+  // As many x labels as fit (at least 56 px each), never the one just before the last.
+  const every = points ? Math.max(1, Math.ceil(points.length / Math.max(2, Math.floor(size.w / 56)))) : 1;
   const onMove = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!points || !w) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -31,7 +31,7 @@ export default function LineChart({ points, series, max, format = v => v.toLocal
       {/* Without data the grid stays but the y labels would be meaningless, so they are omitted. */}
       {[0, top / 2, top].map(t => <g key={t}><line x1={pad.l} x2={pad.l + w} y1={y(t)} y2={y(t)} className="grid"/>{points && <text x={pad.l - 6} y={y(t) + 3} textAnchor="end" className="axis">{format(t)}</text>}</g>)}
       {points && <>
-        {points.map((pt, i) => (i % every === 0 && i < points.length - (every > 1 ? 3 : 0)) || i === points.length - 1 ? <text key={pt.x} x={x(i)} y={pad.t + h + 15} textAnchor="middle" className="axis">{pt.x}</text> : null)}
+        {points.map((pt, i) => (i % every === 0 && i < points.length - (every > 1 ? Math.max(3, Math.ceil(every / 2)) : 0)) || i === points.length - 1 ? <text key={i} x={x(i)} y={pad.t + h + 15} textAnchor="middle" className="axis">{pt.x}</text> : null)}
         {series.map(s => <g key={s.key}>{s.area && points.every(p=>p.values[s.key]!==null) && <path d={`${path(s.key)}L${x(points.length - 1)},${y(0)}L${x(0)},${y(0)}Z`} fill={s.color} fillOpacity=".1"/>}<path d={path(s.key)} fill="none" stroke={s.color} strokeWidth="2"/></g>)}
         {series.flatMap(s=>points.map((pt,i)=>pt.values[s.key]!=null&&points[i-1]?.values[s.key]==null&&points[i+1]?.values[s.key]==null?<circle key={s.key+':'+i} cx={x(i)} cy={y(pt.values[s.key]!)} r="3" fill={s.color}/>:null))}
         {p && <><line x1={x(hover!)} x2={x(hover!)} y1={pad.t} y2={pad.t + h} className="crosshair"/>{series.filter(s=>p.values[s.key]!==null).map(s => <circle key={s.key} cx={x(hover!)} cy={y(p.values[s.key] ?? 0)} r="4" fill={s.color} stroke="#fff" strokeWidth="2"/>)}</>}
