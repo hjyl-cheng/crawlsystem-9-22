@@ -39,6 +39,10 @@ test('legacy 64-table schema accepts finalized payloads and publishes public sna
  assert.equal((await biz.query('SELECT count(*)::int n FROM public.content_snapshots WHERE channel_id=$1',[s.channel_id])).rows[0].n,1);
  assert.equal((await biz.query('SELECT count(*)::int n FROM public.channel_profile_facts WHERE channel_id=$1',[s.channel_id])).rows[0].n,10);
  assert.ok(!JSON.stringify(p.shard).includes('固定样本评论'));
+ // Batch 7 (A-40): a pt-BR About country is delivered by its English name and replaces the Agent's country.
+ const br={...s,about:{...s.about,country:'Brasil',country_code:'BR',country_source:'youtubei:about'}},q=mapPublication(br,p.state,streamId,randomUUID());
+ await receiver.accept(message(q,streamId));assert.equal((await receipts()).find(r=>r.delivery_id===q.shard!.shard_id)?.status,'DELIVERED');
+ assert.deepEqual((await biz.query("SELECT f.value_json #>> '{}' v,f.source,s.country_text FROM public.channel_profile_facts f JOIN public.channel_snapshots s ON s.id=f.channel_snapshot_id WHERE f.channel_id=$1 AND f.field_key='country' AND s.country_text IS NOT NULL",[s.channel_id])).rows[0],{v:'Brazil',source:'crawler',country_text:'Brazil'});
  assert.ok(!JSON.stringify(p.shard).includes('comments_first_page'));
 });
 test('duplicate delivery reissues a receipt without adding business snapshots',async()=>{

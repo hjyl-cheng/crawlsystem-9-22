@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {linkPurpose,linkType,normalizeUrl} from '@crawlsystem/contracts/links';
+import {countryEnglishName} from '@crawlsystem/contracts/country';
 import {ChannelFactsSchema,VideoItemSchema,isVideoUnavailable,AgentResultSchema,type ChannelFacts,type VideoFacts,type VideoItem,type AgentResult} from '@crawlsystem/contracts';
 import {observationFactsHash as hash,publicationResultHash,normalizePublicationEnvelope,validateBusinessPublicationEnvelope,buildPublicationShard,type LegacyValue} from '../../legacy-publication/src/index.js';
 
@@ -24,7 +25,9 @@ function channelPayload(a:ChannelFacts,lifecycle:'active'|'dormant'='active'):Le
   // The web channel page observes its tabs (an absent tab is false); a Data API fallback never saw them.
   has_videos:tabs(a,/video/i),has_shorts:tabs(a,/short/i),has_live_streams:tabs(a,/live|stream/i),description:a.about_description??a.summary,
   subscriber_count:resolved(a.subscriber_count),subscriber_count_status:a.subscriber_count.status,total_video_count:resolved(a.total_video_count),total_video_count_status:a.total_video_count.status,total_view_count:resolved(a.total_view_count),total_view_count_status:a.total_view_count.status,
-  joined_date:a.joined_at,joined_date_status:a.joined_at?'exact':'unavailable',joined_date_raw:a.joined_date_text,country_code:a.country_code,country_name:a.country,
+  joined_date:a.joined_at,joined_date_status:a.joined_at?'exact':'unavailable',joined_date_raw:a.joined_date_text,country_code:a.country_code,
+  // Legacy channelPublicationCurrent.js:263: the English canonical name, else the observed text (pt-BR sessions stored "Brasil").
+  country_name:countryEnglishName(a.country_code)??a.country,
   links:publicLinks(a.external_links),lifecycle_status:lifecycle,youtube_business_email_available:a.youtube_business_email_available,youtube_business_email_observed_at:a.youtube_business_email_available===null?null:a.observed_at};
 }
 function videoItem(v:VideoFacts,position:number):LegacyValue {
@@ -40,10 +43,18 @@ function videoItem(v:VideoFacts,position:number):LegacyValue {
  item.item_hash=hash(Object.fromEntries(Object.entries(item).filter(([k])=>k!=='position'&&!k.endsWith('_observed_at')&&!k.endsWith('_source')&&k!=='extractor_version')));
  return item;
 }
+/** Legacy hasResolvedCrawlerCountry and crawlerCountryMetric (agentCountryPolicy.js:159-166, pipelineV2.js:4611-4626,
+ * 4838-4842): an observed YouTube About country with a code replaces the Agent's estimate. The value is the English
+ * canonical name, as legacy English sessions observed it; the business contract keeps only the six fact keys. */
+export function crawlerCountryFact(about:ChannelFacts):AgentResult['facts']['country']|null {
+ const name=about.country_source==='youtubei:about'?countryEnglishName(about.country_code):null;
+ return name?{value:name,source:'crawler',confidence:'high',evidence:['YouTube About country field'],source_urls:[about.channel_url],reason:null}:null;
+}
 function agentPayload(a:AgentResult,about:ChannelFacts):LegacyValue {
+ const country=crawlerCountryFact(about);
  // The current Agent contract retains its input hash, but not the frozen input ID list.
  // Preserve that hash as provenance; do not infer historical input IDs from today's window.
- return {channel_id:a.channel_id,agent_mode:'local_model',input_url:about.channel_url,facts:a.facts,agent_model:a.model_version,agent_config_id:null,prompt_template_id:null,prompt_hash:null,prompt_variant:null,agent_version_hash:null,output_hash:hash(a.facts),input_content_ids:[],input_content_hash:hash([]),taxonomy_version:a.taxonomy_version};
+ return {channel_id:a.channel_id,agent_mode:'local_model',input_url:about.channel_url,facts:country?{...a.facts,country}:a.facts,agent_model:a.model_version,agent_config_id:null,prompt_template_id:null,prompt_hash:null,prompt_variant:null,agent_version_hash:null,output_hash:hash(a.facts),input_content_ids:[],input_content_hash:hash([]),taxonomy_version:a.taxonomy_version};
 }
 export function mapPublication(snapshot:PublicationSnapshot,previous:PublicationState|undefined,streamId:string,deliveryId:string) {
  const a=ChannelFactsSchema.parse(snapshot.about),agent=AgentResultSchema.parse(snapshot.agent),asOf=snapshot.observed_at,cutoff=new Date(new Date(asOf).getTime()-90*86400000).toISOString();

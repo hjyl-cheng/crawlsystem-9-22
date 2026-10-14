@@ -5,6 +5,6 @@
   "type": "module",
   "exports": { ".": "./src/index.ts", "./fixtures": "./src/fixtures.ts", "./hash": "./src/hash.ts",
     "./clocks": "./src/clocks.ts", "./pipeline": "./src/pipeline.ts", "./analytics": "./src/analytics.ts",
-    "./links": "./src/links.ts" },
+    "./links": "./src/links.ts", "./country": "./src/country.ts" },
   "dependencies": { "zod": "4.6.5" }
 }

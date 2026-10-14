@@ -54,3 +54,20 @@ test('channel identity conflicts fail; title, handle, description and view count
   assert.equal(facts.subscriber_count.source, 'youtubei:channel_about');
   assert.deepEqual(facts.available_tabs, ['videos']);
 });
+// Batch 7 (rule register A-37, A-40): canonical names for publication and the profile model input.
+test('the profile model country table is the CLDR English table in the catalog spelling', async () => {
+  const { profileCountryNames, countryEnglishName } = await import('@crawlsystem/contracts/country');
+  const { readFileSync } = await import('node:fs');
+  const table = JSON.parse(readFileSync(new URL('../../profile-agent/profile_agent/country_names.json', import.meta.url), 'utf8'));
+  assert.deepEqual(table, profileCountryNames(), 'regenerate country_names.json from profileCountryNames()');
+  assert.deepEqual([table.IN, table.HK, table.TR, table.BR], ['India', 'Hong Kong', 'Turkey', 'Brazil']);
+  assert.deepEqual([countryEnglishName('IN'), countryEnglishName('TR'), countryEnglishName(null), countryEnglishName('in')], ['India', 'Türkiye', null, null]);
+});
+test('a resolved About country replaces the Agent country fact; anything else keeps the Agent estimate', async () => {
+  const { crawlerCountryFact } = await import('../../../packages/store/src/publication-map.ts');
+  const about = { channel_url: 'https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw', country: 'Índia', country_code: 'IN', country_source: 'youtubei:about' } as never;
+  assert.deepEqual(crawlerCountryFact(about), { value: 'India', source: 'crawler', confidence: 'high', evidence: ['YouTube About country field'],
+    source_urls: ['https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw'], reason: null });
+  assert.equal(crawlerCountryFact({ ...(about as object), country_source: 'data_api:snippet.country' } as never), null, 'only the YouTube About field is resolved');
+  assert.equal(crawlerCountryFact({ ...(about as object), country: null, country_code: null, country_source: null } as never), null);
+});

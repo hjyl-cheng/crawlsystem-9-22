@@ -8,12 +8,19 @@ the same payload and the same idempotent submission.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from qy_channel_profile.agent_contract import to_agent_payload
 from qy_channel_profile.contracts import FACT_FIELDS, AnalysisPolicy, ChannelSnapshot, ProfileAnalysisRequest, parse_datetime
 from qy_channel_profile.errors import ContractError, SnapshotError
 from qy_channel_profile.processor import PROCESSOR_VERSION, ChannelProfileProcessor
+
+
+# Legacy snapshot_repository.py:49-52 passes the English canonical country name before the observed text; the table is
+# packages/contracts/src/country.ts profileCountryNames() (CLDR English, spelled like the prior catalog).
+_COUNTRY_NAMES: dict[str, str] = json.loads(Path(__file__).with_name("country_names.json").read_text(encoding="utf-8"))
 
 
 class InputError(ValueError):
@@ -49,7 +56,7 @@ def snapshot_value(agent_input: dict[str, Any]) -> dict[str, Any]:
         "country": about.get("country"),
         "country_source": about.get("country_source"),
         "country_code": about.get("country_code"),
-        "country_canonical_name": None,
+        "country_canonical_name": _COUNTRY_NAMES.get(str(about.get("country_code") or "").upper()),
         "avatar_url": about.get("avatar_url"),
         "summary": about.get("summary"),
         "keywords": about.get("keywords") or [],

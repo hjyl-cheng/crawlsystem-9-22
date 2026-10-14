@@ -44,6 +44,16 @@ class AdapterTest(unittest.TestCase):
         later["videos"][1]["comments_first_page"]["collected_at"] = "2026-09-21T00:00:00.5Z"
         self.assertEqual(snapshot_value(later)["as_of"], "2026-09-21T00:00:00.500000+00:00")
 
+    def test_localized_about_country_reaches_the_model_in_english(self) -> None:
+        # Rule register A-37: pt-BR sessions stored "Índia"; the model must see "India", and the catalog spelling
+        # where CLDR differs ("Hong Kong", not "Hong Kong SAR China").
+        for country, code, name in (("Índia", "IN", "India"), ("Hong Kong", "HK", "Hong Kong"), ("Türkiye", "TR", "Turkey")):
+            localized = copy.deepcopy(INPUT)
+            localized["about"].update(country=country, country_code=code, country_source="youtubei:about")
+            self.assertEqual(snapshot_value(localized)["channel"]["country_canonical_name"], name)
+            fact = profiler().profile(localized)["facts"]["country"]
+            self.assertEqual((fact["value"], fact["confidence"]), (name, "high"), country)
+
     def test_profile_is_deterministic_and_matches_golden(self) -> None:
         result = profiler().profile(INPUT)
         self.assertEqual(result, profiler().profile(copy.deepcopy(INPUT)))
