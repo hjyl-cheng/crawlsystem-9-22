@@ -1314,6 +1314,18 @@ export class Store {
         FROM control.pipeline_steps s JOIN control.plans p USING(plan_id) WHERE p.workspace_id=$1 AND p.source_mode='youtube' AND p.status IN ('QUEUED','RUNNING','WAITING') AND s.execution_epoch=p.execution_epoch AND s.state='PENDING'
       UNION ALL SELECT 'delivery_oldest_pending_seconds','PENDING',greatest(coalesce(extract(epoch FROM clock_timestamp()-min(created_at)),0),0)::float8 FROM delivery.records WHERE workspace_id=$1 AND status='PENDING'
       UNION ALL SELECT 'delivery_failed','FAILED',count(*)::float8 FROM delivery.records WHERE workspace_id=$1 AND status='FAILED'
+      -- "No backlog" (C1): scheduled clocks due for an idle managed channel, the oldest wait, imports waiting, and demand vs. completions.
+      UNION ALL SELECT 'update_backlog','DUE',count(*)::float8 FROM (SELECT c.channel_id FROM control.channel_overview c JOIN control.channel_clocks k USING(workspace_id,channel_id)
+        WHERE c.workspace_id=$1 AND c.management_state='managed' AND k.due_at+interval '30 minutes'<=clock_timestamp()
+          AND NOT EXISTS(SELECT 1 FROM control.plans p WHERE p.workspace_id=c.workspace_id AND p.channel_id=c.channel_id AND p.status IN ('QUEUED','RUNNING','WAITING')) GROUP BY c.channel_id) due
+      UNION ALL SELECT 'update_backlog_oldest_seconds','DUE',greatest(coalesce(extract(epoch FROM clock_timestamp()-min(k.due_at+interval '30 minutes')),0),0)::float8
+        FROM control.channel_overview c JOIN control.channel_clocks k USING(workspace_id,channel_id)
+        WHERE c.workspace_id=$1 AND c.management_state='managed' AND k.due_at+interval '30 minutes'<=clock_timestamp()
+          AND NOT EXISTS(SELECT 1 FROM control.plans p WHERE p.workspace_id=c.workspace_id AND p.channel_id=c.channel_id AND p.status IN ('QUEUED','RUNNING','WAITING'))
+      UNION ALL SELECT 'update_demand_next_24h','DUE',count(DISTINCT k.channel_id)::float8 FROM control.channel_clocks k JOIN control.channel_overview c USING(workspace_id,channel_id)
+        WHERE k.workspace_id=$1 AND c.management_state='managed' AND k.due_at>clock_timestamp() AND k.due_at<=clock_timestamp()+interval '24 hours'
+      UNION ALL SELECT 'updates_completed_24h','COMPLETED',count(*)::float8 FROM control.plans WHERE workspace_id=$1 AND plan_kind='UPDATE' AND status='COMPLETED' AND finished_at>clock_timestamp()-interval '24 hours'
+      UNION ALL SELECT 'import_backlog','WAITING',count(*)::float8 FROM control.channel_imports WHERE workspace_id=$1 AND state IN ('queued','failed') AND retry_blocked_reason IS NULL
       UNION ALL SELECT 'ready_workers','RUNNING',count(*)::float8 FROM control.workers WHERE workspace_id=$1 AND desired_mode='RUNNING' AND last_heartbeat_at>clock_timestamp()-interval '90 seconds'
       UNION ALL SELECT 'healthy_proxies','HEALTHY',count(*)::float8 FROM control.proxies p JOIN control.proxy_observations o USING(workspace_id,proxy_id)
         WHERE p.workspace_id=$1 AND p.enabled AND p.retired_at IS NULL AND p.server_id=o.server_id AND p.generation=o.generation AND o.state='healthy' AND o.reported_at>clock_timestamp()-interval '180 seconds'`,[workspaceId]);
