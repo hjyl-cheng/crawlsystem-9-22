@@ -17,7 +17,7 @@ def sample_failures(rec):
     if pg.get('streaming_standbys',0)<1 or not slots or any(not s.get('active') or s.get('wal_status') not in ('reserved','extended') for s in slots):
         bad.append('postgres_replication')
     cdc=rec.get('cdc',{})
-    if cdc.get('connector')!='RUNNING' or cdc.get('tasks')!=['RUNNING']:bad.append('cdc')
+    if cdc.get('connector')!='RUNNING' or cdc.get('tasks')!=['RUNNING'] or cdc.get('delivery',{}).get('connector')!='RUNNING' or cdc.get('delivery',{}).get('tasks')!=['RUNNING']:bad.append('cdc')
     mon=rec.get('monitoring',{})
     if not mon.get('targets_total') or mon.get('targets_up')!=mon.get('targets_total'):bad.append('monitoring')
     for name,expected in [('kafka_isr',3),('kafka_replicas',3),('kafka_underreplicated',0)]:
@@ -58,9 +58,13 @@ def main():
             result=json.loads(rows);metrics['crawl_pg_streaming_standbys']=result['streaming_standbys'];metrics['crawl_pg_slot_retained_bytes']=max([s['retained_bytes'] or 0 for s in result['logical_slots']]+[0]);return result
         check('postgres',postgres)
         def cdc():
-            with forward('kafka','svc/debezium-connect',8083) as port:r=http(port,'/connectors/infra-outbox/status')
-            running=r['connector']['state']=='RUNNING' and len(r['tasks'])==1 and all(t['state']=='RUNNING' for t in r['tasks']);metrics['crawl_cdc_running']=int(running)
-            return {'connector':r['connector']['state'],'tasks':[t['state'] for t in r['tasks']]}
+            # The infra probe connector and the business delivery connector (c1-delivery) must both run (R4).
+            with forward('kafka','svc/debezium-connect',8083) as port:states={name:http(port,f'/connectors/{name}/status') for name in ('infra-outbox','c1-delivery')}
+            ok=lambda r:r['connector']['state']=='RUNNING' and len(r['tasks'])==1 and all(t['state']=='RUNNING' for t in r['tasks'])
+            metrics['crawl_cdc_running']=int(all(ok(r) for r in states.values()))
+            probe=states['infra-outbox']
+            return {'connector':probe['connector']['state'],'tasks':[t['state'] for t in probe['tasks']],
+                    'delivery':{'connector':states['c1-delivery']['connector']['state'],'tasks':[t['state'] for t in states['c1-delivery']['tasks']]}}
         check('cdc',cdc)
         def prometheus():
             with forward('monitoring','svc/prometheus',9090) as port:
